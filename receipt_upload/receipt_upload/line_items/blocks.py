@@ -725,13 +725,22 @@ def decode_band_blocks(
             # discarded them -- the boundary-steal guarantee failure the
             # first integration attempt was reverted on.
             cands = [
-                (len(bands[i]["text"]), bands[i]["text"])
+                (len(bands[i]["text"]), bands[i]["text"], i)
                 for i in blocks[p]
                 if _name_is_real(bands[i]["text"])
             ]
             if cands:
-                parsed["name"] = max(cands)[1].strip()
+                donor = max(cands)
+                parsed["name"] = donor[1].strip()
                 parsed["stacked"] = True
+                # The name now comes from the donor band, so its word
+                # provenance must follow it. Left pointing at the price
+                # band, name_word_ids would name the SKU words instead of
+                # the product words for every stacked layout.
+                parsed["name_word_ids"] = [
+                    {"line_id": w["line_id"], "word_id": w["word_id"]}
+                    for w in bands[donor[2]]["words"]
+                ]
         if not _name_is_real(parsed.get("name") or ""):
             # No name anywhere: keep the price, flag the quality --
             # identical semantics to the banded path.
