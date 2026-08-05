@@ -9,7 +9,12 @@ from typing import Any
 
 from botocore.exceptions import ClientError
 
-from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
+from receipt_dynamo.constants import (
+    CORE_LABEL_NAMES,
+    CORE_LABELS,
+    NON_CORE_LABEL_ALIASES,
+    ValidationStatus,
+)
 from receipt_dynamo.data.base_operations import (
     FlattenedStandardMixin,
     TransactWriteItemTypeDef,
@@ -80,10 +85,18 @@ class _ReceiptWordLabel(
             {item.label for item in receipt_word_labels} - set(CORE_LABELS)
         )
         if invalid_labels:
-            rendered = ", ".join(repr(label) for label in invalid_labels)
+            rendered = ", ".join(
+                (
+                    f"{label!r} (did you mean {suggestion!r}?)"
+                    if (suggestion := NON_CORE_LABEL_ALIASES.get(label))
+                    else repr(label)
+                )
+                for label in invalid_labels
+            )
             raise EntityValidationError(
                 "Cannot add non-core receipt word label(s): "
-                f"{rendered}. New labels must be present in CORE_LABELS; "
+                f"{rendered}. New labels must be one of "
+                f"{list(CORE_LABEL_NAMES)}; "
                 "allow_non_core_labels=True is reserved for controlled "
                 "legacy restoration."
             )

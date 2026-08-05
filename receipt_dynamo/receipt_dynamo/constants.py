@@ -4,6 +4,7 @@ receipt parsing, labeling, embedding, and batch processing.
 """
 
 from enum import Enum
+from typing import Any
 
 
 class ValidationStatus(str, Enum):
@@ -219,3 +220,77 @@ CORE_LABELS: dict[str, str] = {
     "CASH_BACK": "Cash back amount dispensed from purchase.",
     "REFUND": "Refund amount (full or partial return).",
 }
+
+# Sorted tuple of the canonical label names.  Used to declare the allowed
+# values of a `label` argument (e.g. an MCP tool's JSON-Schema ``enum``) so a
+# caller is told what is legal instead of discovering it from a stack trace.
+CORE_LABEL_NAMES: tuple[str, ...] = tuple(sorted(CORE_LABELS))
+
+# Soft aliases: label names that writers commonly emit but that are not
+# themselves canonical.  Rewriting one of these to its CORE_LABELS target is
+# lossless and unambiguous.  A label that is neither a core label nor a known
+# alias is refused, never guessed at -- guessing is how 72 distinct malformed
+# label strings ended up as real DynamoDB sort keys.
+NON_CORE_LABEL_ALIASES: dict[str, str] = {
+    "ADDRESS": "ADDRESS_LINE",
+    "BUSINESS_NAME": "MERCHANT_NAME",
+    "CARD_NUMBER": "PAYMENT_METHOD",
+    "PAYMENT_TYPE": "PAYMENT_METHOD",
+}
+
+
+def canonical_label_name(label: Any) -> str:
+    """Normalize a model or stored label into the Dynamo label format."""
+    if label is None:
+        return ""
+    return str(label).strip().upper()
+
+
+def is_core_label(label: Any) -> bool:
+    """Return whether a label is part of the canonical receipt label set."""
+    return canonical_label_name(label) in CORE_LABELS
+
+
+def normalize_label_alias(label: Any) -> str | None:
+    """Map known non-core aliases to CORE_LABELS, if the mapping is safe.
+
+    Returns ``None`` when the label is neither a core label nor a known
+    alias.  Callers minting a *new* label row must treat ``None`` as a
+    refusal; they must not fall back to the raw string.
+    """
+    canonical = canonical_label_name(label)
+    if canonical in CORE_LABELS:
+        return canonical
+    return NON_CORE_LABEL_ALIASES.get(canonical)
+
+
+def invalid_label_message(label: Any) -> str:
+    """Build the caller-facing message for a label outside the vocabulary."""
+    canonical = canonical_label_name(label)
+    message = (
+        f"Invalid label {canonical!r}: label must be one of "
+        f"{list(CORE_LABEL_NAMES)}"
+    )
+    suggestion = NON_CORE_LABEL_ALIASES.get(canonical)
+    if suggestion is not None:
+        message += f". Did you mean {suggestion!r}?"
+    return message
+
+
+def normalize_core_label(label: Any) -> str:
+    """Return the canonical CORE_LABELS name for ``label``.
+
+    Accepts a core label in any casing and the soft aliases in
+    ``NON_CORE_LABEL_ALIASES``.  Raises ``ValueError`` for anything else.
+
+    This is the *authoring* guard: use it wherever a label name arrives as
+    free text (an agent argument, an LLM response, a CLI flag) and BEFORE a
+    ``ReceiptWordLabel`` is constructed, because the label name becomes part
+    of the DynamoDB sort key.  Do NOT use it on a label read back out of
+    DynamoDB -- 394 production rows carry historical labels outside this
+    vocabulary and must stay readable.
+    """
+    normalized = normalize_label_alias(label)
+    if normalized is None:
+        raise ValueError(invalid_label_message(label))
+    return normalized

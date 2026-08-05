@@ -66,7 +66,7 @@ from receipt_agent.agents.label_evaluator.word_context import (
     assemble_visual_lines,
     build_word_contexts,
 )
-from receipt_agent.constants import CORE_LABELS
+from receipt_agent.constants import CORE_LABELS, normalize_label_alias
 
 # LLM factory for creating OpenRouter-based LLMs
 from receipt_agent.utils.llm_factory import create_llm
@@ -493,7 +493,8 @@ def create_label_evaluator_graph(
             skip_labels: list[ReceiptWordLabel] = []
             for issue in state.issues_found:
                 eval_label = _create_evaluation_label(issue, None)
-                skip_labels.append(eval_label)
+                if eval_label is not None:
+                    skip_labels.append(eval_label)
             return {"review_results": [], "new_labels": skip_labels}
 
         # Skip LLM review if LLM is not available
@@ -504,7 +505,8 @@ def create_label_evaluator_graph(
             fallback_labels: list[ReceiptWordLabel] = []
             for issue in state.issues_found:
                 eval_label = _create_evaluation_label(issue, None)
-                fallback_labels.append(eval_label)
+                if eval_label is not None:
+                    fallback_labels.append(eval_label)
             return {"review_results": [], "new_labels": fallback_labels}
 
         merchant_name = "Unknown"
@@ -617,7 +619,8 @@ def create_label_evaluator_graph(
             fallback_labels_on_error: list[ReceiptWordLabel] = []
             for issue in state.issues_found:
                 eval_label = _create_evaluation_label(issue, None)
-                fallback_labels_on_error.append(eval_label)
+                if eval_label is not None:
+                    fallback_labels_on_error.append(eval_label)
             return {
                 "review_results": [],
                 "new_labels": fallback_labels_on_error,
@@ -647,7 +650,8 @@ def create_label_evaluator_graph(
 
             # Create label based on review result
             label = _create_evaluation_label(issue, review_result)
-            new_labels.append(label)
+            if label is not None:
+                new_labels.append(label)
 
             logger.info(
                 "Reviewed '%s': %s - %s...",
@@ -717,7 +721,7 @@ def create_label_evaluator_graph(
 def _create_evaluation_label(
     issue: EvaluationIssue,
     review_result: ReviewResult | None = None,
-) -> ReceiptWordLabel:
+) -> ReceiptWordLabel | None:
     """
     Create a new ReceiptWordLabel documenting the evaluation result.
 
@@ -727,7 +731,9 @@ def _create_evaluation_label(
             result)
 
     Returns:
-        New ReceiptWordLabel with validation status and reasoning
+        New ReceiptWordLabel with validation status and reasoning, or None
+        when no CORE_LABELS name can be determined for the word (the row is
+        skipped rather than minting a new label type).
     """
     if review_result:
         # Use LLM review result
@@ -738,10 +744,8 @@ def _create_evaluation_label(
             label = review_result.suggested_label
         elif issue.suggested_label:
             label = issue.suggested_label
-        elif issue.current_label:
-            label = issue.current_label
         else:
-            label = "UNKNOWN"
+            label = issue.current_label
 
         validation_status = review_result.decision
         reasoning = f"[LLM Review] {review_result.reasoning}"
@@ -750,14 +754,32 @@ def _create_evaluation_label(
         # Use evaluator result directly
         if issue.suggested_label:
             label = issue.suggested_label
-        elif issue.current_label:
-            label = issue.current_label
         else:
-            label = "UNKNOWN"
+            label = issue.current_label
 
         validation_status = issue.suggested_status
         reasoning = f"[Evaluator] {issue.reasoning}"
         proposed_by = "label_evaluator_agent:pattern_match"
+
+    # The label becomes part of the DynamoDB sort key, so it must be a real
+    # CORE_LABELS name.  Previously this fell back to the sentinel "UNKNOWN"
+    # (and could carry a legacy malformed label forward off
+    # `issue.current_label`), which mints a pseudo-label-type -- and, since
+    # #1291, makes `add_receipt_word_labels` reject the whole batch, losing
+    # every other decision for the receipt.  Skip the row instead.
+    normalized_label = normalize_label_alias(label)
+    if normalized_label is None:
+        logger.warning(
+            "Skipping evaluation label for word %s/%s/%s/%s: %r is not a "
+            "CORE_LABELS name",
+            issue.word.image_id,
+            issue.word.receipt_id,
+            issue.word.line_id,
+            issue.word.word_id,
+            label,
+        )
+        return None
+    label = normalized_label
 
     return ReceiptWordLabel(
         image_id=issue.word.image_id,

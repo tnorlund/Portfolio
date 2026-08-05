@@ -4,10 +4,26 @@ CORE_LABELS is imported from receipt_dynamo.constants (single source of truth).
 This module extends with receipt_agent-specific groupings and relationships.
 """
 
-from receipt_dynamo.constants import CORE_LABELS
+from receipt_dynamo.constants import (
+    CORE_LABEL_NAMES,
+    CORE_LABELS,
+    NON_CORE_LABEL_ALIASES,
+    is_core_label,
+    normalize_core_label,
+    normalize_label_alias,
+)
 
 # Set of valid core label names for quick lookup
 CORE_LABELS_SET = set(CORE_LABELS.keys())
+
+# Re-exported so agent code has one import for the vocabulary and its guards.
+_VOCABULARY_REEXPORTS = (
+    CORE_LABEL_NAMES,
+    NON_CORE_LABEL_ALIASES,
+    is_core_label,
+    normalize_core_label,
+    normalize_label_alias,
+)
 
 # =============================================================================
 # Label Semantic Groupings (for pattern analysis)
