@@ -8,7 +8,7 @@
 
 > **mockCryptoIds**(...`ids`): `Mock`
 
-Defined in: [utils/analytics.test.ts:19](https://github.com/tnorlund/Portfolio/blob/5931ef793821d0c008dc677636a41dc0bdaa31b4/portfolio/utils/analytics.test.ts#L19)
+Defined in: [utils/analytics.test.ts:19](https://github.com/tnorlund/Portfolio/blob/65c9f803fe6011fe684788b7c0d13570a773c13b/portfolio/utils/analytics.test.ts#L19)
 
 ## Parameters
 
