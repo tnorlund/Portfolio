@@ -9,7 +9,10 @@ Pinned here:
   1. no worker rows -> byte-identical to the pre-worker behavior
   2. a strictly better worker result is preserved, not clobbered
   3. a worse (or unrankable) worker result loses to the recompute
-  4. divergence is logged under a single queryable marker either way
+  4. a TIE (equal status, equal |delta|) goes to the recompute, on purpose
+  5. divergence is logged under a single queryable marker either way, and
+     the skip -- no worker rows to compare -- is logged too, so coverage
+     and the agreement rate are computable from logs alone
 """
 
 import json
@@ -152,16 +155,20 @@ def run(monkeypatch):
     return _run
 
 
-def _divergence_logs(caplog):
+def _marker_logs(caplog, marker):
     return [
-        json.loads(
-            record.getMessage().split(
-                line_item_processor.DIVERGENCE_MARKER + " ", 1
-            )[1]
-        )
+        json.loads(record.getMessage().split(marker + " ", 1)[1])
         for record in caplog.records
-        if line_item_processor.DIVERGENCE_MARKER in record.getMessage()
+        if record.getMessage().startswith(marker)
     ]
+
+
+def _divergence_logs(caplog):
+    return _marker_logs(caplog, line_item_processor.DIVERGENCE_MARKER)
+
+
+def _skip_logs(caplog):
+    return _marker_logs(caplog, line_item_processor.NO_WORKER_ROWS_MARKER)
 
 
 # ---------------------------------------------------------------------------
@@ -346,4 +353,202 @@ def test_divergence_marker_is_greppable_json(run, caplog):
         "name_mismatches",
         "price_mismatches",
         "worker_extractor_version",
+    }
+
+
+# ---------------------------------------------------------------------------
+# 4. Ties go to the recompute -- deliberately, not incidentally
+# ---------------------------------------------------------------------------
+
+
+def test_tie_on_status_and_delta_goes_to_the_recompute(run, caplog):
+    """Equal status AND equal |delta| is a tie, and the cloud wins it.
+
+    A printed subtotal of 12.00 leaves the cloud's three items (9.00) at
+    delta -3.00 / mismatch. The worker decodes only TWO items that also sum
+    to 9.00 -- a genuinely different decode with an identical arithmetic
+    projection. This is the steady-state case (both sides are ports of the
+    same decoder, so agreement is normal), and preferring the worker here
+    would hand the rows over on a coincidence of sums while dropping the
+    band text the on-device contract has no field for.
+    """
+    caplog.set_level(logging.INFO)
+    worker = [
+        _worker_row(index, name, price)
+        for index, (name, price) in enumerate(
+            [("BUNDLE", 5.00), ("BREAD", 4.00)]
+        )
+    ]
+    fake = _FakeDynamo(stored_line_items=worker, subtotal=12.00)
+
+    result = run(fake)
+
+    record = result["worker_divergence"]
+    assert record["worker_status"] == record["cloud_status"] == "mismatch"
+    assert record["worker_delta"] == record["cloud_delta"] == -3.00
+    assert record["decision"] == "keep-recompute"
+    assert "Arithmetic guard failed" in record["guard_reason"]
+    # The recompute's rows -- and its raw_text -- are what get stored.
+    assert [item.name for item in fake.written] == [
+        name for name, _ in _PRODUCTS
+    ]
+    assert all(
+        item.extractor_version == CLOUD_EXTRACTOR_VERSION
+        for item in fake.written
+    )
+
+
+def test_strict_improvement_still_beats_the_tie_rule(run):
+    """The tie rule must not swallow the strict-improvement escape hatch.
+
+    Same fixture as the tie test, but the worker's extra item closes the
+    3.00 gap exactly: strictly smaller |delta| AND a better status, so the
+    worker still wins. This is the dev IMG_3404 shape -- a Lambda running
+    older decoder code losing to a worker that is arithmetically right.
+    """
+    worker = [
+        _worker_row(index, name, price)
+        for index, (name, price) in enumerate(_PRODUCTS + [("EGGS", 3.00)])
+    ]
+    fake = _FakeDynamo(stored_line_items=worker, subtotal=12.00)
+
+    result = run(fake)
+
+    assert result["worker_divergence"]["decision"] == "keep-worker"
+    assert abs(result["worker_divergence"]["worker_delta"]) < abs(
+        result["worker_divergence"]["cloud_delta"]
+    )
+    assert all(
+        item.extractor_version == SWIFT_WORKER_EXTRACTOR_VERSION
+        for item in fake.written
+    )
+
+
+def test_strict_regression_is_still_rejected(run):
+    """A worker that widens |delta| loses even against a non-match cloud."""
+    worker = [_worker_row(0, "APPLES", 3.00)]
+    fake = _FakeDynamo(stored_line_items=worker, subtotal=12.00)
+
+    result = run(fake)
+
+    record = result["worker_divergence"]
+    assert record["decision"] == "keep-recompute"
+    assert abs(record["worker_delta"]) > abs(record["cloud_delta"])
+    assert all(
+        item.extractor_version == CLOUD_EXTRACTOR_VERSION
+        for item in fake.written
+    )
+
+
+def test_preserving_the_worker_costs_the_band_text(run):
+    """The measured price of ever preferring the worker, made countable.
+
+    ``ReceiptLineItemPayload`` (Swift) has no ``raw_text`` field, so worker
+    rows always arrive with an empty one. The divergence record counts them
+    so the cost of the keep-worker path is auditable in CloudWatch rather
+    than anecdotal.
+    """
+    worker = [
+        _worker_row(index, name, price)
+        for index, (name, price) in enumerate(_PRODUCTS + [("EGGS", 3.00)])
+    ]
+    fake = _FakeDynamo(stored_line_items=worker, subtotal=12.00)
+
+    result = run(fake)
+
+    assert result["worker_divergence"]["decision"] == "keep-worker"
+    assert result["worker_divergence"]["worker_rows_missing_raw_text"] == 4
+    assert all(item.raw_text == "" for item in fake.written)
+
+
+# ---------------------------------------------------------------------------
+# 5. The skip is countable, so agreement rate is computable from logs alone
+# ---------------------------------------------------------------------------
+
+
+def test_no_worker_rows_emits_the_skip_marker_exactly_once(run, caplog):
+    caplog.set_level(logging.INFO)
+    fake = _FakeDynamo()
+
+    run(fake)
+
+    skips = _skip_logs(caplog)
+    assert len(skips) == 1
+    assert skips[0] == {
+        "image_id": IMAGE_ID,
+        "receipt_id": RECEIPT_ID,
+        "stored_count": 0,
+        "cloud_count": 3,
+        "cloud_status": "match",
+        "worker_sourced_section": 0,
+    }
+    # ...and it is NOT a divergence line: the two markers are disjoint so a
+    # CloudWatch query can bucket them independently.
+    assert _divergence_logs(caplog) == []
+
+
+def test_skip_marker_flags_an_already_overwritten_receipt(run, caplog):
+    """The case silence used to hide: worker ran, cloud already replaced it.
+
+    Rows stamped with the cloud's extractor_version but inheriting
+    ``source_model_source == "swift-worker-v1"`` are a second recompute of a
+    receipt the worker DID decode -- not a receipt outside worker coverage.
+    Counting the two together would inflate the "never compared" bucket.
+    """
+    caplog.set_level(logging.INFO)
+    overwritten = [
+        _worker_row(
+            index, name, price, extractor_version=CLOUD_EXTRACTOR_VERSION
+        )
+        for index, (name, price) in enumerate(_PRODUCTS)
+    ]
+    fake = _FakeDynamo(stored_line_items=overwritten)
+
+    run(fake)
+
+    skips = _skip_logs(caplog)
+    assert len(skips) == 1
+    assert skips[0]["worker_sourced_section"] == 1
+    assert skips[0]["stored_count"] == 3
+
+
+def test_skip_marker_is_absent_whenever_a_comparison_happened(run, caplog):
+    """Every receipt emits exactly one of the two markers, never both."""
+    caplog.set_level(logging.INFO)
+    worker = [
+        _worker_row(index, name, price)
+        for index, (name, price) in enumerate(_PRODUCTS)
+    ]
+    fake = _FakeDynamo(stored_line_items=worker)
+
+    run(fake)
+
+    assert _skip_logs(caplog) == []
+    assert len(_divergence_logs(caplog)) == 1
+
+
+def test_skip_marker_is_greppable_json(run, caplog):
+    caplog.set_level(logging.INFO)
+
+    run(_FakeDynamo())
+
+    messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.getMessage().startswith(
+            line_item_processor.NO_WORKER_ROWS_MARKER
+        )
+    ]
+    assert len(messages) == 1
+    prefix, body = messages[0].split(" ", 1)
+    assert prefix == "LINE_ITEM_NO_WORKER_ROWS"
+    # The documented CloudWatch bucketing greps these literals.
+    assert '"worker_sourced_section": 0' in body
+    assert set(json.loads(body)) >= {
+        "image_id",
+        "receipt_id",
+        "stored_count",
+        "cloud_count",
+        "cloud_status",
+        "worker_sourced_section",
     }
