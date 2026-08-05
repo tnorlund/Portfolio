@@ -10,31 +10,45 @@ so.
 ## 0. The short version
 
 The framing question — *when should LayoutLM's product labels be joined with
-sections and the decoder?* — rests on a premise that is false. **The deployed
-LayoutLM model has no product classes.** It is an 8-class header/footer model,
-deliberately trained that way, and it is the best model the project has. There
-are no product labels to join.
+sections and the decoder?* — rests on a premise that is false, but not in the
+way it first appears. **The currently deployed LayoutLM model has no product
+classes** — it is an 8-class header/footer model. But that is a **six-day-old
+regression, not a design decision**: a 22-class product-capable model was live
+in production from 2026-07-14 to 2026-07-30 and produced 324 PRODUCT_NAME
+labels on 52 receipts at an 87% VALID rate. It was replaced on 2026-07-30 by
+the 8-class bundle.
+
+So there are **two independent regressions**, six weeks apart, and neither is a
+missing feature:
+
+1. **2026-06-16 (#958) — the `CORE_LABELS` write filter.** The merged classes
+   `AMOUNT` and `ADDRESS` are silently discarded by
+   `fromLinePredictions`. Roughly 800 labels/month stopped landing, and the
+   working LayoutLM → LLM disambiguation join went with them. **~20 lines of
+   Swift.**
+2. **2026-07-30 — the bundle regression.** `coreml/layoutlm-coreml-bundle.zip`
+   went from 22 entity classes (including PRODUCT_NAME, LINE_TOTAL, UNIT_PRICE,
+   QUANTITY) to 8. Product labelling stopped the same day. **Possibly a
+   rollback, not a code change.**
 
 Three things follow, and they are the whole recommendation:
 
-1. **There is a live bug, not a missing feature.** The deployed model's two
-   highest-value classes (`AMOUNT`, `ADDRESS`) are silently discarded by a
-   `CORE_LABELS` filter added on 2026-06-16. Roughly 800 labels/month stopped
-   landing. **Fix this first — it is ~20 lines and recovers a capability that
-   already worked.**
-2. **The join runs decoder → LayoutLM, not LayoutLM → decoder.** The training
-   evidence is unambiguous: LayoutLM scores 0.72–0.92 F1 on header/footer
-   classes and 0.23–0.36 on product classes, against a corpus where UNIT_PRICE
-   is 82% INVALID. The model is not weak at products; the *labels* are. The
-   decoder now emits arithmetically-proven product labels. That is the fix.
+1. **Restore what already worked before building anything new.** Fix the filter,
+   and establish whether the 07-30 bundle swap was deliberate. Together these
+   recover a product-labelling capability that was running in production last
+   week.
+2. **The join still runs decoder → LayoutLM, not LayoutLM → decoder.** The
+   decoder's labels are arithmetically proven; the corpus the model trains and
+   is *scored* against is not (UNIT_PRICE 82% INVALID). Feed the decoder's
+   proven labels into training. See §2.2 for why the val-F1 numbers that appear
+   to justify the 8-class model are themselves suspect.
 3. **Sections are already a strong scope, and should be used as a *filter*, not
    as a new model input.** 94% of VALID PRODUCT_NAME words fall inside the
    ITEMS section; 97% of GRAND_TOTAL words fall outside it. Nothing needs to be
    trained to exploit that.
 
-And one thing to **not** build: a product-labelling LayoutLM trained on today's
-corpus. It has been tried four times (v24, v27, v28, v29). Best product-only
-run: **0.338 F1**.
+And one thing to **not** build: a *new* product-labelling architecture. The
+existing one worked six days ago; find out why it was replaced first.
 
 ---
 
@@ -146,9 +160,9 @@ Swift filter drops. Not a coincidence — a fingerprint.
 
 ---
 
-## 2. The deployed model, and the bug
+## 2. The deployed model, and the two regressions
 
-### 2.1 The model has no product classes
+### 2.1 The model deployed *right now* has no product classes
 
 `layoutlm_model_s3_key = coreml/layoutlm-coreml-bundle.zip`. Downloaded and
 unzipped during this study; `label_map.json` reads:
@@ -168,7 +182,52 @@ vocabulary — it deserialises `id2label` from the bundle's `config.json`. The
 which is the *write filter*, not the model's vocabulary. The capability does
 not exist in the shipped model.
 
-### 2.2 That was a deliberate, and correct, decision
+### 2.1a …but a 22-class model was live until six days ago
+
+Credit to the parallel study (`join-study-2`) for finding this; every figure
+below was re-derived independently here before being written down.
+
+The `pre-*-backup.zip` chain in `s3://layoutlm-training-dev-68164770/coreml/`
+is the deployment history of `layoutlm-coreml-bundle.zip`. Each backup is the
+bundle that was live *before* the named version replaced it. Reading
+`label_map.json` out of each (range-read, no 415 MB downloads):
+
+| backup | S3 date | entity classes | product-capable |
+|---|---|---:|---|
+| `pre902-backup-20260615` | 2026-06-15 | 8 | no |
+| `pre-v18-backup` | 2026-06-17 | 8 | no |
+| `pre-v21-backup` | 2026-06-18 | 9 | no |
+| `pre-v30-backup` | 2026-07-14 | **20** | **yes** |
+| `pre-v31-backup` | 2026-07-30 | **22** | **yes** (adds PRODUCT_NAME, LOYALTY_ID) |
+| `layoutlm-coreml-bundle.zip` (**current**) | 2026-07-30 | 8 | **no — regression** |
+
+So a 20-class model was live ~2026-06-18 → 2026-07-14, a 22-class model
+2026-07-14 → 2026-07-30, and the 8-class model since.
+
+**The four-cohort natural experiment.** Grouping prod receipts by ingest date
+(`min(timestamp_added)`), counting only LayoutLM-origin rows
+(`llm_valid`/`llm_needs_review`/`llm_invalid`/`llm_corrected:*`):
+
+| cohort | model | receipts | LayoutLM rows | VALID | product labels | `ADDRESS`/`AMOUNT` raw |
+|---|---|---:|---:|---:|---|---:|
+| **A** ≤06-16 | 8/9-class, no filter | 133 | 3,070 | 64% | LINE_TOTAL 131, PRODUCT_NAME 7 | 771 / 585 |
+| **B** 06-17→07-13 | 20-class | 58 | 1,585 | 86% | **PRODUCT_NAME 348**, LINE_TOTAL 58, QUANTITY 12 | 0 / 0 |
+| **C** 07-14→07-29 | 22-class | 52 | 1,286 | 87% | **PRODUCT_NAME 324**, LINE_TOTAL 88, QUANTITY 25 | 8 / 12 |
+| **D** ≥07-30 | 8-class + filter | 3 | 39 | 87% | **none** | 0 / 0 |
+
+This cleanly separates the two regressions:
+
+- **A vs D** run the same 8-class AMOUNT-merged model family with opposite
+  outcomes on the merged classes (771/585 raw rows vs zero). That isolates
+  #958's filter, independent of the model.
+- **B/C vs D** isolates the bundle swap: the product classes disappear the day
+  the 22-class bundle was replaced.
+
+`geometry_line_items` (the deterministic fallback proposer) tracks the same
+shape — 0 in A, 31 in B, 54 in C, 0 in D — which is consistent with the product
+labels providing the anchors it needs.
+
+### 2.2 The 8-class decision looked right, but the evidence behind it is suspect
 
 The active model is `layoutlm-v31-nonproduct-clean-20260729`, tagged
 `active_model: true`, trained with:
@@ -203,8 +262,26 @@ WEBSITE        0.720 (129)     DISCOUNT       0.070 (143)
 STORE_HOURS    0.651  (44)     LOYALTY_ID     0.227  (71)
 ```
 
-Dropping the product half raised overall F1 from 0.531 → 0.737. Shipping the
-8-class model was the right call **given the training labels available**.
+Dropping the product half raised overall F1 from 0.531 → 0.737, which reads as
+a clear win.
+
+**It is not, and §3.2 is the reason.** That comparison is scored against a
+validation split drawn from the same corpus whose UNIT_PRICE is 82% INVALID and
+QUANTITY 69% INVALID. A model penalised for disagreeing with wrong labels will
+score badly however good it is; removing those classes removes the penalty
+without proving anything about capability. The 0.531 → 0.737 jump is at least
+partly a measurement artefact — it is the same argument this document makes
+about the *training* corpus in §3.2, applied to the *validation* set, and I
+missed it on the first pass.
+
+The production evidence points the other way: cohort C's 22-class model
+produced 324 PRODUCT_NAME labels at an 87% VALID rate on real ingest. A class
+with 0.254 val-F1 that survives downstream validation 87% of the time is being
+mis-measured by the val split, not failing in the field.
+
+**This is a measurement problem, not a modelling one, and it must be fixed
+before any retraining decision** — including step 4 below, whose stop-condition
+is stated against exactly this suspect split.
 
 ### 2.3 The bug: the model's two best classes never land
 
@@ -257,6 +334,21 @@ code since June.
 - **No confidence threshold anywhere.** `LayoutLMInference` takes the argmax and
   writes it. Sparse output means the model genuinely predicts `O`, not that a
   gate is filtering.
+- **The model cache never invalidates, and it is shared across environments.**
+  `ModelDownloader.ensureModelDownloaded` returns early on
+  `isModelCached(at:)` (`ModelDownloader.swift:41`), which checks only that
+  `vocab.txt`, `config.json` and some `*.mlpackage` directory exist — no ETag,
+  no version, no manifest comparison. **Once any bundle is on disk the worker
+  never downloads again.** The default cache path is
+  `.models/layoutlm` (`Config.swift:142`) — *relative to cwd*, and identical
+  for `--env dev` and `--env prod`.
+
+  Two consequences. First, **"which model is deployed" is not the same question
+  as "which model is running"**: a worker that cached the 22-class bundle
+  before 2026-07-30 is still running it today. Second, it explains why the dev
+  and prod copies of the same three images produced byte-identical
+  predictions — the same cached bundle served both. Any measurement of "what
+  the model does" must state which *machine* it was taken on.
 
 ---
 
@@ -460,7 +552,30 @@ better argument than their status field.
 Each step states its decision point. Steps are ordered so that each one's
 evidence justifies the next; stop wherever the evidence stops.
 
-### Step 1 — Stop dropping `AMOUNT` and `ADDRESS` (do this first)
+### Step 0 — Find out why the bundle went from 22 classes to 8 on 2026-07-30
+
+This did not exist in the first draft of this document and it now outranks
+everything else. `layoutlm-coreml-bundle.zip` was a 22-class product-capable
+model until 2026-07-30 09:29 UTC and has been 8-class since (§2.1a). Product
+labelling in prod stopped the same day.
+
+- **Ask first, build nothing.** Was the swap deliberate (v31 exported over the
+  active key), or did an export job overwrite it? `pre-v31-backup.zip` is the
+  22-class bundle and is intact in S3.
+- **Cost of the fix if it was accidental:** an `aws s3 cp` of the backup over
+  the active key. Product labelling resumes at cohort-C rates (≈6 PRODUCT_NAME
+  per receipt, 87% VALID) with no model work at all.
+- **Check the runners before concluding anything.** Per §2.4 the worker never
+  re-downloads a cached bundle, so a Mac that cached the 22-class model before
+  07-30 is still running it. Inspect `.models/layoutlm/config.json` on each
+  runner — the fleet may not be homogeneous, and the three-receipt cohort D may
+  be one machine, not the system.
+- **Decision point:** if the swap was deliberate and v31 was chosen on the
+  0.531 → 0.737 comparison, that comparison is the suspect one from §2.2 and
+  should be re-run against a validation split that is not drawn from the
+  82%-INVALID corpus **before** the 8-class model is kept.
+
+### Step 1 — Stop dropping `AMOUNT` and `ADDRESS`
 
 Change `fromLinePredictions` to pass through the active model's declared
 vocabulary rather than `coreLabels`, so `_prepare_pending_core_labels`'s
@@ -518,14 +633,24 @@ receipts, and only with the two guards from §3.3–3.4:
   `label_proposed_by` filter to `load_datasets`.
 
 The run to beat is `v30-fullcore` PRODUCT_NAME **0.254** / LINE_TOTAL **0.625**
-on the same adversarial val split
+on the adversarial val split
 (`s3://layoutlm-training-dev-68164770/config/adversarial_val_keys_v2_20260708.json`).
 
-- **Decision point:** does PRODUCT_NAME F1 clear **0.50** and LINE_TOTAL clear
-  **0.75** on that split? If yes, the label-quality hypothesis is confirmed and
-  a combined product+header model is worth shipping. **If no, stop — permanently.**
-  Five runs will then have failed to learn products from this corpus and the
-  conclusion is that the decoder is the product extractor, full stop.
+**But do not score against that split as it stands.** Per §2.2 it is drawn from
+the corpus this whole document argues is unreliable, and cohort C shows a class
+with 0.254 val-F1 surviving downstream validation 87% of the time. Build the
+val split from **decoder-proven labels held out of training** — receipts that
+pass the reconciliation gate but are excluded from the training set — so the
+target is arithmetic rather than corpus consensus. That is a prerequisite of
+this step, not a refinement of it.
+
+- **Decision point:** on the proven-label val split, does PRODUCT_NAME F1 clear
+  **0.50** and LINE_TOTAL clear **0.75**, *and* beat the 22-class cohort-C
+  model measured the same way? If yes, ship it. **If no, stop** — keep the
+  22-class model as the production labeller and treat the decoder as the
+  product extractor of record. Note this stop-condition is now "the new model
+  loses to the one we already had", which is a fairer bar than the first
+  draft's "five runs failed".
 
 ### Step 5 — Only if step 4 clears: use LayoutLM on the receipts the decoder can't reach
 
@@ -553,8 +678,10 @@ script run.
 
 ## 6. What not to build
 
-- **A product-only LayoutLM on today's labels.** Four attempts, best 0.338 F1.
-  Dead until step 4's gate is cleared.
+- **A new product-labelling model or architecture.** A 22-class one was running
+  in production six days ago at 87% VALID. Restore it (step 0) before designing
+  a replacement. The four failed product-only training runs (best 0.338 F1)
+  argue against a *new* model, not against the one that already shipped.
 - **Sections as a model input feature.** They already separate the populations
   at 94–99% (§4.1). Use them as a boolean filter. Nothing to learn.
 - **Any LLM pass over line items.** PLAN.md killed this; nothing here changes
@@ -607,6 +734,20 @@ script run.
 6. **Prod has no working model bundle** (§2.4). Anything reasoned about
    "what prod's LayoutLM does" is currently reasoning about a 404.
 
+7. **The fleet's running model is unknown and probably heterogeneous.** Because
+   `isModelCached` never re-checks (§2.4), each Mac runs whatever bundle it
+   cached first, indefinitely. Cohort D is three receipts — it may describe one
+   machine rather than the system. Every claim in this document about "the
+   deployed model" is a claim about S3, not about what is executing.
+   **Mitigation:** add a version/ETag check to `isModelCached`, log the loaded
+   `label_map` entity count at worker start, and make the cache path
+   env-scoped so dev and prod cannot share a bundle.
+
+8. **The 07-30 bundle regression went undetected for six days**, and would have
+   gone on undetected — nothing alarms on "product labels stopped arriving".
+   The cohort table in §2.1a is the detector: labels-per-receipt by class, by
+   ingest week. It is cheap and should be standing.
+
 ---
 
 ## 8. Reconciling with `SYNTHESIS_CROSSOVER.md`
@@ -652,7 +793,34 @@ That is a narrow, well-defined role for synthesis, and it is a better one than
 | Section ↔ label placement | Full `GSITYPE = RECEIPT_SECTION` query (6,517 prod rows), `line_ids` joined against label `line_id` |
 | `#958` / `#1369` / `#1372` attribution | `git log -S`, `git show` |
 
-Not measured, and stated as such: whether the Mac worker's LayoutLM inference
-ever *fails* silently (`VisionOCREngine` catches the error and `print`s to
-stdout, which the structured logger does not capture); the per-receipt token
-count of LayoutLM predictions before the `coreLabels` filter (never persisted).
+| Bundle vocabulary history | Range-read `label_map.json` out of each `pre-*-backup.zip` in `s3://layoutlm-training-dev-68164770/coreml/` via the zip central directory — no full downloads |
+| Four-cohort experiment | Prod label dump grouped by `min(timestamp_added)` per receipt, LayoutLM-origin rows = `llm_valid`/`llm_needs_review`/`llm_invalid`/`llm_corrected:*` |
+| Cache-invalidation behaviour | `ModelDownloader.swift:41,75`; `Config.swift:142` |
+
+**Correction to the first draft.** It stated that per-receipt LayoutLM
+predictions before the `coreLabels` filter were "never persisted". **They are.**
+The worker uploads the full OCR JSON — including the `layoutlm_predictions`
+array — to `s3://<raw-bucket>/ocr_results/*.json` (`OCRWorker.swift:448`).
+`join-study-2` pulled these and measured the discard directly: the
+`coreLabels` filter drops **19 of 37, 12 of 19, and 18 of 32** non-`O`
+predictions on the three 2026-08-04 receipts — roughly half the model's output —
+and the surviving set matches the landed DynamoDB rows on exact
+`(line_id, word_id, label)` **39/39 in prod and 39/39 in dev**. That is a hard
+identity proof of §1.3, superseding the vocabulary-fingerprint inference used
+there. Those S3 objects are the right instrument for any future question about
+what the model actually predicted.
+
+Still not measured, and stated as such: whether the Mac worker's LayoutLM
+inference ever *fails* silently (`VisionOCREngine` catches the error and
+`print`s to stdout, which the structured logger does not capture); and which
+bundle each physical runner currently has cached (§2.4) — that requires
+inspecting the Macs, not S3 or DynamoDB.
+
+## Contributors
+
+The bundle version history (§2.1a), the four-cohort experiment, the
+`ocr_results` prediction histograms and the cache-invalidation finding (§2.4)
+were measured independently by the parallel study `join-study-2` and are
+reproduced here after independent re-verification. They corrected two
+conclusions of the first draft: that the 8-class model was a settled design
+decision, and that pre-filter predictions were unrecoverable.
