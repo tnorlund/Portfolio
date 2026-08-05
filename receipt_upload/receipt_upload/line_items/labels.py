@@ -45,6 +45,7 @@ from receipt_dynamo.entities.receipt_summary import (
 
 from receipt_upload.line_items.geometry import (
     extract_items,
+    is_column_header_row,
     is_proven,
     reconcile_detailed,
 )
@@ -226,20 +227,64 @@ def _summary_value(summary: Optional[dict], key: str) -> Optional[float]:
         return None
 
 
+def _name_from_price_band(item: dict) -> bool:
+    """Whether the item's name words come from its own price band.
+
+    ``parse_band`` names an item from the words left over on the priced
+    band itself, and the block decoder overrides that with a neighbouring
+    description band only for stacked layouts. So a name span contained in
+    the price band means name and price were printed on ONE row; a span
+    outside it means the name was borrowed from another row.
+    """
+    band_keys = {
+        key
+        for key in (_word_key(ref) for ref in item.get("band") or [])
+        if key is not None
+    }
+    name_keys = {
+        key
+        for key in (_word_key(ref) for ref in item.get("name_word_ids") or [])
+        if key is not None
+    }
+    return bool(name_keys) and name_keys <= band_keys
+
+
 def _item_labels(
     item: dict, texts: dict[tuple[int, int], str]
 ) -> list[DerivedLabel]:
-    """Label proposals for one decoded item."""
+    """Label proposals for one decoded item.
+
+    A decoded item whose NAME is a column header ("Unit Price", "Item Qty
+    Price Total") or footer legalese is a real defect in the decode, and
+    it is deliberately handled here rather than by dropping the item: the
+    corpus sweep found 20 of 22 such items load-bearing -- every one of
+    their receipts reconciles to its printed baseline WITH the item
+    included, so removing it would flip the receipt out of ``match`` and
+    cost the whole receipt its labels. The price is real; only the name is
+    wrong. Labels are a training corpus, so the answer is to abstain on
+    the part that is wrong and keep the part that is proven.
+    """
     out: list[DerivedLabel] = []
     name = item.get("name") or ""
     price = item.get("price")
     is_discount = bool(item.get("is_discount"))
+    header_name = is_column_header_row(name)
 
     # The extended price word. A discount row's price IS the discount
     # amount, so it takes DISCOUNT rather than LINE_TOTAL -- labelling it
     # LINE_TOTAL would teach the model that a negative line total is
     # normal and would double-count in every downstream sum.
+    #
+    # When the header text and the price sit on the SAME row, the amount
+    # is not vouched for either: "ORIGINAL PRICE 49.99" prints the
+    # pre-markdown price beside a 49.89 item, and "Unit Price 25.00" is
+    # the receipt's own word for that amount. Both would be minted
+    # LINE_TOTAL on the strength of a sum that happens to land. A header
+    # name borrowed from ANOTHER row leaves the price word untouched, so
+    # that case keeps its LINE_TOTAL.
     price_key = _word_key(item.get("price_word_id"))
+    if header_name and _name_from_price_band(item):
+        price_key = None
     if price_key is not None and price is not None:
         label = "DISCOUNT" if is_discount else "LINE_TOTAL"
         out.append(
@@ -261,7 +306,12 @@ def _item_labels(
     # no letters are skipped: PRODUCT_NAME is descriptive text, and a bare
     # numeric token in a name span is a SKU echo or an unrecognized
     # quantity, never a product name.
-    if not is_discount and item.get("name_quality") != "low" and name:
+    if (
+        not is_discount
+        and item.get("name_quality") != "low"
+        and name
+        and not header_name
+    ):
         priced = f" priced at {price:.2f}" if price is not None else ""
         reasoning = (
             f"Decoder read this word as part of the product name "
