@@ -1,6 +1,7 @@
 import importlib
 import inspect
 import json
+import math
 import os
 import re
 import subprocess
@@ -51,6 +52,115 @@ _PRODUCT_DETAIL_LABELS = (
     "UNIT_PRICE",
     "LINE_TOTAL",
 )
+
+# seqeval's classification_report mixes aggregate rows in with the per-class
+# rows; they are not labels and must never become heldout_label_* metrics.
+_SEQEVAL_AGGREGATE_KEYS = frozenset(
+    {"micro avg", "macro avg", "weighted avg", "samples avg", "accuracy"}
+)
+
+
+def entity_labels_from_label_list(label_list: Any) -> List[str]:
+    """Return the model's own entity classes, BIO prefixes removed, sans ``O``.
+
+    This is the authoritative set of classes a run must report on: it comes
+    from the model's label map, not from whatever happened to show up in one
+    epoch's predictions.
+    """
+    labels: List[str] = []
+    seen = set()
+    for tag in label_list or []:
+        if not isinstance(tag, str):
+            continue
+        base = _base_tag_label(tag)
+        if base == "O" or not base or base in seen:
+            continue
+        seen.add(base)
+        labels.append(base)
+    return sorted(labels)
+
+
+def heldout_per_label_metric_rows(
+    entry: Dict[str, Any],
+    label_list: Any,
+) -> List[Tuple[str, float, str]]:
+    """Build the per-class held-out metric rows for one evaluated checkpoint.
+
+    Emits ``heldout_label_{NAME}_{f1,precision,recall,support}`` — the naming
+    v30 used, so old and new runs stay directly comparable — for **every**
+    class in the model's own label map rather than only the four product-detail
+    labels. A class the model can emit but that scored nothing this epoch
+    records ``support`` 0 and zeroed scores: a missing row and a zero score are
+    different facts, and only the latter is evidence.
+
+    Args:
+        entry: An epoch entry from ``evaluate_checkpoints.evaluate_live_checkpoint``.
+        label_list: The checkpoint's label list (BIO-prefixed).
+
+    Returns:
+        ``(metric_name, value, unit)`` triples, ordered by label then metric.
+    """
+    per_label_f1 = entry.get("per_label_f1") or {}
+    per_label_precision = entry.get("per_label_precision") or {}
+    per_label_recall = entry.get("per_label_recall") or {}
+    per_label_support = entry.get("per_label_support") or {}
+
+    labels = entity_labels_from_label_list(label_list)
+    if not labels:
+        # No usable label map (older checkpoint, snapshot load). Fall back to
+        # whatever the report scored so the run still says *something*, minus
+        # seqeval's aggregate rows.
+        labels = sorted(
+            key
+            for key in set(per_label_f1)
+            | set(per_label_precision)
+            | set(per_label_recall)
+            | set(per_label_support)
+            if isinstance(key, str) and key not in _SEQEVAL_AGGREGATE_KEYS
+        )
+
+    def _number(source: Dict[str, Any], label: str, default: float) -> float:
+        value = source.get(label, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return default
+        value = float(value)
+        # JobMetric rejects non-finite values, and a rejected write is a
+        # missing row — the exact failure mode this function exists to close.
+        if not math.isfinite(value):
+            return default
+        return value
+
+    rows: List[Tuple[str, float, str]] = []
+    for label in labels:
+        rows.append(
+            (
+                f"heldout_label_{label}_f1",
+                _number(per_label_f1, label, 0.0),
+                "ratio",
+            )
+        )
+        rows.append(
+            (
+                f"heldout_label_{label}_precision",
+                _number(per_label_precision, label, 0.0),
+                "ratio",
+            )
+        )
+        rows.append(
+            (
+                f"heldout_label_{label}_recall",
+                _number(per_label_recall, label, 0.0),
+                "ratio",
+            )
+        )
+        rows.append(
+            (
+                f"heldout_label_{label}_support",
+                _number(per_label_support, label, 0.0),
+                "count",
+            )
+        )
+    return rows
 
 
 def _checkpoint_metric_for_trainer(metric: str | None) -> str:
@@ -144,7 +254,9 @@ def _add_explanation_metrics(
 
         if total_tokens:
             metrics["gold_entity_rate"] = gold_entity_tokens / total_tokens
-            metrics["entity_prediction_rate"] = pred_entity_tokens / total_tokens
+            metrics["entity_prediction_rate"] = (
+                pred_entity_tokens / total_tokens
+            )
         if gold_entity_tokens:
             metrics["entity_prediction_gold_ratio"] = (
                 pred_entity_tokens / gold_entity_tokens
@@ -201,9 +313,7 @@ def _resolve_output_dir(job_name: str) -> str:
     root = os.path.realpath(_LOCAL_OUTPUT_ROOT)
     candidate = os.path.realpath(os.path.join(root, job_name))
     if candidate == root or os.path.commonpath([root, candidate]) != root:
-        raise ValueError(
-            f"Invalid job_name {job_name!r}: would escape {root}"
-        )
+        raise ValueError(f"Invalid job_name {job_name!r}: would escape {root}")
     return candidate
 
 
@@ -245,16 +355,22 @@ class ReceiptLayoutLMTrainer:
                 pass
 
         if self.training_config.model_version == "v3":
-            self.tokenizer = transformers.LayoutLMv3TokenizerFast.from_pretrained(
-                self.training_config.pretrained_model_name
+            self.tokenizer = (
+                transformers.LayoutLMv3TokenizerFast.from_pretrained(
+                    self.training_config.pretrained_model_name
+                )
             )
-            self._image_processor = transformers.LayoutLMv3ImageProcessor.from_pretrained(
-                self.training_config.pretrained_model_name
+            self._image_processor = (
+                transformers.LayoutLMv3ImageProcessor.from_pretrained(
+                    self.training_config.pretrained_model_name
+                )
             )
             self._image_processor.apply_ocr = False
         else:
-            self.tokenizer = transformers.LayoutLMTokenizerFast.from_pretrained(
-                self.training_config.pretrained_model_name
+            self.tokenizer = (
+                transformers.LayoutLMTokenizerFast.from_pretrained(
+                    self.training_config.pretrained_model_name
+                )
             )
             self._image_processor = None
 
@@ -268,6 +384,19 @@ class ReceiptLayoutLMTrainer:
         return ["O", *labels]
 
     def train(self, job_name: str, created_by: str = "system") -> str:
+        # Refuse to burn GPU hours on a run whose numbers nobody will be able
+        # to compare. Raises unless a frozen val split is pinned or the caller
+        # explicitly opted out (--no-frozen-val), in which case the run is
+        # stamped non-comparable everywhere below.
+        self.data_config.validate_comparability()
+        comparability = self.data_config.comparability()
+        if not comparability["comparable"]:
+            print(
+                "[trainer] WARNING: no frozen validation split — this run's "
+                "metrics are stamped comparable=false and must not be "
+                "compared against other runs."
+            )
+
         # Derive output directory early for run logging. Inside SageMaker
         # with managed-spot checkpointing this is /opt/ml/checkpoints (so
         # CheckpointConfig auto-syncs it ↔ S3 and the trainer's
@@ -436,7 +565,12 @@ class ReceiptLayoutLMTrainer:
             return encoding
 
         def _preprocess_v3(
-            example, tokenizer, label2id, max_len: int, image_processor, image_cache_dir
+            example,
+            tokenizer,
+            label2id,
+            max_len: int,
+            image_processor,
+            image_cache_dir,
         ):
             from PIL import Image as PILImage
 
@@ -470,7 +604,9 @@ class ReceiptLayoutLMTrainer:
             # receipt_key format: "image_id#00001" — parse for warped receipt cache lookup
             parts = example["receipt_key"].split("#")
             receipt_id = int(parts[1]) if len(parts) == 2 else 1
-            img_path = os.path.join(image_cache_dir, f"{parts[0]}_{receipt_id}.png")
+            img_path = os.path.join(
+                image_cache_dir, f"{parts[0]}_{receipt_id}.png"
+            )
             if os.path.exists(img_path):
                 image = PILImage.open(img_path).convert("RGB")
             else:
@@ -509,8 +645,16 @@ class ReceiptLayoutLMTrainer:
 
         # Columns to remove during preprocessing — filter to those actually present
         # (v1 datasets already had receipt_key removed in data_loader)
-        candidate_cols = ["tokens", "bboxes", "ner_tags", "image_id", "receipt_key"]
-        remove_cols = [c for c in candidate_cols if c in datasets["train"].column_names]
+        candidate_cols = [
+            "tokens",
+            "bboxes",
+            "ner_tags",
+            "image_id",
+            "receipt_key",
+        ]
+        remove_cols = [
+            c for c in candidate_cols if c in datasets["train"].column_names
+        ]
 
         # Parallelize preprocessing across CPU cores
         # Disable cache to minimize local disk usage on SageMaker instances
@@ -645,6 +789,9 @@ class ReceiptLayoutLMTrainer:
             "resulting_labels": (
                 merge_info.resulting_labels if merge_info else []
             ),
+            # Says, in the run's own artifacts, whether its numbers may be
+            # compared to another run's.
+            "comparability": comparability,
             "epoch_metrics": [],
         }
         with open(run_json_path, "w", encoding="utf-8") as f:
@@ -660,6 +807,9 @@ class ReceiptLayoutLMTrainer:
             "resulting_label_set": (
                 merge_info.resulting_labels if merge_info else []
             ),
+            "metrics_comparable": comparability["comparable"],
+            "comparability_reason": comparability["reason"],
+            "val_split_source": comparability["val_split_source"],
         }
 
         # Build storage info for S3 model artifacts
@@ -696,6 +846,23 @@ class ReceiptLayoutLMTrainer:
             storage=storage,
         )
         self.dynamo.add_job(job)
+
+        # Comparability marker as a first-class metric, so anything reading
+        # JobMetric rows (dashboards, the viz cache, a future investigation)
+        # sees the caveat next to the numbers it qualifies.
+        try:
+            self.dynamo.add_job_metric(
+                JobMetric(
+                    job_id=job.job_id,
+                    metric_name="run_metrics_comparable",
+                    value=1.0 if comparability["comparable"] else 0.0,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    unit="flag",
+                    epoch=None,
+                )
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"Warning: Failed to write comparability metric: {e}")
 
         # Write label merge config as JobMetric for experiment tracking
         if merge_info and merge_info.label_merges:
@@ -870,7 +1037,10 @@ class ReceiptLayoutLMTrainer:
                             "entropy_p10": "val_entropy_p10",
                             "entropy_p90": "val_entropy_p90",
                         }
-                        for source_name, metric_name in explanation_scalars.items():
+                        for (
+                            source_name,
+                            metric_name,
+                        ) in explanation_scalars.items():
                             value = metrics.get(f"eval_{source_name}")
                             if value is None:
                                 value = metrics.get(source_name)
@@ -1080,6 +1250,7 @@ class ReceiptLayoutLMTrainer:
                     *,
                     epoch: Optional[int],
                     step: int,
+                    label_list: Optional[List[str]] = None,
                 ) -> None:
                     def _write(
                         name: str,
@@ -1143,33 +1314,14 @@ class ReceiptLayoutLMTrainer:
                         "ms",
                     )
 
-                    per_label_f1 = entry.get("per_label_f1") or {}
-                    per_label_precision = entry.get("per_label_precision") or {}
-                    per_label_recall = entry.get("per_label_recall") or {}
-                    per_label_support = entry.get("per_label_support") or {}
-                    for label in (
-                        "PRODUCT_NAME",
-                        "QUANTITY",
-                        "UNIT_PRICE",
-                        "LINE_TOTAL",
+                    # Per-class held-out metrics for EVERY class the model can
+                    # emit — not just the four product-detail labels. A model
+                    # whose vocabulary excludes those four used to record zero
+                    # heldout_label_* rows, leaving nothing to compare it by.
+                    for name, value, unit in heldout_per_label_metric_rows(
+                        entry, label_list
                     ):
-                        _write(
-                            f"heldout_label_{label}_f1",
-                            per_label_f1.get(label),
-                        )
-                        _write(
-                            f"heldout_label_{label}_precision",
-                            per_label_precision.get(label),
-                        )
-                        _write(
-                            f"heldout_label_{label}_recall",
-                            per_label_recall.get(label),
-                        )
-                        _write(
-                            f"heldout_label_{label}_support",
-                            per_label_support.get(label),
-                            "count",
-                        )
+                        _write(name, value, unit)
 
                 def _ensure_details(self) -> None:
                     if self._details is not None:
@@ -1231,6 +1383,7 @@ class ReceiptLayoutLMTrainer:
                             entry,
                             epoch=epoch_num,
                             step=int(getattr(state, "global_step", 0)),
+                            label_list=_ll,
                         )
                         run_s3_uri = (
                             f"s3://{self.s3_bucket}/{self.s3_prefix}"
@@ -1265,9 +1418,7 @@ class ReceiptLayoutLMTrainer:
                                     f"s3://{self.s3_bucket}/{self.s3_prefix}",
                                 )
                             except Exception as se:  # noqa: BLE001
-                                print(
-                                    f"⚠️  Failed to sync epochs.json: {se}"
-                                )
+                                print(f"⚠️  Failed to sync epochs.json: {se}")
                     except Exception as e:  # noqa: BLE001
                         # Never let the held-out eval break training.
                         print(f"⚠️  Live held-out eval failed: {e}")
@@ -1305,10 +1456,7 @@ class ReceiptLayoutLMTrainer:
                 if split_metadata
                 else None
             )
-            if (
-                self.training_config.eval_heldout_windowed
-                and val_keys_raw
-            ):
+            if self.training_config.eval_heldout_windowed and val_keys_raw:
                 parsed_val_keys: List[Tuple[str, int]] = []
                 for k in val_keys_raw:
                     try:
@@ -1520,9 +1668,7 @@ class ReceiptLayoutLMTrainer:
             correct_valid_tokens = sum(
                 1
                 for true_seq, pred_seq in zip(y_true, y_pred, strict=False)
-                for true_tag, pred_tag in zip(
-                    true_seq, pred_seq, strict=False
-                )
+                for true_tag, pred_tag in zip(true_seq, pred_seq, strict=False)
                 if true_tag == pred_tag
             )
             metrics = {
@@ -1704,7 +1850,9 @@ class ReceiptLayoutLMTrainer:
                 "LINE_TOTAL",
             }
             for idx, label in enumerate(label_list):
-                base_label = label[2:] if label.startswith(("B-", "I-")) else label
+                base_label = (
+                    label[2:] if label.startswith(("B-", "I-")) else label
+                )
                 if base_label in product_labels:
                     weights[idx] = max(
                         w_min,
@@ -1816,9 +1964,11 @@ class ReceiptLayoutLMTrainer:
                 epoch_metrics, selection_metric_name
             )
             if selection_values:
-                selector = max if _metric_greater_is_better(
-                    selection_metric_name
-                ) else min
+                selector = (
+                    max
+                    if _metric_greater_is_better(selection_metric_name)
+                    else min
+                )
                 best_selection_epoch, best_selection_metric_value = selector(
                     selection_values,
                     key=lambda x: x[1],
@@ -1894,7 +2044,11 @@ class ReceiptLayoutLMTrainer:
                 # checkpoint subdirectories, not at the root output_dir.
                 # Find the latest checkpoint's copy.
                 checkpoint_states = sorted(
-                    glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json")),
+                    glob(
+                        os.path.join(
+                            output_dir, "checkpoint-*/trainer_state.json"
+                        )
+                    ),
                     key=_checkpoint_step,
                 )
                 if checkpoint_states:
@@ -1987,6 +2141,19 @@ class ReceiptLayoutLMTrainer:
                     else None
                 ),
                 "early_stopping_triggered": early_stopping_triggered,
+                # Comparability: whether best_f1 above means the same thing as
+                # another run's best_f1.
+                "metrics_comparable": comparability["comparable"],
+                "comparability_reason": comparability["reason"],
+                "val_keys_s3": comparability["val_keys_s3"],
+                "val_split_source": comparability["val_split_source"],
+                # Model identity: the cohort of a deployed artifact should be
+                # readable from the record, not reconstructed from S3 object
+                # timestamps and label vocabularies.
+                "training_job_name": job_name,
+                "training_job_id": job.job_id,
+                "num_labels": len(label_list),
+                "label_list": list(label_list),
             }
             # Add training time metrics if available
             if "train_runtime_seconds" in summary_payload:
@@ -2191,7 +2358,11 @@ class ReceiptLayoutLMTrainer:
                 )
                 if not os.path.exists(trainer_state_path):
                     checkpoint_states = sorted(
-                        glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json")),
+                        glob(
+                            os.path.join(
+                                output_dir, "checkpoint-*/trainer_state.json"
+                            )
+                        ),
                         key=_checkpoint_step,
                     )
                     if checkpoint_states:
@@ -2265,7 +2436,11 @@ class ReceiptLayoutLMTrainer:
                 )
                 if not os.path.exists(trainer_state_path):
                     checkpoint_states = sorted(
-                        glob(os.path.join(output_dir, "checkpoint-*/trainer_state.json")),
+                        glob(
+                            os.path.join(
+                                output_dir, "checkpoint-*/trainer_state.json"
+                            )
+                        ),
                         key=_checkpoint_step,
                     )
                     if checkpoint_states:

@@ -53,7 +53,7 @@ def get_hyperparameters() -> dict:
             # process env vars in main() and the downstream code reads
             # LAYOUTLM_CLASS_WEIGHT_MAX, not layoutlm_class_weight_max.
             if suffix.lower().startswith("env_"):
-                param_name = "env_" + suffix[len("env_"):]
+                param_name = "env_" + suffix[len("env_") :]
             else:
                 param_name = suffix.lower()
             hps[param_name] = value
@@ -138,8 +138,12 @@ def build_train_command(hps: dict) -> list[str]:
         cmd.append("--no-eval-heldout-windowed")
 
     # Pinned canonical val split (shared across runs for comparability).
+    # Without one the trainer refuses to start unless the caller opts out
+    # explicitly via no_frozen_val=true, which stamps the run non-comparable.
     if hps.get("val_keys_s3"):
         cmd.extend(["--val-keys-s3", str(hps["val_keys_s3"])])
+    elif str(hps.get("no_frozen_val", "")).lower() == "true":
+        cmd.append("--no-frozen-val")
 
     # Scoped second-pass training: line-item band crop + curated receipt subset.
     if hps.get("scope"):

@@ -67,3 +67,58 @@ def test_build_train_command_maps_product_detail_loss_weight():
     )
 
     assert cmd[cmd.index("--product-detail-loss-weight") + 1] == "1.5"
+
+
+def test_build_train_command_forwards_val_keys_s3():
+    cmd = build_train_command(
+        {
+            "job_name": "layoutlm-frozen",
+            "dynamo_table": "ReceiptsTable-test",
+            "val_keys_s3": "s3://bucket/splits/val_keys.json",
+        }
+    )
+
+    assert cmd[cmd.index("--val-keys-s3") + 1] == (
+        "s3://bucket/splits/val_keys.json"
+    )
+    assert "--no-frozen-val" not in cmd
+
+
+def test_build_train_command_forwards_explicit_unfrozen_opt_out():
+    """Without this hyperparameter the trainer refuses to start, by design."""
+    cmd = build_train_command(
+        {
+            "job_name": "layoutlm-new-vocab",
+            "dynamo_table": "ReceiptsTable-test",
+            "no_frozen_val": "true",
+        }
+    )
+
+    assert "--no-frozen-val" in cmd
+
+
+def test_build_train_command_omits_opt_out_when_frozen_split_is_pinned():
+    """The frozen split wins; the opt-out is an escape hatch, not an override."""
+    cmd = build_train_command(
+        {
+            "job_name": "layoutlm-frozen",
+            "dynamo_table": "ReceiptsTable-test",
+            "val_keys_s3": "s3://bucket/splits/val_keys.json",
+            "no_frozen_val": "true",
+        }
+    )
+
+    assert "--no-frozen-val" not in cmd
+    assert "--val-keys-s3" in cmd
+
+
+def test_build_train_command_defaults_to_neither_val_split_flag():
+    cmd = build_train_command(
+        {
+            "job_name": "layoutlm-default",
+            "dynamo_table": "ReceiptsTable-test",
+        }
+    )
+
+    assert "--no-frozen-val" not in cmd
+    assert "--val-keys-s3" not in cmd

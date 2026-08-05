@@ -24,8 +24,6 @@ from urllib.parse import urlparse
 import boto3
 from botocore.exceptions import ClientError
 
-from .export_coreml import export_coreml
-
 CANONICAL_BUNDLE_KEY = "coreml/layoutlm-coreml-bundle.zip"
 
 
@@ -117,6 +115,85 @@ def get_directory_size(path: str) -> int:
     return total
 
 
+def write_model_identity(
+    bundle_path: str,
+    *,
+    export_id: str,
+    job_id: str,
+    model_s3_uri: str,
+    quantize: Optional[str],
+) -> str:
+    """Write ``model_identity.json`` into a CoreML bundle.
+
+    Ships the provenance inside the artifact so a bundle found on a device (or
+    in S3) names the training run it came from.
+
+    Returns:
+        Path to the written file.
+    """
+    identity = {
+        "export_id": export_id,
+        "training_job_id": job_id,
+        "source_checkpoint_s3_uri": model_s3_uri,
+        "quantize": quantize,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+    }
+    path = os.path.join(bundle_path, "model_identity.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(identity, f, indent=2)
+    print(f"Wrote model_identity.json to {path}")
+    return path
+
+
+def head_object_etag(bucket: str, key: str) -> Optional[str]:
+    """Return an S3 object's ETag with quotes stripped, or None on failure."""
+    try:
+        head = boto3.client("s3").head_object(Bucket=bucket, Key=key)
+    except ClientError as e:
+        print(f"Warning: Could not read ETag for s3://{bucket}/{key}: {e}")
+        return None
+    return str(head.get("ETag", "")).strip('"') or None
+
+
+def stamp_model_identity_on_job(
+    dynamo_client, job_id: str, result: Dict[str, Any]
+) -> None:
+    """Record which CoreML bundle a training run produced, on that run's Job.
+
+    Merges the export's identity into ``Job.results`` so the trace runs both
+    ways: the bundle names its run (``model_identity.json``) and the run names
+    its bundle (here). Best-effort — a failure here must never fail an export
+    that already succeeded.
+    """
+    if not dynamo_client or not job_id:
+        return
+    try:
+        job = dynamo_client.get_job(job_id)
+        results = dict(job.results or {})
+        results.update(
+            {
+                "coreml_export_id": result.get("export_id"),
+                "coreml_bundle_s3_uri": result.get("bundle_s3_uri"),
+                "coreml_canonical_bundle_s3_uri": result.get(
+                    "canonical_bundle_s3_uri"
+                ),
+                "coreml_canonical_bundle_etag": result.get(
+                    "canonical_bundle_etag"
+                ),
+                "coreml_model_size_bytes": result.get("model_size_bytes"),
+                "coreml_exported_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        job.results = results
+        dynamo_client.update_job(job)
+        print(
+            f"Stamped CoreML bundle identity on job {job_id} "
+            f"(etag={result.get('canonical_bundle_etag')})"
+        )
+    except Exception as e:  # noqa: BLE001
+        print(f"Warning: Failed to stamp model identity on job: {e}")
+
+
 def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
     """Process a single CoreML export job.
 
@@ -140,6 +217,11 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
 
     start_time = time.time()
 
+    # Imported here rather than at module scope: the conversion path pulls in
+    # torch/coremltools, and the worker's queue, S3 and DynamoDB plumbing
+    # should stay importable (and testable) without them.
+    from .export_coreml import export_coreml
+
     try:
         with tempfile.TemporaryDirectory(prefix="coreml_export_") as tmpdir:
             # Download model checkpoint from S3
@@ -157,6 +239,17 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
                 quantize=quantize,
             )
 
+            # Stamp the bundle itself with the run that produced it, so a
+            # deployed model is self-identifying rather than something you
+            # reconstruct from S3 object timestamps.
+            write_model_identity(
+                bundle_path,
+                export_id=export_id,
+                job_id=job_id,
+                model_s3_uri=model_s3_uri,
+                quantize=quantize,
+            )
+
             # Get exported model size
             model_size = get_directory_size(bundle_path)
             print(f"Exported model size: {model_size / 1024 / 1024:.1f} MB")
@@ -166,9 +259,10 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
             mlpackage_s3_uri = f"{bundle_s3_uri}LayoutLM.mlpackage"
 
             # Zip and upload to canonical path for the Swift worker
+            parsed = urlparse(output_s3_prefix)
+            bucket = parsed.netloc
+            canonical_etag = None
             try:
-                parsed = urlparse(output_s3_prefix)
-                bucket = parsed.netloc
                 zip_base = os.path.join(tmpdir, "layoutlm-coreml-bundle")
                 zip_path = shutil.make_archive(zip_base, "zip", bundle_path)
                 s3 = boto3.client("s3")
@@ -177,10 +271,9 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
                     f"Uploaded canonical bundle to "
                     f"s3://{bucket}/{CANONICAL_BUNDLE_KEY}"
                 )
+                canonical_etag = head_object_etag(bucket, CANONICAL_BUNDLE_KEY)
             except (OSError, ClientError) as e:
-                print(
-                    f"Warning: Failed to upload canonical bundle zip: {e}"
-                )
+                print(f"Warning: Failed to upload canonical bundle zip: {e}")
 
             duration = time.time() - start_time
 
@@ -193,7 +286,8 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
                 "status": "SUCCEEDED",
                 "mlpackage_s3_uri": mlpackage_s3_uri,
                 "bundle_s3_uri": bundle_s3_uri,
-                "canonical_bundle_s3_uri": f"s3://{parsed.netloc}/{CANONICAL_BUNDLE_KEY}",
+                "canonical_bundle_s3_uri": f"s3://{bucket}/{CANONICAL_BUNDLE_KEY}",
+                "canonical_bundle_etag": canonical_etag,
                 "model_size_bytes": model_size,
                 "export_duration_seconds": duration,
             }
@@ -328,6 +422,10 @@ def run_worker(
                         result["status"],
                         result.get("error_message"),
                     )
+                    if result["status"] == "SUCCEEDED":
+                        stamp_model_identity_on_job(
+                            dynamo_client, result.get("job_id"), result
+                        )
 
                 # Send result to results queue
                 print("Sending result to results queue...")

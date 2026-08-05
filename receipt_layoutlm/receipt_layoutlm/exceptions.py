@@ -9,6 +9,28 @@ class ReceiptLayoutLMError(Exception):
     """Base class for operational failures raised by this package."""
 
 
+class UnfrozenValidationSplitError(ReceiptLayoutLMError, ValueError):
+    """Raised when a run would score itself on a split nobody else used.
+
+    Runs without a pinned canonical validation split still report ``val_f1``
+    and per-label metrics that *look* like every other run's, which is how two
+    LayoutLM models ended up impossible to compare. Pass ``--val-keys-s3`` to
+    hold out the shared frozen split, or ``--no-frozen-val`` to opt out
+    explicitly (the run is then stamped ``comparable: false`` everywhere).
+    """
+
+    def __init__(self) -> None:
+        super().__init__(
+            "No frozen validation split configured (val_keys_s3 is unset). "
+            "Metrics from a run-local random split are not comparable to any "
+            "other run. Pass --val-keys-s3 <s3://.../val_keys.json> to hold "
+            "out the shared canonical split, or pass --no-frozen-val to "
+            "accept a non-comparable run (its metrics will be stamped "
+            "comparable=false in run.json, the Job entity, and the "
+            "run_metrics_comparable JobMetric)."
+        )
+
+
 class CheckpointResumeError(ReceiptLayoutLMError):
     """Base class for failures while restoring a training checkpoint."""
 

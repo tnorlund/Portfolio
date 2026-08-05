@@ -255,8 +255,72 @@ Live held-out metrics to keep:
 - `heldout_windowed_product_detail_macro_f1`;
 - `heldout_windowed_entity_prediction_rate`;
 - `heldout_windowed_f1_delta_vs_training_reported`;
-- `heldout_label_PRODUCT_NAME_*`, `heldout_label_QUANTITY_*`,
-  `heldout_label_UNIT_PRICE_*`, and `heldout_label_LINE_TOTAL_*`.
+- `heldout_label_{NAME}_{f1,precision,recall,support}` for **every** class in
+  the model's own label map.
+
+## Per-Class Held-Out Metrics
+
+Every epoch writes four `JobMetric` rows per class:
+
+| Metric | Unit |
+|---|---|
+| `heldout_label_{NAME}_f1` | `ratio` |
+| `heldout_label_{NAME}_precision` | `ratio` |
+| `heldout_label_{NAME}_recall` | `ratio` |
+| `heldout_label_{NAME}_support` | `count` |
+
+`{NAME}` is the base label with its BIO prefix stripped, so `B-DATE`/`I-DATE`
+both report as `DATE`. The class list comes from the checkpoint's label map,
+not from what a given epoch happened to predict — a class the model can emit
+but that scored nothing records **support 0 with zeroed scores** rather than
+disappearing. A missing row and a zero score are different facts, and only one
+of them is evidence.
+
+The class list was previously hardcoded to the four product-detail labels
+(`PRODUCT_NAME`, `QUANTITY`, `UNIT_PRICE`, `LINE_TOTAL`). Runs whose label
+vocabulary excluded those four therefore recorded **zero** per-class rows, and
+could only be compared on aggregates that do not survive a change of label set.
+The names and units above match what the wide 22-class runs already emitted, so
+runs from either side of this change compare directly.
+
+## Comparability
+
+Two runs' metrics only mean the same thing if they held out the same receipts.
+A run with no pinned canonical split scores itself on a split nobody else used,
+yet its `val_f1` looks identical in shape to a frozen-split `val_f1`.
+
+Training therefore refuses to start unless one of the following is true:
+
+- `--val-keys-s3 <s3://.../val_keys.json>` pins the shared frozen split; or
+- `--no-frozen-val` explicitly accepts a non-comparable run (legitimate for a
+  first-ever run on a new label vocabulary, where no frozen split applies).
+
+Whichever path a run takes is recorded, not inferred:
+
+| Surface | Field |
+|---|---|
+| `run.json` | `comparability` (`comparable`, `val_keys_s3`, `val_split_source`, `reason`) |
+| `Job.job_config` | `metrics_comparable`, `comparability_reason`, `val_split_source` |
+| `Job.results` | `metrics_comparable`, `comparability_reason`, `val_keys_s3`, `val_split_source` |
+| `JobMetric` | `run_metrics_comparable` (`1.0` / `0.0`, unit `flag`) |
+
+On SageMaker, pass `val_keys_s3` or `no_frozen_val: "true"` as a
+hyperparameter.
+
+## Model Identity
+
+`Job.results` also records what the run produced, so a deployed artifact traces
+back to it without reading S3 object timestamps:
+
+- `training_job_name`, `training_job_id`, `num_labels`, `label_list`;
+- after CoreML export: `coreml_export_id`, `coreml_bundle_s3_uri`,
+  `coreml_canonical_bundle_s3_uri`, `coreml_canonical_bundle_etag`,
+  `coreml_model_size_bytes`, `coreml_exported_at`.
+
+The link runs both ways: the export worker writes `model_identity.json` into
+the CoreML bundle (`export_id`, `training_job_id`,
+`source_checkpoint_s3_uri`, `quantize`, `exported_at`), so a bundle found on a
+device names its own training run.
 
 ## Quick Checks
 
