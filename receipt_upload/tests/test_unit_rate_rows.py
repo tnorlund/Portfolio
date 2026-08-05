@@ -16,11 +16,29 @@ BOTH the rate and the total ("GROUND BEEF $4.99 per lb   7.48"), and there
 the 7.48 is a real line total. Only a row whose single amount IS the rate
 is an annotation -- which is what lets this ship without a merchant list.
 
-PROVENANCE, so this does not read as a tuned constant: a scan of all
-1,421 receipts across dev + prod (2026-08-05) found exactly ONE instance
-of this row family -- prod 37f2d81f. The unit spellings below beyond that
-row, and the deli-row gate, are extrapolation from n=1. Re-measure with
-the corpus drift check rather than by eye::
+PROVENANCE, so this does not read as a tuned constant. Scanning every
+ITEMS-zone band across all 1,421 receipts in dev + prod for whole-word
+"PER" (2026-08-05, measured twice independently)::
+
+    bands containing whole-word PER:      1   <- prod 37f2d81f, 1 amount
+    bands with a rate AND >=2 amounts:    0   <- the deli shape
+
+Read that second line carefully before trusting this file: **no receipt
+in either corpus exercises the amount gate at all.** Every test below
+that distinguishes the gate from a bare "per <unit>" text match is
+synthetic. The gate is UNFALSIFIED here, not validated, and "we found no
+counterexample" is not evidence for it -- that is precisely the shape of
+the #1313 parity snapshot, a check that measured nothing and read as a
+passing check.
+
+Keep it anyway, and keep it specifically BECAUSE it is untested here: it
+costs nothing on the one observed row (which has a single amount either
+way) and fails safe on a shape that certainly exists in the wild. A bare
+text match would be equally green today and silently wrong the first
+time a deli receipt lands. The unit spellings beyond the observed row
+are extrapolation on the same terms.
+
+Re-measure with the corpus drift check rather than by eye::
 
     python3.12 scripts/backfill_receipt_line_items.py --check \\
         --table ReceiptsTable-d7ff76a
