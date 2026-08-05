@@ -424,17 +424,23 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
             continue  # taxability flag
         name_idxs.append(i)
 
-    # Leading quantity forms consume their word
+    # Leading quantity forms consume their word. The consumed index is
+    # recorded in qty_word_idxs so downstream consumers (word-level label
+    # derivation) can point QUANTITY at the exact word the quantity came
+    # from; name_idxs was already computed above, so widening the set here
+    # cannot change the decoded name, price or quantity.
     if qty is None and name_idxs:
         first = texts[name_idxs[0]]
         m3 = QTY_MULT_RE.match(first)
         if m3:
             qty = float(m3.group(1))
+            qty_word_idxs.add(name_idxs[0])
             name_idxs.pop(0)
         elif re.fullmatch(r"\d{1,2}", first) and any(
             re.search(r"[A-Za-z]{2,}", texts[i]) for i in name_idxs[1:]
         ):
             qty = float(first)
+            qty_word_idxs.add(name_idxs[0])
             name_idxs.pop(0)
 
     # Trailing single-letter token: a taxability flag the fixed [TFNOAB]

@@ -456,6 +456,27 @@ def _is_subtotal_noise_line(line_text: str) -> bool:
     )
 
 
+def _is_tax_anchor(line_text: str) -> bool:
+    """A tax anchor row (never a total/subtotal/tender variant)."""
+    return bool(
+        TAX_KEYWORD_RE.search(line_text)
+        and not TOTAL_KEYWORD_RE.search(line_text)
+        and not SUBTOTAL_KEYWORD_RE.search(line_text)
+        and not NON_PAYMENT_SUMMARY_RE.search(line_text)
+        and not TENDER_KEYWORD_RE.search(line_text)
+    )
+
+
+def _is_tax_noise_line(line_text: str) -> bool:
+    """Rows a tax anchor must not pair with across the y-band."""
+    return bool(
+        TOTAL_KEYWORD_RE.search(line_text)
+        or SUBTOTAL_KEYWORD_RE.search(line_text)
+        or NON_PAYMENT_SUMMARY_RE.search(line_text)
+        or TENDER_KEYWORD_RE.search(line_text)
+    )
+
+
 def find_printed_grand_total(words: list["ReceiptWord"]) -> float | None:
     """Find the printed grand total from receipt words, without labels.
 
@@ -499,12 +520,57 @@ def find_printed_subtotal(words: list["ReceiptWord"]) -> float | None:
     )
 
 
+def find_printed_tax_words(
+    words: list["ReceiptWord"],
+) -> list[tuple[float, "ReceiptWord"]]:
+    """Every amount word anchored to a printed tax row.
+
+    Unlike grand total and subtotal there is no single "the" printed tax
+    (receipts print several tax rows that the summary sums), so this
+    returns all anchored candidates and leaves the choice to the caller.
+    """
+    return _anchored_amount_words(words, _is_tax_anchor, _is_tax_noise_line)
+
+
+def find_printed_grand_total_words(
+    words: list["ReceiptWord"],
+) -> list[tuple[float, "ReceiptWord"]]:
+    """Amount words anchored to a printed grand-total row.
+
+    The word-level companion to :func:`find_printed_grand_total`, which
+    returns only the winning value. Callers that need to point a label at
+    the printed figure need the word it was printed on.
+    """
+    return _anchored_amount_words(
+        words, _is_grand_total_anchor, _is_summary_noise_line
+    )
+
+
+def find_printed_subtotal_words(
+    words: list["ReceiptWord"],
+) -> list[tuple[float, "ReceiptWord"]]:
+    """Amount words anchored to a printed subtotal row."""
+    return _anchored_amount_words(
+        words, _is_subtotal_anchor, _is_subtotal_noise_line
+    )
+
+
 def _find_anchored_amount(
     words: list["ReceiptWord"],
     is_anchor: Callable[[str], bool],
     is_noise: Callable[[str], bool],
 ) -> float | None:
     """Largest amount printed on (or row-banded with) an anchor line."""
+    anchored = _anchored_amount_words(words, is_anchor, is_noise)
+    return max(amount for amount, _ in anchored) if anchored else None
+
+
+def _anchored_amount_words(
+    words: list["ReceiptWord"],
+    is_anchor: Callable[[str], bool],
+    is_noise: Callable[[str], bool],
+) -> list[tuple[float, "ReceiptWord"]]:
+    """Amounts printed on (or row-banded with) an anchor line, with words."""
     lines: dict[int, list["ReceiptWord"]] = {}
     for word in words:
         line_id = getattr(word, "line_id", None)
@@ -522,15 +588,15 @@ def _find_anchored_amount(
         line_id for line_id, text in line_texts.items() if is_anchor(text)
     ]
     if not anchor_ids:
-        return None
+        return []
 
-    anchored: list[float] = []
+    anchored: list[tuple[float, "ReceiptWord"]] = []
     for anchor_id in anchor_ids:
         anchor_words = lines[anchor_id]
 
         # Amounts printed on the anchor line itself win outright.
         same_line = [
-            amount
+            (amount, w)
             for w in anchor_words
             if (amount := _positive_amount(str(getattr(w, "text", ""))))
             is not None
@@ -560,9 +626,9 @@ def _find_anchored_amount(
                     continue
                 amount = _positive_amount(str(getattr(w, "text", "")))
                 if amount is not None:
-                    anchored.append(amount)
+                    anchored.append((amount, w))
 
-    return max(anchored) if anchored else None
+    return anchored
 
 
 def _apply_printed_total_fallback(
