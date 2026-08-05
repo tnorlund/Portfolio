@@ -553,6 +553,175 @@ def merchant_name_matches_receipt(
     return False
 
 
+# Street-type tokens that terminate a US street address. Used only to
+# recognise a Places ``displayName`` that is really a street address, never
+# to parse an address.
+_STREET_SUFFIX_TOKENS = (
+    "st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|way|"
+    "ct|court|pkwy|parkway|hwy|highway|pl|place|ter|terrace|cir|circle|"
+    "trl|trail|pike|rte|route|sq|square|loop|expy|expressway|byp|bypass"
+)
+
+# "<house number> [directional] <street words> <street type>", whole string.
+# Anchored at both ends on purpose: a business name that merely *contains* a
+# street type ("9255 Sunset Blvd. Garage (Imperial Parking)") is a real
+# business name and must not be flagged, and neither must "14 Cannons".
+_STREET_ADDRESS_RE = re.compile(
+    r"^\s*\d+[\w\-]*\s+"
+    r"(?:(?:[NSEW]\.?|north|south|east|west|northeast|northwest|"
+    r"southeast|southwest)\s+)?"
+    r"[\w'\.\- ]*?\b(?:" + _STREET_SUFFIX_TOKENS + r")\b\.?\s*$",
+    re.IGNORECASE,
+)
+
+
+def looks_like_street_address(name: Optional[str]) -> bool:
+    """True when *name* reads as a bare street address, not a business name.
+
+    Requires BOTH a leading house number and a trailing street-type token,
+    so numeric brand names ("7-Eleven", "14 Cannons") and businesses that
+    merely embed a street ("9255 Sunset Blvd. Garage (Imperial Parking)")
+    are not flagged.
+    """
+    if not name:
+        return False
+    return bool(_STREET_ADDRESS_RE.match(name.strip()))
+
+
+def place_name_is_address_derived(
+    place_name: Optional[str],
+    place_address: Optional[str],
+) -> bool:
+    """True when a Places ``displayName`` is really the site's street address.
+
+    Google Places returns street-address / premise entries whose
+    ``displayName`` is the address itself (e.g. place
+    ``ChIJO1cwiRDQyIAR5C3eBgKmGcw`` displays as "2716 N Green Valley Pkwy"
+    for the Trader Joe's at that address). Storing that as
+    ``merchant_name`` also poisons the ``MERCHANT#`` GSI partition keys
+    derived from it, so per-merchant grouping breaks for the receipt.
+
+    Both signals are required — the name looks like a street address AND
+    the place's own ``formatted_address`` starts with it — which is what
+    makes this precise enough to act on automatically.
+    """
+    if not looks_like_street_address(place_name):
+        return False
+    if not place_address:
+        return False
+    return (
+        place_address.strip()
+        .lower()
+        .startswith((place_name or "").strip().lower())
+    )
+
+
+# A merchant name is a short phrase. Anything longer is a footer sentence
+# that leaked in through a header/first-line heuristic (observed: the Regal
+# receipt's topmost line by y-centroid is
+# "purchases of gift cards or alcohol. Restrictions apply.", because these
+# receipts are bottom-origin and the header sits at HIGH y).
+_MAX_MERCHANT_NAME_CHARS = 48
+_MAX_MERCHANT_NAME_TOKENS = 6
+
+
+def _collapse_repeated_phrase(name: str) -> str:
+    """Collapse a name that repeats itself: "TRADER JOE'S TRADER JOE'S".
+
+    MERCHANT_NAME labels are attached wherever the brand appears, header
+    AND footer, and joining every labeled word concatenates the phrase
+    once per occurrence. Left uncollapsed that produces the GSI partition
+    key ``MERCHANT#TRADER_JOE_S_TRADER_JOE_S``, which is a worse grouping
+    key than the address it replaced.
+    """
+    tokens = name.split()
+    n = len(tokens)
+    for period in range(1, n // 2 + 1):
+        if n % period:
+            continue
+        block = tokens[:period]
+        if all(tokens[i : i + period] == block for i in range(0, n, period)):
+            return " ".join(block)
+    return name
+
+
+def _numeric_tokens(text: str) -> Set[str]:
+    return set(re.findall(r"\d+", text or ""))
+
+
+def _echoes_the_address(name: str, place_address: Optional[str]) -> bool:
+    """True when *name* is really the address wearing a brand prefix.
+
+    "WF 101 Westlake Blvd." is not address-*shaped* (it starts with a
+    letter) but it is still the street address, so substituting it buys
+    nothing. Requires a street-type token AND a number the place's own
+    address also contains, which no ordinary business name has.
+    """
+    if not place_address:
+        return False
+    lowered = name.lower()
+    has_street_token = bool(
+        re.search(r"\b(?:" + _STREET_SUFFIX_TOKENS + r")\b", lowered)
+    )
+    if not has_street_token:
+        return False
+    return bool(_numeric_tokens(name) & _numeric_tokens(place_address))
+
+
+def sanitize_receipt_merchant_name(
+    receipt_name: Optional[str],
+    place_address: Optional[str] = None,
+) -> Optional[str]:
+    """Normalise an OCR-derived merchant name, or reject it as unusable.
+
+    Returns ``None`` rather than guessing: the caller keeps the Places
+    name when this declines, so a rejection is always a no-op, never a
+    downgrade.
+    """
+    if not receipt_name:
+        return None
+    name = _collapse_repeated_phrase(" ".join(receipt_name.split()))
+    if len(name) < 3 or len(name) > _MAX_MERCHANT_NAME_CHARS:
+        return None
+    if len(name.split()) > _MAX_MERCHANT_NAME_TOKENS:
+        return None
+    if looks_like_street_address(name):
+        return None
+    if _echoes_the_address(name, place_address):
+        return None
+    # A URL/e-mail is a footer artefact, not a merchant name.
+    if re.search(r"(?:https?://|www\.|@|\.com\b|\.net\b|\.org\b)", name, re.I):
+        return None
+    return name
+
+
+def prefer_receipt_name_over_address(
+    place_name: Optional[str],
+    place_address: Optional[str],
+    receipt_name: Optional[str],
+) -> Optional[str]:
+    """Return the merchant name to persist for a Places match.
+
+    Substitutes the receipt's own OCR-derived merchant name when the
+    Places display name is really a street address. Falls back to the
+    Places name whenever there is no usable receipt-derived alternative,
+    so this can only ever replace an address with a business name — never
+    blank a name out and never store a footer sentence.
+    """
+    if not place_name_is_address_derived(place_name, place_address):
+        return place_name
+    candidate = sanitize_receipt_merchant_name(receipt_name, place_address)
+    if not candidate:
+        return place_name
+    _log(
+        "Places displayName %r is this place's street address; "
+        "using receipt-derived merchant name %r instead",
+        place_name,
+        candidate,
+    )
+    return candidate
+
+
 @dataclass
 class SimilarityMatch:
     """A candidate match from ChromaDB similarity search."""
@@ -858,6 +1027,9 @@ class MerchantResolver:
                 address=address,
                 phone=phone,
                 expected_state=expected_state,
+                labeled_merchant_name=(
+                    merchant_hint if has_labeled_merchant else None
+                ),
             )
             if result.place_id:
                 _log(
@@ -995,6 +1167,7 @@ class MerchantResolver:
                 address=address,
                 phone=phone,
                 expected_state=expected_state,
+                labeled_merchant_name=merchant_hint,
             )
             if result.place_id:
                 _log(
@@ -1409,6 +1582,7 @@ class MerchantResolver:
         address: Optional[str],
         phone: Optional[str],
         expected_state: Optional[str] = None,
+        labeled_merchant_name: Optional[str] = None,
     ) -> MerchantResult:
         """Search Places directly using receipt evidence (phone/address/name).
 
@@ -1417,6 +1591,11 @@ class MerchantResolver:
         as ANY of phone/address/name is present — a phone- or address-only receipt
         resolves without a labeled name. ``expected_state`` (the receipt's parsed
         2-letter state) lets the finder reject a wrong-state Places hit.
+
+        ``labeled_merchant_name`` is the receipt's own MERCHANT_NAME-*labeled*
+        text (never the geometric top-line guess). It is used only to replace
+        a Places display name that turns out to be the site's street address —
+        see :func:`prefer_receipt_name_over_address`.
         """
         if not self.places_client or not (merchant_name or address or phone):
             return MerchantResult()
@@ -1451,7 +1630,11 @@ class MerchantResolver:
 
             return MerchantResult(
                 place_id=match.place_id,
-                merchant_name=match.place_name,
+                merchant_name=prefer_receipt_name_over_address(
+                    match.place_name,
+                    match.place_address,
+                    labeled_merchant_name,
+                ),
                 address=match.place_address,
                 phone=match.place_phone,
                 confidence=confidence or 0.0,
@@ -1713,9 +1896,22 @@ class MerchantResolver:
             )
 
             if result and result.get("found") and result.get("place_id"):
+                # Labeled text ONLY. _extract_merchant_name(lines) is the
+                # geometric top-line guess and is deliberately not used
+                # here: these receipts are bottom-origin, so the "first"
+                # line by y-centroid is the footer (observed:
+                # "purchases of gift cards or alcohol. Restrictions
+                # apply.", "www.traderjoes.com").
+                receipt_derived_name = self._extract_labeled_text(
+                    words, word_labels or [], "MERCHANT_NAME"
+                )
                 return MerchantResult(
                     place_id=result["place_id"],
-                    merchant_name=result.get("place_name"),
+                    merchant_name=prefer_receipt_name_over_address(
+                        result.get("place_name"),
+                        result.get("place_address"),
+                        receipt_derived_name,
+                    ),
                     address=result.get("place_address"),
                     phone=result.get("place_phone"),
                     confidence=result.get("confidence", 0.0),
@@ -1758,9 +1954,16 @@ class MerchantResolver:
 
             # Extract merchant info from lines/words for the finder
             word_labels = word_labels or []
-            merchant_name = self._extract_labeled_text(
+            labeled_merchant_name = self._extract_labeled_text(
                 words, word_labels, "MERCHANT_NAME"
-            ) or self._extract_merchant_name(lines)
+            )
+            # The geometric top-line guess is fine as a Places *text query*
+            # hint but must never be persisted as merchant_name (see the
+            # agentic branch above), so it is kept out of
+            # labeled_merchant_name.
+            merchant_name = (
+                labeled_merchant_name or self._extract_merchant_name(lines)
+            )
             phone = self._extract_phone(words)
             address = self._extract_labeled_text(
                 words, word_labels, "ADDRESS_LINE"
@@ -1793,7 +1996,11 @@ class MerchantResolver:
 
                 return MerchantResult(
                     place_id=match.place_id,
-                    merchant_name=match.place_name,
+                    merchant_name=prefer_receipt_name_over_address(
+                        match.place_name,
+                        match.place_address,
+                        labeled_merchant_name,
+                    ),
                     address=match.place_address,
                     phone=match.place_phone,
                     confidence=confidence or 0.0,

@@ -129,6 +129,28 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
             receipt_id,
         )
 
+    # item_count: prefer the receipt's extracted ReceiptLineItem rows over
+    # the legacy "count VALID LINE_TOTAL labels" rule. Receipts ingested
+    # through the current pipeline never get LINE_TOTAL labels, so the
+    # label rule reported 0 for receipts that hold real line items.
+    #
+    # Ordering caveat: a summary write is what triggers the line-item
+    # updater (RECEIPT_SUMMARY -> LINE_ITEMS queue), so on a receipt's
+    # FIRST summary write there are no rows yet and the count still falls
+    # back to labels. It becomes correct on the next recompute (any label
+    # or place change). A stream back-edge from RECEIPT_LINE_ITEM to this
+    # queue is deliberately NOT added: the line-item updater
+    # delete-then-inserts every row on each run, so that edge would be an
+    # unbounded recompute loop.
+    try:
+        line_item_count = len(
+            dynamo_client.get_receipt_line_items_from_receipt(
+                image_id, receipt_id
+            )
+        )
+    except EntityNotFoundError:
+        line_item_count = 0
+
     # Compute summary from labels and words
     summary = ReceiptSummary.from_word_labels_and_words(
         image_id=image_id,
@@ -142,6 +164,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         ledger=ledger,
         bank_amount=bank_amount,
         bank_match_confidence=bank_match_confidence,
+        line_item_count=line_item_count,
     )
 
     # Convert to record and upsert
