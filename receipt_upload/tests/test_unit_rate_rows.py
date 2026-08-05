@@ -15,6 +15,20 @@ The amount count is the load-bearing half of the guard. A deli row prints
 BOTH the rate and the total ("GROUND BEEF $4.99 per lb   7.48"), and there
 the 7.48 is a real line total. Only a row whose single amount IS the rate
 is an annotation -- which is what lets this ship without a merchant list.
+
+PROVENANCE, so this does not read as a tuned constant: a scan of all
+1,421 receipts across dev + prod (2026-08-05) found exactly ONE instance
+of this row family -- prod 37f2d81f. The unit spellings below beyond that
+row, and the deli-row gate, are extrapolation from n=1. Re-measure with
+the corpus drift check rather than by eye::
+
+    python3.12 scripts/backfill_receipt_line_items.py --check \\
+        --table ReceiptsTable-d7ff76a
+
+It is read-only (prod-safe) and prints every receipt whose STORED
+reconciliation_status disagrees with a live recompute, with sums and
+baselines. A second instance of this family shows up there as a drift
+row before anyone goes looking; RATE_ROWS is where to add it.
 """
 
 from __future__ import annotations
