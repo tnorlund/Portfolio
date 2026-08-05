@@ -592,6 +592,19 @@ anything neither set names.
   not, the disambiguation path has rotted too and needs its own fix before
   anything else.
 
+> **Correction (see C.6).** This step as originally written implied that
+> restoring the pass-through would also restore `propose_line_item_labels`
+> (the `geometry_line_items` column in §2.1a). **It will not.** That proposer
+> needs a `SUBTOTAL`/`TAX`/`GRAND_TOTAL` label to exist *before* it runs, and
+> the only `AMOUNT` disambiguation that has ever worked in production is the
+> LLM one, which runs **after** it. The deterministic branch that would have
+> run before it has a measured hit rate of **0 out of 585**. So Step 1 recovers
+> the merged-class labels and their LLM-disambiguated CORE children, and
+> nothing else. Recovering the deterministic proposer needs Step 1b (a model
+> that emits unmerged totals) or a reordering of `embedding_processor.py`.
+> Scope the decision point accordingly: judge Step 1 on `llm_corrected:*` yield
+> alone, and do **not** expect `geometry_line_items` to move.
+
 **Fix the prod bundle key at the same time** (§2.4) or accept that `--env prod`
 runs blind.
 
@@ -1017,13 +1030,92 @@ product rows to seed its kNN from, and also yields nothing (`semantic_product_na
 So the blast radius of the `coreLabels` filter is not one write — it is the
 whole deterministic proposal chain downstream of it. Cohorts A and D (0
 proposals) versus B and C (31, 54) are that early return firing and not firing.
-This matters for §5 Step 1's decision point: restoring `AMOUNT` alone does
-**not** restore the proposer, because the disambiguation to
-`SUBTOTAL`/`TAX`/`GRAND_TOTAL` happens in the LLM validator, which runs *after*
-`propose_line_item_labels` in `embedding_processor.py`. Either the proposer must
-move after validation, or the model must emit unmerged totals (Step 1b).
 
-### C.7 One addition to §5 — make the model attributable
+**There is one way this could have been wrong, and it was checked.**
+`_prepare_pending_core_labels` runs at step 1 of `embedding_processor.py`,
+*before* the proposer at step 3, and it carries its own **deterministic**
+AMOUNT branch — `classify_amount_labels()` (`embedding_processor.py:495`),
+which on a hit deletes the AMOUNT row and writes a VALID
+`SUBTOTAL`/`TAX`/`GRAND_TOTAL` stamped
+`non_core_label_guard:<label>:deterministic`. Had that fired at any rate, it
+would have supplied `_TOTALS` anchors before the early return.
+
+**It has never fired.** Zero rows whose `label_proposed_by` contains
+`non_core_label_guard` or `:deterministic`, in either table, ever — against
+**585 real AMOUNT rows that landed in prod during cohort A**, every one of
+which fell through to the LLM fallback and became one of the 505
+`llm_corrected:AMOUNT` rows (503 in dev). A **0-of-585** deterministic hit rate.
+So the only AMOUNT disambiguation that works in practice is the LLM one, and it
+runs after the proposer.
+
+Consequence for §5 Step 1, which has been corrected in place: restoring
+`AMOUNT` alone does **not** restore `propose_line_item_labels`. Either the
+proposer moves after validation, or the model emits unmerged totals (Step 1b).
+This is not "the ordering suggests it shouldn't work" — it is "it has never
+worked, over 585 opportunities".
+
+### C.7 Section position predicts label correctness — a free quality signal
+
+§4.1's containment table is VALID-only. Splitting it by `validation_status`
+turns it from a description of where labels sit into a **detector**. Prod, all
+730 receipts with an ITEMS section, `line_ids` as an exact set-membership test:
+
+| label | % of **VALID** rows inside ITEMS | % of **INVALID** rows inside ITEMS |
+|---|---:|---:|
+| PRODUCT_NAME | **94.0%** | 63.4% |
+| LINE_TOTAL | **94.4%** | 48.5% |
+| QUANTITY | 90.1% | 74.2% |
+| UNIT_PRICE | 88.5% | 67.2% |
+| TAX | 7.0% | **43.4%** |
+| SUBTOTAL | 8.2% | 22.0% |
+| GRAND_TOTAL | 3.4% | 12.6% |
+| ADDRESS_LINE | 0.8% | 5.7% |
+| WEBSITE | 0.8% | **11.0%** |
+| PAYMENT_METHOD | 1.7% | 8.0% |
+| MERCHANT_NAME | **0.1%** | 5.7% |
+
+Every row moves the same direction: labels the corpus has already judged
+INVALID are far more likely to be on the wrong side of the ITEMS boundary than
+labels judged VALID. That makes "label class disagrees with section position" a
+predictor that the corpus itself has already validated, at zero cost. Precision
+of the flag, measured against the corpus's own verdicts:
+
+```
+MERCHANT_NAME inside ITEMS   184 INVALID /  192  = 95.8%   (1 VALID)
+WEBSITE       inside ITEMS   106 INVALID /  115  = 92.2%   (6 VALID)
+LINE_TOTAL   outside ITEMS  1069 INVALID / 1177  = 90.8%
+PRODUCT_NAME outside ITEMS  1214 INVALID / 1627  = 74.6%
+PAYMENT_METHOD inside ITEMS  122 INVALID /  185  = 65.9%
+```
+
+**This strengthens §4's "sections as a boolean filter" and §4.2's triage
+recommendation, and it needs neither the decoder nor a model.** It is a `Query`
+over two entity types. Two uses:
+
+1. **Pre-training filter.** Whatever labels feed the next LayoutLM run, drop
+   PRODUCT_NAME/LINE_TOTAL outside ITEMS and header-class labels inside it. On
+   PRODUCT_NAME that removes 1,627 rows of which 1,214 are already INVALID.
+2. **Standing triage report**, wider than §4.2's derived-label collisions: it
+   covers every label on every receipt with an ITEMS section, not just the 505
+   that reconcile.
+
+Caveat, stated plainly: this is **circular as an evaluation metric**. The
+INVALID verdicts were largely produced by the same LLM stack whose output §3.2
+shows is unreliable, and some of them will have been made *because* a reviewer
+saw the label in the wrong place. It is sound as a *filter* (it removes rows
+that two independent signals both dislike) and unsound as *proof* that either
+signal is right. Do not report it as an accuracy number.
+
+For the gate population §3.1 depends on, the stored rows corroborate the dry
+run: prod `RECEIPT_LINE_ITEM` is 2,528 rows over 702 receipts —
+`reconciliation_status` match 1,450 / mismatch 528 / no-baseline 298 / near 252,
+with **492 receipts all-match**; dev is 2,203 rows over 659 receipts, **515
+all-match**. The dry run's 505 gate-`ok` of 730 scanned is consistent with 492
+stored all-match, the difference being that the gate re-decodes rather than
+reading stored status. §7's warning that this population will shift under
+PLAN.md's 822-receipt summary regen applies to both numbers.
+
+### C.8 One addition to §5 — make the model attributable
 
 Every cohort in §2.1a had to be reconstructed by *inferring* which bundle was
 live from the label vocabulary plus S3 object timestamps. That inference works
@@ -1055,6 +1147,14 @@ prediction histograms and the prediction↔row identity check (C.1–C.2), its o
 cohort-A definition and the one place the two passes disagree (C.3), the
 9-class transitional bundle that closes §2.1a's open step (C.4), the cohort
 split that settles §4.2's open question (C.5), the exact mechanism behind
-§2.1a's `geometry_line_items` counts (C.6), and one addition to §5 (C.7).
+§2.1a's `geometry_line_items` counts including the 0-of-585 deterministic
+branch (C.6), section position as a label-quality detector (C.7), and one
+addition to §5 (C.8). The `0/585` figure and the `non_core_label_guard` check
+in C.6 were contributed back by the first study.
+
+The correction block in **§5 Step 1** is the only edit either pass made to the
+other's section. It was made by the second pass, at the first pass's explicit
+request, after the first pass was stood down; the first pass's original text is
+left intact above it.
 Sections 0–8 are the first study's; neither pass edited the other's
 conclusions, and where they differ, both numbers are printed.
