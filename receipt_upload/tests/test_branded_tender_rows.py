@@ -31,6 +31,14 @@ PROD_TENDER_PHANTOMS = [
     "Payment (Cash):",  # Green NV Henderson, RISE Recreational
     "Visa Debit",  # TRADER JOE'S IMG_3404 (the new golden receipt)
     "MASTERCARD ...8644 for 32.30",  # Stanley of New Orleans
+    # 2026-08-05: the anchorless form. Every word here is payment
+    # vocabulary, but "paid"/"with"/"card" were all AFFIXES, and affixes
+    # alone are (correctly) never enough -- so this row decoded as a
+    # 32.30 item and left Stanley of New Orleans (prod 916d7955) at
+    # mismatch, 61.55 against the 29.25 its two real dishes sum to
+    # exactly. Fixed by promoting "paid" to an anchor, which is the
+    # maintenance path the note below prescribes.
+    "Paid with card (8644): 32.30",  # Stanley of New Orleans
 ]
 
 # Real items that carry payment vocabulary and MUST survive.
@@ -39,6 +47,11 @@ REAL_PRODUCTS = [
     "E 33965 PORK TENDER",  # Costco c1672313 (with the dept prefix)
     "CHICKEN TENDER",  # Millennium Maxwell House fa48c537
     "TENDER GREENS SALAD",
+    # Promoting "paid" to an anchor must not reach food. A real row needs
+    # only ONE word outside the vocabulary to survive, and these have it.
+    "PAID LEAVE GIFT BOX",
+    "PREPAID PHONE CARD",  # substring "paid" inside "PREPAID"
+    "CHICKEN WITH RICE",  # "with" is an affix, never an anchor
     "GIFT CARD",
     "VISA GIFT CARD",
     "LOCAL HONEY",
