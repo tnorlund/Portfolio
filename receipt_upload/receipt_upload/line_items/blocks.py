@@ -625,6 +625,7 @@ def decode_band_blocks(
         SALE_PRICE_RE,
         WAS_PRICE_RE,
         is_settlement_row,
+        is_unit_rate_row,
         parse_band,
     )
 
@@ -637,12 +638,21 @@ def decode_band_blocks(
         # when a broken ITEMS section includes them and regardless of any
         # template prior. Strip amounts before the settlement test so
         # "CHANGE 0.00" reduces to its vocabulary.
+        #
+        # is_unit_rate_row is applied HERE and not in geometry's
+        # _is_non_product_row, which shares the other four guards. That
+        # function answers "where does the ITEMS zone end?" for boundary
+        # extension, and a weight annotation sits BETWEEN two products --
+        # treating it as a terminator would stop a scan mid-zone. This
+        # guard answers a different question: is this band's amount a
+        # price? Same row, different verdicts, deliberately.
         bare = re.sub(r"\$?\d[\d.,]*", " ", b["text"]).strip()
         if (
             is_settlement_row(bare)
             or WAS_PRICE_RE.search(b["text"])
             or SALE_PRICE_RE.search(b["text"])
             or NON_PRODUCT_NOTE_RE.search(b["text"])
+            or is_unit_rate_row(b["text"], len(b["amounts"]))
         ):
             b["role"] = "OUTSIDE"
             continue

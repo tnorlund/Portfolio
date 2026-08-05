@@ -96,6 +96,14 @@ TENDER_ANCHOR_TOKENS = frozenset(
         "debit",
         "tender",
         "tendered",
+        # "Paid with card (8644): 32.30" (Stanley of New Orleans, prod
+        # 916d7955) states the settlement without naming a network or a
+        # tender: every word is payment vocabulary but NONE was an anchor,
+        # so the row decoded as a 32.30 item and put the receipt at
+        # mismatch (61.55 vs a printed 29.25 its two real items hit
+        # exactly). Promoted from affix, which is the maintenance path
+        # test_branded_tender_rows documents for exactly this case.
+        "paid",
     }
 )
 # Words that may surround an anchor: card-entry modes, transaction-id
@@ -132,7 +140,7 @@ PAYMENT_AFFIX_TOKENS = frozenset(
         "no",
         "num",
         "number",
-        "paid",
+        # "paid" is an ANCHOR, not an affix -- see TENDER_ANCHOR_TOKENS.
         "pay",
         "payment",
         "payments",
@@ -156,6 +164,7 @@ PAYMENT_AFFIX_TOKENS = frozenset(
         "us",
         "usd",
         "verified",
+        "with",  # "Paid with card (8644)"
     }
 )
 # A run of masking characters left behind once digits are stripped
@@ -308,6 +317,34 @@ SALE_PRICE_RE = re.compile(
     r"\b(?:(?:SALE|REG(?:ULAR)?\.?)\s+PRICE|COMPARABLE\s+VALUE)\b",
     re.IGNORECASE,
 )
+# An amount qualified "per <unit>" is a RATE, not an extended price. The
+# decoder already knows this shape in its punctuated forms -- QTY_AT_RE
+# reads "1.23 lb @ 4.99/lb" and the 3-decimal rule keeps fuel's
+# "$5.299/Gal" out of `amounts` -- but the spelled-out "per oz" had no
+# reader, so Yogurtland's weight line ("Weight: 21.5 oz 8 $0.67 per oz",
+# the "8" being OCR of "@") decoded as a $0.67 item and put the receipt at
+# `near` (15.07 against a printed 14.40 its one real item hits exactly).
+#
+# Whole-token "PER" only: a substring scan matches inside PEPPER, and the
+# corpus sells "PEPPER BELL GREEN EACH".
+PER_UNIT_RATE_RE = re.compile(
+    r"\bPER\s+(?:OZ|LB|LBS|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\b",
+    re.IGNORECASE,
+)
+
+
+def is_unit_rate_row(text: str, n_amounts: int) -> bool:
+    """Whether a row states a per-unit rate and NO extended total.
+
+    The amount count is the load-bearing half. A deli row really does
+    print both -- "GROUND BEEF $4.99 per lb   7.48" -- and there the 7.48
+    is a genuine line total that must survive. Only a row whose single
+    amount IS the rate is an annotation, which is what makes this safe
+    without a merchant list.
+    """
+    return n_amounts <= 1 and bool(PER_UNIT_RATE_RE.search(text or ""))
+
+
 # Non-product annotations that carry an amount but are never items:
 # tip-suggestion footers ("22% Tip = 4.40", "15% = 10.73", "18%: (Tip
 # Total 9.27)") and transaction-count notes ("Items in Transaction: 5").
@@ -1549,6 +1586,7 @@ __all__ = [
     "LEAD_QTY_RE",
     "NOISY_MONEY_RE",
     "NON_ITEM_SECTIONS",
+    "PER_UNIT_RATE_RE",
     "PRICE_RE",
     "PROVEN_CENT_TOLERANCE",
     "QTY_AT_RE",
@@ -1569,6 +1607,7 @@ __all__ = [
     "is_column_header_row",
     "is_proven",
     "is_settlement_row",
+    "is_unit_rate_row",
     "items_boundary_extension_guard",
     "parse_band",
     "propose_items_boundary_extension",
