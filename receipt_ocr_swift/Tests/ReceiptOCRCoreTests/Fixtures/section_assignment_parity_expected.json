@@ -1214,5 +1214,50 @@
         ]
       }
     ]
+  },
+  {
+    "image_id": "723f944b-6173-5bde-bb1b-0a0b17f0679d",
+    "receipt_id": 1,
+    "sections": [
+      {
+        "section_type": "ITEMS",
+        "line_ids": [
+          5,
+          7,
+          12,
+          6,
+          8,
+          13
+        ]
+      }
+    ]
+  },
+  {
+    "image_id": "a3740b65-b573-59ea-9d0e-ce8f66f7d729",
+    "receipt_id": 1,
+    "sections": [
+      {
+        "section_type": "ITEMS",
+        "line_ids": [
+          1,
+          15,
+          17,
+          16,
+          14,
+          10,
+          9,
+          11,
+          12,
+          13,
+          20,
+          22,
+          25,
+          26,
+          21,
+          23,
+          24
+        ]
+      }
+    ]
   }
 ]

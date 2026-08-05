@@ -14,6 +14,7 @@ from receipt_dynamo.amounts import (
     looks_like_receipt_amount,
     parse_receipt_amount,
 )
+from receipt_dynamo.entities.receipt_summary import find_printed_grand_total
 from receipt_upload.line_items.blocks import should_reocr_items_zone
 from receipt_upload.line_items.geometry import extract_items, reconcile
 from receipt_upload.section_assignment import (
@@ -86,9 +87,22 @@ def main() -> None:
         )
         items, _ = extract_items(receipt["words"], items_lines)
         subtotal = _printed_subtotal(rows, lines, words)
+        # Mirrors buildOnDeviceReceiptStructure: a receipt that prints no
+        # SUBTOTAL still prints a TOTAL, and the worker now anchors on it
+        # via PrintedTotals.grandTotal (the port of
+        # find_printed_grand_total). The subtotal still wins whenever one
+        # exists, so this only reaches receipts that had no baseline at
+        # all. The summary dict is always built, matching the Swift side,
+        # which always constructs a LineItemSummary; an all-None dict
+        # reconciles to no-baseline exactly as `None` did.
+        grand_total = find_printed_grand_total(words)
         status, _, _ = reconcile(
             [item for item in items if not item.get("is_discount")],
-            {"subtotal": subtotal} if subtotal is not None else None,
+            {
+                "subtotal": subtotal,
+                "tax": None,
+                "grand_total": grand_total,
+            },
         )
         expected.append(
             {

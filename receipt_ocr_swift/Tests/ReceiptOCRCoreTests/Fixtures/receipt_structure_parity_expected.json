@@ -1007,7 +1007,7 @@
     "line_items": [
       {
         "item_index": 0,
-        "name": "203600096 GG WATER NF P",
+        "name": "203600096 GG WATER NF",
         "price": 3.59,
         "quantity": null,
         "unit_price": null,
@@ -3536,7 +3536,7 @@
           45,
           57
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 1,
@@ -3550,7 +3550,7 @@
           43,
           56
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 2,
@@ -3564,7 +3564,7 @@
           41,
           55
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 3,
@@ -3578,7 +3578,7 @@
           39,
           54
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 4,
@@ -3592,7 +3592,7 @@
           37,
           53
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 5,
@@ -3606,7 +3606,7 @@
           36,
           52
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 6,
@@ -3620,11 +3620,11 @@
           35,
           51
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       }
     ],
     "printed_subtotal": null,
-    "reconciliation_status": "no-baseline",
+    "reconciliation_status": "match",
     "should_reocr_items_zone": false
   },
   {
@@ -3687,7 +3687,7 @@
           21,
           37
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 1,
@@ -3701,7 +3701,7 @@
           19,
           36
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 2,
@@ -3715,7 +3715,7 @@
           17,
           35
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 3,
@@ -3729,7 +3729,7 @@
           16,
           34
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 4,
@@ -3743,7 +3743,7 @@
           14,
           33
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 5,
@@ -3757,7 +3757,7 @@
           13,
           32
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 6,
@@ -3771,7 +3771,7 @@
           12,
           31
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 7,
@@ -3785,7 +3785,7 @@
           11,
           30
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 8,
@@ -3800,7 +3800,7 @@
           10,
           29
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       },
       {
         "item_index": 9,
@@ -3814,11 +3814,11 @@
           8,
           28
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "match"
       }
     ],
     "printed_subtotal": null,
-    "reconciliation_status": "no-baseline",
+    "reconciliation_status": "match",
     "should_reocr_items_zone": false
   },
   {
@@ -4350,6 +4350,150 @@
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "should_reocr_items_zone": false
+  },
+  {
+    "image_id": "723f944b-6173-5bde-bb1b-0a0b17f0679d",
+    "receipt_id": 1,
+    "sections": [
+      {
+        "section_type": "ITEMS",
+        "line_ids": [
+          5,
+          7,
+          12,
+          6,
+          8,
+          13
+        ]
+      }
+    ],
+    "line_items": [
+      {
+        "item_index": 0,
+        "name": "Large Popcorn 1",
+        "price": 12.99,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          5,
+          6,
+          7,
+          8,
+          12,
+          13
+        ],
+        "reconciliation_status": "no-baseline"
+      }
+    ],
+    "printed_subtotal": null,
+    "reconciliation_status": "no-baseline",
+    "should_reocr_items_zone": false
+  },
+  {
+    "image_id": "a3740b65-b573-59ea-9d0e-ce8f66f7d729",
+    "receipt_id": 1,
+    "sections": [
+      {
+        "section_type": "ITEMS",
+        "line_ids": [
+          1,
+          15,
+          17,
+          16,
+          14,
+          10,
+          9,
+          11,
+          12,
+          13,
+          20,
+          22,
+          25,
+          26,
+          21,
+          23,
+          24
+        ]
+      }
+    ],
+    "line_items": [
+      {
+        "item_index": 0,
+        "name": "LEMON EACH",
+        "price": 2.94,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          1,
+          13,
+          24
+        ],
+        "reconciliation_status": "match"
+      },
+      {
+        "item_index": 1,
+        "name": "VILLA ITALIA ITAL BLOOD",
+        "price": 3.79,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          12,
+          23
+        ],
+        "reconciliation_status": "match"
+      },
+      {
+        "item_index": 2,
+        "name": "SALMON FILLET SKIN OFF",
+        "price": 10.85,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          11,
+          22
+        ],
+        "reconciliation_status": "match"
+      },
+      {
+        "item_index": 3,
+        "name": "SALMON FILLET SKIN OFF",
+        "price": 9.74,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          10,
+          21
+        ],
+        "reconciliation_status": "match"
+      },
+      {
+        "item_index": 4,
+        "name": "PORK AL PASTOR DICED",
+        "price": 10.19,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          9,
+          20
+        ],
+        "reconciliation_status": "match"
+      }
+    ],
+    "printed_subtotal": null,
+    "reconciliation_status": "match",
     "should_reocr_items_zone": false
   }
 ]
