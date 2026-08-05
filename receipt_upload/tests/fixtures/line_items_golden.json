@@ -12,7 +12,7 @@
  "_known_limitations": [
   "25 receipts / 163 items -- covers the formats the 686-receipt corpus sweep found distinct, not the long tail",
   "labeling ambiguity exists on multi-line restaurant items; the rule above was applied after one anchor disagreement",
-  "two 2026-07-30 local-capture receipts (Whole Foods weighted item, Coffee Press negative control) are local_only: they exist as fixtures, not in DynamoDB -- scorers that read stored entities must skip local_only entries"
+  "four local-capture receipts (Whole Foods weighted item, Coffee Press negative control, Regal Green Valley single-item control, Trader Joe's Henderson branded-tender/no-subtotal adversarial case) are local_only: they exist as fixtures, not in DynamoDB -- scorers that read stored entities must skip local_only entries"
  ],
  "receipts": [
   {
@@ -3102,6 +3102,100 @@
      "line_ids": [
       35,
       36
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "723f944b-6173-5bde-bb1b-0a0b17f0679d",
+   "receipt_id": 1,
+   "merchant": "Regal Green Valley",
+   "printed_subtotal": "12.99",
+   "printed_total": "14.08",
+   "items_sum": "12.99",
+   "sum_matches_subtotal": true,
+   "local_only": true,
+   "labeling_rules_applied": [
+    "the 'Item / Qty / Price' column header is not an item"
+   ],
+   "reconcile_note": "CLEAN CONTROL. Single item, printed Subtotal 12.99 + TAX 1.09 = TOTAL 14.08, and the items sum equals the printed subtotal exactly.",
+   "true_items": [
+    {
+     "name": "Large Popcorn",
+     "price": "12.99",
+     "quantity": 1,
+     "line_ids": [
+      6,
+      8,
+      13
+     ],
+     "is_discount": false
+    }
+   ]
+  },
+  {
+   "image_id": "a3740b65-b573-59ea-9d0e-ce8f66f7d729",
+   "receipt_id": 1,
+   "merchant": "TRADER JOE'S",
+   "printed_subtotal": null,
+   "printed_total": "37.51",
+   "items_sum": "37.51",
+   "sum_matches_subtotal": true,
+   "local_only": true,
+   "labeling_rules_applied": [
+    "no SUBTOTAL is printed; the items sum to the printed TOTAL PURCHASE because this basket is entirely non-taxable grocery",
+    "the qty line '6 @ $0.49' is LEMON EACH metadata (in line_ids), never its own item",
+    "'Balance to pay', 'Visa Debit' and 'Items in Transaction:10' fall inside the ITEMS zone but are settlement/note rows, not items",
+    "both SALMON rows print the same truncated name 'SALMON FILLET SKIN OFF (' and are two separate weighed items at different prices"
+   ],
+   "reconcile_note": "ADVERSARIAL CASE. The ITEMS zone as sectioned includes three non-item rows: 'Items in Transaction:10' (a count note), 'Balance to pay $37.51' (settlement) and 'Visa Debit $37.51' (a BRANDED tender row that the bare-word SETTLEMENT_RE missed, so it decoded as a phantom $37.51 item). No SUBTOTAL is printed -- the only printed baselines are 'Balance to pay' and 'TOTAL PURCHASE', both $37.51 -- so the receipt reconciles only when a printed GRAND TOTAL may anchor the baseline. The 5 real items sum to exactly 37.51.",
+   "true_items": [
+    {
+     "name": "PORK AL PASTOR DICED",
+     "price": "10.19",
+     "line_ids": [
+      9,
+      20
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SALMON FILLET SKIN OFF (",
+     "price": "9.74",
+     "line_ids": [
+      10,
+      21
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "SALMON FILLET SKIN OFF (",
+     "price": "10.85",
+     "line_ids": [
+      11,
+      22
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "VILLA ITALIA ITAL BLOOD",
+     "price": "3.79",
+     "line_ids": [
+      12,
+      23
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "LEMON EACH",
+     "price": "2.94",
+     "quantity": 6,
+     "unit_price": "0.49",
+     "line_ids": [
+      13,
+      14,
+      24
      ],
      "is_discount": false
     }

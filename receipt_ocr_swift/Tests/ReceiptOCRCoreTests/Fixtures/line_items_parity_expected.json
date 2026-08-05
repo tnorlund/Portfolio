@@ -2806,7 +2806,7 @@
   "merchant": "Target",
   "items": [
    {
-    "name": "004100019 TARGET BAG P",
+    "name": "004100019 TARGET BAG",
     "price": 0.0,
     "quantity": null,
     "unit_price": null,
@@ -2830,7 +2830,7 @@
     ]
    },
    {
-    "name": "203600096 GG WATER NF P",
+    "name": "203600096 GG WATER NF",
     "price": 3.59,
     "quantity": null,
     "unit_price": null,
@@ -2929,7 +2929,7 @@
   },
   "items_with_summary": [
    {
-    "name": "004100019 TARGET BAG P",
+    "name": "004100019 TARGET BAG",
     "price": 0.0,
     "quantity": null,
     "unit_price": null,
@@ -2953,7 +2953,7 @@
     ]
    },
    {
-    "name": "203600096 GG WATER NF P",
+    "name": "203600096 GG WATER NF",
     "price": 3.59,
     "quantity": null,
     "unit_price": null,
@@ -12679,6 +12679,448 @@
     "subtotal": null,
     "tax": null,
     "grand_total": 8.49
+   },
+   "proposal": null
+  }
+ },
+ {
+  "image_id": "723f944b-6173-5bde-bb1b-0a0b17f0679d",
+  "receipt_id": 1,
+  "merchant": "Regal Green Valley",
+  "items": [
+   {
+    "name": "Large Popcorn 1",
+    "price": 12.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     5,
+     6,
+     7,
+     8,
+     12,
+     13
+    ]
+   }
+  ],
+  "summary": {
+   "subtotal": 12.99,
+   "tax": null,
+   "grand_total": 14.08
+  },
+  "items_with_summary": [
+   {
+    "name": "Large Popcorn 1",
+    "price": 12.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     5,
+     6,
+     7,
+     8,
+     12,
+     13
+    ]
+   }
+  ],
+  "reconcile": {
+   "status": "match",
+   "item_sum": 12.99,
+   "baseline": 12.99,
+   "baseline_source": "subtotal",
+   "baseline_figures_agreeing": 1
+  },
+  "printed": {
+   "grand_total": null,
+   "subtotal": null
+  },
+  "boundary": {
+   "image_id": "723f944b-6173-5bde-bb1b-0a0b17f0679d",
+   "receipt_id": 1,
+   "current_line_ids": [
+    6,
+    7,
+    8,
+    12
+   ],
+   "rows": [
+    {
+     "row_id": 0,
+     "line_ids": [
+      5
+     ],
+     "y_min": 0.8343025
+    },
+    {
+     "row_id": 1,
+     "line_ids": [
+      6
+     ],
+     "y_min": 0.7817795000000001
+    },
+    {
+     "row_id": 2,
+     "line_ids": [
+      7
+     ],
+     "y_min": 0.8299420000000001
+    },
+    {
+     "row_id": 3,
+     "line_ids": [
+      8
+     ],
+     "y_min": 0.784884
+    },
+    {
+     "row_id": 4,
+     "line_ids": [
+      12
+     ],
+     "y_min": 0.8328485
+    },
+    {
+     "row_id": 5,
+     "line_ids": [
+      13
+     ],
+     "y_min": 0.781759
+    }
+   ],
+   "summary": {
+    "subtotal": 12.99,
+    "tax": null,
+    "grand_total": 14.08
+   },
+   "proposal": {
+    "line_ids": [
+     6,
+     7,
+     8,
+     12,
+     13
+    ],
+    "added_line_ids": [
+     13
+    ],
+    "added_row_ids": [
+     5
+    ],
+    "before": {
+     "status": "mismatch",
+     "items_sum": 0,
+     "baseline": 12.99,
+     "delta": -12.99,
+     "n_items": 0,
+     "collapsed_banding": false
+    },
+    "after": {
+     "status": "match",
+     "items_sum": 12.99,
+     "baseline": 12.99,
+     "delta": 0.0,
+     "n_items": 1,
+     "collapsed_banding": false
+    }
+   }
+  }
+ },
+ {
+  "image_id": "a3740b65-b573-59ea-9d0e-ce8f66f7d729",
+  "receipt_id": 1,
+  "merchant": "TRADER JOE'S",
+  "items": [
+   {
+    "name": "LEMON EACH",
+    "price": 2.94,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1,
+     13,
+     24
+    ]
+   },
+   {
+    "name": "VILLA ITALIA ITAL BLOOD",
+    "price": 3.79,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12,
+     23
+    ]
+   },
+   {
+    "name": "SALMON FILLET SKIN OFF",
+    "price": 10.85,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     22
+    ]
+   },
+   {
+    "name": "SALMON FILLET SKIN OFF",
+    "price": 9.74,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     10,
+     21
+    ]
+   },
+   {
+    "name": "PORK AL PASTOR DICED",
+    "price": 10.19,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     9,
+     20
+    ]
+   }
+  ],
+  "summary": {
+   "subtotal": null,
+   "tax": null,
+   "grand_total": 37.51
+  },
+  "items_with_summary": [
+   {
+    "name": "LEMON EACH",
+    "price": 2.94,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1,
+     13,
+     24
+    ]
+   },
+   {
+    "name": "VILLA ITALIA ITAL BLOOD",
+    "price": 3.79,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12,
+     23
+    ]
+   },
+   {
+    "name": "SALMON FILLET SKIN OFF",
+    "price": 10.85,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     22
+    ]
+   },
+   {
+    "name": "SALMON FILLET SKIN OFF",
+    "price": 9.74,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     10,
+     21
+    ]
+   },
+   {
+    "name": "PORK AL PASTOR DICED",
+    "price": 10.19,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     9,
+     20
+    ]
+   }
+  ],
+  "reconcile": {
+   "status": "match",
+   "item_sum": 37.51,
+   "baseline": 37.51,
+   "baseline_source": "grand_total_minus_tax",
+   "baseline_figures_agreeing": 1
+  },
+  "printed": {
+   "grand_total": 37.51,
+   "subtotal": null
+  },
+  "boundary": {
+   "image_id": "a3740b65-b573-59ea-9d0e-ce8f66f7d729",
+   "receipt_id": 1,
+   "current_line_ids": [
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25
+   ],
+   "rows": [
+    {
+     "row_id": 0,
+     "line_ids": [
+      1
+     ],
+     "y_min": 0.487567
+    },
+    {
+     "row_id": 1,
+     "line_ids": [
+      9
+     ],
+     "y_min": 0.6607430000000001
+    },
+    {
+     "row_id": 2,
+     "line_ids": [
+      10
+     ],
+     "y_min": 0.6358475
+    },
+    {
+     "row_id": 3,
+     "line_ids": [
+      11
+     ],
+     "y_min": 0.619055
+    },
+    {
+     "row_id": 4,
+     "line_ids": [
+      12
+     ],
+     "y_min": 0.5942415
+    },
+    {
+     "row_id": 5,
+     "line_ids": [
+      13
+     ],
+     "y_min": 0.575198
+    },
+    {
+     "row_id": 6,
+     "line_ids": [
+      14
+     ],
+     "y_min": 0.55412
+    },
+    {
+     "row_id": 7,
+     "line_ids": [
+      15
+     ],
+     "y_min": 0.5071789999999999
+    },
+    {
+     "row_id": 8,
+     "line_ids": [
+      16
+     ],
+     "y_min": 0.4862685
+    },
+    {
+     "row_id": 9,
+     "line_ids": [
+      17
+     ],
+     "y_min": 0.4649825
+    },
+    {
+     "row_id": 10,
+     "line_ids": [
+      20
+     ],
+     "y_min": 0.6720515
+    },
+    {
+     "row_id": 11,
+     "line_ids": [
+      21
+     ],
+     "y_min": 0.6510495000000001
+    },
+    {
+     "row_id": 12,
+     "line_ids": [
+      22
+     ],
+     "y_min": 0.6284329999999999
+    },
+    {
+     "row_id": 13,
+     "line_ids": [
+      23
+     ],
+     "y_min": 0.6074315
+    },
+    {
+     "row_id": 14,
+     "line_ids": [
+      24
+     ],
+     "y_min": 0.5864295
+    },
+    {
+     "row_id": 15,
+     "line_ids": [
+      25
+     ],
+     "y_min": 0.500808
+    },
+    {
+     "row_id": 16,
+     "line_ids": [
+      26
+     ],
+     "y_min": 0.479806
+    }
+   ],
+   "summary": {
+    "subtotal": null,
+    "tax": null,
+    "grand_total": 37.51
    },
    "proposal": null
   }

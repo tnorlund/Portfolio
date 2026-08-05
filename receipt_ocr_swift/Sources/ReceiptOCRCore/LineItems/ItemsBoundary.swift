@@ -99,7 +99,7 @@ public func isNonProductRow(_ rowWords: [ZoneWord]) -> Bool {
         let text = band.map(\.text).joined(separator: " ")
         let bare = LineItemRegex.amountStrip.sub(text, with: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        if LineItemRegex.settlement.match(bare) != nil
+        if isSettlementRow(bare)
             || LineItemRegex.wasPrice.hasMatch(text)
             || LineItemRegex.salePrice.hasMatch(text)
             || LineItemRegex.nonProductNote.hasMatch(text)

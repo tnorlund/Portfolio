@@ -191,9 +191,25 @@ public func buildOnDeviceReceiptStructure(
     let decoded = itemsLineIds.isEmpty
         ? [] : extractLineItems(words: zoneWords, zoneLineIds: itemsLineIds)
     let printedSubtotal = findPrintedSubtotal(rows: rows, lines: lines)
+    // A receipt that prints no SUBTOTAL still prints a TOTAL, and until
+    // now the worker ignored it: `PrintedTotals` (the #1321 port of
+    // find_printed_grand_total) shipped as dead code, so subtotal-less
+    // receipts died as no-baseline even with a total on the paper.
+    // Trader Joe's is the canonical case -- "TOTAL PURCHASE $37.51" and
+    // "Balance to pay $37.51", no subtotal anywhere.
+    //
+    // The subtotal still WINS whenever one is printed (reconcile prefers
+    // it and only falls back to grand_total - tax), so this can never
+    // demote an existing match/near verdict; it only gives the
+    // subtotal-less receipts a baseline they never had. The anchor search
+    // itself already refuses tender rows, so #1349 ("Total Tender" must
+    // never outrank a plain "Total") is unaffected.
+    let printedGrandTotal = PrintedTotals.grandTotal(
+        words: lines.flatMap(\.words).map(PrintedTotalWord.init)
+    )
     let reconciliation = reconcileLineItems(
         items: decoded.filter { !$0.isDiscount },
-        subtotal: printedSubtotal, grandTotal: nil, tax: nil
+        subtotal: printedSubtotal, grandTotal: printedGrandTotal, tax: nil
     )
     let lineItems = decoded.enumerated().map { index, item in
         ReceiptLineItemPayload(

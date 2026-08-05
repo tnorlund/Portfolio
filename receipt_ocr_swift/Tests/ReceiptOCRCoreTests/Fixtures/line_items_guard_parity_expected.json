@@ -1389,6 +1389,1676 @@
   ]
  },
  {
+  "case": "settlement_visa_debit",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "Visa",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "Debit",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "$37.51",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "settlement_bare_visa",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "Visa",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "13.01",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "settlement_bare_mastercard",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "MASTERCARD",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "32.30",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "settlement_mastercard_swipe",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "MasterCard",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "1394",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "(Swipe)",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "20.00",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "settlement_visa_masked",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "Visa",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "...3931",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "22.52",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "settlement_masked_mastercard",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "xXXX5061",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "MASTERCARD",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "42.14",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "settlement_visa_tendered_batch",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "Visa",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "Tendered:",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "Trans",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "*:",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 5,
+    "text": "9",
+    "x": 0.9,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 6,
+    "text": "Batch#:",
+    "x": 1.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 7,
+    "text": "9.65",
+    "x": 1.3000000000000003,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "settlement_local_cash",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "Local",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "Cash",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "10.44",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "settlement_mastercard_for_amount",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "MASTERCARD",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "...8644",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "for",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "32.30",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "settlement_payment_cash",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "Payment",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "(Cash):",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "$40.00",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "pork_tender_is_a_product",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "33965",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "PORK",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "TENDER",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "19.51",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "33965 PORK TENDER",
+    "price": 19.51,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     2
+    ]
+   },
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "chicken_tender_is_a_product",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "CHICKEN",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "TENDER",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "15.00",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "CHICKEN TENDER",
+    "price": 15.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     2
+    ]
+   },
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "gift_card_is_a_product",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "VISA",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "GIFT",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "CARD",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "25.00",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "VISA GIFT CARD",
+    "price": 25.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     2
+    ]
+   },
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "coffee_is_not_a_discount",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "ORG",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "BIRCHWOOD",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "COFFEE",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "15.99",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "ORG BIRCHWOOD COFFEE",
+    "price": 15.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     2
+    ]
+   },
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "toffee_is_not_a_discount",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "TOFFEE",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "ICE",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "CREAM",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "BAR",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 5,
+    "text": "6.99",
+    "x": 0.9,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "TOFFEE ICE CREAM BAR",
+    "price": 6.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     2
+    ]
+   },
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "skin_off_is_not_a_discount",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "SALMON",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "FILLET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "SKIN",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "OFF",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 5,
+    "text": "9.74",
+    "x": 0.9,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "SALMON FILLET SKIN OFF",
+    "price": 9.74,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     2
+    ]
+   },
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "percent_off_is_a_discount",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "20%",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "OFF",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "ORG",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "PRODU",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 5,
+    "text": "-0.31",
+    "x": 0.9,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "20% OFF ORG PRODU",
+    "price": -0.31,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": true,
+    "name_quality": null,
+    "line_ids": [
+     2
+    ]
+   },
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "trailing_flag_letter_trimmed",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "FRUITLANDS",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "GOSE",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "6",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "PK",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 5,
+    "text": "I",
+    "x": 0.9,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 6,
+    "text": "8.99",
+    "x": 1.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "FRUITLANDS GOSE 6 PK",
+    "price": 8.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     2
+    ]
+   },
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "trailing_s_is_kept",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "ORG",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "KOSHER",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "DILL",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "PICKLE",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 5,
+    "text": "S",
+    "x": 0.9,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 6,
+    "text": "3.99",
+    "x": 1.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "ORG KOSHER DILL PICKLE S",
+    "price": 3.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     2
+    ]
+   },
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
+  "case": "short_name_keeps_its_letter",
+  "words": [
+   {
+    "line_id": 1,
+    "word_id": 1,
+    "text": "REAL",
+    "x": 0.1,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 2,
+    "text": "WIDGET",
+    "x": 0.30000000000000004,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 1,
+    "word_id": 3,
+    "text": "3.00",
+    "x": 0.5,
+    "y_mid": 0.3,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 1,
+    "text": "UP",
+    "x": 0.1,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 2,
+    "text": "VITAMIN",
+    "x": 0.30000000000000004,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 3,
+    "text": "C",
+    "x": 0.5,
+    "y_mid": 0.25,
+    "h": 0.02
+   },
+   {
+    "line_id": 2,
+    "word_id": 4,
+    "text": "7.49",
+    "x": 0.7000000000000001,
+    "y_mid": 0.25,
+    "h": 0.02
+   }
+  ],
+  "items_line_ids": [
+   1,
+   2
+  ],
+  "items": [
+   {
+    "name": "UP VITAMIN C",
+    "price": 7.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     2
+    ]
+   },
+   {
+    "name": "REAL WIDGET",
+    "price": 3.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     1
+    ]
+   }
+  ]
+ },
+ {
   "case": "was_price_comparison",
   "words": [
    {
