@@ -62,6 +62,11 @@ class FakeClient:
         ]
         self.words = [_word(1, 2, "47.18")]
         self.word_labels = [_label(1, 2, "GRAND_TOTAL")]
+        # ReceiptLineItem rows are the authoritative source for
+        # summary.item_count (the LINE_TOTAL-label count is only the
+        # fallback). Default to none so these tender tests exercise the
+        # fallback path unchanged.
+        self.line_items = []
 
     def get_receipt(self, image_id, receipt_id):
         if not self.receipt_exists:
@@ -85,6 +90,9 @@ class FakeClient:
 
     def get_receipt_sections_from_receipt(self, image_id, receipt_id):
         return self.sections
+
+    def get_receipt_line_items_from_receipt(self, image_id, receipt_id):
+        return self.line_items
 
     def get_receipt_place(self, image_id, receipt_id):
         raise EntityNotFoundError("no place")
@@ -197,3 +205,38 @@ def test_cash_receipt_classified(monkeypatch):
     assert record.tender_class == "cash"
     assert record.card_network is None
     assert record.card_last4 is None
+
+
+def test_item_count_uses_line_item_rows(monkeypatch):
+    """Reproduces IMG_3404: 5 ReceiptLineItem rows, zero LINE_TOTAL labels.
+
+    The receipt's line items are RECEIPT_LINE_ITEM rows written by the
+    line-item updater's band-block decoder; the current ingest pipeline
+    emits no LINE_TOTAL word labels at all, so the legacy label-count
+    rule reported item_count == 0 for a receipt holding 5 items.
+    """
+    client = FakeClient()
+    client.line_items = [object()] * 5
+    monkeypatch.setattr(summary_processor, "dynamo_client", client)
+
+    result = summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    assert client.upserted[0].item_count == 5
+    assert result["item_count"] == 5
+
+
+def test_item_count_falls_back_to_labels_without_rows(monkeypatch):
+    """Receipts with LINE_TOTAL labels but no extracted rows keep their
+    label-derived count (25 such summaries exist in prod)."""
+    client = FakeClient()
+    client.line_items = []
+    client.word_labels = [
+        _label(2, 1, "LINE_TOTAL"),
+        _label(3, 1, "LINE_TOTAL"),
+    ]
+    client.words = [_word(2, 1, "2.99"), _word(3, 1, "3.49")]
+    monkeypatch.setattr(summary_processor, "dynamo_client", client)
+
+    summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    assert client.upserted[0].item_count == 2

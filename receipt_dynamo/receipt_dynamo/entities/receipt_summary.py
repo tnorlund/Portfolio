@@ -580,6 +580,47 @@ def _apply_printed_total_fallback(
 
 
 # =============================================================================
+# item_count resolution
+# =============================================================================
+
+
+def resolve_item_count(
+    label_item_count: int,
+    line_item_count: int | None,
+) -> int:
+    """Pick the authoritative item count for a receipt summary.
+
+    ``item_count`` has two possible sources and they do not agree:
+
+    * ``ReceiptLineItem`` rows -- the real extracted line items (name,
+      price, line_ids), written by the line-item updater's band-block
+      decoder. This is the authoritative count when rows exist.
+    * VALID ``LINE_TOTAL`` word labels -- the legacy source. Receipts
+      ingested through the current pipeline never receive ``LINE_TOTAL``
+      labels at all, which is why freshly-ingested receipts holding real
+      line items still reported ``item_count == 0``.
+
+    The label count is kept as the fallback rather than dropped: a
+    receipt can carry ``LINE_TOTAL`` labels while the line-item extractor
+    produced no rows (no ITEMS zone, decode declined). Preferring rows
+    only when they exist raises the fresh-ingest receipts to a correct
+    count without regressing those to zero.
+
+    Args:
+        label_item_count: Count of VALID ``LINE_TOTAL`` word labels.
+        line_item_count: Count of ``ReceiptLineItem`` rows, or ``None``
+            when the caller did not look them up (in which case the
+            legacy label count is used unchanged).
+
+    Returns:
+        The item count to store on the summary.
+    """
+    if line_item_count:
+        return line_item_count
+    return label_item_count
+
+
+# =============================================================================
 # ReceiptSummary dataclass
 # =============================================================================
 
@@ -597,7 +638,11 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         merchant_name: Name of the merchant (from ReceiptPlace).
         date: Date of the receipt (parsed from DATE label).
         totals: Grouped monetary totals (grand_total, subtotal, tax, tip).
-        item_count: Number of line items (count of LINE_TOTAL labels).
+        item_count: Number of line items on the receipt. Preferred source
+            is the receipt's extracted ``ReceiptLineItem`` rows; the count
+            of VALID ``LINE_TOTAL`` word labels is the fallback for
+            receipts the line-item extractor has not produced rows for.
+            See :func:`resolve_item_count`.
         tender_class: How the receipt was paid -- ``cash``, ``card`` or
             ``unknown`` (None when tender was never classified).
         card_network: Card network printed on the receipt
@@ -712,6 +757,8 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         place: "ReceiptPlace | None",
         word_labels: list["ReceiptWordLabel"],
         words: list["ReceiptWord"],
+        *,
+        line_item_count: int | None = None,
     ) -> "ReceiptSummary":
         """Compute a summary from receipt data.
 
@@ -720,6 +767,9 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             place: The ReceiptPlace entity (may be None if not matched).
             word_labels: List of ReceiptWordLabel records for this receipt.
             words: List of ReceiptWord records for this receipt.
+            line_item_count: Number of ``ReceiptLineItem`` rows the
+                receipt currently holds. Preferred over the LINE_TOTAL
+                label count when non-zero (see :func:`resolve_item_count`).
 
         Returns:
             A ReceiptSummary with computed fields.
@@ -741,7 +791,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             merchant_name=place.merchant_name if place else None,
             date=date,
             totals=totals,
-            item_count=item_count,
+            item_count=resolve_item_count(item_count, line_item_count),
         )
 
     @classmethod
@@ -759,6 +809,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         ledger: str | None = None,
         bank_amount: float | None = None,
         bank_match_confidence: float | None = None,
+        line_item_count: int | None = None,
     ) -> "ReceiptSummary":
         """Compute a summary from word labels and words directly.
 
@@ -777,6 +828,9 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             ledger: Optional bank ledger (chase/apple/none).
             bank_amount: Optional matched bank transaction amount.
             bank_match_confidence: Optional match confidence in [0, 1].
+            line_item_count: Number of ``ReceiptLineItem`` rows the
+                receipt currently holds. Preferred over the LINE_TOTAL
+                label count when non-zero (see :func:`resolve_item_count`).
 
         Returns:
             A ReceiptSummary with computed fields.
@@ -798,7 +852,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             merchant_name=merchant_name,
             date=date,
             totals=totals,
-            item_count=item_count,
+            item_count=resolve_item_count(item_count, line_item_count),
             tender_class=tender_class,
             card_network=card_network,
             card_last4=card_last4,

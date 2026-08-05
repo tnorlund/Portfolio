@@ -1345,6 +1345,10 @@ class TestMerchantResolverLabeledFields:
             address="123 Main",
             phone=None,
             expected_state=None,
+            # The MERCHANT_NAME-*labeled* text, forwarded so a Places
+            # displayName that turns out to be the site's street address
+            # can be replaced (see prefer_receipt_name_over_address).
+            labeled_merchant_name="Whole Foods",
         )
         chroma_search.assert_not_called()
 
