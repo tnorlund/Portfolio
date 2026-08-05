@@ -39,6 +39,7 @@ from receipt_dynamo.amounts import (
 )
 
 __all__ = [
+    "attach_printed_quantities",
     "derive_block_labels",
     "filter_summary_figure_items",
     "templatize",
@@ -531,6 +532,83 @@ def filter_summary_figure_items(
     return [it for i, it in enumerate(items) if i not in drop]
 
 
+def attach_printed_quantities(
+    items: list[dict],
+    donors_for: dict[int, list[list[dict]]] | None = None,
+) -> list[dict]:
+    """Populate quantity / unit_price where the printed band proves them.
+
+    STRICTLY ADDITIVE. Runs after the decode is finished and writes only
+    ``quantity``, ``unit_price`` and ``qty_word_ids``; names, prices,
+    line_ids, discount flags and the item count are never touched, so the
+    reconciliation this decode feeds cannot move. That is the whole reason
+    it is a separate pass instead of another branch inside ``parse_band``:
+    quantity words participate in ``parse_band``'s price and name
+    selection, and widening the shapes it recognizes there would silently
+    re-decode names and prices across the corpus.
+
+    Three sources, all gated on the same arithmetic (see
+    ``accept_quantity_pair`` -- quantity x unit_price must reproduce the
+    item's own printed price to the cent):
+
+    1. An item that already carries both is left alone.
+    2. An item that carries a quantity but no unit price (every
+       leading-quantity row: "2 BURRITO ... 9.98", "2X ...") gets the unit
+       price its own price implies, when the division is cent-exact. This
+       is the LEAD_QTY path finishing its arithmetic rather than a second
+       mechanism.
+    3. An item that carries neither is offered candidate word pairs from
+       its own band and from ``donors_for`` -- the member and unclaimed
+       neighbour bands around it. The first pair that multiplies out wins.
+       Trader Joe's "6 @ $0.49" reaching OCR as "6" / "8" / "S0.49" is the
+       motivating case: no clean glyph survives, but 6 x 0.49 == 2.94 is
+       unambiguous, and the receipt's own "Items in Transaction: 10"
+       corroborates it (4 single items + 6 lemons).
+
+    ``donors_for`` maps item index -> candidate donor bands (each a list
+    of word dicts). Omitted, only sources 1-3-own-band apply.
+    """
+    from receipt_upload.line_items.geometry import (
+        accept_quantity_pair,
+        implied_unit_price,
+        quantity_candidates,
+    )
+
+    for idx, it in enumerate(items):
+        price = it.get("price")
+        if it.get("quantity") is not None and it.get("unit_price") is not None:
+            continue
+        if it.get("quantity") is not None:
+            unit = implied_unit_price(it["quantity"], price)
+            if unit is not None:
+                it["unit_price"] = unit
+            continue
+        bands = [it.get("band") or []]
+        bands.extend((donors_for or {}).get(idx) or [])
+        for donor in bands:
+            hit = next(
+                (
+                    c
+                    for c in quantity_candidates(list(donor))
+                    if accept_quantity_pair(
+                        c["quantity"], c["unit_price"], price
+                    )
+                ),
+                None,
+            )
+            if hit is None:
+                continue
+            it["quantity"] = hit["quantity"]
+            it["unit_price"] = hit["unit_price"]
+            # Provenance follows the arithmetic: point the quantity span
+            # at the two words that proved it, so word-level QUANTITY /
+            # UNIT_PRICE derivation names the right words even when the
+            # pair came from a neighbouring band.
+            it["qty_word_ids"] = list(hit["qty_word_ids"])
+            break
+    return items
+
+
 def decode_band_blocks(
     ocr_receipt: dict, priors: dict, summary: dict | None = None
 ) -> list[dict]:
@@ -696,13 +774,29 @@ def decode_band_blocks(
         stripped = re.sub(r"\d{4,}", " ", name or "")
         return len(re.findall(r"[A-Za-z]{2,}", stripped)) < 2
 
+    # Bands no item speaks for: not a price band, not a member of any
+    # block. Trader Joe's quantity line reaches OCR as "6 8 S0.49", which
+    # carries no parseable amount and no three-letter word, so it lands in
+    # OUTSIDE and every existing quantity path skips it. Kept per band
+    # index so the quantity pass can offer an item only its own immediate
+    # neighbours.
+    claimed = set(price_idx) | {i for p in price_idx for i in blocks[p]}
+    unclaimed = [i for i in range(len(bands)) if i not in claimed]
+
     items = []
+    donors_for: dict[int, list[list[dict]]] = {}
     # Emission order matches the banded implementation (ascending y --
     # bottom of the receipt first): item order is a pinned guarantee.
     for p in reversed(price_idx):
         parsed = parsed_cache.get(p) or parse_band(list(bands[p]["words"]))
         if parsed is None or parsed.get("price") is None:
             continue
+        donors_for[len(items)] = [
+            bands[i]["words"]
+            for i in sorted(
+                set(blocks[p]) | {u for u in unclaimed if abs(u - p) == 1}
+            )
+        ]
         if parsed.get("quantity") is None:
             for i in blocks[p]:
                 mp = parse_band(list(bands[i]["words"]))
@@ -753,6 +847,10 @@ def decode_band_blocks(
             else set(bands[p]["line_ids"])
         )
         items.append(parsed)
+    # Quantity attachment runs before the summary-figure filter purely so
+    # donor indices line up with `items`; the filter reads only price,
+    # name and is_discount, so which items it drops cannot depend on it.
+    attach_printed_quantities(items, donors_for)
     return filter_summary_figure_items(items, summary)
 
 

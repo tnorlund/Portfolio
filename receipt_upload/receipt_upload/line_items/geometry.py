@@ -210,8 +210,40 @@ NON_PRODUCT_NOTE_RE = re.compile(
     r"|\bITEMS?\s+IN\s+TRANSACTION\b",
     re.IGNORECASE,
 )
-# Standalone leading quantity: "2 BURRITO ..." only when integer < 100
+# Standalone leading quantity: "2 BURRITO ..." only when integer < 100.
+# parse_band applies this shape inline (word-level, so it can record which
+# word the quantity came from); the compiled pattern is kept exported
+# because the Swift port mirrors the module's regex surface.
 LEAD_QTY_RE = re.compile(r"^(\d{1,2})\s+(?=[A-Za-z])")
+# --- OCR-tolerant quantity expression -------------------------------------
+# The regexes above require clean glyphs: a literal "@" (or the single "g"
+# misread QTY_AT_OCR_RE covers) and a literal "$". Vision does much worse
+# than that on the small type receipts print quantity lines in -- Trader
+# Joe's "6 @ $0.49" came back as the three words "6", "8", "S0.49", so the
+# whole band parsed to None and 6 lemons at 0.49 were lost even though
+# 6 x 0.49 == the item's printed 2.94 exactly.
+#
+# These two patterns are deliberately LOOSE. They never decide anything on
+# their own: every pair they propose is accepted only when
+# quantity x unit_price equals the item's own price to the cent
+# (``quantity_candidates`` -> ``accept_quantity_pair``). The arithmetic is
+# the arbiter, so the parser can afford to be generous with glyphs.
+#
+# Money token with an OCR-mangled currency sign: "$" read as "S"/"s"/"5",
+# or simply absent. Two or three decimals (fuel/unit prices print three).
+NOISY_MONEY_RE = re.compile(r"^[Ss5$]?(\d{1,4}(?:,\d{3})*\.\d{2,3})$")
+# A lone token sitting between quantity and unit price that is the "@"
+# glyph, however OCR read it ("8", "g", "a", "e", "0"/"O", "&", "©"), or a
+# unit word an "N EA @ X" layout prints there. "FOR" is excluded on
+# purpose: "4 FOR 1.00" is a deal price, not a unit price, and QTY_FOR_RE
+# already carries its different arithmetic.
+QTY_SEPARATOR_RE = re.compile(
+    r"^(?:[@8gGaAeE0oO&©®*x×X]|EA|EACH|LB|KG|OZ|CT|PK|QTY)$",
+    re.IGNORECASE,
+)
+# Cent-exact tolerance for accepting a quantity pair. Both sides are
+# printed money, so this is float-representation slack, not a band.
+QTY_CENT_TOLERANCE = 0.005
 TAX_FLAG_RE = re.compile(r"\s+[TFNOAB]X?$")
 DISCOUNT_WORDS = ("SAVED", "SAVING", "OFF", "COUPON", "DISCOUNT", "PROMO")
 # Discount markers, matched as WORDS. The tuple above was tested with a
@@ -493,6 +525,112 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
         ],
         "n_amounts": len(amounts),
     }
+
+
+def quantity_candidates(band: list[dict]) -> list[dict[str, Any]]:
+    """Every (quantity, unit_price) pair the band's glyphs could support.
+
+    Tolerant on purpose -- this is the PARSING half of the contract, and
+    it proposes rather than decides. A candidate is a whole-integer count
+    token (2..99) standing immediately before a money token, optionally
+    with one separator token between them ("@" however OCR read it, or a
+    unit word). Nothing here is believed until ``accept_quantity_pair``
+    checks the arithmetic against the item's own printed price.
+
+    Returned dicts carry the two word references the pair came from, so a
+    caller can point QUANTITY / UNIT_PRICE word labels at the exact words
+    (the same provenance ``parse_band`` records in ``qty_word_ids``).
+
+    Quantity 1 is excluded: it multiplies out trivially against any price
+    and would "prove" itself on every single-unit row, which is precisely
+    the coincidence the arithmetic gate exists to reject.
+    """
+    out: list[dict[str, Any]] = []
+    n = len(band)
+    for i, w in enumerate(band):
+        if not re.fullmatch(r"\d{1,2}", w["text"] or ""):
+            continue
+        count = int(w["text"])
+        if count < 2:
+            continue
+        # money token adjacent, or one separator glyph away
+        for j in (i + 1, i + 2):
+            if j >= n:
+                break
+            if j == i + 2 and not QTY_SEPARATOR_RE.match(band[i + 1]["text"]):
+                break
+            m = NOISY_MONEY_RE.match(band[j]["text"] or "")
+            if not m:
+                continue
+            try:
+                unit = float(m.group(1).replace(",", ""))
+            except ValueError:
+                continue
+            if unit <= 0:
+                continue
+            out.append(
+                {
+                    "quantity": float(count),
+                    "unit_price": unit,
+                    "qty_word_ids": [
+                        {
+                            "line_id": band[k]["line_id"],
+                            "word_id": band[k]["word_id"],
+                        }
+                        for k in (i, j)
+                    ],
+                }
+            )
+            break
+    return out
+
+
+def accept_quantity_pair(
+    quantity: Optional[float], unit_price: Optional[float], price: Any
+) -> bool:
+    """Whether quantity x unit_price reproduces ``price`` to the cent.
+
+    The ACCEPTANCE half of the contract, and the only thing that ever lets
+    a quantity onto an item. Deliberately cent-exact rather than the 0.02
+    band the META-absorption paths use: those paths also require a
+    structural relationship (an adjacent unnamed price band), where this
+    one is asked to believe glyphs that OCR already mangled once.
+    """
+    if quantity is None or unit_price is None:
+        return False
+    if not isinstance(price, (int, float)) or price <= 0:
+        return False
+    return abs(quantity * unit_price - price) <= QTY_CENT_TOLERANCE
+
+
+def implied_unit_price(quantity: Any, price: Any) -> Optional[float]:
+    """The unit price a known quantity implies, when it divides exactly.
+
+    The leading-quantity forms ("2 BURRITO 9.98", "2X ...") record a count
+    and nothing else, so half of every such row's arithmetic went unstored
+    even though the receipt proves it. Returns None unless the division
+    lands on a whole cent that multiplies back to the printed price.
+
+    Two populations are refused on purpose:
+
+    * quantity 1 (every restaurant "1 Cheese Fry 4.75" row, 218 of the
+      233 dev items that carry a count but no unit price). Its unit price
+      would equal the extended price by definition, and the word carrying
+      it is the one already labelled LINE_TOTAL -- storing it would put
+      two contradictory financial roles on one word for no information.
+    * counts that are really name content ("12 Naked Wings" at 18.49,
+      "3 CHEESE SPINACH & ARTIC" at 3.79). Neither divides into whole
+      cents, so the arithmetic rejects them without needing to know they
+      are false quantities -- which is the entire point of the gate.
+    """
+    if not isinstance(quantity, (int, float)) or quantity < 2:
+        return None
+    if not isinstance(price, (int, float)) or price <= 0:
+        return None
+    unit = round(price / quantity, 2)
+    if unit <= 0 or not accept_quantity_pair(quantity, unit, price):
+        return None
+    return unit
 
 
 # Tokens that don't count as product-name content (units, tax flags, SKU-ish)
@@ -1299,24 +1437,30 @@ __all__ = [
     "DISCOUNT_WORDS",
     "DISCOUNT_WORD_RE",
     "LEAD_QTY_RE",
+    "NOISY_MONEY_RE",
     "NON_ITEM_SECTIONS",
     "PRICE_RE",
     "PROVEN_CENT_TOLERANCE",
     "QTY_AT_RE",
+    "QTY_CENT_TOLERANCE",
     "QTY_MULT_RE",
+    "QTY_SEPARATOR_RE",
     "ReconcileResult",
     "SKU_LIKE_RE",
     "TAX_FLAG_RE",
     "UNIT_WORDS",
+    "accept_quantity_pair",
     "band_words",
     "estimate_skew",
     "evaluate_items_zone",
     "extract_items",
+    "implied_unit_price",
     "is_proven",
     "is_settlement_row",
     "items_boundary_extension_guard",
     "parse_band",
     "propose_items_boundary_extension",
+    "quantity_candidates",
     "reconcile",
     "reconcile_detailed",
 ]

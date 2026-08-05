@@ -91,6 +91,33 @@ def test_swift_parity_expectations_match_the_live_python_decoder() -> None:
     )
 
 
+def test_swift_structure_expectations_match_the_live_python_decoder() -> None:
+    """Same gate, for the end-to-end structure fixture.
+
+    ``receipt_structure_parity_expected.json`` carries decoded ITEMS (with
+    quantity and unit price) alongside the rows and sections, so a decoder
+    change rots it exactly as fast as the line-item fixture -- but it was
+    not covered here, and ``swift-ci.yml`` does not run on
+    ``receipt_upload`` changes. The gap was found the expensive way: a
+    decoder change passed this file's own anti-drift test and every
+    receipt_upload test, then failed
+    ``ReceiptStructurePipelineTests.goldenEndToEndParityAcrossTheWholeGoldenSet``
+    in CI on three receipts. Regenerate with
+    ``python receipt_ocr_swift/Scripts/generate_receipt_structure_parity.py``.
+    """
+    import generate_receipt_structure_parity as structure
+
+    committed = structure.DEFAULT_OUTPUT.read_text(encoding="utf-8")
+    regenerated = structure.generate()
+    assert committed == regenerated, (
+        "Swift structure parity expectations are STALE against the current "
+        f"Python decoder: {len(committed)} bytes committed vs "
+        f"{len(regenerated)} bytes regenerated. Regenerate with "
+        "`python receipt_ocr_swift/Scripts/"
+        "generate_receipt_structure_parity.py` and update the Swift port."
+    )
+
+
 def test_swift_golden_ocr_copy_is_byte_identical() -> None:
     """The Swift package's copy of the golden OCR words is not a fork."""
     generator = _generator()
