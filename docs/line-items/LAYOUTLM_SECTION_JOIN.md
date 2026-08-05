@@ -816,6 +816,231 @@ inference ever *fails* silently (`VisionOCREngine` catches the error and
 bundle each physical runner currently has cached (§2.4) — that requires
 inspecting the Macs, not S3 or DynamoDB.
 
+---
+
+## Appendix C — primary evidence from the parallel pass
+
+The measurements §2.1a, §2.4 and the four-cohort table were reproduced from a
+summary. This appendix records them at full fidelity so they are reproducible,
+states one place where the two passes disagree, and closes the two questions
+left open above.
+
+### C.1 The `ocr_results` objects — exact method
+
+The Mac worker uploads its complete OCR JSON to
+`s3://<raw-bucket>/ocr_results/<image-basename>-<job_id>.json`
+(`OCRWorker.swift`, `let resultKey = "ocr_results/\(resultURL.lastPathComponent)"`).
+`ReceiptOutput`'s `CodingKeys` (`Models/ReceiptDetection.swift:219`) serialises
+`layoutlm_predictions` into it — per receipt, per line, with `tokens`, `labels`
+and `confidences`. That array is the model's output **before**
+`fromLinePredictions` applies the B-/I- strip, the `O` drop and the `coreLabels`
+filter. It is the only place raw predictions are retained.
+
+Buckets: `raw-image-bucket-0facc78` (**prod**), `raw-image-bucket-c779c32`
+(**dev**). The six objects read for this study, all from the 2026-08-04 ingest:
+
+```
+prod  ocr_results/IMG_3404-721b0a24-f8df-4153-a132-d7a562fb90fb.json
+prod  ocr_results/IMG_3411-6d83a877-21a9-48e4-bed4-63dbe91bdd35.json
+prod  ocr_results/IMG_3420-2deb7296-2f16-43fe-84f1-975af136c7e3.json
+dev   ocr_results/IMG_3404-55dd0ec2-0aab-4e7a-9fd3-512d380be2b1.json
+dev   ocr_results/IMG_3411-6268c8cb-8eb0-446d-97ba-f13dbdae0b61.json
+dev   ocr_results/IMG_3420-28d91d9d-2783-4b38-b008-d617014c5c68.json
+```
+
+### C.2 The full prediction histograms
+
+Raw `labels` counts across all prediction lines, before any filtering:
+
+```
+IMG_3404   51 lines, 113 words, 51 prediction lines
+  O 76 · I-ADDRESS 8 · B-AMOUNT 8 · B-ADDRESS 3 · I-STORE_HOURS 3
+  B-PAYMENT_METHOD 3 · I-PAYMENT_METHOD 3 · B-MERCHANT_NAME 2
+  I-MERCHANT_NAME 2 · B-STORE_HOURS 1 · B-DATE 1 · I-DATE 1
+  B-TIME 1 · B-WEBSITE 1
+
+IMG_3411   34 lines, 91 words, 34 prediction lines
+  O 72 · I-ADDRESS 7 · B-AMOUNT 4 · B-PAYMENT_METHOD 3 · B-ADDRESS 1
+  I-PAYMENT_METHOD 1 · B-DATE 1 · B-TIME 1 · B-WEBSITE 1
+
+IMG_3420   53 lines, 113 words, 53 prediction lines
+  O 81 · B-AMOUNT 9 · I-ADDRESS 7 · I-STORE_HOURS 4 · B-PAYMENT_METHOD 3
+  B-ADDRESS 2 · B-MERCHANT_NAME 1 · I-MERCHANT_NAME 1 · B-STORE_HOURS 1
+  I-PAYMENT_METHOD 1 · B-DATE 1 · B-TIME 1 · B-WEBSITE 1
+```
+
+| receipt | words | non-`O` predictions | dropped by `coreLabels` | written |
+|---|---:|---:|---:|---:|
+| IMG_3404 | 113 | 37 | 19 (ADDRESS 11, AMOUNT 8) | **18** |
+| IMG_3411 | 91 | 19 | 12 (ADDRESS 8, AMOUNT 4) | **7** |
+| IMG_3420 | 113 | 32 | 18 (ADDRESS 9, AMOUNT 9) | **14** |
+| **total** | 317 | **88** | **49 — 55.7%** | **39** |
+
+The identity check (§1.3): the surviving set was compared against the
+`RECEIPT_WORD_LABEL` rows on the full key `(line_id, word_id, label)`.
+
+| | kept | landed prod / dev | exact key overlap |
+|---|---:|---|---:|
+| IMG_3404 | 18 | 18 / 18 | **18 / 18** |
+| IMG_3411 | 7 | 7 / 7 | **7 / 7** |
+| IMG_3420 | 14 | 14 / 14 | **14 / 14** |
+
+Set difference is empty in both directions. `timestamp_added` on every landed
+row is `2026-08-05T02:50:32Z`, the second the worker uploaded the OCR object
+(`2026-08-04 19:50:33 PDT`), so the rows were **created by the worker** and the
+validator overwrote `label_proposed_by` and `validation_status` in place without
+touching `timestamp_added`. The only non-LayoutLM rows on those receipts are
+dev's 59 `decoder_reconciled` rows, added at `04:36:19Z` by the #1372 backfill.
+
+Note what the two dropped classes are: `AMOUNT` and `ADDRESS` are exactly the
+`allowed_labels` the active model was *trained* to emit
+(`allowed_labels = MERCHANT_NAME,DATE,TIME,AMOUNT,ADDRESS,WEBSITE,STORE_HOURS,PAYMENT_METHOD`).
+The training configuration and the write path disagree about the vocabulary, and
+nothing in either codebase compares them.
+
+### C.3 Cohort A — the two passes disagree on the denominator
+
+This pass defines cohort A as receipts whose `min(timestamp_added)` falls in
+**2026-06-01 … 2026-06-16** → **45 prod receipts, 1,117 LayoutLM-origin rows**
+(ADDRESS 343, AMOUNT 337, PAYMENT_METHOD 172, MERCHANT_NAME 78, TIME 74,
+DATE 62, WEBSITE 28, STORE_HOURS 23; 597 VALID / 520 INVALID), yielding 85
+product-class and 179 totals-class CORE labels via `llm_corrected:AMOUNT`.
+
+The parallel pass cut at `>= 2026-05` and reports 133 receipts with 771/585 raw
+ADDRESS/AMOUNT rows. **Two definitions differ, not one:** the date floor
+(2026-06-01 here, 2026-05-01 there) and the LayoutLM-origin predicate — §2.1a
+counts `llm_corrected:*` as LayoutLM-origin, this pass counts only
+`llm_valid`/`llm_needs_review`/`llm_invalid` and reports the `llm_corrected:*`
+rows separately as the *disambiguation* output, since they are rows the
+validator **created** rather than rows it re-stamped. **Both are correct for
+their own definitions; neither is the "right" one.** The June-only cut is the
+tighter control because it sits entirely
+after the last product-capable-model change and entirely before #958, so nothing
+but the filter differs between it and cohort D. The May-inclusive cut has more
+receipts but spans a bundle change. Stated here rather than reconciled, because
+the choice of floor is a judgement and the argument does not depend on it: both
+windows show the same thing — the 8-class model's `AMOUNT` output reaching CORE
+labels through disambiguation, and cohort D showing zero of it.
+
+Cohorts B, C and D agreed between the two passes to within one label.
+
+### C.4 The 9-class transitional bundle — the open item
+
+Exact UTC upload times (`head_object`), which the date-only table above rounds:
+
+```
+2026-06-15T18:34:06Z   pre902-backup-20260615.zip    8 classes
+2026-06-17T18:39:44Z   pre-v18-backup.zip            8 classes
+2026-06-18T03:21:46Z   pre-v21-backup.zip            9 classes
+2026-07-14T14:03:57Z   pre-v30-backup.zip           20 classes
+2026-07-30T16:14:56Z   pre-v31-backup.zip           22 classes
+2026-07-30T16:29:40Z   layoutlm-coreml-bundle.zip    8 classes   ← live
+```
+
+Each `pre-vN` archive preserves what `vN` replaced, so the **9-class bundle was
+live from 2026-06-17T18:39Z to 2026-06-18T03:21Z — 8 hours 42 minutes.** Its
+vocabulary differs from its 8-class predecessor in exactly one respect:
+
+```
+8-class:  ADDRESS,      AMOUNT, DATE, MERCHANT_NAME, PAYMENT_METHOD, STORE_HOURS, TIME, WEBSITE
+9-class:  ADDRESS_LINE, AMOUNT, DATE, MERCHANT_NAME, PAYMENT_METHOD, PHONE_NUMBER, STORE_HOURS, TIME, WEBSITE
+                ▲                                                    ▲
+                └── split into two names that ARE in CORE_LABELS ────┘
+```
+
+#958 merged **2026-06-16T23:58Z**. Nineteen hours later the deployed bundle
+stopped emitting `ADDRESS` and started emitting `ADDRESS_LINE` + `PHONE_NUMBER`
+— both `CORE_LABELS` members, both of which survive the new filter. `AMOUNT` was
+left merged, and therefore still dropped.
+
+**Reading, offered as inference and labelled as such:** this looks like a
+deliberate half-adaptation to #958 — the `ADDRESS` half of the filter breakage
+was fixed by changing the model, the `AMOUNT` half was not. It was superseded
+within nine hours by the 20-class line (v21…v29), which unmerges `AMOUNT` into
+`SUBTOTAL`/`TAX`/`GRAND_TOTAL`/`LINE_TOTAL` and so fixes the other half by the
+same route. That whole adaptation is what `v31` undid on 2026-07-30 by
+re-merging both. Not measured: any commit, PR or job note stating that intent —
+the training jobs for v18–v20 are not in the last 40 SageMaker runs, so the
+inference rests on the vocabulary change and its timing alone.
+
+### C.5 Settling §4.2 — the ITEMS over-reach is legacy, and now cohort-attributed
+
+§4.2 argues the header/footer labels sitting inside ITEMS are mostly legacy
+label noise rather than section boundary errors, and asks whether some might
+instead be recent LayoutLM output from cohorts B/C. **Measured: they are not.**
+
+Taking every prod header/footer-class label whose `line_id` falls inside its
+receipt's ITEMS section (a wider population than §4.2's derived-label
+collisions — 794 labels over the 730 receipts with an ITEMS section):
+
+| ingest cohort | labels inside ITEMS | receipts affected | LayoutLM-origin share |
+|---|---:|---|---:|
+| A — ≤ 2026-06-16 | **742 (93.5%)** | 233 / 711 | 25/742 = **3%** |
+| B — 06-17…07-13 | 14 | 10 / 58 | 10/14 = 71% |
+| C — 07-14…07-29 | 36 | 5 / 52 | 3/36 = 8% |
+| D — ≥ 2026-07-30 | 2 | 1 / 3 | 2/2 = 100% |
+
+Producer breakdown of the 742 cohort-A labels: `label-evaluator-llm` 297,
+`simple_receipt_analyzer` 235, `regional_reocr_revalidation` 63,
+`claude-header-cleanup` 59 — the legacy analyzer stack, not the model. Across
+all four cohorts only **40 of 794 (5.0%)** are LayoutLM-origin, and **582 of 794
+(73%) are already `INVALID`**: the corpus has itself rejected most of them.
+
+The per-receipt rate also falls monotonically with cohort — 33% of cohort-A
+receipts carry at least one, 17% of B, 10% of C. §4.2's conclusion holds and is
+strengthened: this is label triage, not section triage, and the labels it finds
+are overwhelmingly pre-#958 analyzer output. The alternative reading is
+measurable and small.
+
+### C.6 Why `geometry_line_items` tracks the cohorts — the exact mechanism
+
+§2.1a notes the deterministic proposer's counts (0 / 31 / 54 / 0) are
+"consistent with the product labels providing the anchors it needs". The
+mechanism is stricter than consistency — it is a hard early return.
+`propose_line_item_labels` (`line_items/reconstructor.py:403`) bounds the
+line-item band between a header anchor and a totals anchor, where
+
+```python
+_TOTALS = {"SUBTOTAL", "TAX", "GRAND_TOTAL"}     # :31
+...
+totals = [cy(w) for w in placed if raw(w) & _TOTALS]
+if not totals:
+    return []                                     # :453
+```
+
+`AMOUNT` is not in that set and never reaches DynamoDB anyway, so a receipt
+labelled by an AMOUNT-merged model has **no** totals anchor and the function
+returns empty before doing any geometry. `propose_product_names` then has no
+product rows to seed its kNN from, and also yields nothing (`semantic_product_name`:
+**0 rows in prod, 0 in dev**).
+
+So the blast radius of the `coreLabels` filter is not one write — it is the
+whole deterministic proposal chain downstream of it. Cohorts A and D (0
+proposals) versus B and C (31, 54) are that early return firing and not firing.
+This matters for §5 Step 1's decision point: restoring `AMOUNT` alone does
+**not** restore the proposer, because the disambiguation to
+`SUBTOTAL`/`TAX`/`GRAND_TOTAL` happens in the LLM validator, which runs *after*
+`propose_line_item_labels` in `embedding_processor.py`. Either the proposer must
+move after validation, or the model must emit unmerged totals (Step 1b).
+
+### C.7 One addition to §5 — make the model attributable
+
+Every cohort in §2.1a had to be reconstructed by *inferring* which bundle was
+live from the label vocabulary plus S3 object timestamps. That inference works
+today only because one Mac does the ingesting. Given §2.4 — the cache never
+invalidates and is not keyed by env — two runners with different caches would
+make the corpus unattributable, silently, with no way to reconstruct it after
+the fact.
+
+**Cheap fix, no schema change:** write the bundle's S3 ETag (or `num_labels` +
+the `label_map.json` hash) into the OCR result JSON the worker already uploads.
+It is one field in an object that is already written on every receipt, it needs
+no DynamoDB migration, and it turns every future cohort analysis from an
+inference into a lookup. Worth doing *before* Step 1b redeploys a bundle, so the
+redeploy's effect is attributable by construction rather than by argument.
+
+---
+
 ## Contributors
 
 The bundle version history (§2.1a), the four-cohort experiment, the
@@ -824,3 +1049,12 @@ were measured independently by the parallel study `join-study-2` and are
 reproduced here after independent re-verification. They corrected two
 conclusions of the first draft: that the 8-class model was a settled design
 decision, and that pre-filter predictions were unrecoverable.
+
+**Appendix C** is that study's primary evidence, written by it: the full
+prediction histograms and the prediction↔row identity check (C.1–C.2), its own
+cohort-A definition and the one place the two passes disagree (C.3), the
+9-class transitional bundle that closes §2.1a's open step (C.4), the cohort
+split that settles §4.2's open question (C.5), the exact mechanism behind
+§2.1a's `geometry_line_items` counts (C.6), and one addition to §5 (C.7).
+Sections 0–8 are the first study's; neither pass edited the other's
+conclusions, and where they differ, both numbers are printed.
