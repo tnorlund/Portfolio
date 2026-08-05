@@ -51,6 +51,12 @@ for _pkg in ("receipt_dynamo", "receipt_upload"):
     if _p.is_dir():
         sys.path.insert(0, str(_p))
 
+# isort: off
+# These imports must follow the sys.path bootstrap above, and the repo has
+# no root isort config: whether receipt_dynamo and receipt_upload are one
+# import block or two depends on which package's pyproject the linter
+# happens to resolve, and the two CI lint jobs disagree. Fenced so neither
+# can reorder them.
 from receipt_dynamo.data.dynamo_client import DynamoClient  # noqa: E402
 from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
     EntityAlreadyExistsError,
@@ -59,12 +65,13 @@ from receipt_dynamo.entities.receipt_word import ReceiptWord  # noqa: E402
 from receipt_dynamo.entities.receipt_word_label import (  # noqa: E402
     ReceiptWordLabel,
 )
-
 from receipt_upload.line_items.labels import (  # noqa: E402
     DECODER_PROPOSED_BY,
     GATE_OK,
     derive_labels,
 )
+
+# isort: on
 
 DEV_TABLE = "ReceiptsTable-dc5be22"
 PROD_MARKER = "d7ff76a"
