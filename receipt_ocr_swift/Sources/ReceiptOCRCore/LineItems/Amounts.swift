@@ -81,6 +81,15 @@ final class Rx {
 
     func hasMatch(_ s: String) -> Bool { search(s) != nil }
 
+    /// `re.findall` for patterns without capture groups.
+    func allMatches(_ s: String) -> [String] {
+        let ns = s as NSString
+        let range = NSRange(location: 0, length: ns.length)
+        return re.matches(in: s, options: [], range: range).map {
+            ns.substring(with: $0.range)
+        }
+    }
+
     /// `re.sub(pattern, replacement, s)` (template must not contain `$`).
     func sub(_ s: String, with template: String) -> String {
         let ns = s as NSString

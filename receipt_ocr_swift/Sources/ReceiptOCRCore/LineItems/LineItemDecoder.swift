@@ -138,6 +138,13 @@ enum LineItemRegex {
     static let digits4Plus = Rx("\\d{4,}")
     /// Standalone taxability flag word (fullmatch in parse_band)
     static let taxFlagWord = Rx("[TFNOAB]X?")
+    /// Alpha runs of a de-amounted row (`re.findall(r"[A-Za-z]+", bare)`)
+    static let alphaRun = Rx("[A-Za-z]+")
+    /// A run of masking characters left once digits are stripped
+    /// ("xXXX5061" -> "xXXX"); never a word.
+    static let maskToken = Rx("x+", ci: true)
+    /// Trailing single-letter name token, S excluded (see parse_band).
+    static let trailingFlagLetter = Rx("[A-RT-Za-rt-z]")
     /// Bare "2 3.99" qty + unit price (fullmatch)
     static let bareQtyPrice = Rx("(\\d{1,2})\\s+\\$?(\\d+\\.\\d{2})")
     static let digits12 = Rx("\\d{1,2}")
@@ -148,8 +155,63 @@ enum LineItemRegex {
     static let fragmentRight = Rx("\\d{2}")
 }
 
-/// DISCOUNT_WORDS
+/// DISCOUNT_WORDS (kept for reference; matching goes through
+/// `discountWordRegex`, the port of Python's DISCOUNT_WORD_RE).
 let discountWords = ["SAVED", "SAVING", "OFF", "COUPON", "DISCOUNT", "PROMO"]
+
+/// DISCOUNT_WORD_RE: discount markers matched as WORDS. The substring
+/// scan this replaces read "OFF" inside COFFEE / TOFFEE / Office and
+/// flagged 15 real prod items as discounts -- and discounts are excluded
+/// from reconciliation, so those receipts could never balance. Bare "OFF"
+/// is product vocabulary too ("SALMON FILLET SKIN OFF", "EASY OFF"), so a
+/// genuine markdown has to carry its percent/amount.
+let discountWordRegex = Rx(
+    "\\b(?:SAVED|SAVINGS?|COUPONS?|DISCOUNTS?|PROMO(?:TION)?S?)\\b"
+        + "|[\\d%]\\s*%?\\s*OFF\\b",
+    ci: true
+)
+
+/// TENDER_ANCHOR_TOKENS: a settlement row must carry one of these.
+let tenderAnchorTokens: Set<String> = [
+    "visa", "mastercard", "master", "amex", "discover", "diners", "jcb",
+    "unionpay", "maestro", "interac", "eftpos",
+    "cash", "change", "credit", "debit", "tender", "tendered",
+]
+
+/// PAYMENT_AFFIX_TOKENS: words that may surround an anchor.
+let paymentAffixTokens: Set<String> = [
+    "acct", "account", "aid", "appr", "approved", "auth", "authorization",
+    "batch", "card", "cardholder", "cards", "chip", "contactless", "ending",
+    "emv", "entry", "express", "american", "for", "insert", "inserted",
+    "keyed",
+    "local", "manual", "mid", "mobile", "no", "num", "number", "paid", "pay",
+    "payment", "payments", "pin", "purchase", "read", "ref", "reference",
+    "sale", "seq", "swipe", "swiped", "tap", "tapped", "term", "terminal",
+    "tid", "trans", "transaction", "type", "us", "usd", "verified",
+]
+
+/// Port of `geometry.is_settlement_row`. SETTLEMENT_RE alone only ever
+/// matched a row that is EXACTLY the tender word, so branded forms
+/// ("Visa Debit", "xXXX5061 MASTERCARD", "MasterCard 1394 (Swipe)")
+/// decoded as phantom items on 12 prod receipts. Recognizing them by
+/// CLOSED VOCABULARY is what keeps real food safe: "33965 PORK TENDER"
+/// and "CHICKEN TENDER" carry a tender word plus a word this vocabulary
+/// does not contain, so they stay items.
+public func isSettlementRow(_ bare: String) -> Bool {
+    if LineItemRegex.settlement.match(bare) != nil { return true }
+    let tokens = LineItemRegex.alphaRun.allMatches(bare).map {
+        $0.lowercased()
+    }
+    if tokens.isEmpty { return false }
+    if !tokens.contains(where: { tenderAnchorTokens.contains($0) }) {
+        return false
+    }
+    return tokens.allSatisfy {
+        tenderAnchorTokens.contains($0)
+            || paymentAffixTokens.contains($0)
+            || LineItemRegex.maskToken.fullMatch($0) != nil
+    }
+}
 
 /// UNIT_WORDS: tokens that don't count as product-name content
 let unitWords: Set<String> = [
@@ -408,8 +470,7 @@ func parseBand(_ band: [ZoneWord]) -> ParsedBand? {
 
     let upper = joined.uppercased()
     let isDiscount =
-        (price != nil && price! < 0)
-        || discountWords.contains { upper.contains($0) }
+        (price != nil && price! < 0) || discountWordRegex.hasMatch(upper)
 
     // Name = words not consumed by price/qty, minus flags/currency tokens
     var nameIdxs: [Int] = []
@@ -434,6 +495,19 @@ func parseBand(_ band: [ZoneWord]) -> ParsedBand? {
             qty = Double(first)
             nameIdxs.removeFirst()
         }
+    }
+
+    // Trailing single-letter token: a taxability flag the fixed [TFNOAB]
+    // filter misses, or a truncation glyph OCR read as a letter (Trader
+    // Joe's prints "SALMON FILLET SKIN OFF (" on two identically-named
+    // rows and Vision read the cut-off paren as "C" on one). Bounded by
+    // corpus measurement: at least three preceding name words, and never
+    // "S" (more often a truncated plural than a flag).
+    if nameIdxs.count >= 4,
+        LineItemRegex.trailingFlagLetter.fullMatch(texts[nameIdxs.last!])
+            != nil
+    {
+        nameIdxs.removeLast()
     }
 
     let name = stripChars(
@@ -587,7 +661,7 @@ func decodeBandBlocks(
         // amounts before the settlement test so "CHANGE 0.00" reduces to
         // its vocabulary.
         let bare = pyStrip(LineItemRegex.amountStrip.sub(text, with: " "))
-        if LineItemRegex.settlement.match(bare) != nil
+        if isSettlementRow(bare)
             || LineItemRegex.wasPrice.hasMatch(text)
             || LineItemRegex.salePrice.hasMatch(text)
             || LineItemRegex.nonProductNote.hasMatch(text)

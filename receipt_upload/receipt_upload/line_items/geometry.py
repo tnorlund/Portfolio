@@ -57,6 +57,135 @@ SETTLEMENT_RE = re.compile(
     r"|SUB\W{0,2}T(?:OTA|T)L|TOTAL|(?:SALES\s+)?TAX)\W*$",
     re.IGNORECASE,
 )
+# BRANDED settlement rows. SETTLEMENT_RE above requires the row be ONLY
+# the tender word, so every branded form slips through and decodes as a
+# phantom item: prod carried 12 such receipts ("Visa", "MASTERCARD",
+# "MasterCard 1394 (Swipe)", "Visa ...3931", "xXXX5061 MASTERCARD",
+# "Visa Tendered: Trans *: 9 Batch#:", Trader Joe's "Local Cash",
+# "Payment (Cash):"), and Trader Joe's "Visa Debit $37.51" is what
+# surfaced it.
+#
+# Recognized by CLOSED VOCABULARY rather than by loosening SETTLEMENT_RE's
+# anchors, because that is what keeps real food safe: a settlement row is
+# a row whose every word is payment vocabulary. "33965 PORK TENDER" and
+# "CHICKEN TENDER" carry a tender word but also a word this vocabulary
+# does not contain, so they stay items -- which a prefix/suffix-tolerant
+# regex around TENDER could never guarantee.
+#
+# At least one ANCHOR (card brand or tender word) must be present; the
+# remaining words must all be AFFIXes. Affixes alone are never enough, so
+# "GIFT CARD" and "CARD HOLDER" stay items.
+TENDER_ANCHOR_TOKENS = frozenset(
+    {
+        # card brands / networks
+        "visa",
+        "mastercard",
+        "master",  # "MASTER CARD" printed as two words
+        "amex",
+        "discover",
+        "diners",
+        "jcb",
+        "unionpay",
+        "maestro",
+        "interac",
+        "eftpos",
+        # tender vocabulary (mirrors SETTLEMENT_RE's settlement words)
+        "cash",
+        "change",
+        "credit",
+        "debit",
+        "tender",
+        "tendered",
+    }
+)
+# Words that may surround an anchor: card-entry modes, transaction-id
+# labels, and the payment-process nouns receipts print beside a tender.
+# Deliberately excludes anything that reads as a product word.
+PAYMENT_AFFIX_TOKENS = frozenset(
+    {
+        "acct",
+        "account",
+        "aid",
+        "appr",
+        "approved",
+        "auth",
+        "authorization",
+        "batch",
+        "card",
+        "cardholder",
+        "cards",
+        "chip",
+        "contactless",
+        "ending",
+        "emv",
+        "entry",
+        "express",  # "AMERICAN EXPRESS"
+        "american",
+        "for",  # "MASTERCARD ...8644 for 32.30"
+        "insert",
+        "inserted",
+        "keyed",
+        "local",  # Trader Joe's prints its cash tender as "Local Cash"
+        "manual",
+        "mid",
+        "mobile",
+        "no",
+        "num",
+        "number",
+        "paid",
+        "pay",
+        "payment",
+        "payments",
+        "pin",
+        "purchase",
+        "read",
+        "ref",
+        "reference",
+        "sale",
+        "seq",
+        "swipe",
+        "swiped",
+        "tap",
+        "tapped",
+        "term",
+        "terminal",
+        "tid",
+        "trans",
+        "transaction",
+        "type",
+        "us",
+        "usd",
+        "verified",
+    }
+)
+# A run of masking characters left behind once digits are stripped
+# ("xXXX5061" -> "xXXX", "****1454" -> ""); never a word.
+_MASK_TOKEN_RE = re.compile(r"^x+$", re.IGNORECASE)
+
+
+def is_settlement_row(bare: str) -> bool:
+    """Whether de-amounted row text reads as a settlement/tender row.
+
+    ``bare`` is the row text with amounts already stripped (the same
+    ``re.sub(r"\\$?\\d[\\d.,]*", " ", text)`` both call sites apply), so
+    "Visa Debit $37.51" arrives as "Visa Debit".
+    """
+    if SETTLEMENT_RE.match(bare):
+        return True
+    tokens = re.findall(r"[A-Za-z]+", bare)
+    if not tokens:
+        return False
+    lowered = [t.lower() for t in tokens]
+    if not any(t in TENDER_ANCHOR_TOKENS for t in lowered):
+        return False
+    return all(
+        t in TENDER_ANCHOR_TOKENS
+        or t in PAYMENT_AFFIX_TOKENS
+        or _MASK_TOKEN_RE.match(t)
+        for t in lowered
+    )
+
+
 # Price-comparison metadata ("SALE 2 @ $1.89, WAS: $3.59 each"): the WAS
 # amount is not a line price and the real item price is on its own band
 WAS_PRICE_RE = re.compile(r"\b(?:WAS|REG)\b[:.]?\s*\$?\d", re.IGNORECASE)
@@ -85,6 +214,23 @@ NON_PRODUCT_NOTE_RE = re.compile(
 LEAD_QTY_RE = re.compile(r"^(\d{1,2})\s+(?=[A-Za-z])")
 TAX_FLAG_RE = re.compile(r"\s+[TFNOAB]X?$")
 DISCOUNT_WORDS = ("SAVED", "SAVING", "OFF", "COUPON", "DISCOUNT", "PROMO")
+# Discount markers, matched as WORDS. The tuple above was tested with a
+# plain substring scan, which read "OFF" inside COFFEE / TOFFEE / Office
+# and flagged 15 real prod items as discounts -- and discounts are
+# excluded from reconciliation, so those receipts could never balance.
+#
+# "OFF" additionally needs a numeric qualifier ("30% OFF", "$2 OFF",
+# "BOGO 50% OFF"): bare "OFF" is product vocabulary, not a discount --
+# Trader Joe's "SALMON FILLET SKIN OFF" and "EASY OFF" oven cleaner are
+# items. Every corpus row that is genuinely a markdown carries the
+# percent/amount, so nothing real is lost.
+# The plural/derived endings the old substring scan matched for free
+# ("MEMBER SAVINGS", "PROMOTION") are kept explicitly.
+DISCOUNT_WORD_RE = re.compile(
+    r"\b(?:SAVED|SAVINGS?|COUPONS?|DISCOUNTS?|PROMO(?:TION)?S?)\b"
+    r"|[\d%]\s*%?\s*OFF\b",
+    re.IGNORECASE,
+)
 # META band looks like SKU/qty metadata (safe to drop as a price echo)
 SKU_LIKE_RE = re.compile(r"\d{4,}")
 NON_ITEM_SECTIONS = {
@@ -263,8 +409,8 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
         consumed.add(price_idx)
 
     upper = joined.upper()
-    is_discount = (price is not None and price < 0) or any(
-        w in upper for w in DISCOUNT_WORDS
+    is_discount = (price is not None and price < 0) or bool(
+        DISCOUNT_WORD_RE.search(upper)
     )
 
     # Name = words not consumed by price/qty, minus flags/currency tokens
@@ -290,6 +436,26 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
         ):
             qty = float(first)
             name_idxs.pop(0)
+
+    # Trailing single-letter token: a taxability flag the fixed [TFNOAB]
+    # filter above misses (Target "M", Arizona "V"), or a truncation
+    # glyph OCR read as a letter -- Trader Joe's prints "SALMON FILLET
+    # SKIN OFF (" on two identically-named rows and Vision read the
+    # cut-off paren as "C" on one of them, so one product decoded under
+    # two different names.
+    #
+    # Two empirical bounds keep real names intact, both measured over the
+    # whole dev+prod corpus (2190 + 2515 stored items):
+    #   * at least three preceding name words -- the only real item that
+    #     ends in a bare letter is "094060194 UP VITAMIN C", which has
+    #     two, so short names keep their letter;
+    #   * never "S" -- it is the one letter that is more often a
+    #     truncated plural than a flag ("ORG KOSHER DILL PICKLE S" is
+    #     hand-labeled WITH it in the golden set).
+    if len(name_idxs) >= 4 and re.fullmatch(
+        r"[A-RT-Za-rt-z]", texts[name_idxs[-1]]
+    ):
+        name_idxs.pop()
 
     name = re.sub(r"\s{2,}", " ", " ".join(texts[i] for i in name_idxs)).strip(
         " @$-"
@@ -897,7 +1063,7 @@ def _is_non_product_row(row_words: list[dict]) -> bool:
         text = " ".join(str(word.get("text") or "") for word in band)
         bare = re.sub(r"\$?\d[\d.,]*", " ", text).strip()
         if (
-            SETTLEMENT_RE.match(bare)
+            is_settlement_row(bare)
             or WAS_PRICE_RE.search(text)
             or SALE_PRICE_RE.search(text)
             or NON_PRODUCT_NOTE_RE.search(text)
@@ -1125,6 +1291,7 @@ def propose_items_boundary_extension(
 
 __all__ = [
     "DISCOUNT_WORDS",
+    "DISCOUNT_WORD_RE",
     "LEAD_QTY_RE",
     "NON_ITEM_SECTIONS",
     "PRICE_RE",
@@ -1140,6 +1307,7 @@ __all__ = [
     "evaluate_items_zone",
     "extract_items",
     "is_proven",
+    "is_settlement_row",
     "items_boundary_extension_guard",
     "parse_band",
     "propose_items_boundary_extension",

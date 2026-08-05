@@ -43,12 +43,26 @@ OTHER_IMAGE_ID = "9e8d7c6b-5a49-4382-a1b0-c9d8e7f6a5b4"
 # Fixture world: a receipt whose arithmetic is fully known.
 #   line 1  APPLES    3.00   (ITEMS)
 #   line 2  BANANAS   2.00   (ITEMS)
-#   line 3  ORANGES   4.00   (unsectioned, price in column — the zone gap)
+#   line 3  COFFEE    4.00   (unsectioned, price in column — the zone gap)
 #   line 4  BALANCE DUE 9.00 (unsectioned — settlement vocabulary)
-#   line 5  OFFCOL    4.00   (unsectioned, price OFF the column)
+#   line 5  SIDECOL  10.00   (unsectioned, price OFF the column)
 #   line 6  MYSTERY   9.00   (unsectioned, amount == printed subtotal)
 #   line 7  TOTAL     9.72   (SUMMARY section — already claimed)
 # summary: subtotal 9.00, tax 0.72, grand_total 9.72
+#
+# Two names are load-bearing and must not be "tidied":
+#   * COFFEE contains "OFF" as a SUBSTRING. It is a product, and the
+#     zone-gap tests below absorb it into an exact match — so if discount
+#     detection ever regresses to a substring scan (it did: "OFF" matched
+#     inside COFFEE / TOFFEE / Office and flagged 15 real prod items as
+#     discounts), COFFEE is dropped from the arithmetic and
+#     test_discovered_extension_passes_the_arithmetic_guard goes red.
+#   * SIDECOL carries NO guard vocabulary at all, so the off-column veto
+#     test can only pass on the price-column gate it claims to test. It
+#     was previously named OFFCOL, which the substring bug classified as
+#     a discount — that silently removed it from every sum and made
+#     test_guard_refuses_a_forced_bad_extension pass for the wrong
+#     reason.
 # ---------------------------------------------------------------------------
 
 
@@ -69,13 +83,13 @@ def _world_words():
         _w(1, 2, "3.00", 0.80, 0.10),
         _w(2, 1, "BANANAS", 0.05, 0.15),
         _w(2, 2, "2.00", 0.80, 0.15),
-        _w(3, 1, "ORANGES", 0.05, 0.20),
+        _w(3, 1, "COFFEE", 0.05, 0.20),
         _w(3, 2, "4.00", 0.80, 0.20),
         _w(4, 1, "BALANCE", 0.05, 0.25),
         _w(4, 2, "DUE", 0.30, 0.25),
         _w(4, 3, "9.00", 0.80, 0.25),
-        _w(5, 1, "OFFCOL", 0.05, 0.30),
-        _w(5, 2, "4.00", 0.40, 0.30),
+        _w(5, 1, "SIDECOL", 0.05, 0.30),
+        _w(5, 2, "10.00", 0.40, 0.30),
         _w(6, 1, "MYSTERY", 0.05, 0.35),
         _w(6, 2, "9.00", 0.80, 0.35),
         _w(7, 1, "TOTAL", 0.05, 0.45),
@@ -168,7 +182,7 @@ def test_discovery_finds_the_zone_gap_line_and_only_it():
     )
     assert [c["lids"] for c in cands] == [[3]]
     assert cands[0]["price"] == 4.00
-    assert "ORANGES" in cands[0]["text"]
+    assert "COFFEE" in cands[0]["text"]
 
 
 def test_discovery_vetoes_settlement_bands():
@@ -179,8 +193,10 @@ def test_discovery_vetoes_settlement_bands():
 
 
 def test_discovery_vetoes_off_column_amounts():
-    # OFFCOL's price sits at x=0.40 vs column 0.80 — outside the
-    # load-bearing |x - col_x| < 0.15 gate.
+    # SIDECOL's price sits at x=0.40 vs column 0.80 — outside the
+    # load-bearing |x - col_x| < 0.15 gate. The name deliberately carries
+    # no settlement/discount vocabulary, so the column gate is the ONLY
+    # thing that can be doing the vetoing here.
     assert abs(0.40 - 0.80) >= PRICE_COLUMN_TOL
     cands = discover_candidates(
         _world_words(), _world_sections(), _SUMMARY, _ROWS, n_items=2
@@ -457,9 +473,17 @@ def test_discovered_extension_passes_the_arithmetic_guard():
 
 def test_guard_refuses_a_forced_bad_extension():
     # Lines the discovery vetoes would ALSO be refused by the guard
-    # (defense in depth): absorbing OFFCOL (4.00) + MYSTERY (9.00)
-    # lifts the item sum to 18.00 vs baseline 9.00 — |delta| grows, so
-    # the extension must be refused.
+    # (defense in depth): absorbing SIDECOL (10.00) + MYSTERY (9.00)
+    # takes the item sum from 5.00 to 24.00 against a 9.00 baseline, so
+    # |delta| grows 4.00 -> 15.00 and the extension must be refused. The
+    # sum stays under 3x the baseline, so this exercises the arithmetic
+    # guard proper rather than the implausibility escape hatch.
+    #
+    # The growth is asserted explicitly: an earlier version of this test
+    # "passed" only because the fixture row was named OFFCOL and the
+    # substring discount bug removed it from the sum entirely, leaving
+    # the delta unchanged. Pinning the numbers makes that failure mode
+    # visible instead of silent.
     pytest.importorskip("receipt_dynamo")
     pytest.importorskip("receipt_upload")
     _install_mcp_stubs()
@@ -470,4 +494,44 @@ def test_guard_refuses_a_forced_bad_extension():
         _load_extend_impl()(client, VALID_IMAGE_ID, 1, [5, 6])
     )
     assert verdict.get("verified") is not True
+    assert verdict["before"]["items_sum"] == 5.00
+    assert verdict["after"]["items_sum"] == 24.00
+    assert verdict["after"]["status"] == "mismatch"
+    assert abs(verdict["after"]["delta"]) > abs(verdict["before"]["delta"])
     assert client.updated_sections == []
+
+
+def test_guard_refuses_absorbing_a_printed_summary_figure():
+    # MYSTERY restates the printed 9.00 subtotal. Absorbing it overshoots
+    # (5.00 -> 14.00) instead of closing the 4.00 gap, so the guard must
+    # refuse it on its own, not only in company with SIDECOL.
+    pytest.importorskip("receipt_dynamo")
+    pytest.importorskip("receipt_upload")
+    _install_mcp_stubs()
+    from scripts.extend_items_zone_gaps import _load_extend_impl
+
+    client = _StubDynamoClient(_entity_sections())
+    verdict = asyncio.run(_load_extend_impl()(client, VALID_IMAGE_ID, 1, [6]))
+    assert verdict.get("verified") is not True
+    assert verdict["after"]["items_sum"] == 14.00
+    assert abs(verdict["after"]["delta"]) > abs(verdict["before"]["delta"])
+    assert client.updated_sections == []
+
+
+def test_off_substring_name_is_a_product_not_a_discount():
+    """Regression pin for the DISCOUNT_WORDS substring bug.
+
+    "OFF" inside COFFEE / TOFFEE / Office made 15 real prod items
+    classify as discounts, which excluded them from reconciliation and
+    left those receipts permanently unbalanceable. The zone-gap fixture's
+    COFFEE row is a product worth 4.00, and absorbing it is what closes
+    this receipt's 4.00 gap exactly.
+    """
+    pytest.importorskip("receipt_upload")
+    from receipt_upload.line_items.geometry import extract_items
+
+    items, _ = extract_items(_world_words(), {1, 2, 3}, summary=_SUMMARY)
+    by_name = {i["name"]: i for i in items}
+    assert "COFFEE" in by_name, by_name
+    assert by_name["COFFEE"]["is_discount"] is False
+    assert round(sum(i["price"] for i in items), 2) == 9.00

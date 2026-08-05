@@ -217,6 +217,49 @@ GUARD_BANDS: list[tuple[str, list[str]]] = [
     ("settlement_total_to_pay", ["Total", "To", "Pay", "9.99"]),
     ("settlement_subttl_ocr_variant", ["SUB-TTL", "42.00"]),
     ("settlement_change_due", ["CHANGE", "DUE", "0.00"]),
+    # BRANDED settlement rows: SETTLEMENT_RE requires the row be ONLY the
+    # tender word, so these 12 prod forms decoded as phantom items until
+    # is_settlement_row's closed vocabulary caught them.
+    ("settlement_visa_debit", ["Visa", "Debit", "$37.51"]),
+    ("settlement_bare_visa", ["Visa", "13.01"]),
+    ("settlement_bare_mastercard", ["MASTERCARD", "32.30"]),
+    (
+        "settlement_mastercard_swipe",
+        ["MasterCard", "1394", "(Swipe)", "20.00"],
+    ),
+    ("settlement_visa_masked", ["Visa", "...3931", "22.52"]),
+    ("settlement_masked_mastercard", ["xXXX5061", "MASTERCARD", "42.14"]),
+    (
+        "settlement_visa_tendered_batch",
+        ["Visa", "Tendered:", "Trans", "*:", "9", "Batch#:", "9.65"],
+    ),
+    ("settlement_local_cash", ["Local", "Cash", "10.44"]),
+    (
+        "settlement_mastercard_for_amount",
+        ["MASTERCARD", "...8644", "for", "32.30"],
+    ),
+    ("settlement_payment_cash", ["Payment", "(Cash):", "$40.00"]),
+    # ... and the real food the vocabulary must NOT reach
+    ("pork_tender_is_a_product", ["33965", "PORK", "TENDER", "19.51"]),
+    ("chicken_tender_is_a_product", ["CHICKEN", "TENDER", "15.00"]),
+    ("gift_card_is_a_product", ["VISA", "GIFT", "CARD", "25.00"]),
+    # DISCOUNT_WORD_RE: "OFF" inside COFFEE / TOFFEE / Office flagged real
+    # items as discounts, which excluded them from reconciliation.
+    ("coffee_is_not_a_discount", ["ORG", "BIRCHWOOD", "COFFEE", "15.99"]),
+    ("toffee_is_not_a_discount", ["TOFFEE", "ICE", "CREAM", "BAR", "6.99"]),
+    (
+        "skin_off_is_not_a_discount",
+        ["SALMON", "FILLET", "SKIN", "OFF", "9.74"],
+    ),
+    ("percent_off_is_a_discount", ["20%", "OFF", "ORG", "PRODU", "-0.31"]),
+    # Trailing single-letter name token (flag or truncation glyph); "S" is
+    # excluded because it is more often a truncated plural.
+    (
+        "trailing_flag_letter_trimmed",
+        ["FRUITLANDS", "GOSE", "6", "PK", "I", "8.99"],
+    ),
+    ("trailing_s_is_kept", ["ORG", "KOSHER", "DILL", "PICKLE", "S", "3.99"]),
+    ("short_name_keeps_its_letter", ["UP", "VITAMIN", "C", "7.49"]),
     # WAS_PRICE_RE (already ported at #1313; pinned so it cannot regress)
     ("was_price_comparison", ["SALE", "2", "@", "$1.89,", "WAS:", "$3.59"]),
 ]

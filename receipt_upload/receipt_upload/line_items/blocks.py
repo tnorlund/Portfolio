@@ -545,8 +545,8 @@ def decode_band_blocks(
     from receipt_upload.line_items.geometry import (
         NON_PRODUCT_NOTE_RE,
         SALE_PRICE_RE,
-        SETTLEMENT_RE,
         WAS_PRICE_RE,
+        is_settlement_row,
         parse_band,
     )
 
@@ -561,7 +561,7 @@ def decode_band_blocks(
         # "CHANGE 0.00" reduces to its vocabulary.
         bare = re.sub(r"\$?\d[\d.,]*", " ", b["text"]).strip()
         if (
-            SETTLEMENT_RE.match(bare)
+            is_settlement_row(bare)
             or WAS_PRICE_RE.search(b["text"])
             or SALE_PRICE_RE.search(b["text"])
             or NON_PRODUCT_NOTE_RE.search(b["text"])
@@ -587,10 +587,7 @@ def decode_band_blocks(
     # an ADJACENT price band when its qty*unit explains that neighbor's
     # price, or when it merely echoes the neighbor's price with SKU/qty
     # signature. Absorbed bands transplant quantity and stop being items.
-    from receipt_upload.line_items.geometry import (
-        SKU_LIKE_RE,
-        _name_is_real,
-    )
+    from receipt_upload.line_items.geometry import SKU_LIKE_RE, _name_is_real
 
     # zone price column (same convention as decode_blocks: right-most
     # amount-word x; "in column" = within 0.15)

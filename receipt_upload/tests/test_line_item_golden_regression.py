@@ -92,6 +92,11 @@ _FLOORS = {
     # because the unseen tare-weight row currently emits a $0.05 item;
     # RAISE to 0.95+ when the tare template lands in the priors.
     "Whole Foods Market": (1.00, 1.00, 0.50),
+    # 2026-08-04 local-capture additions. Regal is a clean single-item
+    # control; Trader Joe's Henderson is the adversarial branded-tender /
+    # no-printed-subtotal case, and it folds into the existing
+    # "TRADER JOE'S" bucket, which stays pinned at 100%.
+    "Regal Green Valley": (1.00, 1.00, 0.95),
 }
 
 
