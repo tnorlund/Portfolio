@@ -165,6 +165,45 @@ def _amount_of(text: str) -> Optional[float]:
     return parse_receipt_amount(text)
 
 
+# An amount whose decoration -- not its digits -- OCR mangled. Vision
+# reads "$" as "S", and receipts print tax flags ("15.59T") that no
+# currency parser expects. The prefix deliberately excludes sign
+# characters, so a negative or accounting-parenthesised amount is never
+# silently read as positive; those forms are well-formed and belong to
+# the strict reading.
+_OCR_DAMAGED_AMOUNT_RE = re.compile(
+    r"^[^\d.,+\-]{0,3}(\d{1,4}[.,]\d{2})[A-Za-z*]?$"
+)
+
+
+def _ocr_damaged_amount_of(text: str) -> Optional[float]:
+    """Parse an amount whose currency glyph or tax flag OCR mangled.
+
+    Deliberately NOT a replacement for :func:`_amount_of`. Where a
+    word's shape is the only evidence that it is money, rejecting
+    "S0.49" for its leading letter is right. This reading is safe only
+    where something else already vouches for the value -- see
+    :func:`_quantity_labels`, whose caller has arithmetic proof.
+    """
+    match = _OCR_DAMAGED_AMOUNT_RE.match((text or "").strip())
+    return parse_receipt_amount(match.group(1)) if match else None
+
+
+def _keys_worth(
+    keys: Sequence[tuple[int, int]],
+    texts: dict[tuple[int, int], str],
+    value: float,
+    parse: Any,
+) -> list[tuple[int, int]]:
+    """Span words whose parsed amount equals ``value`` to the cent."""
+    return [
+        key
+        for key in keys
+        if (amount := parse(texts.get(key, ""))) is not None
+        and abs(amount - value) < _CENT
+    ]
+
+
 def _numeric_of(text: str) -> Optional[float]:
     """Parse a word as a bare number ("2", "2x", "1.31"), or None."""
     match = re.match(r"^\s*(\d+(?:\.\d+)?)", text or "")
@@ -263,6 +302,18 @@ def _quantity_labels(
     the word whose number equals the parsed quantity is QUANTITY. When a
     role has no unambiguous single word, nothing is minted for it -- the
     span is evidence, not a guess.
+
+    Tolerant in parsing, strict in acceptance. The decoder only supplies
+    ``unit_price`` when ``quantity x unit_price`` reproduces the item's
+    printed price to the cent, so by the time a word reaches here the
+    value is arithmetically proven and the word is one the decoder
+    itself pointed at. Refusing to label it because OCR read "$0.49" as
+    "S0.49" would be re-deriving trust from the glyph shape after the
+    arithmetic already settled it. So when no well-formed word in the
+    span carries the value, the span is read again allowing OCR-damaged
+    decoration. Acceptance never widens: the amount must still equal the
+    proven unit price to the cent, and still be the span's only word
+    that does.
     """
     quantity = item.get("quantity")
     unit_price = item.get("unit_price")
@@ -274,16 +325,13 @@ def _quantity_labels(
     if not keys or quantity is None:
         return []
 
-    unit_keys = (
-        [
-            key
-            for key in keys
-            if (amount := _amount_of(texts.get(key, ""))) is not None
-            and abs(amount - unit_price) < _CENT
-        ]
-        if unit_price is not None
-        else []
-    )
+    unit_keys: list[tuple[int, int]] = []
+    if unit_price is not None:
+        unit_keys = _keys_worth(keys, texts, unit_price, _amount_of)
+        if not unit_keys:
+            unit_keys = _keys_worth(
+                keys, texts, unit_price, _ocr_damaged_amount_of
+            )
     qty_keys = [
         key
         for key in keys
