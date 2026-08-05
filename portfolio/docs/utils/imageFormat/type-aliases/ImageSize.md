@@ -8,4 +8,4 @@
 
 > **ImageSize** = `"thumbnail"` \| `"small"` \| `"medium"` \| `"full"`
 
-Defined in: [utils/imageFormat.ts:136](https://github.com/tnorlund/Portfolio/blob/09603af6287a87bd1ae487d7dbe9bba8488bf8d1/portfolio/utils/imageFormat.ts#L136)
+Defined in: [utils/imageFormat.ts:136](https://github.com/tnorlund/Portfolio/blob/5931ef793821d0c008dc677636a41dc0bdaa31b4/portfolio/utils/imageFormat.ts#L136)

@@ -8,4 +8,4 @@
 
 > **ReceiptHealthStatus** = `"pass"` \| `"review"` \| `"fail"` \| `"not_applicable"`
 
-Defined in: [types/api.ts:1005](https://github.com/tnorlund/Portfolio/blob/09603af6287a87bd1ae487d7dbe9bba8488bf8d1/portfolio/types/api.ts#L1005)
+Defined in: [types/api.ts:1005](https://github.com/tnorlund/Portfolio/blob/5931ef793821d0c008dc677636a41dc0bdaa31b4/portfolio/types/api.ts#L1005)
