@@ -5,50 +5,72 @@ live `ReceiptsTable-d7ff76a` (prod) and `ReceiptsTable-dc5be22` (dev) during
 this study; nothing was written. Where a claim could not be measured, it says
 so.
 
+> **Revised 2026-08-05 after owner input.** Earlier drafts read the 2026-07-30
+> narrowing of the LayoutLM label set as an accidental regression and made
+> "restore the previous bundle" their top recommendation. **That was wrong.**
+> The narrowing was deliberate: the wide model's product labels were not good
+> enough for production, and the section → line-items sprint exists because of
+> that. The narrow model is the intended configuration and the deterministic
+> decoder is the intended product labeller. The recommendation has been
+> removed and the framing corrected throughout; §2.2 now rests on the frozen
+> heldout metrics rather than on the val-F1 comparison, which does not support
+> a conclusion in either direction. The cohort analysis, the
+> sections-as-detector finding, the `propose_line_item_labels` correction and
+> the delivery bugs in §7 are unaffected and stand.
+
 ---
 
 ## 0. The short version
 
 The framing question — *when should LayoutLM's product labels be joined with
-sections and the decoder?* — rests on a premise that is false, but not in the
-way it first appears. **The currently deployed LayoutLM model has no product
-classes** — it is an 8-class header/footer model. But that is a **six-day-old
-regression, not a design decision**: a 22-class product-capable model was live
-in production from 2026-07-14 to 2026-07-30 and produced 324 PRODUCT_NAME
-labels on 52 receipts at an 87% VALID rate. It was replaced on 2026-07-30 by
-the 8-class bundle.
+sections and the decoder?* — rests on a false premise. **LayoutLM is not the
+product labeller and is not meant to become one.** The currently deployed model
+is an 8-class header/footer model, and that narrow scope is the **intended
+production configuration**, confirmed by the project owner: the wide model's
+product labels were not good enough to ship, and the section → line-items
+sprint exists *because* of that. There are no LayoutLM product labels to join,
+by design.
 
-So there are **two independent regressions**, six weeks apart, and neither is a
-missing feature:
+The division of labour the system is actually built around:
 
-1. **2026-06-16 (#958) — the `CORE_LABELS` write filter.** The merged classes
-   `AMOUNT` and `ADDRESS` are silently discarded by
-   `fromLinePredictions`. Roughly 800 labels/month stopped landing, and the
-   working LayoutLM → LLM disambiguation join went with them. **~20 lines of
-   Swift.**
-2. **2026-07-30 — the bundle regression.** `coreml/layoutlm-coreml-bundle.zip`
-   went from 22 entity classes (including PRODUCT_NAME, LINE_TOTAL, UNIT_PRICE,
-   QUANTITY) to 8. Product labelling stopped the same day. **Possibly a
-   rollback, not a code change.**
+- **LayoutLM** owns the header/footer fields it does well — `MERCHANT_NAME`,
+  `DATE`, `TIME`, `WEBSITE`, `STORE_HOURS`, `PAYMENT_METHOD`, and the merged
+  `AMOUNT` / `ADDRESS` classes.
+- **The deterministic band-block decoder** owns `PRODUCT_NAME`, `LINE_TOTAL`,
+  `UNIT_PRICE`, `QUANTITY`, `SUBTOTAL`, `TAX`, `GRAND_TOTAL`, `DISCOUNT`. It is
+  the **intended** source of those labels, not a stopgap awaiting a better
+  model.
 
-Three things follow, and they are the whole recommendation:
+The evidence in this document supports that split rather than contradicting it.
+At v30's own best epoch on the frozen heldout set, `PRODUCT_NAME` F1 was
+**0.245** (n=939), `UNIT_PRICE` **0.328** (n=193), `QUANTITY` **0.359**
+(n=141), `LINE_TOTAL` **0.665** (n=407). Those are the numbers behind "not good
+enough for prod", and they are the honest ones — see §2.2 for why the headline
+`0.531 → 0.737` val-F1 jump is *not* evidence of anything in either direction.
 
-1. **Restore what already worked before building anything new.** Fix the filter,
-   and establish whether the 07-30 bundle swap was deliberate. Together these
-   recover a product-labelling capability that was running in production last
-   week.
-2. **The join still runs decoder → LayoutLM, not LayoutLM → decoder.** The
-   decoder's labels are arithmetically proven; the corpus the model trains and
-   is *scored* against is not (UNIT_PRICE 82% INVALID). Feed the decoder's
-   proven labels into training. See §2.2 for why the val-F1 numbers that appear
-   to justify the 8-class model are themselves suspect.
+So the recommendation reduces to three things:
+
+1. **Fix the one genuine bug in the LayoutLM path** — the 2026-06-16 (#958)
+   `CORE_LABELS` write filter, which silently discards `AMOUNT` and `ADDRESS`.
+   Those are two of the eight classes the active model is *trained to emit*, so
+   the model's two highest-support outputs never reach DynamoDB. **~20 lines of
+   Swift.** This is about making the narrow model work as designed; it has
+   nothing to do with product labels.
+2. **The join runs decoder → LayoutLM, not LayoutLM → decoder.** The decoder's
+   labels are arithmetically proven; the corpus the model is scored against is
+   not (`UNIT_PRICE` 82% INVALID). If LayoutLM is ever widened again, the
+   decoder's proven labels — not the existing corpus — are what it should be
+   trained on. That is a future option, not a current recommendation.
 3. **Sections are already a strong scope, and should be used as a *filter*, not
    as a new model input.** 94% of VALID PRODUCT_NAME words fall inside the
-   ITEMS section; 97% of GRAND_TOTAL words fall outside it. Nothing needs to be
-   trained to exploit that.
+   ITEMS section; 97% of GRAND_TOTAL words fall outside it. §C.7 goes further:
+   section position is a *label-quality detector* that needs neither a model nor
+   the decoder.
 
-And one thing to **not** build: a *new* product-labelling architecture. The
-existing one worked six days ago; find out why it was replaced first.
+**Do not restore the 22-class bundle.** An earlier draft of this document
+recommended exactly that, as its cheapest and highest-leverage step. It was
+wrong: the swap was a deliberate product decision, and a single `aws s3 cp`
+would have reverted it. That recommendation has been removed.
 
 ---
 
@@ -160,9 +182,9 @@ Swift filter drops. Not a coincidence — a fingerprint.
 
 ---
 
-## 2. The deployed model, and the two regressions
+## 2. The deployed model, the bug, and the deliberate scope change
 
-### 2.1 The model deployed *right now* has no product classes
+### 2.1 The model deployed *right now* has no product classes — by design
 
 `layoutlm_model_s3_key = coreml/layoutlm-coreml-bundle.zip`. Downloaded and
 unzipped during this study; `label_map.json` reads:
@@ -182,10 +204,18 @@ vocabulary — it deserialises `id2label` from the bundle's `config.json`. The
 which is the *write filter*, not the model's vocabulary. The capability does
 not exist in the shipped model.
 
-### 2.1a …but a 22-class model was live until six days ago
+### 2.1a A wider model was live until 2026-07-30, and was retired on purpose
 
 Credit to the parallel study (`join-study-2`) for finding this; every figure
 below was re-derived independently here before being written down.
+
+**Read this section as history, not as a proposal.** An earlier draft treated
+the 07-30 swap as an accidental regression and recommended restoring the
+previous bundle. The project owner has confirmed it was deliberate — the wide
+model's product labels were not good enough for production, and this sprint is
+the response. The deployment history below is worth keeping because it explains
+what each ingest cohort saw and therefore how to read the corpus; it is not a
+menu of bundles to roll back to.
 
 The `pre-*-backup.zip` chain in `s3://layoutlm-training-dev-68164770/coreml/`
 is the deployment history of `layoutlm-coreml-bundle.zip`. Each backup is the
@@ -199,10 +229,12 @@ bundle that was live *before* the named version replaced it. Reading
 | `pre-v21-backup` | 2026-06-18 | 9 | no |
 | `pre-v30-backup` | 2026-07-14 | **20** | **yes** |
 | `pre-v31-backup` | 2026-07-30 | **22** | **yes** (adds PRODUCT_NAME, LOYALTY_ID) |
-| `layoutlm-coreml-bundle.zip` (**current**) | 2026-07-30 | 8 | **no — regression** |
+| `layoutlm-coreml-bundle.zip` (**current**) | 2026-07-30 | 8 | **no — deliberate** |
 
 So a 20-class model was live ~2026-06-18 → 2026-07-14, a 22-class model
-2026-07-14 → 2026-07-30, and the 8-class model since.
+2026-07-14 → 2026-07-30, and the 8-class model since. The last transition is
+the product decision described above; the earlier ones are the training
+programme working through scopes.
 
 **The four-cohort natural experiment.** Grouping prod receipts by ingest date
 (`min(timestamp_added)`), counting only LayoutLM-origin rows
@@ -215,19 +247,28 @@ So a 20-class model was live ~2026-06-18 → 2026-07-14, a 22-class model
 | **C** 07-14→07-29 | 22-class | 52 | 1,286 | 87% | **PRODUCT_NAME 324**, LINE_TOTAL 88, QUANTITY 25 | 8 / 12 |
 | **D** ≥07-30 | 8-class + filter | 3 | 39 | 87% | **none** | 0 / 0 |
 
-This cleanly separates the two regressions:
+This cleanly separates the **bug** from the **scope decision** — which is the
+whole reason to keep the table:
 
 - **A vs D** run the same 8-class AMOUNT-merged model family with opposite
-  outcomes on the merged classes (771/585 raw rows vs zero). That isolates
-  #958's filter, independent of the model.
-- **B/C vs D** isolates the bundle swap: the product classes disappear the day
-  the 22-class bundle was replaced.
+  outcomes on the merged classes (771/585 raw rows vs zero). The model is held
+  constant, so this isolates **#958's filter — the genuine bug**, and is the
+  evidence for §5 Step 1.
+- **B/C vs D** shows the effect of the **deliberate scope change**: the product
+  classes disappear the day the wide bundle was retired. This is expected
+  behaviour, not a defect. Its practical use is as a **dating tool** — a
+  receipt's label profile tells you which cohort it was ingested in, which
+  matters when reading the corpus (see §C.5, where it settles §4.2).
 
 `geometry_line_items` (the deterministic fallback proposer) tracks the same
-shape — 0 in A, 31 in B, 54 in C, 0 in D — which is consistent with the product
-labels providing the anchors it needs.
+shape — 0 in A, 31 in B, 54 in C, 0 in D. §C.6 shows the exact mechanism, and
+that it is a hard early return rather than a correlation. Note the consequence:
+under the intended narrow-model configuration this proposer **cannot** fire,
+because it needs a `SUBTOTAL`/`TAX`/`GRAND_TOTAL` label that the narrow model
+never emits. That is an argument for the decoder owning those labels, which is
+what this sprint does — not an argument for widening the model.
 
-### 2.2 The 8-class decision looked right, but the evidence behind it is suspect
+### 2.2 Why the narrow scope is right — and which number actually shows it
 
 The active model is `layoutlm-v31-nonproduct-clean-20260729`, tagged
 `active_model: true`, trained with:
@@ -238,50 +279,53 @@ label_merges   = {"AMOUNT": [LINE_TOTAL, SUBTOTAL, TAX, GRAND_TOTAL],
                   "ADDRESS": [ADDRESS_LINE, PHONE_NUMBER]}
 ```
 
-The run history explains why (val F1, best epoch, from `JOB_METRIC` rows):
+**The number that justifies the narrow scope is the frozen heldout set, not the
+headline val F1.** `v30-fullcore` — the widest model ever deployed — recorded a
+`heldout_label_*` series alongside its validation metrics. At its own best
+epoch (29):
 
-| Run | Scope | best val F1 |
-|---|---|---:|
-| `v31-nonproduct-clean` (**active**) | 8 merged non-product classes | **0.737** |
-| `v25-adversarial-core-real` | core, adversarial split | 0.626 |
-| `v30-fullcore-clean-data` | all 22 CORE_LABELS | 0.531 |
-| `v27-control-adv` | full core | 0.495 |
-| `v29-item-window-prodweight` | full core, product-weighted, item windows | 0.477 |
-| `v29-product-only-item-window` | PRODUCT_NAME/QUANTITY/UNIT_PRICE/LINE_TOTAL only | **0.338** |
+| class | heldout F1 | precision | recall | support |
+|---|---:|---:|---:|---:|
+| `LINE_TOTAL` | 0.665 | 0.572 | 0.794 | 407 |
+| `QUANTITY` | 0.359 | 0.349 | 0.369 | 141 |
+| `UNIT_PRICE` | 0.328 | 0.387 | 0.285 | 193 |
+| `PRODUCT_NAME` | **0.245** | 0.265 | 0.228 | **939** |
 
-Per-class F1 at the best epoch of `v30-fullcore` (the honest apples-to-apples
-run, support in parens):
+with `heldout_windowed_product_detail_macro_f1 = 0.399` and
+`heldout_windowed_f1 = 0.564`. A 0.245 F1 on the highest-support class in the
+model, on a frozen set, is a clear and sufficient answer to "is this good enough
+to ship". **That is the evidence behind the scope decision, and it stands
+without qualification.**
 
-```
-header/footer          product/financial
-DATE           0.883 (252)     LINE_TOTAL     0.625 (418)
-TIME           0.817 (259)     QUANTITY       0.363 (154)
-MERCHANT_NAME  0.749 (153)     UNIT_PRICE     0.304 (209)
-PAYMENT_METHOD 0.727 (514)     PRODUCT_NAME   0.254 (939)
-WEBSITE        0.720 (129)     DISCOUNT       0.070 (143)
-STORE_HOURS    0.651  (44)     LOYALTY_ID     0.227  (71)
-```
+**Do not cite the `0.531 → 0.737` val-F1 jump as supporting it.** That
+comparison is not apples-to-apples in either direction:
 
-Dropping the product half raised overall F1 from 0.531 → 0.737, which reads as
-a clear win.
+- `v30` was trained with
+  `val_keys_s3 = s3://…/adversarial_val_keys_v2_20260708.json` — a fixed,
+  adversarial split. **`v31` has no `val_keys_s3` hyperparameter at all**
+  (verified in `describe-training-job`), so it validated against a different,
+  self-selected population with roughly half the per-class support.
+- Both splits are drawn from the corpus whose `UNIT_PRICE` is 82% INVALID and
+  `QUANTITY` 69% INVALID (§3.2). A model penalised for disagreeing with wrong
+  labels scores badly however good it is; dropping those classes removes the
+  penalty without measuring capability.
 
-**It is not, and §3.2 is the reason.** That comparison is scored against a
-validation split drawn from the same corpus whose UNIT_PRICE is 82% INVALID and
-QUANTITY 69% INVALID. A model penalised for disagreeing with wrong labels will
-score badly however good it is; removing those classes removes the penalty
-without proving anything about capability. The 0.531 → 0.737 jump is at least
-partly a measurement artefact — it is the same argument this document makes
-about the *training* corpus in §3.2, applied to the *validation* set, and I
-missed it on the first pass.
+The jump is a measurement artefact of two different splits and tells you nothing
+about which model is better. The frozen-heldout numbers above are the
+trustworthy signal, and they point the same way as the product decision.
 
-The production evidence points the other way: cohort C's 22-class model
-produced 324 PRODUCT_NAME labels at an 87% VALID rate on real ingest. A class
-with 0.254 val-F1 that survives downstream validation 87% of the time is being
-mis-measured by the val split, not failing in the field.
+**One thing genuinely cannot be compared, in either direction.** `v31` recorded
+**zero** `heldout_label_*` metrics — only `heldout_windowed_*` aggregates. So
+there is no per-class frozen-heldout comparison between the narrow and wide
+models, and this document does not attempt one. If a future run wants to revisit
+the scope, recording `heldout_label_*` for the narrow model is the prerequisite.
 
-**This is a measurement problem, not a modelling one, and it must be fixed
-before any retraining decision** — including step 4 below, whose stop-condition
-is stated against exactly this suspect split.
+Cohort C's production numbers (324 `PRODUCT_NAME` labels at 87% VALID) are **not**
+a counter-argument, and an earlier draft was wrong to read them as one. That 87%
+is the acceptance rate of a downstream LLM validator scored against the same
+corrupt corpus — it measures agreement with the existing labelling stack, not
+correctness. It is reported in §2.1a as a description of what each cohort
+contains, which is what makes the cohort table useful for dating receipts.
 
 ### 2.3 The bug: the model's two best classes never land
 
@@ -552,28 +596,19 @@ better argument than their status field.
 Each step states its decision point. Steps are ordered so that each one's
 evidence justifies the next; stop wherever the evidence stops.
 
-### Step 0 — Find out why the bundle went from 22 classes to 8 on 2026-07-30
+**Steps 1–3 are the work. Steps 4–5 are optional future experiments and are not
+part of this sprint.** Step 3 — wiring `derive_labels` into ingest — is the
+sprint's actual deliverable; Steps 1 and 2 are small independent fixes that make
+the rest measurable.
 
-This did not exist in the first draft of this document and it now outranks
-everything else. `layoutlm-coreml-bundle.zip` was a 22-class product-capable
-model until 2026-07-30 09:29 UTC and has been 8-class since (§2.1a). Product
-labelling in prod stopped the same day.
-
-- **Ask first, build nothing.** Was the swap deliberate (v31 exported over the
-  active key), or did an export job overwrite it? `pre-v31-backup.zip` is the
-  22-class bundle and is intact in S3.
-- **Cost of the fix if it was accidental:** an `aws s3 cp` of the backup over
-  the active key. Product labelling resumes at cohort-C rates (≈6 PRODUCT_NAME
-  per receipt, 87% VALID) with no model work at all.
-- **Check the runners before concluding anything.** Per §2.4 the worker never
-  re-downloads a cached bundle, so a Mac that cached the 22-class model before
-  07-30 is still running it. Inspect `.models/layoutlm/config.json` on each
-  runner — the fleet may not be homogeneous, and the three-receipt cohort D may
-  be one machine, not the system.
-- **Decision point:** if the swap was deliberate and v31 was chosen on the
-  0.531 → 0.737 comparison, that comparison is the suspect one from §2.2 and
-  should be re-run against a validation split that is not drawn from the
-  82%-INVALID corpus **before** the 8-class model is kept.
+> **Step 0 was removed.** An earlier draft opened with "find out why the bundle
+> went from 22 classes to 8, and restore `pre-v31-backup.zip` if it was
+> accidental". **It was not accidental** — the wide model's product labels were
+> not good enough for production, and this sprint is the response. Restoring
+> that bundle would revert a deliberate product decision with a single
+> `aws s3 cp`, which is why the step is called out here rather than silently
+> deleted. **Do not restore it.** What remains from that investigation is three
+> genuine bugs, now in §7 as risks 8–10; none of them is about model scope.
 
 ### Step 1 — Stop dropping `AMOUNT` and `ADDRESS`
 
@@ -600,10 +635,11 @@ anything neither set names.
 > LLM one, which runs **after** it. The deterministic branch that would have
 > run before it has a measured hit rate of **0 out of 585**. So Step 1 recovers
 > the merged-class labels and their LLM-disambiguated CORE children, and
-> nothing else. Recovering the deterministic proposer needs Step 1b (a model
-> that emits unmerged totals) or a reordering of `embedding_processor.py`.
-> Scope the decision point accordingly: judge Step 1 on `llm_corrected:*` yield
-> alone, and do **not** expect `geometry_line_items` to move.
+> nothing else. `geometry_line_items` will stay at zero under the intended
+> narrow-model configuration, because that proposer needs unmerged totals the
+> narrow model does not emit. **That is fine and expected** — the decoder owns
+> those labels now (Step 3). Judge Step 1 on `llm_corrected:*` yield alone, and
+> do **not** treat a flat `geometry_line_items` count as a failed fix.
 
 **Fix the prod bundle key at the same time** (§2.4) or accept that `--env prod`
 runs blind.
@@ -631,7 +667,15 @@ gets its product labels at ingest.
   tighter on fresh receipts than on the backfilled corpus and step 4 has no
   fuel.
 
-### Step 4 — Retrain LayoutLM with decoder-proven product labels
+### Step 4 — *Optional, and not part of this sprint* — retrain LayoutLM with decoder-proven product labels
+
+**Framing.** The narrow model is the intended configuration and the decoder is
+the intended product labeller. This step is not a plan to undo that; it is the
+one experiment that would be worth running *if* someone later wants to revisit
+model scope, and its value is that it changes the input rather than the
+architecture. Every previous attempt trained against the corpus; this one would
+train against arithmetic. **Nothing downstream depends on it, and Step 3 is the
+sprint's actual deliverable.**
 
 Only after step 3 has been running long enough to produce labels on new
 receipts, and only with the two guards from §3.3–3.4:
@@ -645,27 +689,30 @@ receipts, and only with the two guards from §3.3–3.4:
 - Resolve §3.5 first: promote `decoder_reconciled` to VALID, or add a
   `label_proposed_by` filter to `load_datasets`.
 
-The run to beat is `v30-fullcore` PRODUCT_NAME **0.254** / LINE_TOTAL **0.625**
-on the adversarial val split
-(`s3://layoutlm-training-dev-68164770/config/adversarial_val_keys_v2_20260708.json`).
+The bar to beat is `v30-fullcore` on the **frozen heldout** set at its best
+epoch (§2.2): PRODUCT_NAME **0.245**, LINE_TOTAL **0.665**, UNIT_PRICE
+**0.328**, QUANTITY **0.359**. Those are the numbers the scope decision was
+made on, so they are the numbers a challenger has to clear.
 
-**But do not score against that split as it stands.** Per §2.2 it is drawn from
-the corpus this whole document argues is unreliable, and cohort C shows a class
-with 0.254 val-F1 surviving downstream validation 87% of the time. Build the
+**Do not score against the adversarial val split as it stands.** Per §2.2 it is
+drawn from the corpus this whole document argues is unreliable. Build the
 val split from **decoder-proven labels held out of training** — receipts that
 pass the reconciliation gate but are excluded from the training set — so the
 target is arithmetic rather than corpus consensus. That is a prerequisite of
-this step, not a refinement of it.
+this step, not a refinement of it. Record `heldout_label_*` metrics for whatever
+model results, since the active model has none (§2.2) and the comparison is
+otherwise impossible.
 
 - **Decision point:** on the proven-label val split, does PRODUCT_NAME F1 clear
-  **0.50** and LINE_TOTAL clear **0.75**, *and* beat the 22-class cohort-C
-  model measured the same way? If yes, ship it. **If no, stop** — keep the
-  22-class model as the production labeller and treat the decoder as the
-  product extractor of record. Note this stop-condition is now "the new model
-  loses to the one we already had", which is a fairer bar than the first
-  draft's "five runs failed".
+  **0.50** and LINE_TOTAL clear **0.75**? **If no, stop, and stop permanently** —
+  the decoder is the product extractor of record and the narrow model stays as
+  it is. **If yes, that is still not a decision to widen the deployed model** —
+  it is evidence worth taking to the owner, who has already judged the wide
+  model's output unfit for prod on stronger grounds than an F1 delta. The
+  decoder's labels are arithmetically proven; a model that predicts them well is
+  a convenience, not a replacement.
 
-### Step 5 — Only if step 4 clears: use LayoutLM on the receipts the decoder can't reach
+### Step 5 — *Also optional* — only if step 4 clears: LayoutLM on the receipts the decoder can't reach
 
 The 225 prod receipts that fail the gate (196 not-matched, 29 no-items) are the
 target. Predict there, and gate the predictions on section scope from §4.1
@@ -691,10 +738,15 @@ script run.
 
 ## 6. What not to build
 
-- **A new product-labelling model or architecture.** A 22-class one was running
-  in production six days ago at 87% VALID. Restore it (step 0) before designing
-  a replacement. The four failed product-only training runs (best 0.338 F1)
-  argue against a *new* model, not against the one that already shipped.
+- **A restore of the 22-class bundle.** The 2026-07-30 swap was a deliberate
+  product decision (§2.1a). `pre-v31-backup.zip` is intact in S3 and one
+  `aws s3 cp` from the active key, which makes this the easiest wrong thing in
+  the whole system to do. Don't.
+- **A product-labelling LayoutLM, new or restored.** The frozen-heldout numbers
+  (§2.2 — PRODUCT_NAME 0.245 over 939 support) are why the scope was narrowed,
+  and four product-only training runs peaked at 0.338. The decoder owns these
+  labels. Step 4 exists only as an optional future experiment with a different
+  *input*, and it is explicitly outside this sprint.
 - **Sections as a model input feature.** They already separate the populations
   at 94–99% (§4.1). Use them as a boolean filter. Nothing to learn.
 - **Any LLM pass over line items.** PLAN.md killed this; nothing here changes
@@ -707,6 +759,9 @@ script run.
 - **A confidence threshold on LayoutLM output.** There is nothing to threshold —
   the model isn't producing low-confidence product predictions, it has no
   product classes.
+- **Anything that treats `geometry_line_items` returning to zero as a
+  regression.** Under the intended narrow model it cannot fire (§C.6). That is
+  the design, not a fault.
 - **Reviving `simple_receipt_analyzer`.** It produced the corpus whose UNIT_PRICE
   is 82% INVALID.
 
@@ -744,22 +799,54 @@ script run.
    mismatch 848 → ~450. The gate population will shift under any measurement
    taken now. Re-measure after that sweep before sizing step 4's dataset.
 
-6. **Prod has no working model bundle** (§2.4). Anything reasoned about
-   "what prod's LayoutLM does" is currently reasoning about a 404.
+### Three open bugs, distinct from the model-scope decision
 
-7. **The fleet's running model is unknown and probably heterogeneous.** Because
-   `isModelCached` never re-checks (§2.4), each Mac runs whatever bundle it
-   cached first, indefinitely. Cohort D is three receipts — it may describe one
-   machine rather than the system. Every claim in this document about "the
-   deployed model" is a claim about S3, not about what is executing.
-   **Mitigation:** add a version/ETag check to `isModelCached`, log the loaded
-   `label_map` entity count at worker start, and make the cache path
-   env-scoped so dev and prod cannot share a bundle.
+Risks 8–10 came out of the bundle investigation. **None of them is about which
+model should be deployed** — they are defects in how the model is delivered and
+tracked, and they would matter identically if the narrow model never changed
+again.
 
-8. **The 07-30 bundle regression went undetected for six days**, and would have
-   gone on undetected — nothing alarms on "product labels stopped arriving".
-   The cohort table in §2.1a is the detector: labels-per-receipt by class, by
-   ingest week. It is cheap and should be standing.
+8. **Prod's configured model key 404s.**
+   `layoutlm_model_s3_bucket = layoutlm-training-prod-68164770`,
+   `layoutlm_model_s3_key = coreml/layoutlm-coreml-bundle.zip` —
+   `head-object` on that key returns **404** (§2.4). Only a loose, unzipped
+   `coreml/LayoutLM.mlpackage/` from 2026-05-24 is present. A worker started
+   with `--env prod` on a cold cache cannot download a model at all; on a warm
+   cache it silently uses whatever is on disk. Every model observation in this
+   document is therefore about the *dev* bundle.
+
+9. **The running model is unknown, unrecorded, and probably heterogeneous.**
+   `isModelCached()` is an existence-only check — `vocab.txt` + `config.json` +
+   any `*.mlpackage` directory — with no ETag, version or manifest comparison
+   (§2.4), so a Mac never re-downloads once cached. The cache path is
+   cwd-relative `.models/layoutlm` and **not env-scoped**, so `--env dev` and
+   `--env prod` launched from one directory share a bundle. Nothing records
+   which bundle produced a label. Cohort D is three receipts and may describe
+   one machine rather than the fleet. Every claim here about "the deployed
+   model" is a claim about S3, not about what is executing.
+   **Mitigation:** version-check `isModelCached`, env-scope the cache path, log
+   the loaded `label_map` entity count at worker start, and write the bundle
+   ETag into the OCR result JSON the worker already uploads (§C.8).
+
+10. **The v31 `COREML_EXPORT` record has been `PENDING` since 2026-07-29
+    despite the bundle being live.** Record
+    `COREML_EXPORT#14c1d65a-b6c3-4ee7-8a7a-086b40d35ad1`, job
+    `a56741b7-…` (`layoutlm-v31-nonproduct-clean-20260729`), created
+    `2026-07-29T19:32:18Z`, `status = PENDING` with `completed_at`,
+    `bundle_s3_uri`, `mlpackage_s3_uri`, `model_size_bytes` and
+    `export_duration_seconds` all null — yet
+    `coreml/layoutlm-coreml-bundle.zip` was written 2026-07-30T16:29:40Z. The
+    export happened; the record never closed. This is not isolated: **129 of
+    144 `COREML_EXPORT` rows are `PENDING`**, 14 SUCCEEDED, 1 FAILED, including
+    both v30 rows from 2026-07-14. The export-status table cannot currently be
+    used to answer "which bundle is live", which is part of why §2.1a had to be
+    reconstructed from S3 object timestamps.
+
+11. **Nothing alarms on "a label class stopped arriving."** The 07-30 scope
+    change was intended, but an *unintended* one would look identical in the
+    corpus and nothing would flag it. The cohort table in §2.1a is the
+    detector — labels-per-receipt by class, by ingest week. It is cheap and
+    should be standing regardless of what the model is scoped to.
 
 ---
 
@@ -967,14 +1054,24 @@ stopped emitting `ADDRESS` and started emitting `ADDRESS_LINE` + `PHONE_NUMBER`
 left merged, and therefore still dropped.
 
 **Reading, offered as inference and labelled as such:** this looks like a
-deliberate half-adaptation to #958 — the `ADDRESS` half of the filter breakage
-was fixed by changing the model, the `AMOUNT` half was not. It was superseded
-within nine hours by the 20-class line (v21…v29), which unmerges `AMOUNT` into
-`SUBTOTAL`/`TAX`/`GRAND_TOTAL`/`LINE_TOTAL` and so fixes the other half by the
-same route. That whole adaptation is what `v31` undid on 2026-07-30 by
-re-merging both. Not measured: any commit, PR or job note stating that intent —
-the training jobs for v18–v20 are not in the last 40 SageMaker runs, so the
-inference rests on the vocabulary change and its timing alone.
+half-adaptation to #958 — the `ADDRESS` half of the filter breakage was worked
+around by changing the model's label scheme, the `AMOUNT` half was not. It was
+superseded within nine hours by the 20-class line (v21…v29), which unmerges
+`AMOUNT` into `SUBTOTAL`/`TAX`/`GRAND_TOTAL`/`LINE_TOTAL` and so sidesteps the
+other half by the same route. Not measured: any commit, PR or job note stating
+that intent — the training jobs for v18–v20 are not in the last 40 SageMaker
+runs, so the inference rests on the vocabulary change and its timing alone.
+
+**Why this history is worth keeping, now that the scope question is settled.**
+It shows the `CORE_LABELS` filter has been shaping the *model's label scheme*
+for six weeks — vocabularies were chosen partly to get past a write filter
+rather than purely on what the model should predict. `v31` returns to the merged
+`AMOUNT`/`ADDRESS` scheme on its merits, which re-exposes the same filter
+breakage the 9-class bundle was working around. **That is the argument for §5
+Step 1**: fix the filter so the label scheme can be chosen on modelling grounds
+instead of being constrained by a client-side allow-list nobody is comparing
+against `allowed_labels`. It is not an argument about which classes the model
+should have.
 
 ### C.5 Settling §4.2 — the ITEMS over-reach is legacy, and now cohort-attributed
 
@@ -1049,10 +1146,17 @@ So the only AMOUNT disambiguation that works in practice is the LLM one, and it
 runs after the proposer.
 
 Consequence for §5 Step 1, which has been corrected in place: restoring
-`AMOUNT` alone does **not** restore `propose_line_item_labels`. Either the
-proposer moves after validation, or the model emits unmerged totals (Step 1b).
+`AMOUNT` pass-through alone does **not** make `propose_line_item_labels` fire.
 This is not "the ordering suggests it shouldn't work" — it is "it has never
 worked, over 585 opportunities".
+
+**Under the intended narrow-model configuration, it never will**, because that
+proposer needs an unmerged `SUBTOTAL`/`TAX`/`GRAND_TOTAL` label and the narrow
+model emits only merged `AMOUNT`. The remedy is not a wider model — it is that
+the **decoder** now owns those labels, which is what §5 Step 3 wires up. Treat
+`geometry_line_items` and `semantic_product_name` as **dead paths under the
+current design**, not as capabilities to restore; if they are ever revived it
+should be by moving the proposer after validation, not by changing the model.
 
 ### C.7 Section position predicts label correctness — a free quality signal
 
@@ -1128,8 +1232,16 @@ the fact.
 the `label_map.json` hash) into the OCR result JSON the worker already uploads.
 It is one field in an object that is already written on every receipt, it needs
 no DynamoDB migration, and it turns every future cohort analysis from an
-inference into a lookup. Worth doing *before* Step 1b redeploys a bundle, so the
-redeploy's effect is attributable by construction rather than by argument.
+inference into a lookup. Worth doing **before the next bundle promotion of any
+kind**, so that promotion's effect is attributable by construction rather than
+by argument — this is §7 risk 9, and it is independent of what the model is
+scoped to.
+
+It also compounds with §7 risk 10: the `COREML_EXPORT` table cannot answer
+"which bundle is live" either, since 129 of its 144 rows are stuck `PENDING`,
+including the v31 record for the bundle that has been serving since 2026-07-30.
+Between them, the two gaps are why the deployment history in §2.1a had to be
+reverse-engineered from S3 object timestamps rather than read from a record.
 
 ---
 
@@ -1138,9 +1250,23 @@ redeploy's effect is attributable by construction rather than by argument.
 The bundle version history (§2.1a), the four-cohort experiment, the
 `ocr_results` prediction histograms and the cache-invalidation finding (§2.4)
 were measured independently by the parallel study `join-study-2` and are
-reproduced here after independent re-verification. They corrected two
-conclusions of the first draft: that the 8-class model was a settled design
-decision, and that pre-filter predictions were unrecoverable.
+reproduced here after independent re-verification. They corrected one
+conclusion of the first draft — that pre-filter predictions were unrecoverable
+— and produced the deployment history.
+
+**Both studies then got the same thing wrong**, in opposite directions and for
+the same reason: neither had access to why the label set was narrowed, and both
+reasoned from the artefacts alone. The first draft called the narrow model a
+settled design decision on the strength of a val-F1 comparison that turns out
+not to be apples-to-apples; the second overturned that and recommended
+restoring the wide bundle. The owner's account settled it — the narrowing was
+deliberate and correct, and the val-F1 comparison supports neither position.
+The frozen-heldout metrics in §2.2 (`PRODUCT_NAME` F1 0.245 over 939 support),
+which neither pass had surfaced, are the number that actually justifies the
+scope. **Recorded because the failure mode is instructive: two independent
+read-only passes over the same corpus can converge on a confident,
+well-evidenced, wrong conclusion when the missing input is an intent that
+leaves no trace in the data.**
 
 **Appendix C** is that study's primary evidence, written by it: the full
 prediction histograms and the prediction↔row identity check (C.1–C.2), its own
@@ -1152,9 +1278,31 @@ branch (C.6), section position as a label-quality detector (C.7), and one
 addition to §5 (C.8). The `0/585` figure and the `non_core_label_guard` check
 in C.6 were contributed back by the first study.
 
-The correction block in **§5 Step 1** is the only edit either pass made to the
-other's section. It was made by the second pass, at the first pass's explicit
-request, after the first pass was stood down; the first pass's original text is
-left intact above it.
-Sections 0–8 are the first study's; neither pass edited the other's
-conclusions, and where they differ, both numbers are printed.
+Sections 0–8 are the first study's, with two exceptions. The correction block
+in **§5 Step 1** was added by the second pass at the first pass's explicit
+request after it was stood down, with the original text left intact above it.
+The **2026-08-05 revision** described in the header note — §0, §2.1a, §2.2,
+the removal of Step 0, §6, §7 risks 8–11, and the corresponding notes in C.4,
+C.6 and C.8 — was made by the second pass at the coordinator's direction after
+the owner clarified intent. Where the two passes' measurements differ, both
+numbers are printed rather than reconciled.
+
+Appendix D lists the per-class and export-record measurements added by that
+revision.
+
+---
+
+## Appendix D — measurements added by the 2026-08-05 revision
+
+| Claim | Method |
+|---|---|
+| v30 frozen-heldout per-class F1 (PRODUCT_NAME 0.245 / n=939, LINE_TOTAL 0.665 / n=407, UNIT_PRICE 0.328 / n=193, QUANTITY 0.359 / n=141) | `JOB_METRIC` rows under `PK = JOB#e5a9a687-…`, metric names `heldout_label_*`, filtered to `epoch = 29` (`best_epoch` from the `JOB` row's `results` map). Distinct from the `label_*` series, which is the validation split and gives PRODUCT_NAME 0.254 / n=939, UNIT_PRICE 0.304 / n=209, QUANTITY 0.363 / n=154, LINE_TOTAL 0.625 / n=418 — the two series must not be mixed. |
+| `heldout_windowed_product_detail_macro_f1` 0.399, `heldout_windowed_f1` 0.564 | same query, aggregate metric names |
+| v31 has **no** `heldout_label_*` metrics | same query under `PK = JOB#a56741b7-…`: 0 metric names with that prefix; only `heldout_windowed_*` aggregates and the `label_*` validation series |
+| v31 has no `val_keys_s3` hyperparameter; v30 does | `aws sagemaker describe-training-job --query HyperParameters` for both jobs |
+| `COREML_EXPORT` 129 PENDING / 14 SUCCEEDED / 1 FAILED; v31 record `14c1d65a-…` PENDING since `2026-07-29T19:32:18Z` | `GSITYPE = COREML_EXPORT` query, dev table, all 144 rows |
+
+Not measured: why `COREML_EXPORT` records are left `PENDING` (the export worker
+runs on a Mac and its completion path was not traced); and whether any physical
+runner currently holds a cached bundle other than the live one — that requires
+inspecting the Macs, not S3 or DynamoDB.
