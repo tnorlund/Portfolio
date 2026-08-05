@@ -636,3 +636,95 @@ def test_every_proposal_carries_reasoning():
     assert result.labels
     for proposal in result.labels:
         assert proposal.reasoning.strip()
+
+
+# --- Column-header / boilerplate item names --------------------------------
+#
+# The band-block decoder names an item after a column-header row
+# ("Unit Price 25.00") or footer legalese often enough to matter: 22 of
+# 4730 decoded items across dev and prod, 18 of them on receipts that
+# reconcile to their printed baseline as a full match, so the arithmetic
+# gate passes them straight into the training corpus.
+#
+# They are NOT dropped, here or in the decoder. The corpus sweep measured
+# 20 of those 22 load-bearing: their receipts balance WITH the item
+# included, and removing one flips the receipt out of `match`, costing the
+# whole receipt every label it would otherwise contribute. The price is
+# real; only the name is wrong. So the derivation abstains on the name.
+
+
+def test_column_header_name_mints_no_product_name():
+    # "Unit Price 25.00" is one printed row: header words beside a real
+    # price. Rise Henderson prints five of them on one receipt.
+    words = row(1, 0.10, "Unit", "Price", "25.00")
+    result = derive_labels(words, {1}, {"subtotal": 25.00})
+
+    assert result.gate == GATE_OK
+    assert result.reconciliation_status == "match"
+    assert by_label(result) == {}
+
+
+def test_header_row_price_word_is_not_a_line_total_either():
+    # The receipt's own word for this amount is "ORIGINAL PRICE" -- it is
+    # the pre-markdown price, printed beside a differently-priced item.
+    # Minting LINE_TOTAL on it would teach the model that a header row's
+    # amount is an extended total, on the strength of a sum that lands.
+    words = row(1, 0.10, "ORIGINAL", "PRICE", "49.99")
+    result = derive_labels(words, {1}, {"subtotal": 49.99})
+
+    assert result.gate == GATE_OK
+    assert "LINE_TOTAL" not in by_label(result)
+
+
+def test_header_name_borrowed_from_another_row_keeps_its_line_total():
+    # Here the header is its own row and the price row carries a real
+    # name, so the decoder stacks them and the header contaminates the
+    # NAME only. The price word was printed beside "EXTRASTRTHSCT" and is
+    # a genuine extended total, so it keeps LINE_TOTAL.
+    words = row(1, 0.30, "Description", "Qty", "Amount") + row(
+        2, 0.10, "T", "EXTRASTRTHSCT", "3.59"
+    )
+    result = derive_labels(words, {1, 2}, {"subtotal": 3.59})
+
+    assert result.gate == GATE_OK
+    labels = by_label(result)
+    assert labels.get("LINE_TOTAL") == {"3.59"}
+    named = labels.get("PRODUCT_NAME", set())
+    assert "Description" not in named
+    assert "Amount" not in named
+
+
+def test_real_items_keep_their_names_beside_a_header_item():
+    # Abstention is per item, not per receipt: a header-named item must
+    # not cost its neighbours their labels.
+    words = (
+        row(1, 0.30, "Item", "Qty", "Price", "6.00")
+        + row(2, 0.20, "ORGANIC", "BANANAS", "2.99")
+        + row(3, 0.10, "WHOLE", "MILK", "4.49")
+    )
+    result = derive_labels(words, {1, 2, 3}, {"subtotal": 13.48})
+
+    assert result.gate == GATE_OK
+    labels = by_label(result)
+    assert labels["PRODUCT_NAME"] == {
+        "ORGANIC",
+        "BANANAS",
+        "WHOLE",
+        "MILK",
+    }
+    assert labels["LINE_TOTAL"] == {"2.99", "4.49"}
+
+
+def test_a_header_named_item_still_counts_toward_reconciliation():
+    # The whole point: the item stays in the decode and keeps the receipt
+    # balancing. If it were dropped the sum would miss and the gate would
+    # close on every other item too.
+    words = row(1, 0.30, "Unit", "Price", "25.00") + row(
+        2, 0.10, "ORGANIC", "BANANAS", "2.99"
+    )
+    result = derive_labels(words, {1, 2}, {"subtotal": 27.99})
+
+    assert result.gate == GATE_OK
+    assert result.item_count == 2
+    assert result.item_sum == pytest.approx(27.99)
+    assert by_label(result)["PRODUCT_NAME"] == {"ORGANIC", "BANANAS"}

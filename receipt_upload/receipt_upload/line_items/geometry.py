@@ -186,6 +186,114 @@ def is_settlement_row(bare: str) -> bool:
     )
 
 
+# --- Column-header vocabulary --------------------------------------------
+# The words a receipt prints ABOVE its item table ("Item Qty Price Total",
+# "Description Qty Amount", "Unit Price") and the price-qualifier headings
+# it prints beside a markdown ("ORIGINAL PRICE", "Reguler Price"). None of
+# them is a product; all of them are printed on a row that also carries an
+# amount, so the decoder sees a priced row and names an item after it.
+#
+# Same shape as the tender vocabulary above, and for the same reason: a
+# header row is a row whose EVERY word is header vocabulary. A closed,
+# whole-token vocabulary is what keeps real food safe here -- a receipt can
+# and does sell an item whose name contains a header word ("HOUSE REGULAR
+# COFFEE CUP", "THE ORIGINAL MINI KABOB WRAP", "BAG SALE PAPER EA",
+# "LEMON EACH", "CUSTOM ITEM", "PRICE MATCH"), and each of those carries a
+# word this vocabulary does not contain, so each stays an item.
+#
+# Whole-token matching is not a style preference. A substring scan for the
+# OCR misread "UTY" matches inside "BEAUTY", and this corpus really does
+# contain "BEAUTY SECRETS NOVELTY TWEEZERS GARDEN" -- the same failure that
+# made a substring scan for "OFF" read COFFEE / TOFFEE as a discount.
+COLUMN_HEADER_ANCHOR_TOKENS = frozenset(
+    {
+        "amount",
+        "amounts",
+        "descrip",  # OCR truncation of a narrow header column
+        "description",
+        "descriptions",
+        "item",
+        "items",
+        "price",
+        "prices",
+        "pricing",
+        "qty",
+        "quantity",
+        "subtotal",
+        "tax",
+        "total",
+        "totals",
+        "unit",
+        "units",
+        "uty",  # Vision reads "QTY" as "UTY" on small type
+    }
+)
+# Words that only ever QUALIFY a header anchor. Affixes alone are never
+# enough, so a bare "EACH" or "EA" -- which is unit vocabulary a real item
+# ends in -- never makes a row a header.
+COLUMN_HEADER_AFFIX_TOKENS = frozenset(
+    {
+        "ea",
+        "each",
+        "ext",
+        "extended",
+        "list",
+        "net",
+        "orig",
+        "original",
+        "per",
+        "regul",  # OCR: "REGUL R PRICE"
+        "regular",
+        "reguler",  # OCR: "Reguler Price"
+        "retail",
+        "sale",
+        "your",
+    }
+)
+# Restriction/disclaimer footer legalese. Deliberately ONE family: the
+# corpus's other footer-shaped names are real charged rows ("BOTTLE
+# RETURN") or real printed annotations the decoder must keep ("MAX REFUND
+# VALUE", 40 occurrences), so REFUND / RETURN / VALUE are NOT vocabulary
+# here. "RESTRICT" is: no receipt in dev or prod sells anything whose name
+# contains it, and every occurrence is the tail of "...tobacco or alcohol.
+# Restrictions apply."
+RESTRICTION_NOTE_RE = re.compile(
+    r"\bRESTRICT(?:S|ED|ION|IONS)?\b", re.IGNORECASE
+)
+
+
+def is_column_header_row(name: str) -> bool:
+    """Whether a decoded item name is a column header or footer legalese.
+
+    ``name`` is the decoder's name for an item, NOT raw row text: amounts
+    are already stripped out by ``parse_band``, so "Unit Price 25.00"
+    arrives as "Unit Price".
+
+    Two closed rules, both anchored:
+
+    * at least one COLUMN_HEADER_ANCHOR token is present AND every
+      multi-letter token is an anchor or an affix -- the ``is_settlement_row``
+      shape;
+    * or the name carries restriction-footer vocabulary.
+
+    Single-letter tokens are ignored ("REGUL R PRICE" keeps its "R"), which
+    cannot widen the rule: an anchor is still required, and one letter
+    carries no product identity.
+    """
+    text = name or ""
+    if RESTRICTION_NOTE_RE.search(text):
+        return True
+    tokens = [t.lower() for t in re.findall(r"[A-Za-z]{2,}", text)]
+    if not tokens:
+        return False
+    if not any(t in COLUMN_HEADER_ANCHOR_TOKENS for t in tokens):
+        return False
+    return all(
+        t in COLUMN_HEADER_ANCHOR_TOKENS or t in COLUMN_HEADER_AFFIX_TOKENS
+        for t in tokens
+    )
+
+
 # Price-comparison metadata ("SALE 2 @ $1.89, WAS: $3.59 each"): the WAS
 # amount is not a line price and the real item price is on its own band
 WAS_PRICE_RE = re.compile(r"\b(?:WAS|REG)\b[:.]?\s*\$?\d", re.IGNORECASE)
@@ -1434,6 +1542,8 @@ def propose_items_boundary_extension(
 
 
 __all__ = [
+    "COLUMN_HEADER_AFFIX_TOKENS",
+    "COLUMN_HEADER_ANCHOR_TOKENS",
     "DISCOUNT_WORDS",
     "DISCOUNT_WORD_RE",
     "LEAD_QTY_RE",
@@ -1442,6 +1552,7 @@ __all__ = [
     "PRICE_RE",
     "PROVEN_CENT_TOLERANCE",
     "QTY_AT_RE",
+    "RESTRICTION_NOTE_RE",
     "QTY_CENT_TOLERANCE",
     "QTY_MULT_RE",
     "QTY_SEPARATOR_RE",
@@ -1455,6 +1566,7 @@ __all__ = [
     "evaluate_items_zone",
     "extract_items",
     "implied_unit_price",
+    "is_column_header_row",
     "is_proven",
     "is_settlement_row",
     "items_boundary_extension_guard",
