@@ -56,17 +56,28 @@ def _printed_subtotal(rows, lines, words) -> float | None:
     return None
 
 
-def main() -> None:
-    script_dir = Path(__file__).resolve().parent
-    package_dir = script_dir.parent
-    repo_root = package_dir.parent
-    input_path = (
-        repo_root / "receipt_upload/tests/fixtures/line_items_golden_ocr.json"
-    )
-    output_path = (
-        package_dir
-        / "Tests/ReceiptOCRCoreTests/Fixtures/receipt_structure_parity_expected.json"
-    )
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PACKAGE_DIR = _SCRIPT_DIR.parent
+_REPO_ROOT = _PACKAGE_DIR.parent
+DEFAULT_INPUT = (
+    _REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden_ocr.json"
+)
+DEFAULT_OUTPUT = (
+    _PACKAGE_DIR
+    / "Tests/ReceiptOCRCoreTests/Fixtures/receipt_structure_parity_expected.json"
+)
+
+
+def generate(input_path: Path = DEFAULT_INPUT) -> str:
+    """The expectation file's exact bytes, without writing anything.
+
+    Split out of ``main`` so the anti-drift gate in the receipt_upload
+    matrix can regenerate and diff this fixture the same way it does the
+    line-item one. It carries decoded ITEMS too, so a decoder change rots
+    it just as fast -- and until this split it rotted INVISIBLY: the
+    Python-side gate only covered generate_line_items_parity.py, and
+    swift-ci.yml does not run on receipt_upload changes.
+    """
     fixture = json.loads(input_path.read_text(encoding="utf-8"))
     model = load_prior_model()
     expected = []
@@ -143,10 +154,14 @@ def main() -> None:
             f"expected {len(fixture['receipts'])} receipts, "
             f"got {len(expected)}"
         )
-    output_path.write_text(
-        json.dumps(expected, indent=2) + "\n", encoding="utf-8"
-    )
-    print(f"wrote {len(expected)} receipts to {output_path}")
+    return json.dumps(expected, indent=2) + "\n"
+
+
+def main() -> None:
+    payload = generate()
+    DEFAULT_OUTPUT.write_text(payload, encoding="utf-8")
+    count = len(json.loads(payload))
+    print(f"wrote {count} receipts to {DEFAULT_OUTPUT}")
 
 
 if __name__ == "__main__":
