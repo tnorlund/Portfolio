@@ -88,6 +88,19 @@ enum LineItemRegex {
     static let qtyAtOcr = Rx("(\\d+(?:\\.\\d+)?)\\s*g\\s*\\$(\\d+\\.\\d{2,3})")
     /// QTY_MULT_RE: leading "1x" / "2X" multiplier
     static let qtyMult = Rx("^(\\d{1,2})[xX]$")
+    /// NOISY_MONEY_RE: money token whose currency sign OCR mangled ("$"
+    /// read as "S"/"s"/"5") or dropped. Deliberately loose — every pair
+    /// built from it is accepted only when the arithmetic checks out.
+    static let noisyMoney = Rx("^[Ss5$]?(\\d{1,4}(?:,\\d{3})*\\.\\d{2,3})$")
+    /// QTY_SEPARATOR_RE: the "@" glyph however OCR read it, or a unit word
+    /// an "N EA @ X" layout prints between count and unit price. "FOR" is
+    /// excluded: "4 FOR 1.00" is a deal price with different arithmetic,
+    /// already carried by QTY_FOR_RE.
+    static let qtySeparator = Rx(
+        "^(?:[@8gGaAeE0oO&©®*x×X]|EA|EACH|LB|KG|OZ|CT|PK|QTY)$", ci: true
+    )
+    /// Bare whole count, 1-2 digits (fullmatch), for quantityCandidates.
+    static let bareCount = Rx("^\\d{1,2}$")
     /// LEAD_QTY_RE (ported for completeness)
     static let leadQty = Rx("^(\\d{1,2})\\s+(?=[A-Za-z])")
     /// TAX_FLAG_RE (ported for completeness)
@@ -371,6 +384,9 @@ final class ParsedBand {
     var nameQuality: String?
     var stacked: Bool = false
     var lineIds: [Int] = []
+    /// The band's own words (Python's `band` key). Carried so the
+    /// quantity-attachment pass can re-read the row's glyphs.
+    var bandWords: [ZoneWord] = []
 
     init(
         name: String, quantity: Double?, unitPrice: Double?, price: Double,
@@ -383,6 +399,101 @@ final class ParsedBand {
         self.isDiscount = isDiscount
         self.rawText = rawText
         self.nAmounts = nAmounts
+    }
+}
+
+/// Cent-exact tolerance for accepting a quantity pair (Python
+/// `QTY_CENT_TOLERANCE`).
+let qtyCentTolerance = 0.005
+
+/// One (quantity, unit price) pair the glyphs could support.
+struct QuantityCandidate {
+    let quantity: Double
+    let unitPrice: Double
+}
+
+/// Port of `geometry.quantity_candidates`. Tolerant on purpose: it
+/// proposes, `acceptQuantityPair` decides. A candidate is a whole count
+/// token (2..99) standing immediately before a money token, optionally one
+/// separator glyph away. Quantity 1 is excluded — it multiplies out
+/// against any price and would "prove" itself on every single-unit row.
+func quantityCandidates(_ band: [ZoneWord]) -> [QuantityCandidate] {
+    var out: [QuantityCandidate] = []
+    for (i, w) in band.enumerated() {
+        guard LineItemRegex.bareCount.fullMatch(w.text) != nil,
+            let count = Int(w.text), count >= 2
+        else { continue }
+        for j in [i + 1, i + 2] {
+            guard j < band.count else { break }
+            if j == i + 2,
+                LineItemRegex.qtySeparator.fullMatch(band[i + 1].text) == nil
+            {
+                break
+            }
+            guard let m = LineItemRegex.noisyMoney.fullMatch(band[j].text),
+                let raw = m.group(1),
+                let unit = Double(raw.replacingOccurrences(of: ",", with: "")),
+                unit > 0
+            else { continue }
+            out.append(
+                QuantityCandidate(quantity: Double(count), unitPrice: unit)
+            )
+            break
+        }
+    }
+    return out
+}
+
+/// Port of `geometry.accept_quantity_pair`: quantity x unit price must
+/// reproduce the item's own printed price to the cent. This is the only
+/// thing that ever lets a quantity onto an item.
+func acceptQuantityPair(
+    _ quantity: Double?, _ unitPrice: Double?, _ price: Double
+) -> Bool {
+    guard let q = quantity, let u = unitPrice, price > 0 else { return false }
+    return abs(q * u - price) <= qtyCentTolerance
+}
+
+/// Port of `geometry.implied_unit_price`: the unit price a known quantity
+/// implies, when it divides into whole cents. Quantity 1 is refused —
+/// its unit price is the extended price by definition and the word
+/// carrying it is already the line total.
+func impliedUnitPrice(_ quantity: Double?, _ price: Double) -> Double? {
+    guard let q = quantity, q >= 2, price > 0 else { return nil }
+    let unit = pythonRound2(price / q)
+    guard unit > 0, acceptQuantityPair(q, unit, price) else { return nil }
+    return unit
+}
+
+/// Port of `blocks.attach_printed_quantities`. STRICTLY ADDITIVE: writes
+/// only quantity and unitPrice, so names, prices, line ids and the item
+/// count are untouched and the reconciliation cannot move. Kept a
+/// separate pass for the same reason Python does — quantity words
+/// participate in parseBand's price and name selection, so widening the
+/// shapes it recognizes there would silently re-decode the corpus.
+func attachPrintedQuantities(
+    _ items: [ParsedBand], donorsFor: [Int: [[ZoneWord]]] = [:]
+) {
+    for (idx, it) in items.enumerated() {
+        if it.quantity != nil && it.unitPrice != nil { continue }
+        if it.quantity != nil {
+            if let unit = impliedUnitPrice(it.quantity, it.price) {
+                it.unitPrice = unit
+            }
+            continue
+        }
+        var donors: [[ZoneWord]] = [it.bandWords]
+        donors.append(contentsOf: donorsFor[idx] ?? [])
+        for donor in donors {
+            guard
+                let hit = quantityCandidates(donor).first(where: {
+                    acceptQuantityPair($0.quantity, $0.unitPrice, it.price)
+                })
+            else { continue }
+            it.quantity = hit.quantity
+            it.unitPrice = hit.unitPrice
+            break
+        }
     }
 }
 
@@ -517,7 +628,7 @@ func parseBand(_ band: [ZoneWord]) -> ParsedBand? {
         [" ", "@", "$", "-"]
     )
 
-    return ParsedBand(
+    let parsed = ParsedBand(
         name: name,
         quantity: qty,
         unitPrice: unitPrice,
@@ -526,6 +637,8 @@ func parseBand(_ band: [ZoneWord]) -> ParsedBand? {
         rawText: joined,
         nAmounts: amounts.count
     )
+    parsed.bandWords = band
+    return parsed
 }
 
 // MARK: - Zone bands (blocks._zone_bands)
@@ -781,12 +894,24 @@ func decodeBandBlocks(
         }
     }
 
+    // Bands no item speaks for: not a price band, not a member of any
+    // block. Trader Joe's quantity line reaches OCR as "6 8 S0.49", which
+    // carries no parseable amount and no three-letter word, so it lands in
+    // OUTSIDE and every other quantity path skips it.
+    var claimed = Set(priceIdx)
+    for p in priceIdx { claimed.formUnion(blocks[p]!) }
+    let unclaimed = bands.indices.filter { !claimed.contains($0) }
+
     // Hybrid emission in ascending-y order (bottom of the receipt first):
     // item order is a pinned guarantee.
     var items: [ParsedBand] = []
+    var donorsFor: [Int: [[ZoneWord]]] = [:]
     for p in priceIdx.reversed() {
         guard let parsed = parsedCache[p] ?? parseBand(bands[p].words)
         else { continue }
+        var donorIdxs = Set(blocks[p]!)
+        donorIdxs.formUnion(unclaimed.filter { abs($0 - p) == 1 })
+        donorsFor[items.count] = donorIdxs.sorted().map { bands[$0].words }
         if parsed.quantity == nil {
             for i in blocks[p]! {
                 if let mp = parseBand(bands[i].words),
@@ -830,6 +955,10 @@ func decodeBandBlocks(
         parsed.lineIds = lids.sorted()
         items.append(parsed)
     }
+    // Runs before the summary-figure filter purely so donor indices line
+    // up with `items`; the filter reads only price, name and isDiscount,
+    // so which items it drops cannot depend on it.
+    attachPrintedQuantities(items, donorsFor: donorsFor)
     return filterSummaryFigureItems(items, summary: summary)
 }
 
