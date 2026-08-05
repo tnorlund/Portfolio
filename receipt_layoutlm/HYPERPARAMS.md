@@ -241,6 +241,20 @@ non-product regions.
 For SageMaker, pass the same settings as Lambda hyperparameters so the training
 container builds the equivalent `layoutlm-cli train` command.
 
+## Validation Split Is Not Optional
+
+`--val-keys-s3` is required. Without it a run scores itself on a split nobody
+else used, and its numbers cannot be compared to any other run's — including
+the run you are trying to beat. Training refuses to start rather than spend GPU
+hours producing a figure that means nothing.
+
+A first-ever run on a new label vocabulary may genuinely have no applicable
+frozen split. Pass `--no-frozen-val` in that case (hyperparameter
+`no_frozen_val: "true"` on SageMaker). The run then proceeds, but it is stamped
+`comparable: false` in `run.json`, on the `Job` entity, and as the
+`run_metrics_comparable` JobMetric — see `METRICS.md`. Do not quote such a
+run's `val_f1` against another run's.
+
 ## Promotion Rules
 
 Do not promote from aggregate F1 alone. A model is promotable only if:

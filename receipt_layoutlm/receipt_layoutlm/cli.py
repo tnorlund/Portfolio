@@ -4,7 +4,13 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from .config import MODEL_DEFAULTS, MERGE_PRESETS, DataConfig, ModelVersion, TrainingConfig
+from .config import (
+    MERGE_PRESETS,
+    MODEL_DEFAULTS,
+    DataConfig,
+    ModelVersion,
+    TrainingConfig,
+)
 from .inference import LayoutLMInference
 from .trainer import ReceiptLayoutLMTrainer
 
@@ -69,7 +75,9 @@ def _resolve_run_s3(
     """Resolve a run S3 location from an explicit URI or DynamoDB job name."""
     if not run_s3_uri:
         if not job_name:
-            raise SystemExit("Provide --run-s3-uri or --job-name to locate the run")
+            raise SystemExit(
+                "Provide --run-s3-uri or --job-name to locate the run"
+            )
         jobs, _ = dyn.get_job_by_name(job_name, limit=1)
         if not jobs:
             raise SystemExit(f"No job found with name '{job_name}'")
@@ -294,6 +302,18 @@ def main() -> None:
         ),
     )
     train_p.add_argument(
+        "--no-frozen-val",
+        action="store_true",
+        help=(
+            "Explicitly run WITHOUT a pinned canonical val split (e.g. a "
+            "first-ever run on a new label vocabulary). Required when "
+            "--val-keys-s3 is omitted; the run's metrics are then stamped "
+            "comparable=false in run.json, the Job entity, and the "
+            "run_metrics_comparable JobMetric, so they are never mistaken "
+            "for a like-for-like number."
+        ),
+    )
+    train_p.add_argument(
         "--scope",
         choices=["full", "line_items"],
         default="full",
@@ -307,7 +327,7 @@ def main() -> None:
         "--receipt-allowlist-s3",
         default=None,
         help=(
-            "S3 URI of a JSON file ({\"receipt_keys\": [\"img#rec\", ...]}) "
+            'S3 URI of a JSON file ({"receipt_keys": ["img#rec", ...]}) '
             "restricting training/eval to a curated subset of receipts."
         ),
     )
@@ -685,7 +705,10 @@ def main() -> None:
             raise SystemExit(
                 f"--model-version v1 is incompatible with v3 model '{pretrained}'. Use --model-version v3."
             )
-        if args.model_version == "v3" and pretrained == "microsoft/layoutlm-base-uncased":
+        if (
+            args.model_version == "v3"
+            and pretrained == "microsoft/layoutlm-base-uncased"
+        ):
             raise SystemExit(
                 f"--model-version v3 requires a v3 model, not '{pretrained}'."
             )
@@ -722,6 +745,9 @@ def main() -> None:
         if getattr(args, "val_keys_s3", None):
             os.environ["LAYOUTLM_VAL_KEYS_S3"] = args.val_keys_s3
             data_cfg.val_keys_s3 = args.val_keys_s3
+        data_cfg.allow_unfrozen_val = bool(
+            getattr(args, "no_frozen_val", False)
+        )
 
         # Scoped second-pass training: crop to the line-item band + curated subset.
         if getattr(args, "scope", "full") and args.scope != "full":
