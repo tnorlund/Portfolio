@@ -7,7 +7,7 @@ For every receipt in the target table this script:
    payment zone via the canonical ``receipt_upload.tender`` classifier.
 2. Assigns the card to a ledger using the per-card rules from the
    2026-07 tender report (Apple Card 7645/5061/1769; Chase debit
-   1454/3931/0663/5894/7123/3960; 8712/9297/6081 have no export and
+   1454/3931/0663/5894/7123/3960/8712; 9297/6081 have no export and
    7739 is a checking account on ATM slips, so both map to ``none``).
 3. Joins the two ledgers OFFLINE:
    - Chase: curated matches in ``email_receipts.db`` (read-only).
@@ -68,12 +68,33 @@ logger = logging.getLogger(__name__)
 # 148 Chase / ~2 Apple. 5061 is the same Apple Card as 7645 before its
 # 2024-10 renumbering.
 APPLE_CARDS = frozenset({"7645", "5061", "1769"})
-CHASE_CARDS = frozenset({"1454", "3931", "0663", "5894", "7123", "3960"})
-# 8712/9297 read as Visa debits but only ~10%/0% of their amounts
-# appear in Chase (chance level); 6081 is an Amex. No export is held.
-NO_LEDGER_CARDS = frozenset({"8712", "9297", "6081"})
+# 8712 is a card on Chase account 5981, which the held export only covers
+# from 2025-04-25. The earlier "~10% of 8712 amounts appear in Chase, i.e.
+# chance level" reading measured 8712 across its whole span -- most of which
+# predates 5981's window -- and against the wrong account. Scored inside
+# 5981's own window it hits 8 of 9 (89%), matching the confirmed Chase
+# debits (1454 88%, 3931 85%, 5894 89%) against a date-resampled control of
+# ~0.2 expected, with same-day same-merchant settlements (THE STAND-WESTLAKE,
+# IN-N-OUTWESTLAKEVILL, ANAWALT LUMBER, COSTCO WHSE #0117 x2, WILD FORK
+# FOODS, SPROUTS FARMERS MKT#).
+CHASE_CARDS = frozenset(
+    {"1454", "3931", "0663", "5894", "7123", "3960", "8712"}
+)
+# 9297's identity is still undetermined at n=5; 6081 is an Amex and no
+# export is held for it.
+NO_LEDGER_CARDS = frozenset({"9297", "6081"})
 # Chase checking account number printed on ATM/bank slips, not a card.
 NON_PURCHASE = frozenset({"7739"})
+
+# Ledger sentinels. ``LEDGER_NONE`` is a *decided* value that persists to
+# DynamoDB ("this card has no held ledger"); ``LEDGER_UNKNOWN`` is the
+# absence of a decision. They are NOT interchangeable, and the string
+# "none" satisfies no ``is None`` test -- keep every branch below explicit
+# so a value can never fall through the match dispatch unnoticed again.
+LEDGER_APPLE = "apple"
+LEDGER_CHASE = "chase"
+LEDGER_NONE = "none"
+LEDGER_UNKNOWN = None
 
 DEFAULT_DB = "/Users/tnorlund/receipts-email/email_receipts.db"
 DEFAULT_APPLE_PDF_TXNS = (
@@ -323,6 +344,11 @@ def match_apple(
     return None
 
 
+def _chase_result(chase: dict[str, Any]) -> tuple[float, float]:
+    """Amount + confidence for a curated Chase match."""
+    return chase["amount"], 1.0 if chase["status"] == "confirmed" else 0.9
+
+
 # ------------------------------------------------------------------- main
 def fetch_all(client: DynamoClient) -> dict[str, Any]:
     """Pull receipts+words+labels, lines, sections, places, summaries."""
@@ -489,40 +515,54 @@ def run(args: argparse.Namespace) -> None:
         # ledger from the per-card rules
         last4 = tender.card_last4
         if last4 in APPLE_CARDS:
-            ledger = "apple"
+            ledger = LEDGER_APPLE
         elif last4 in CHASE_CARDS:
-            ledger = "chase"
+            ledger = LEDGER_CHASE
         elif last4 in NO_LEDGER_CARDS or last4 in NON_PURCHASE:
-            ledger = "none"
+            ledger = LEDGER_NONE
         elif tender.tender_class == "cash":
-            ledger = "none"
+            ledger = LEDGER_NONE
         else:
-            ledger = None  # unknown card / unknown tender
+            ledger = LEDGER_UNKNOWN  # unknown card / unknown tender
 
-        # bank match, gated on the card's ledger where known
+        # bank match, gated on the card's ledger where known.
+        # Every ledger value is handled explicitly; the trailing ``else``
+        # makes an unhandled value loud instead of silently dropping a
+        # match that was already fetched.
         bank_amount = confidence = None
         chase = chase_matches.get(receipt_key)
-        apple = None
-        if ledger in (None, "apple"):
+
+        if ledger == LEDGER_CHASE:
+            if chase:
+                bank_amount, confidence = _chase_result(chase)
+        elif ledger == LEDGER_APPLE:
             apple = match_apple(
                 apple_by_amount, date, total, merchant, category
             )
-        if ledger == "chase" and chase:
-            bank_amount = chase["amount"]
-            confidence = 1.0 if chase["status"] == "confirmed" else 0.9
-        elif ledger == "apple" and apple:
-            bank_amount = apple["amount"]
-            confidence = apple["confidence"]
-        elif ledger is None:
+            if apple:
+                bank_amount = apple["amount"]
+                confidence = apple["confidence"]
+        elif ledger == LEDGER_UNKNOWN:
             # no attributable card: accept whichever ledger matched
+            apple = match_apple(
+                apple_by_amount, date, total, merchant, category
+            )
             if chase:
-                bank_amount = chase["amount"]
-                confidence = 1.0 if chase["status"] == "confirmed" else 0.9
-                ledger = "chase"
+                bank_amount, confidence = _chase_result(chase)
+                ledger = LEDGER_CHASE
             elif apple:
                 bank_amount = apple["amount"]
                 confidence = apple["confidence"]
-                ledger = "apple"
+                ledger = LEDGER_APPLE
+        elif ledger == LEDGER_NONE:
+            # Deliberate: this card has no held ledger, so any curated
+            # match is not trustworthy evidence for it. Counted, not
+            # silently dropped -- a rising number here means a card was
+            # misfiled into NO_LEDGER_CARDS/NON_PURCHASE.
+            if chase:
+                stats["suppressed_chase_match_no_ledger"] += 1
+        else:
+            raise ValueError(f"unhandled ledger value: {ledger!r}")
 
         if bank_amount is not None:
             stats["bank_matched"] += 1
@@ -561,6 +601,10 @@ def run(args: argparse.Namespace) -> None:
     print(f"already up to date:      {stats['unchanged']}")
     print(f"records to write:        {len(to_write)}")
     print(f"bank-matched:            {stats['bank_matched']}")
+    print(
+        "curated matches suppressed (ledger=none): "
+        f"{stats['suppressed_chase_match_no_ledger']}"
+    )
     print("\ntender_detail distribution:")
     for name, count in tender_dist.most_common():
         print(f"  {name:22s} {count:5d}")
