@@ -15,6 +15,8 @@ from receipt_upload.line_items.labels import (
     GATE_NOT_MATCHED,
     GATE_NOT_PROVEN,
     GATE_OK,
+    _amount_of,
+    _ocr_damaged_amount_of,
     _quantity_labels,
     derive_labels,
 )
@@ -509,6 +511,105 @@ def test_quantity_span_contract_tolerates_a_decode_without_quantities(
     for proposal in labels:
         by_type.setdefault(proposal.label, set()).add(proposal.text)
     assert by_type == expected
+
+
+def qty_span_item(**overrides):
+    """The decoder's item dict for a "6 @ 0.49" span."""
+    return {
+        "name": "LEMON EACH",
+        "quantity": 6.0,
+        "unit_price": 0.49,
+        "qty_word_ids": [
+            {"line_id": 14, "word_id": 1},
+            {"line_id": 14, "word_id": 2},
+            {"line_id": 14, "word_id": 3},
+        ],
+        **overrides,
+    }
+
+
+def qty_types(labels):
+    out = {}
+    for proposal in labels:
+        out.setdefault(proposal.label, set()).add(proposal.text)
+    return out
+
+
+def test_unit_price_survives_an_ocr_mangled_currency_glyph():
+    # IMG_3404 line 14 reads "6 8 S0.49": Vision rendered "$" as "S"
+    # and "@" as "8". The decoder proved 6 x 0.49 = 2.94 against the
+    # printed price before emitting unit_price, so refusing the word
+    # for its glyphs would discard a settled fact.
+    texts = {(14, 1): "6", (14, 2): "8", (14, 3): "S0.49"}
+    labels = qty_types(_quantity_labels(qty_span_item(), texts))
+
+    assert labels["UNIT_PRICE"] == {"S0.49"}
+    assert labels["QUANTITY"] == {"6"}
+
+
+def test_tax_flagged_unit_price_is_read_too():
+    texts = {(14, 1): "6", (14, 2): "@", (14, 3): "0.49T"}
+    labels = qty_types(_quantity_labels(qty_span_item(), texts))
+
+    assert labels["UNIT_PRICE"] == {"0.49T"}
+
+
+def test_well_formed_words_still_win_over_the_damaged_reading():
+    # The tolerant reading is a fallback, never a widening: when a
+    # well-formed word carries the value, the span is resolved by it
+    # alone and a second damaged spelling cannot make it ambiguous.
+    texts = {(14, 1): "6", (14, 2): "0.49", (14, 3): "S0.49"}
+    labels = qty_types(_quantity_labels(qty_span_item(), texts))
+
+    assert labels["UNIT_PRICE"] == {"0.49"}
+    assert labels["QUANTITY"] == {"6"}
+
+
+def test_bare_integers_are_never_read_as_a_unit_price():
+    # A quantity equal to its own unit price ("2 @ 2.00") must not let
+    # the bare "2" be claimed as the price word and strip QUANTITY.
+    item = qty_span_item(quantity=2.0, unit_price=2.0, name="SODA")
+    texts = {(14, 1): "2", (14, 2): "@", (14, 3): "2.00"}
+    labels = qty_types(_quantity_labels(item, texts))
+
+    assert labels["UNIT_PRICE"] == {"2.00"}
+    assert labels["QUANTITY"] == {"2"}
+
+
+def test_a_damaged_word_worth_a_different_amount_is_not_the_unit_price():
+    # Acceptance never widens: the value must still equal the decoder's
+    # proven unit price to the cent.
+    texts = {(14, 1): "6", (14, 2): "8", (14, 3): "S0.59"}
+    labels = qty_types(_quantity_labels(qty_span_item(), texts))
+
+    assert "UNIT_PRICE" not in labels
+    assert labels["QUANTITY"] == {"6"}
+
+
+def test_two_damaged_words_worth_the_unit_price_mint_neither():
+    texts = {(14, 1): "6", (14, 2): "S0.49", (14, 3): "s0.49"}
+    labels = qty_types(_quantity_labels(qty_span_item(), texts))
+
+    assert "UNIT_PRICE" not in labels
+
+
+def test_negative_amounts_are_left_to_the_strict_reading():
+    # The damaged reading must never drop a sign and turn a credit into
+    # a charge; "-0.49" is well formed and parses with its sign.
+    texts = {(14, 1): "6", (14, 2): "8", (14, 3): "-0.49"}
+    labels = qty_types(_quantity_labels(qty_span_item(), texts))
+
+    assert "UNIT_PRICE" not in labels
+
+
+def test_ocr_damaged_reading_is_scoped_to_the_decoder_span():
+    # The strict helper is untouched, so nothing outside the
+    # arithmetically-backed span starts accepting "S0.49" as money.
+    assert _amount_of("S0.49") is None
+    assert _amount_of("$0.49") == 0.49
+    assert _ocr_damaged_amount_of("S0.49") == 0.49
+    assert _ocr_damaged_amount_of("6") is None
+    assert _ocr_damaged_amount_of("-0.49") is None
 
 
 def test_quantity_labels_skip_cleanly_when_the_decode_has_no_quantity():
