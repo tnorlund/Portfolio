@@ -26,6 +26,17 @@ could reach one prod receipt out of 730 (dev: 667 VALID, 17 PENDING,
 7 INVALID). A recompute that cannot reach the rows is not a recompute
 path.
 
+WHAT ``--check`` CANNOT SEE, because two harnesses now measure this
+corpus and neither is a superset of the other. This one compares STORED
+against LIVE, so it is blind to any receipt with no stored rows at all
+-- 28 in prod, 25 in dev (2026-08-05) have an ITEMS section and zero
+RECEIPT_LINE_ITEM rows, and they are reported only as a
+``no-stored-rows`` count, never as drift. A LIVE-ONLY sweep sees those
+and is in turn blind to the stored column: prod 916d7955 stores
+``no-baseline``, which says its rows were written before the receipt had
+a usable printed baseline, and no amount of recomputing can recover that
+fact. Use both, and do not read either one's silence as coverage.
+
 Usage:
     # read-only drift report (works against prod)
     python3.12 scripts/backfill_receipt_line_items.py --check \
