@@ -195,6 +195,61 @@ def is_settlement_row(bare: str) -> bool:
     )
 
 
+# SETTLEMENT_RE minus its SUB TOTAL / TOTAL / TAX alternatives. The two
+# regexes are kept SEPARATE rather than composed because SETTLEMENT_RE is
+# ported to Swift verbatim and any restructuring of it is a parity risk;
+# the tender alternatives below are a literal copy of that prefix.
+#
+# The split exists because the two vocabularies have OPPOSITE section
+# semantics. A bare TOTAL / SUB TOTAL / TAX row is legitimately printed
+# INSIDE the items block by some merchants (In-N-Out, Trader Joe's), so
+# the section assigner must leave those rows where the decoder put them.
+# A TENDER row -- what the customer paid with, and the change handed back
+# -- is never part of the items block on any receipt in the corpus.
+_TENDER_ONLY_RE = re.compile(
+    r"^\W*(?:ITEMS?\W+)?"
+    r"(?:BALANCE(?:\s+DUE|\s+TO\s+PAY)?|DUE\s+BALANCE"
+    r"|(?:AMOUNT|TOTAL)\s+(?:DUE|TO\s+PAY)|TO\s+PAY|CREDIT|(?:AUTH\s+)?DEBIT"
+    r"|CHANGE(?:\s+DUE)?|CASH(?:\s+BACK)?|TENDER(?:ED)?)\W*$",
+    re.IGNORECASE,
+)
+
+
+def is_tender_row(bare: str) -> bool:
+    """Whether de-amounted row text names a TENDER (not a total or tax).
+
+    Same closed-vocabulary contract as :func:`is_settlement_row` -- the
+    row must carry a tender anchor and nothing but anchors and payment
+    affixes -- with the summary words (SUB TOTAL / TOTAL / TAX) removed,
+    so "Sub Total" is NOT a tender row while "Cash", "Change Due" and
+    "Visa Debit" are.
+
+    ROW-LEVEL BY CONTRACT. Pass the whole visual row's text, never a
+    single OCR line's. The corpus sweep found dev Costco's pork
+    tenderloin split by OCR across two lines: the line "33965 19.51
+    TENDER" de-amounts to "TENDER" and returns True on its own, while
+    the ROW it belongs to de-amounts to "PORK TENDER" -- and "pork" is
+    neither anchor nor affix, so the row correctly returns False. A
+    line-level call would forbid that row from ITEMS and kill a real
+    item's decode. (The measured false-positive rate at row level is
+    zero across 6,694 ITEMS rows in dev and prod.)
+    """
+    if _TENDER_ONLY_RE.match(bare):
+        return True
+    tokens = re.findall(r"[A-Za-z]+", bare)
+    if not tokens:
+        return False
+    lowered = [t.lower() for t in tokens]
+    if not any(t in TENDER_ANCHOR_TOKENS for t in lowered):
+        return False
+    return all(
+        t in TENDER_ANCHOR_TOKENS
+        or t in PAYMENT_AFFIX_TOKENS
+        or _MASK_TOKEN_RE.match(t)
+        for t in lowered
+    )
+
+
 # --- Column-header vocabulary --------------------------------------------
 # The words a receipt prints ABOVE its item table ("Item Qty Price Total",
 # "Description Qty Amount", "Unit Price") and the price-qualifier headings

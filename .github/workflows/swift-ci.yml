@@ -21,6 +21,10 @@ on:
             # otherwise the parity fixture silently freezes, which is
             # exactly what happened between #1313 and #1329.
             - "receipt_upload/receipt_upload/line_items/**"
+            # The section assigner is a port too, and its fixture went
+            # ungated for as long as this filter omitted it.
+            - "receipt_upload/receipt_upload/section_assignment.py"
+            - "receipt_upload/receipt_upload/assets/**"
             - "receipt_dynamo/receipt_dynamo/amounts.py"
             - "receipt_dynamo/receipt_dynamo/entities/receipt_summary.py"
             - "receipt_upload/tests/fixtures/line_items_golden*.json"
@@ -30,6 +34,10 @@ on:
             - "receipt_ocr_swift/**"
             - ".github/workflows/swift-ci.yml"
             - "receipt_upload/receipt_upload/line_items/**"
+            # The section assigner is a port too, and its fixture went
+            # ungated for as long as this filter omitted it.
+            - "receipt_upload/receipt_upload/section_assignment.py"
+            - "receipt_upload/receipt_upload/assets/**"
             - "receipt_dynamo/receipt_dynamo/amounts.py"
             - "receipt_dynamo/receipt_dynamo/entities/receipt_summary.py"
             - "receipt_upload/tests/fixtures/line_items_golden*.json"

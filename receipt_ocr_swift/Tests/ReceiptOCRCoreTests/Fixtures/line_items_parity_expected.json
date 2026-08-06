@@ -13124,5 +13124,381 @@
    },
    "proposal": null
   }
+ },
+ {
+  "image_id": "e5fbe965-386c-5017-a0aa-b90597571d45",
+  "receipt_id": 1,
+  "merchant": "Tropical Smoothie Cafe",
+  "items": [
+   {
+    "name": "Pea Protein",
+    "price": 0.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     13
+    ]
+   },
+   {
+    "name": "Peanut Paradise",
+    "price": 8.99,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     10,
+     12
+    ]
+   }
+  ],
+  "summary": {
+   "subtotal": 8.99,
+   "tax": null,
+   "grand_total": 9.7
+  },
+  "items_with_summary": [
+   {
+    "name": "Pea Protein",
+    "price": 0.0,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     13
+    ]
+   },
+   {
+    "name": "Peanut Paradise",
+    "price": 8.99,
+    "quantity": 1.0,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     10,
+     12
+    ]
+   }
+  ],
+  "reconcile": {
+   "status": "match",
+   "item_sum": 8.99,
+   "baseline": 8.99,
+   "baseline_source": "subtotal",
+   "baseline_figures_agreeing": 1
+  },
+  "printed": {
+   "grand_total": 9.7,
+   "subtotal": 8.99
+  },
+  "boundary": {
+   "image_id": "e5fbe965-386c-5017-a0aa-b90597571d45",
+   "receipt_id": 1,
+   "current_line_ids": [
+    11,
+    12
+   ],
+   "rows": [
+    {
+     "row_id": 0,
+     "line_ids": [
+      1
+     ],
+     "y_min": 0.9636629999999999
+    },
+    {
+     "row_id": 1,
+     "line_ids": [
+      2
+     ],
+     "y_min": 0.928779
+    },
+    {
+     "row_id": 2,
+     "line_ids": [
+      3
+     ],
+     "y_min": 0.908246
+    },
+    {
+     "row_id": 3,
+     "line_ids": [
+      4
+     ],
+     "y_min": 0.8866275
+    },
+    {
+     "row_id": 4,
+     "line_ids": [
+      5
+     ],
+     "y_min": 0.869004
+    },
+    {
+     "row_id": 5,
+     "line_ids": [
+      6
+     ],
+     "y_min": 0.829638
+    },
+    {
+     "row_id": 6,
+     "line_ids": [
+      7
+     ],
+     "y_min": 0.8110465
+    },
+    {
+     "row_id": 7,
+     "line_ids": [
+      8
+     ],
+     "y_min": 0.792151
+    },
+    {
+     "row_id": 8,
+     "line_ids": [
+      9
+     ],
+     "y_min": 0.8328415
+    },
+    {
+     "row_id": 9,
+     "line_ids": [
+      10
+     ],
+     "y_min": 0.7510915
+    },
+    {
+     "row_id": 10,
+     "line_ids": [
+      11
+     ],
+     "y_min": 0.731826
+    },
+    {
+     "row_id": 11,
+     "line_ids": [
+      12
+     ],
+     "y_min": 0.7511420000000001
+    },
+    {
+     "row_id": 12,
+     "line_ids": [
+      13
+     ],
+     "y_min": 0.7296515
+    },
+    {
+     "row_id": 13,
+     "line_ids": [
+      14
+     ],
+     "y_min": 0.6947675
+    },
+    {
+     "row_id": 14,
+     "line_ids": [
+      15
+     ],
+     "y_min": 0.691787
+    },
+    {
+     "row_id": 15,
+     "line_ids": [
+      16
+     ],
+     "y_min": 0.6540695
+    },
+    {
+     "row_id": 16,
+     "line_ids": [
+      17
+     ],
+     "y_min": 0.633549
+    },
+    {
+     "row_id": 17,
+     "line_ids": [
+      18
+     ],
+     "y_min": 0.5944649999999999
+    },
+    {
+     "row_id": 18,
+     "line_ids": [
+      19
+     ],
+     "y_min": 0.6523095
+    },
+    {
+     "row_id": 19,
+     "line_ids": [
+      20
+     ],
+     "y_min": 0.6351749999999999
+    },
+    {
+     "row_id": 20,
+     "line_ids": [
+      21
+     ],
+     "y_min": 0.6017440000000001
+    },
+    {
+     "row_id": 21,
+     "line_ids": [
+      22
+     ],
+     "y_min": 0.5552320000000001
+    },
+    {
+     "row_id": 22,
+     "line_ids": [
+      23
+     ],
+     "y_min": 0.56361
+    },
+    {
+     "row_id": 23,
+     "line_ids": [
+      24
+     ],
+     "y_min": 0.517312
+    },
+    {
+     "row_id": 24,
+     "line_ids": [
+      25
+     ],
+     "y_min": 0.524586
+    },
+    {
+     "row_id": 25,
+     "line_ids": [
+      26
+     ],
+     "y_min": 0.4811045
+    },
+    {
+     "row_id": 26,
+     "line_ids": [
+      27
+     ],
+     "y_min": 0.443181
+    },
+    {
+     "row_id": 27,
+     "line_ids": [
+      28
+     ],
+     "y_min": 0.42287800000000003
+    },
+    {
+     "row_id": 28,
+     "line_ids": [
+      29
+     ],
+     "y_min": 0.402583
+    },
+    {
+     "row_id": 29,
+     "line_ids": [
+      30
+     ],
+     "y_min": 0.38226750000000004
+    },
+    {
+     "row_id": 30,
+     "line_ids": [
+      31
+     ],
+     "y_min": 0.3619185
+    },
+    {
+     "row_id": 31,
+     "line_ids": [
+      32
+     ],
+     "y_min": 0.3226745
+    },
+    {
+     "row_id": 32,
+     "line_ids": [
+      33
+     ],
+     "y_min": 0.302214
+    },
+    {
+     "row_id": 33,
+     "line_ids": [
+      34
+     ],
+     "y_min": 0.23982599999999998
+    },
+    {
+     "row_id": 34,
+     "line_ids": [
+      35
+     ],
+     "y_min": 0.1642445
+    },
+    {
+     "row_id": 35,
+     "line_ids": [
+      36
+     ],
+     "y_min": 0.126453
+    },
+    {
+     "row_id": 36,
+     "line_ids": [
+      37
+     ],
+     "y_min": 0.10465150000000001
+    },
+    {
+     "row_id": 37,
+     "line_ids": [
+      38
+     ],
+     "y_min": 0.084133
+    },
+    {
+     "row_id": 38,
+     "line_ids": [
+      39
+     ],
+     "y_min": 0.0624995
+    },
+    {
+     "row_id": 39,
+     "line_ids": [
+      40
+     ],
+     "y_min": 0.04059
+    },
+    {
+     "row_id": 40,
+     "line_ids": [
+      41
+     ],
+     "y_min": 0.0014535
+    }
+   ],
+   "summary": {
+    "subtotal": 8.99,
+    "tax": null,
+    "grand_total": 9.7
+   },
+   "proposal": null
+  }
  }
 ]

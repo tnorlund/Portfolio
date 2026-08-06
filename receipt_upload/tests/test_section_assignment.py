@@ -298,3 +298,73 @@ def test_real_collapse_cases_pin_qa_expected_rows() -> None:
             "items_scored": len(item_rows),
         }
         assert item_rows, fixture["case"]
+
+
+def _section_of(rows, lines, texts, wanted_text):
+    """Section the SHIPPING prior assigns to the row carrying `wanted_text`."""
+    assignments = assign_row_sections(rows, lines, load_prior_model())
+    index = texts.index(wanted_text)
+    return assignments[index].section_type
+
+
+def test_two_column_tender_row_never_lands_in_items() -> None:
+    """Regression for the Tropical Smoothie IMG_3426 defect.
+
+    The row builder pairs a payment LABEL line with its AMOUNT line, so
+    by the time the assigner sees "Cash | $10.00" it is one row carrying
+    an amount -- and the learned PAYMENT prior was fit on a corpus whose
+    payment rows are text-only (P(has_amount | PAYMENT) = 0.14 against
+    0.76 for ITEMS). The semi-Markov decoder therefore re-entered ITEMS
+    for that row AFTER the total, and the line-item decoder emitted a
+    nameless $10.00 item on the bare-amount line -- which no text-based
+    decoder guard can reject, because that line carries no text.
+    """
+    texts = [
+        "TROPICAL SMOOTHIE",
+        "PEANUT PARADISE 8.99",
+        "PEA PROTEIN 0.00",
+        "SUB TOTAL 8.99",
+        "SALES TAX 0.75",
+        "ORDER TOTAL 9.70",
+        "CASH 10.00",
+        "CHANGE DUE 0.30",
+    ]
+    rows, lines = _rows(texts)
+    assert _section_of(rows, lines, texts, "CASH 10.00") != "ITEMS"
+    assert _section_of(rows, lines, texts, "CHANGE DUE 0.30") != "ITEMS"
+    assert _section_of(rows, lines, texts, "PEANUT PARADISE 8.99") == "ITEMS"
+    assert _section_of(rows, lines, texts, "PEA PROTEIN 0.00") == "ITEMS"
+
+
+def test_a_total_printed_inside_the_items_block_is_left_alone() -> None:
+    """The guard is tender-only ON PURPOSE.
+
+    In-N-Out and Trader Joe's print a TOTAL inside the items block. A
+    blanket "any settlement row terminates ITEMS" rule would fight that
+    format, so `is_tender_row` deliberately excludes SUB TOTAL / TOTAL /
+    TAX -- those rows keep whatever the learned model gives them.
+    """
+    from receipt_upload.section_assignment import _forbidden_sections
+
+    for text in ("SUB TOTAL 8.99", "TOTAL 9.70", "SALES TAX 0.75"):
+        assert _forbidden_sections(text) == (), text
+    for text in ("CASH 10.00", "CHANGE DUE 0.30", "Visa Debit $37.51"):
+        assert _forbidden_sections(text) == ("ITEMS",), text
+
+
+def test_forbidden_sections_defaults_to_empty_for_reconstructed_features() -> (
+    None
+):
+    """RowFeatures rebuilt from stored features keep the old behavior."""
+    feature = RowFeatures(
+        row=_rows(["APPLE 1.00"])[0][0],
+        position=0.5,
+        x_span=0.9,
+        alpha_ratio=1.0,
+        has_amount=1.0,
+        amount_density=1.0,
+        has_quantity=0.0,
+        tokens=("apple", "__amount__"),
+    )
+    assert feature.forbidden_sections == ()
+    assert assign_feature_sections([feature], load_prior_model())

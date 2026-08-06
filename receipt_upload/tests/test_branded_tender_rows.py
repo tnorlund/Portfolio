@@ -28,7 +28,11 @@ import re
 
 import pytest
 
-from receipt_upload.line_items.geometry import extract_items, is_settlement_row
+from receipt_upload.line_items.geometry import (
+    extract_items,
+    is_settlement_row,
+    is_tender_row,
+)
 
 # Every distinct branded-tender string the prod corpus scan turned up
 # (12 receipts; ReceiptsTable-d7ff76a, 2026-08-04).
@@ -164,3 +168,94 @@ def test_pork_tender_still_becomes_an_item() -> None:
     items, _ = extract_items(words, {1, 2})
     prices = sorted(i["price"] for i in items)
     assert prices == [3.00, 19.51]
+
+
+# --- is_tender_row: the SECTION assigner's narrower vocabulary ---------
+#
+# `is_settlement_row` answers "is this row an item?" and so includes the
+# summary words. The section assigner needs the opposite bias on exactly
+# those words: In-N-Out and Trader Joe's print a TOTAL inside the items
+# block, so a guard that evicted every settlement row from ITEMS would
+# fight a real merchant format. `is_tender_row` is the tender-only
+# subset, and the two tests below are the fence.
+
+
+@pytest.mark.parametrize("text", PROD_TENDER_PHANTOMS)
+def test_prod_tender_phantoms_are_tender_rows(text: str) -> None:
+    """Everything the decoder rejects as a tender, the assigner sees."""
+    assert is_tender_row(_bare(text)), text
+
+
+@pytest.mark.parametrize("text", REAL_PRODUCTS + LATENT_NOT_IN_VOCABULARY)
+def test_real_products_are_not_tender_rows(text: str) -> None:
+    assert not is_tender_row(_bare(text)), text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Sub Total",
+        "SUB-TTL",
+        "[1 item] Sub Total",
+        "TOTAL",
+        "Sales Tax",
+        "TAX",
+    ],
+)
+def test_summary_rows_are_settlement_but_not_tender(text: str) -> None:
+    """The one deliberate gap between the two predicates.
+
+    These rows must keep scoring as settlement (the decoder must never
+    name an item after them) while NOT being tender (the section
+    assigner must leave a mid-items total where the model put it --
+    In-N-Out and Trader Joe's print one).
+    """
+    assert is_settlement_row(_bare(text)), text
+    assert not is_tender_row(_bare(text)), text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Not settlement vocabulary either (SETTLEMENT_RE wants the row
+        # to be EXACTLY the total word), but it is the row the Tropical
+        # Smoothie receipt prints, so pin the direction that matters.
+        "Order Total",
+        "TOTAL PURCHASE",
+        "Rounding",
+    ],
+)
+def test_total_phrasings_are_not_tender_rows(text: str) -> None:
+    assert not is_tender_row(_bare(text)), text
+
+
+def test_is_tender_row_is_row_level_by_contract() -> None:
+    """The whole row is the unit; a single OCR line is not.
+
+    Dev Costco splits its pork tenderloin across two OCR lines. The
+    line alone de-amounts to "TENDER" and matches; the ROW it belongs
+    to de-amounts to "PORK TENDER" and correctly does not. A caller
+    that reached for the convenient line-level call would forbid that
+    row from ITEMS and kill a real item's decode.
+    """
+    assert is_tender_row(_bare("33965 19.51 TENDER"))
+    assert not is_tender_row(_bare("PORK 33965 19.51 TENDER 41.99"))
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Cash",
+        "CASH",
+        "Change Due",
+        "CHANGE",
+        "Amount Due",
+        "BALANCE DUE",
+        "Balance to pay",
+        "AUTH DEBIT",
+        "CREDIT",
+        "TENDERED",
+    ],
+)
+def test_bare_tender_vocabulary_matches(text: str) -> None:
+    assert is_tender_row(_bare(text)), text

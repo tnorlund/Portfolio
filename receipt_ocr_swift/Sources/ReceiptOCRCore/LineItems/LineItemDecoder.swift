@@ -118,6 +118,18 @@ enum LineItemRegex {
             + "|SUB\\W{0,2}T(?:OTA|T)L|TOTAL|(?:SALES\\s+)?TAX)\\W*$",
         ci: true
     )
+    /// `_TENDER_ONLY_RE`: SETTLEMENT_RE minus its SUB TOTAL / TOTAL / TAX
+    /// alternatives. Kept as a separate literal for the same reason
+    /// Python does: `settlement` above is a verbatim port and must not be
+    /// restructured.
+    static let tenderOnly = Rx(
+        "^\\W*(?:ITEMS?\\W+)?"
+            + "(?:BALANCE(?:\\s+DUE|\\s+TO\\s+PAY)?|DUE\\s+BALANCE"
+            + "|(?:AMOUNT|TOTAL)\\s+(?:DUE|TO\\s+PAY)|TO\\s+PAY|CREDIT"
+            + "|(?:AUTH\\s+)?DEBIT"
+            + "|CHANGE(?:\\s+DUE)?|CASH(?:\\s+BACK)?|TENDER(?:ED)?)\\W*$",
+        ci: true
+    )
     /// WAS_PRICE_RE: price-comparison metadata ("WAS: $3.59 each")
     static let wasPrice = Rx("\\b(?:WAS|REG)\\b[:.]?\\s*\\$?\\d", ci: true)
     /// SALE_PRICE_RE: annotation echo that restates a post-discount unit
@@ -189,6 +201,12 @@ let tenderAnchorTokens: Set<String> = [
     "visa", "mastercard", "master", "amex", "discover", "diners", "jcb",
     "unionpay", "maestro", "interac", "eftpos",
     "cash", "change", "credit", "debit", "tender", "tendered",
+    // PORT DRIFT FIX. Python promoted "paid" from affix to ANCHOR so
+    // "Paid with card (8644): 32.30" (Stanley of New Orleans, prod
+    // 916d7955) stops decoding as a 32.30 item; Swift kept it in the
+    // affix set, where it can never satisfy the anchor requirement, so
+    // the port silently disagreed with the fixture it claims to match.
+    "paid",
 ]
 
 /// PAYMENT_AFFIX_TOKENS: words that may surround an anchor.
@@ -197,10 +215,14 @@ let paymentAffixTokens: Set<String> = [
     "batch", "card", "cardholder", "cards", "chip", "contactless", "ending",
     "emv", "entry", "express", "american", "for", "insert", "inserted",
     "keyed",
-    "local", "manual", "mid", "mobile", "no", "num", "number", "paid", "pay",
+    "local", "manual", "mid", "mobile", "no", "num", "number", "pay",
     "payment", "payments", "pin", "purchase", "read", "ref", "reference",
     "sale", "seq", "swipe", "swiped", "tap", "tapped", "term", "terminal",
     "tid", "trans", "transaction", "type", "us", "usd", "verified",
+    // "with" -- "Paid with card (8644)". Missing from the port; without
+    // it the card-entry phrasing above still fails the all-vocabulary
+    // test. ("paid" moved to tenderAnchorTokens; see the note there.)
+    "with",
 ]
 
 /// Port of `geometry.is_settlement_row`. SETTLEMENT_RE alone only ever
@@ -212,6 +234,34 @@ let paymentAffixTokens: Set<String> = [
 /// does not contain, so they stay items.
 public func isSettlementRow(_ bare: String) -> Bool {
     if LineItemRegex.settlement.match(bare) != nil { return true }
+    let tokens = LineItemRegex.alphaRun.allMatches(bare).map {
+        $0.lowercased()
+    }
+    if tokens.isEmpty { return false }
+    if !tokens.contains(where: { tenderAnchorTokens.contains($0) }) {
+        return false
+    }
+    return tokens.allSatisfy {
+        tenderAnchorTokens.contains($0)
+            || paymentAffixTokens.contains($0)
+            || LineItemRegex.maskToken.fullMatch($0) != nil
+    }
+}
+
+/// Port of `geometry.is_tender_row`. Same closed-vocabulary contract as
+/// `isSettlementRow` with the summary words (SUB TOTAL / TOTAL / TAX)
+/// removed, so "Sub Total" is NOT a tender row while "Cash", "Change
+/// Due" and "Visa Debit" are. Used by the section assigner, which must
+/// keep a mid-items TOTAL row where the model put it (In-N-Out, Trader
+/// Joe's print one) while never letting a tender row into ITEMS.
+///
+/// ROW-LEVEL BY CONTRACT. Pass the whole visual row's text, never a
+/// single OCR line's: dev Costco's pork tenderloin is split across two
+/// lines, and the line "33965 19.51 TENDER" de-amounts to "TENDER" and
+/// matches, while its ROW de-amounts to "PORK TENDER" and correctly
+/// does not.
+public func isTenderRow(_ bare: String) -> Bool {
+    if LineItemRegex.tenderOnly.match(bare) != nil { return true }
     let tokens = LineItemRegex.alphaRun.allMatches(bare).map {
         $0.lowercased()
     }

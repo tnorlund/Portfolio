@@ -1259,5 +1259,97 @@
         ]
       }
     ]
+  },
+  {
+    "image_id": "e5fbe965-386c-5017-a0aa-b90597571d45",
+    "receipt_id": 1,
+    "sections": [
+      {
+        "section_type": "ADDRESS",
+        "line_ids": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          9,
+          7
+        ]
+      },
+      {
+        "section_type": "BARCODE",
+        "line_ids": [
+          27,
+          32,
+          35,
+          41
+        ]
+      },
+      {
+        "section_type": "FOOTER",
+        "line_ids": [
+          28,
+          29,
+          30,
+          31,
+          34,
+          38,
+          39,
+          40
+        ]
+      },
+      {
+        "section_type": "ITEMS",
+        "line_ids": [
+          10,
+          12,
+          11,
+          13
+        ]
+      },
+      {
+        "section_type": "PAYMENT",
+        "line_ids": [
+          26,
+          37
+        ]
+      },
+      {
+        "section_type": "SECTION_HEADER",
+        "line_ids": [
+          8
+        ]
+      },
+      {
+        "section_type": "SUMMARY",
+        "line_ids": [
+          14,
+          15,
+          16,
+          19,
+          17,
+          20,
+          22,
+          23
+        ]
+      },
+      {
+        "section_type": "SURVEY",
+        "line_ids": [
+          33,
+          36
+        ]
+      },
+      {
+        "section_type": "TOTAL_LINE",
+        "line_ids": [
+          18,
+          21,
+          24,
+          25
+        ]
+      }
+    ]
   }
 ]
