@@ -118,6 +118,31 @@ def test_swift_structure_expectations_match_the_live_python_decoder() -> None:
     )
 
 
+def test_swift_section_expectations_match_the_live_python_assigner() -> None:
+    """Same gate, for the section-assigner fixture.
+
+    ``section_assignment_parity_expected.json`` was the LAST parity
+    snapshot with no gate of any kind: no CI job ran
+    ``generate_section_parity.py``, the two tests above cover the decoder
+    fixtures only, and ``swift-ci.yml``'s path filter names
+    ``receipt_upload/line_items/**`` but not ``section_assignment.py`` --
+    so a change to the assigner could not trigger a Swift job OR fail a
+    Python one. Regenerate with
+    ``python receipt_ocr_swift/Scripts/generate_section_parity.py``.
+    """
+    import generate_section_parity as sections
+
+    committed = sections.DEFAULT_OUTPUT.read_text(encoding="utf-8")
+    regenerated = sections.generate()
+    assert committed == regenerated, (
+        "Swift section parity expectations are STALE against the current "
+        f"Python assigner: {len(committed)} bytes committed vs "
+        f"{len(regenerated)} bytes regenerated. Regenerate with "
+        "`python receipt_ocr_swift/Scripts/generate_section_parity.py` "
+        "and update the Swift port."
+    )
+
+
 def test_swift_golden_ocr_copy_is_byte_identical() -> None:
     """The Swift package's copy of the golden OCR words is not a fork."""
     generator = _generator()

@@ -24,6 +24,7 @@ from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
 
+from receipt_upload.line_items.geometry import is_tender_row
 from receipt_upload.line_items.provenance import SWIFT_WORKER_MODEL_SOURCE
 
 MODEL_SOURCE = "upload-determinism-v1"
@@ -43,6 +44,15 @@ _QUANTITY_RE = re.compile(
 )
 _EPSILON = 1e-9
 _AMOUNT_CONTEXT_RADIUS = 2
+# Amounts are stripped before the tender-vocabulary test, exactly as the
+# line-item decoder does it, so a two-column "Cash | $10.00" row arrives
+# as "Cash".
+_AMOUNT_STRIP_RE = re.compile(r"\$?\d[\d.,]*")
+# One forbidden row inside a segment must sink that segment without
+# sinking the arithmetic. Row emissions live in the tens; a 50-row
+# receipt cannot accumulate anything near this, so the decoder routes
+# around a forbidden cell but never overflows or ties.
+_FORBIDDEN_SCORE = -1e6
 
 
 class SectionWriter(Protocol):
@@ -73,6 +83,10 @@ class RowFeatures:
     has_quantity: float
     tokens: tuple[str, ...]
     token_evidence: tuple[tuple[str, float], ...] = ()
+    # Sections this row may not be assigned to, whatever the model
+    # prefers. Empty for every row the learned features can decide on
+    # their own; see `_forbidden_sections`.
+    forbidden_sections: tuple[str, ...] = ()
 
     def numeric(self) -> dict[str, float]:
         """Return the scalar feature vector used by the learned model."""
@@ -132,6 +146,28 @@ def _tokens(text: str) -> tuple[str, ...]:
     return tuple(result)
 
 
+def _forbidden_sections(text: str) -> tuple[str, ...]:
+    """Sections a row's printed text rules out, regardless of the model.
+
+    Only one rule today: a TENDER row is never an item. The learned
+    prior cannot reach this on its own -- it was fit on a corpus whose
+    PAYMENT rows are text-only (P(has_amount | PAYMENT) = 0.14 against
+    0.76 for ITEMS), so a two-column "Cash | $10.00" scores as an item
+    on both the Bernoulli amount evidence and the ``__amount__`` token,
+    and the semi-Markov decoder happily re-enters ITEMS for it after the
+    total. That is how a clean 41-line Tropical Smoothie scan emitted a
+    nameless $10.00 "item" and reconciled at `mismatch`.
+
+    The vocabulary is deliberately the TENDER subset, not the whole
+    settlement vocabulary: a bare TOTAL / SUB TOTAL / TAX row printed
+    inside the items block is a real merchant format (In-N-Out, Trader
+    Joe's), so those rows are left exactly where the model put them.
+    """
+
+    bare = _AMOUNT_STRIP_RE.sub(" ", text)
+    return ("ITEMS",) if is_tender_row(bare) else ()
+
+
 def extract_row_features(
     rows: Sequence[ReceiptRow],
     lines: Sequence[Any],
@@ -168,6 +204,7 @@ def extract_row_features(
                 amount_density=fmean(amount_flags[context_start:context_end]),
                 has_quantity=float(bool(_QUANTITY_RE.search(text))),
                 tokens=tokens,
+                forbidden_sections=_forbidden_sections(text),
             )
         )
     return features
@@ -335,6 +372,8 @@ def _emission(
     section_model: Mapping[str, Any],
     fallback_model: Mapping[str, Any],
 ) -> float:
+    if section in features.forbidden_sections:
+        return _FORBIDDEN_SCORE
     distributions = section_model["features"]
     fallback_distributions = fallback_model["features"]
     scores = [

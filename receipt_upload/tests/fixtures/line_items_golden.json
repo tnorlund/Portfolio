@@ -3200,6 +3200,42 @@
      "is_discount": false
     }
    ]
+  },
+  {
+   "image_id": "e5fbe965-386c-5017-a0aa-b90597571d45",
+   "receipt_id": 1,
+   "merchant": "Tropical Smoothie Cafe",
+   "printed_subtotal": "8.99",
+   "printed_total": "9.70",
+   "items_sum": "8.99",
+   "sum_matches_subtotal": true,
+   "local_only": true,
+   "labeling_rules_applied": [
+    "the free modifier prints its own $0.00 price, so it is its own item (zero-price items the receipt prints as line items count)",
+    "'Cash $10.00' and 'Change Due $0.30' are tender, never items"
+   ],
+   "reconcile_note": "TWO-COLUMN TENDER CONTROL. A clean 41-line scan whose payment rows print the label and the amount as SEPARATE OCR lines ('Cash' on line 22, '$10.00' on line 23). The section assigner re-entered ITEMS for that row after TOTAL_LINE, so the decoder emitted a third, NAMELESS $10.00 item on line 23 alone and the receipt reconciled at mismatch (18.99 against a printed 8.99). No text-based decoder guard can reject it: line 23 carries no text. items_line_ids here are the CORRECT zone; the section parity fixtures are what gate the assigner.",
+   "true_items": [
+    {
+     "name": "Peanut Paradise",
+     "price": "8.99",
+     "quantity": 1,
+     "line_ids": [
+      10,
+      12
+     ],
+     "is_discount": false
+    },
+    {
+     "name": "Pea Protein",
+     "price": "0.00",
+     "line_ids": [
+      11,
+      13
+     ],
+     "is_discount": false
+    }
+   ]
   }
  ]
 }

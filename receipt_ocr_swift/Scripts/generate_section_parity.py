@@ -96,26 +96,30 @@ def reconstruct(
     return lines, words
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser()
-    script_dir = Path(__file__).resolve().parent
-    package_dir = script_dir.parent
-    repo_root = package_dir.parent
-    parser.add_argument(
-        "--input",
-        type=Path,
-        default=repo_root
-        / "receipt_upload/tests/fixtures/line_items_golden_ocr.json",
-    )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=package_dir
-        / "Tests/ReceiptOCRCoreTests/Fixtures/section_assignment_parity_expected.json",
-    )
-    args = parser.parse_args()
+_SCRIPT_DIR = Path(__file__).resolve().parent
+_PACKAGE_DIR = _SCRIPT_DIR.parent
+_REPO_ROOT = _PACKAGE_DIR.parent
+DEFAULT_INPUT = (
+    _REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden_ocr.json"
+)
+DEFAULT_OUTPUT = (
+    _PACKAGE_DIR
+    / "Tests/ReceiptOCRCoreTests/Fixtures/section_assignment_parity_expected.json"
+)
 
-    fixture = json.loads(args.input.read_text(encoding="utf-8"))
+
+def generate(input_path: Path = DEFAULT_INPUT) -> str:
+    """The expectation file's exact bytes, without writing anything.
+
+    Split out of ``main`` for the same reason
+    ``generate_receipt_structure_parity.generate`` was: the anti-drift
+    gate has to be able to regenerate and diff. Until this split, this
+    was the ONE parity fixture with no gate at all -- nothing in CI ran
+    this script, and ``swift-ci.yml``'s path filter does not name
+    ``section_assignment.py``, so a change to the assigner rotted the
+    snapshot silently in both directions.
+    """
+    fixture = json.loads(input_path.read_text(encoding="utf-8"))
     model = load_prior_model()
     expected = []
     for receipt in fixture["receipts"]:
@@ -146,10 +150,18 @@ def main() -> None:
             f"expected {len(fixture['receipts'])} receipts, "
             f"got {len(expected)}"
         )
-    args.output.write_text(
-        json.dumps(expected, indent=2) + "\n", encoding="utf-8"
-    )
-    print(f"wrote {len(expected)} receipts to {args.output}")
+    return json.dumps(expected, indent=2) + "\n"
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", type=Path, default=DEFAULT_INPUT)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    args = parser.parse_args()
+
+    payload = generate(args.input)
+    args.output.write_text(payload, encoding="utf-8")
+    print(f"wrote {len(json.loads(payload))} receipts to {args.output}")
 
 
 if __name__ == "__main__":

@@ -97,6 +97,14 @@ _FLOORS = {
     # no-printed-subtotal case, and it folds into the existing
     # "TRADER JOE'S" bucket, which stays pinned at 100%.
     "Regal Green Valley": (1.00, 1.00, 0.95),
+    # 2026-08-05 local capture. Two-column restaurant receipt: every
+    # label prints on its own OCR line and its amount on another, and a
+    # free modifier prints its own $0.00. Pinned at 100/100/100 -- the
+    # decoder gets this zone exactly right, and the defect it documents
+    # (the "Cash | $10.00" row landing in ITEMS) is a SECTION bug that
+    # the parity fixtures gate, not this test: this test takes
+    # items_line_ids from the fixture, so it can never see the boundary.
+    "Tropical Smoothie Cafe": (1.00, 1.00, 1.00),
 }
 
 

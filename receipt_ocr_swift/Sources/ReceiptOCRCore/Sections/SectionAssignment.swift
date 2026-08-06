@@ -397,12 +397,16 @@ public struct SectionRowFeatures: Sendable {
     public let hasQuantity: Double
     public let tokens: [String]
     public let tokenEvidence: [String: Double]
+    /// Sections this row may not be assigned to, whatever the model
+    /// prefers. Port of Python `RowFeatures.forbidden_sections`.
+    public let forbiddenSections: Set<String>
 
     public init(
         row: ReceiptVisualRow, position: Double, xSpan: Double,
         alphaRatio: Double, hasAmount: Double, amountDensity: Double,
         hasQuantity: Double, tokens: [String],
-        tokenEvidence: [String: Double] = [:]
+        tokenEvidence: [String: Double] = [:],
+        forbiddenSections: Set<String> = []
     ) {
         self.row = row
         self.position = position
@@ -413,6 +417,7 @@ public struct SectionRowFeatures: Sendable {
         self.hasQuantity = hasQuantity
         self.tokens = tokens
         self.tokenEvidence = tokenEvidence
+        self.forbiddenSections = forbiddenSections
     }
 }
 
@@ -443,6 +448,25 @@ public struct ReceiptSectionPrediction: Sendable, Equatable {
 
 private let sectionEpsilon = 1e-9
 private let amountContextRadius = 2
+/// Port of Python `_FORBIDDEN_SCORE`: sinks a segment without sinking
+/// the arithmetic.
+private let forbiddenScore = -1e6
+
+/// Port of `section_assignment._forbidden_sections`.
+///
+/// A TENDER row is never an item. The learned prior cannot reach this on
+/// its own -- it was fit on a corpus whose PAYMENT rows are text-only
+/// (P(has_amount | PAYMENT) = 0.14 against 0.76 for ITEMS), so a
+/// two-column "Cash | $10.00" scores as an item and the semi-Markov
+/// decoder re-enters ITEMS for it after the total.
+///
+/// The vocabulary is the TENDER subset, not the whole settlement
+/// vocabulary: a bare TOTAL / SUB TOTAL / TAX row printed inside the
+/// items block is a real merchant format (In-N-Out, Trader Joe's).
+func forbiddenSections(forRowText text: String) -> Set<String> {
+    isTenderRow(LineItemRegex.amountStrip.sub(text, with: " "))
+        ? ["ITEMS"] : []
+}
 
 private func normalizeMerchantKey(_ name: String?) -> String {
     guard let name, !name.isEmpty else { return "" }
@@ -497,7 +521,8 @@ public func extractSectionRowFeatures(
             hasAmount: amountFlags[index],
             amountDensity: density,
             hasQuantity: SectionRegex.quantity.search(text) == nil ? 0 : 1,
-            tokens: tokensByRow[index]
+            tokens: tokensByRow[index],
+            forbiddenSections: forbiddenSections(forRowText: text)
         )
     }
 }
@@ -523,6 +548,7 @@ private func emission(
     _ feature: SectionRowFeatures, section: String,
     sectionModel: SectionModel, fallback: SectionModel
 ) -> Double {
+    if feature.forbiddenSections.contains(section) { return forbiddenScore }
     // Preserve the insertion order of Python RowFeatures.numeric()/binary().
     let numeric: [(String, Double)] = [
         ("position", feature.position),
