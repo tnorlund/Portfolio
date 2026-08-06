@@ -12,7 +12,8 @@
  "_known_limitations": [
   "25 receipts / 163 items -- covers the formats the 686-receipt corpus sweep found distinct, not the long tail",
   "labeling ambiguity exists on multi-line restaurant items; the rule above was applied after one anchor disagreement",
-  "four local-capture receipts (Whole Foods weighted item, Coffee Press negative control, Regal Green Valley single-item control, Trader Joe's Henderson branded-tender/no-subtotal adversarial case) are local_only: they exist as fixtures, not in DynamoDB -- scorers that read stored entities must skip local_only entries"
+  "four local-capture receipts (Whole Foods weighted item, Coffee Press negative control, Regal Green Valley single-item control, Trader Joe's Henderson branded-tender/no-subtotal adversarial case) are local_only: they exist as fixtures, not in DynamoDB -- scorers that read stored entities must skip local_only entries",
+  "the 2026-08-05 Tropical Smoothie entry stores the WHOLE receipt s words, not just its ITEMS zone like every other entry: the defect it documents is a SECTION boundary (a two-column Cash row re-entering ITEMS after TOTAL_LINE), and the section parity generators need full-receipt geometry to reproduce it. extract_items still filters by items_line_ids, so the golden scorer is unaffected; export_line_item_golden_ocr.py preserves it verbatim because it is local_only"
  ],
  "receipts": [
   {
