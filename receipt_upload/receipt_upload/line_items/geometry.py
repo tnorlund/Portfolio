@@ -223,6 +223,16 @@ def is_tender_row(bare: str) -> bool:
     affixes -- with the summary words (SUB TOTAL / TOTAL / TAX) removed,
     so "Sub Total" is NOT a tender row while "Cash", "Change Due" and
     "Visa Debit" are.
+
+    ROW-LEVEL BY CONTRACT. Pass the whole visual row's text, never a
+    single OCR line's. The corpus sweep found dev Costco's pork
+    tenderloin split by OCR across two lines: the line "33965 19.51
+    TENDER" de-amounts to "TENDER" and returns True on its own, while
+    the ROW it belongs to de-amounts to "PORK TENDER" -- and "pork" is
+    neither anchor nor affix, so the row correctly returns False. A
+    line-level call would forbid that row from ITEMS and kill a real
+    item's decode. (The measured false-positive rate at row level is
+    zero across 6,694 ITEMS rows in dev and prod.)
     """
     if _TENDER_ONLY_RE.match(bare):
         return True

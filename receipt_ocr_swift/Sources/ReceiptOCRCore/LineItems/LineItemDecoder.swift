@@ -254,6 +254,12 @@ public func isSettlementRow(_ bare: String) -> Bool {
 /// Due" and "Visa Debit" are. Used by the section assigner, which must
 /// keep a mid-items TOTAL row where the model put it (In-N-Out, Trader
 /// Joe's print one) while never letting a tender row into ITEMS.
+///
+/// ROW-LEVEL BY CONTRACT. Pass the whole visual row's text, never a
+/// single OCR line's: dev Costco's pork tenderloin is split across two
+/// lines, and the line "33965 19.51 TENDER" de-amounts to "TENDER" and
+/// matches, while its ROW de-amounts to "PORK TENDER" and correctly
+/// does not.
 public func isTenderRow(_ bare: String) -> Bool {
     if LineItemRegex.tenderOnly.match(bare) != nil { return true }
     let tokens = LineItemRegex.alphaRun.allMatches(bare).map {

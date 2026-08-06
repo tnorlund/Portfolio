@@ -229,6 +229,19 @@ def test_total_phrasings_are_not_tender_rows(text: str) -> None:
     assert not is_tender_row(_bare(text)), text
 
 
+def test_is_tender_row_is_row_level_by_contract() -> None:
+    """The whole row is the unit; a single OCR line is not.
+
+    Dev Costco splits its pork tenderloin across two OCR lines. The
+    line alone de-amounts to "TENDER" and matches; the ROW it belongs
+    to de-amounts to "PORK TENDER" and correctly does not. A caller
+    that reached for the convenient line-level call would forbid that
+    row from ITEMS and kill a real item's decode.
+    """
+    assert is_tender_row(_bare("33965 19.51 TENDER"))
+    assert not is_tender_row(_bare("PORK 33965 19.51 TENDER 41.99"))
+
+
 @pytest.mark.parametrize(
     "text",
     [
