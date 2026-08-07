@@ -669,11 +669,20 @@ def test_header_row_price_word_is_not_a_line_total_either():
     # the pre-markdown price, printed beside a differently-priced item.
     # Minting LINE_TOTAL on it would teach the model that a header row's
     # amount is an extended total, on the strength of a sum that lands.
-    words = row(1, 0.10, "ORIGINAL", "PRICE", "49.99")
-    result = derive_labels(words, {1}, {"subtotal": 49.99})
+    #
+    # Shape taken from CVS 5a7b884a, which prints exactly this: a $49.89
+    # item with its $49.99 pre-coupon price on the next row. The
+    # annotation is now recognized by SALE_PRICE_RE, so it never becomes
+    # an item at all -- a stronger form of the same guarantee, and the
+    # real item beside it keeps its own labels.
+    words = row(1, 0.10, "PLAN", "B", "ONE", "STEP", "49.89") + row(
+        2, 0.15, "ORIGINAL", "PRICE", "49.99"
+    )
+    result = derive_labels(words, {1, 2}, {"subtotal": 49.89})
 
     assert result.gate == GATE_OK
-    assert "LINE_TOTAL" not in by_label(result)
+    assert by_label(result).get("LINE_TOTAL") == {"49.89"}
+    assert "49.99" not in {p.text for p in result.labels}
 
 
 def test_header_name_borrowed_from_another_row_keeps_its_line_total():

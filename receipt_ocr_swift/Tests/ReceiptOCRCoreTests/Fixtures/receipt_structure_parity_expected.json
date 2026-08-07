@@ -1808,8 +1808,8 @@
       },
       {
         "item_index": 17,
-        "name": "0.25N",
-        "price": 0.0,
+        "name": "",
+        "price": 0.25,
         "quantity": 5.0,
         "unit_price": 0.05,
         "is_discount": false,
@@ -1822,6 +1822,35 @@
       },
       {
         "item_index": 18,
+        "name": "0000-999-735 CA LBR FEE <A,U\u00bb",
+        "price": 0.1,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          14,
+          15,
+          17
+        ],
+        "reconciliation_status": "no-baseline"
+      },
+      {
+        "item_index": 19,
+        "name": "0000-999-735 CA_LBR FEE \u00abA, U=",
+        "price": 0.38,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          11,
+          12
+        ],
+        "reconciliation_status": "no-baseline"
+      },
+      {
+        "item_index": 20,
         "name": "0.750INX23. 75INX97IN WHT MEL",
         "price": 38.97,
         "quantity": null,
@@ -2403,8 +2432,8 @@
       },
       {
         "item_index": 28,
-        "name": "0.20N",
-        "price": 200.1,
+        "name": "",
+        "price": 0.2,
         "quantity": null,
         "unit_price": null,
         "is_discount": false,
