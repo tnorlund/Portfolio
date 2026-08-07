@@ -137,12 +137,14 @@ enum LineItemRegex {
     )
     /// WAS_PRICE_RE: price-comparison metadata ("WAS: $3.59 each")
     static let wasPrice = Rx("\\b(?:WAS|REG)\\b[:.]?\\s*\\$?\\d", ci: true)
-    /// SALE_PRICE_RE: annotation echo that restates a post-discount unit
-    /// price ("Sale Price 1.99", Target's "Regular Price $22.99", Nordstrom
-    /// Rack's "Comparable Value 59.95"). Exact phrases only — "BAG SALE
-    /// PAPER EA" is a real item.
+    /// SALE_PRICE_RE: annotation echo that restates a pre/post-discount
+    /// unit price ("Sale Price 1.99", Target's "Regular Price $22.99",
+    /// Nordstrom Rack's "Comparable Value 59.95", CVS's "ORIGINAL PRICE
+    /// 49.99" above the coupon that discounts it). Exact phrases only —
+    /// "BAG SALE PAPER EA" is a real item.
     static let salePrice = Rx(
-        "\\b(?:(?:SALE|REG(?:ULAR)?\\.?)\\s+PRICE|COMPARABLE\\s+VALUE)\\b",
+        "\\b(?:(?:SALE|REG(?:ULAR)?\\.?|ORIGINAL)\\s+PRICE"
+            + "|COMPARABLE\\s+VALUE)\\b",
         ci: true
     )
     /// NON_PRODUCT_NOTE_RE: tip-suggestion footers ("22% Tip = 4.40",
@@ -766,7 +768,8 @@ public struct LineItemSummary: Sendable, Equatable {
 ///   * runs only when the receipt does NOT already reconcile, so the filter
 ///     can never lose a currently-matching receipt;
 ///   * at least 2 other non-discount items must survive every drop
-///     (single-item receipts legitimately have item price == total);
+///     (single-item receipts legitimately have item price == total),
+///     except the self-verifying nameless-band case documented inline;
 ///   * an UNNAMED band may match subtotal / tax / grand_total and is dropped
 ///     only when the drop strictly improves the delta;
 ///   * a NAMED band may match only subtotal / grand_total and is dropped
@@ -806,8 +809,32 @@ func filterSummaryFigureItems(
                 return abs(price - f) <= max(0.02, f * 0.01)
             }
             if !matchesFigure { continue }
-            if nonDisc.count - drop.count - 1 < 2 { continue }
             let newDiff = abs(pythonRound2(cur - price) - base)
+            if nonDisc.count - drop.count - 1 < 2 {
+                // Normally at least 2 other items must survive: a
+                // single-item receipt legitimately has item price ==
+                // total, and dropping its one item would empty the
+                // receipt. The one exception is fully self-verifying: a
+                // band with NO name text at all, whose removal leaves
+                // items that all DO carry name text and that then
+                // reconcile EXACTLY (CVS d04dea42 prints its subtotal's
+                // amount one OCR line above the "SUBTOTAL" label;
+                // 2c9b770c its "20.00 20.00" tender pair below an
+                // excluded "TOTAL 20.00"). "No name text" is stricter
+                // than `nameIsReal` on purpose — 2c9b770c's survivor is
+                // "RX #: ****2130000", not a real NAME but not a bare
+                // amount either.
+                let survivors = items.enumerated().filter { j, it2 in
+                    j != idx && !drop.contains(j) && !it2.isDiscount
+                }.map(\.element)
+                let bandNameless = pyStrip(it.name).isEmpty
+                let allNamed =
+                    !survivors.isEmpty
+                    && survivors.allSatisfy { !pyStrip($0.name).isEmpty }
+                if !(bandNameless && allNamed && newDiff <= tol) {
+                    continue
+                }
+            }
             let ok =
                 unnamed
                 ? newDiff < abs(cur - base) - 0.005
