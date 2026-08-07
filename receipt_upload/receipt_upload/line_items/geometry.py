@@ -366,10 +366,13 @@ WAS_PRICE_RE = re.compile(r"\b(?:WAS|REG)\b[:.]?\s*\$?\d", re.IGNORECASE)
 # it double-counts. Target prints the same echo as "Regular Price $22.99"
 # under each discounted item (mode D in the failure-mode report: dropping
 # that one band closes the delta exactly), and Nordstrom Rack prints it as
-# "Comparable Value 59.95". Exact phrases only — "BAG SALE PAPER EA" is a
-# real item.
+# "Comparable Value 59.95". CVS prints it as "ORIGINAL PRICE 49.99" above
+# the coupon line that discounts it, which is the same annotation under a
+# third name -- and it is the only reason CVS 5a7b884a decoded a $49.99
+# phantom next to its real $49.89 item. Exact phrases only — "BAG SALE
+# PAPER EA" is a real item.
 SALE_PRICE_RE = re.compile(
-    r"\b(?:(?:SALE|REG(?:ULAR)?\.?)\s+PRICE|COMPARABLE\s+VALUE)\b",
+    r"\b(?:(?:SALE|REG(?:ULAR)?\.?|ORIGINAL)\s+PRICE|COMPARABLE\s+VALUE)\b",
     re.IGNORECASE,
 )
 # An amount qualified "per <unit>" is a RATE, not an extended price. The
@@ -444,7 +447,46 @@ QTY_SEPARATOR_RE = re.compile(
 # Cent-exact tolerance for accepting a quantity pair. Both sides are
 # printed money, so this is float-representation slack, not a band.
 QTY_CENT_TOLERANCE = 0.005
-TAX_FLAG_RE = re.compile(r"\s+[TFNOAB]X?$")
+# --- Taxability flags fused onto the amount they annotate ----------------
+# Registers print a taxability code after the price -- CVS "7.32N", Home
+# Depot "0.38N", Dollar Tree "1.25T" -- and whether OCR returns it as its
+# own word ("7.32" "N") or fused into one ("7.32N") is a property of the
+# glyph spacing, not of the receipt. Both are the same printed thing, so
+# one rule covers both: the old ``\s+`` form could only strip the split
+# case, and the fused case fell through to ``looks_like_receipt_amount``,
+# which rejects "7.32N" outright. CVS never prints a currency symbol, so
+# every CVS line price was invisible to the decoder (11 prod / 11 dev
+# receipts decoded ZERO items with a perfectly good ITEMS section).
+#
+# The flag alphabet stays the one this module already declares, and is
+# NOT widened to a bare [A-Z]: the trailing letter is not always a flag.
+# "BERNZOMATIC MAP-PRO FUEL 14.10Z" is a 14.1-OUNCE product size and
+# "Diamonds 0.95g" is a weight; both read as money under [A-Z] and
+# neither is money. Restricting to [TFNOAB] and anchoring on a whole
+# money-shaped token is what keeps SKUs, store numbers and loyalty ids
+# ("4006N", "123456F") out -- they carry no 2-decimal fraction, so they
+# fail the amount test even after the flag comes off.
+#
+# The digit lookbehind keeps the suffix pattern from firing on ordinary
+# words that happen to end in a flag letter ("CAT", "SKIN OFF").
+TAX_FLAG_RE = re.compile(r"(?<=\d)\s*[TFNOAB]X?$")
+# A whole token that is an amount carrying such a flag, capturing the
+# amount. strip_tax_flag reads group 1 rather than substituting, so the
+# Swift port is the same two operations in the same order.
+FLAGGED_AMOUNT_RE = re.compile(r"^(\$?-?\d[\d.,]*\d)\s*[TFNOAB]X?$")
+
+
+def strip_tax_flag(token: str) -> str:
+    """Return ``token`` without a taxability flag fused onto its amount.
+
+    Shape-gated: anything that is not a money token plus a flag comes back
+    unchanged, so this can be applied to every word of a band without
+    risking a product name.
+    """
+    match = FLAGGED_AMOUNT_RE.fullmatch((token or "").strip())
+    return match.group(1) if match else (token or "")
+
+
 DISCOUNT_WORDS = ("SAVED", "SAVING", "OFF", "COUPON", "DISCOUNT", "PROMO")
 # Discount markers, matched as WORDS. The tuple above was tested with a
 # plain substring scan, which read "OFF" inside COFFEE / TOFFEE / Office
@@ -589,6 +631,12 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
         # "(2" + "80.00)") — never a price.
         if t.endswith(")") and "(" not in t:
             continue
+        # A fused taxability flag is stripped before the amount test, the
+        # same rule blocks._line_amounts applies when it decides band
+        # roles. Without this the two disagreed: a CVS band was scored
+        # PRICE on its "7.32N" and then parsed to None here, so the row
+        # produced no item at all.
+        t = strip_tax_flag(t)
         if looks_like_receipt_amount(t) and re.search(r"\d[.,]\d{2}(?!\d)", t):
             v = parse_receipt_amount(t)
             if v is not None and abs(v) < 100000:
@@ -650,7 +698,7 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
     for i, t in enumerate(texts):
         if i in consumed:
             continue
-        if looks_like_receipt_amount(t):
+        if looks_like_receipt_amount(strip_tax_flag(t)):
             continue  # an earlier price on the band is never name content
         if re.fullmatch(r"[TFNOAB]X?", t):
             continue  # taxability flag
@@ -1638,6 +1686,7 @@ __all__ = [
     "COLUMN_HEADER_ANCHOR_TOKENS",
     "DISCOUNT_WORDS",
     "DISCOUNT_WORD_RE",
+    "FLAGGED_AMOUNT_RE",
     "LEAD_QTY_RE",
     "NOISY_MONEY_RE",
     "NON_ITEM_SECTIONS",
@@ -1669,4 +1718,5 @@ __all__ = [
     "quantity_candidates",
     "reconcile",
     "reconcile_detailed",
+    "strip_tax_flag",
 ]

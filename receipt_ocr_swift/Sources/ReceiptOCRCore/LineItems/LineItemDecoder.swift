@@ -103,8 +103,13 @@ enum LineItemRegex {
     static let bareCount = Rx("^\\d{1,2}$")
     /// LEAD_QTY_RE (ported for completeness)
     static let leadQty = Rx("^(\\d{1,2})\\s+(?=[A-Za-z])")
-    /// TAX_FLAG_RE (ported for completeness)
-    static let taxFlag = Rx("\\s+[TFNOAB]X?$")
+    /// TAX_FLAG_RE: a taxability flag printed directly after an amount,
+    /// whether or not OCR left a space ("7.32 N" / "7.32N"). The digit
+    /// lookbehind keeps it off ordinary words ending in a flag letter.
+    static let taxFlag = Rx("(?<=\\d)\\s*[TFNOAB]X?$")
+    /// FLAGGED_AMOUNT_RE: a whole token that is an amount plus such a
+    /// flag, capturing the amount. `stripTaxFlag` reads group 1.
+    static let flaggedAmount = Rx("^(\\$?-?\\d[\\d.,]*\\d)\\s*[TFNOAB]X?$")
     /// SETTLEMENT_RE: settlement lines are never items, even when a broken
     /// ITEMS section includes them. OCR sometimes scrambles word order
     /// ("17.98 DUE BALANCE") or prefixes an item count ("[1 item] Sub Total
@@ -153,8 +158,6 @@ enum LineItemRegex {
     static let skuLike = Rx("\\d{4,}")
     /// Amount fraction gate: r"\d[.,]\d{2}(?!\d)"
     static let twoDecimal = Rx("\\d[.,]\\d{2}(?!\\d)")
-    /// Fused taxability flag on an amount: r"\$?\d[\d.,]*\d[A-Z]" (fullmatch)
-    static let fusedFlagAmount = Rx("\\$?\\d[\\d.,]*\\d[A-Z]")
     static let alpha2 = Rx("[A-Za-z]{2,}")
     static let alpha3 = Rx("[A-Za-z]{3,}")
     static let multiSpace = Rx("\\s{2,}")
@@ -397,6 +400,16 @@ func bandWords(_ words: [ZoneWord]) -> [[ZoneWord]] {
 
 // MARK: - Amount extraction per line/band (blocks._line_amounts)
 
+/// Port of `geometry.strip_tax_flag`: drop a taxability flag fused onto
+/// (or spaced after) an amount. Shape-gated, so anything that is not a
+/// money token plus a flag comes back unchanged.
+func stripTaxFlag(_ token: String) -> String {
+    guard let m = LineItemRegex.flaggedAmount.fullMatch(pyStrip(token)),
+        let amount = m.group(1)
+    else { return token }
+    return amount
+}
+
 /// Port of `blocks._line_amounts`.
 func lineAmounts(_ words: [ZoneWord]) -> [Double] {
     var out: [Double] = []
@@ -404,10 +417,11 @@ func lineAmounts(_ words: [ZoneWord]) -> [Double] {
         var t = w.text
         // OCR carcass ("80.00)" from "@0.00)"), never a price
         if t.hasSuffix(")") && !t.contains("(") { continue }
-        // Strip a single fused trailing taxability flag ("0.38N")
-        if LineItemRegex.fusedFlagAmount.fullMatch(t) != nil {
-            t = String(t.dropLast())
-        }
+        // Strip a fused trailing taxability flag ("0.38N"). One shared
+        // rule with parseBand; this used to strip any trailing [A-Z],
+        // which scored "BERNZOMATIC MAP-PRO FUEL 14.10Z" (a 14.1-oz
+        // product SIZE) as a $14.10 price band.
+        t = stripTaxFlag(t)
         if Amounts.looksLikeReceiptAmount(t),
             LineItemRegex.twoDecimal.hasMatch(t),
             let v = Amounts.parseReceiptAmount(t)
@@ -573,6 +587,9 @@ func parseBand(_ band: [ZoneWord]) -> ParsedBand? {
     var amounts: [(Int, Double)] = []
     for (i, t) in texts.enumerated() {
         if t.hasSuffix(")") && !t.contains("(") { continue }
+        // A fused taxability flag is stripped before the amount test, the
+        // same rule lineAmounts applies when it decides band roles.
+        let t = stripTaxFlag(t)
         if Amounts.looksLikeReceiptAmount(t),
             LineItemRegex.twoDecimal.hasMatch(t),
             let v = Amounts.parseReceiptAmount(t), abs(v) < 100000
@@ -637,7 +654,7 @@ func parseBand(_ band: [ZoneWord]) -> ParsedBand? {
     var nameIdxs: [Int] = []
     for (i, t) in texts.enumerated() {
         if consumed.contains(i) { continue }
-        if Amounts.looksLikeReceiptAmount(t) { continue }
+        if Amounts.looksLikeReceiptAmount(stripTaxFlag(t)) { continue }
         if LineItemRegex.taxFlagWord.fullMatch(t) != nil { continue }
         nameIdxs.append(i)
     }

@@ -4530,7 +4530,7 @@
    },
    {
     "name": "CA LUMBER FEE",
-    "price": 0.0,
+    "price": 0.25,
     "quantity": 5.0,
     "unit_price": 0.05,
     "is_discount": false,
@@ -4539,6 +4539,32 @@
      18,
      19,
      20
+    ]
+   },
+   {
+    "name": "0000-999-735 CA LBR FEE <A,U\u00bb",
+    "price": 0.1,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "name": "0000-999-735 CA_LBR FEE \u00abA, U=",
+    "price": 0.38,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     12
     ]
    },
    {
@@ -4785,7 +4811,7 @@
    },
    {
     "name": "CA LUMBER FEE",
-    "price": 0.0,
+    "price": 0.25,
     "quantity": 5.0,
     "unit_price": 0.05,
     "is_discount": false,
@@ -4794,6 +4820,32 @@
      18,
      19,
      20
+    ]
+   },
+   {
+    "name": "0000-999-735 CA LBR FEE <A,U\u00bb",
+    "price": 0.1,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     14,
+     15,
+     16,
+     17
+    ]
+   },
+   {
+    "name": "0000-999-735 CA_LBR FEE \u00abA, U=",
+    "price": 0.38,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     11,
+     12
     ]
    },
    {
@@ -4812,7 +4864,7 @@
   ],
   "reconcile": {
    "status": "mismatch",
-   "item_sum": 282.64,
+   "item_sum": 283.37,
    "baseline": 195.86,
    "baseline_source": "subtotal",
    "baseline_figures_agreeing": null
@@ -5764,7 +5816,7 @@
    },
    {
     "name": "CA LUMBER FEE",
-    "price": 200.1,
+    "price": 0.2,
     "quantity": null,
     "unit_price": null,
     "is_discount": false,
@@ -6224,7 +6276,7 @@
    },
    {
     "name": "CA LUMBER FEE",
-    "price": 200.1,
+    "price": 0.2,
     "quantity": null,
     "unit_price": null,
     "is_discount": false,
@@ -6267,7 +6319,7 @@
   ],
   "reconcile": {
    "status": "mismatch",
-   "item_sum": 1395.36,
+   "item_sum": 1195.46,
    "baseline": 1023.48,
    "baseline_source": "subtotal",
    "baseline_figures_agreeing": null
