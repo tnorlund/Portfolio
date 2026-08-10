@@ -196,42 +196,36 @@ def dump_item(item: dict, y_lookup: dict) -> dict:
 
 
 def find_figure_words(
-    export_words: list[dict], zone_bottom_y: float, value: Optional[float]
+    receipt_words: list, value: Optional[float], figure: str
 ) -> list[list[int]]:
-    """Word ref(s) for a printed summary figure, so the viz can point at
-    the number the reconciliation compares against.
+    """Word ref(s) for a printed summary figure, located by the SAME
+    anchored-row logic production uses (receipt_summary.find_printed_*
+    _words: keyword anchors, tender/settlement rows excluded) — the viz
+    points at the pipeline's own answer, not a display heuristic.
 
-    Value-matches word text (tax flags and currency stripped) and picks
-    the candidate nearest the bottom edge of the items zone — totals
-    print just below the items on every layout in the golden set.
+    Only candidates matching the summary value are kept, so a stale
+    anchor can never highlight a different number than the verdict
+    compares against.
     """
+    from receipt_dynamo.entities.receipt_summary import (
+        find_printed_grand_total_words,
+        find_printed_subtotal_words,
+    )
+
     if value is None:
         return []
-    candidates = []
-    for w in export_words:
-        text = re.sub(r"[A-Za-z]+$", "", w["text"].replace("$", "").replace(",", "")).strip()
-        try:
-            parsed = float(text)
-        except ValueError:
-            continue
-        if abs(parsed - value) >= 0.005:
-            continue
-        y_mid = w["bbox"]["y"] + w["bbox"]["height"] / 2
-        # Prefer candidates strictly below the zone, then out-of-zone:
-        # settlement rows inside the zone ("Balance to pay $43.94") echo
-        # the total, but the figure the reader should see is the printed
-        # one in the summary block below the items.
-        candidates.append(
-            (
-                y_mid >= zone_bottom_y,
-                w["in_zone"],
-                abs(y_mid - zone_bottom_y),
-                [w["line_id"], w["word_id"]],
-            )
-        )
-    if not candidates:
-        return []
-    return [min(candidates)[3]]
+    finder = (
+        find_printed_subtotal_words
+        if figure == "subtotal"
+        else find_printed_grand_total_words
+    )
+    refs = []
+    for amount, word in finder(receipt_words):
+        if abs(amount - value) < 0.005:
+            ref = [word.line_id, word.word_id]
+            if ref not in refs:
+                refs.append(ref)
+    return refs
 
 
 def item_key(item: dict) -> tuple:
@@ -404,12 +398,9 @@ def export_receipt(
         if absorbed_into is not None:
             b["absorbed_into"] = absorbed_into
 
-    zone_bottom_y = min(
-        w["bbox"]["y"] for w in export_words if w["in_zone"]
-    )
     printed_word_refs = {
         fig: find_figure_words(
-            export_words, zone_bottom_y, (summary or {}).get(fig)
+            details.words, (summary or {}).get(fig), fig
         )
         for fig in ("subtotal", "grand_total")
     }
