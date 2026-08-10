@@ -1078,12 +1078,28 @@ def _run_words_pipeline_worker(
             # Keep one canonical copy and invalidate the equal-valued duplicates
             # BEFORE validation, so they neither corrupt arithmetic nor inflate the
             # LLM validator's workload. Conservative: only exact-value duplicates.
-            for dup in dedupe_grand_total(words, word_labels):
+            #
+            # The section layer (swift-worker-v1) has usually already decided
+            # which row is the printed TOTAL_LINE vs the PAYMENT (tender)
+            # restatement, so hand dedupe the sections as its primary tiebreak
+            # — keyword/lowest-y alone kept the tender-row copy and invalidated
+            # the printed "TOTAL" row. Sections are advisory: any read failure
+            # (or a receipt with none yet) falls back to the old election.
+            try:
+                receipt_sections = dynamo.get_receipt_sections_from_receipt(
+                    image_id, receipt_id
+                )
+            except Exception:  # pylint: disable=broad-except
+                receipt_sections = []
+            for dup in dedupe_grand_total(
+                words, word_labels, sections=receipt_sections
+            ):
                 dup.validation_status = ValidationStatus.INVALID.value
                 dup.label_proposed_by = "dedupe_grand_total"
                 dup.reasoning = (
                     "Redundant GRAND_TOTAL: the receipt restates the final total "
-                    "on multiple rows; the canonical (lowest) copy is kept."
+                    "on multiple rows; the canonical copy (TOTAL_LINE section / "
+                    "keyword-anchored / lowest) is kept."
                 )
                 dynamo.update_receipt_word_label(dup)
                 _remove_label_from_list(pending_labels, dup)

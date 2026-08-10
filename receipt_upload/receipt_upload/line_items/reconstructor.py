@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 import statistics
 from datetime import datetime, timezone
-from typing import Dict, List, Set, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from receipt_dynamo.amounts import GRAND_TOTAL_DISQUALIFIER_TOKENS
 from receipt_dynamo.constants import ValidationStatus
@@ -42,6 +42,17 @@ _GRAND_TOTAL_KEYWORDS = frozenset(
 # Canonical copy lives in receipt_dynamo.amounts, shared with the
 # ReceiptSummary printed-total fallback.
 _GRAND_TOTAL_DISQUALIFIERS = GRAND_TOTAL_DISQUALIFIER_TOKENS
+# Election rank a candidate inherits from the receipt's section layer, when the
+# caller supplies sections (lower is better). The section decoder
+# (swift-worker-v1) explicitly separates the printed TOTAL_LINE row from the
+# PAYMENT (tender) block, so a GRAND_TOTAL copy sitting on the TOTAL_LINE row
+# must out-rank the restatement on the card slip — the keyword/lowest-y
+# heuristics alone get this backwards when the tender row also carries a
+# grand-total keyword ("Amount", "Total Tender") and prints lower on the paper.
+# Lines in neither section (or with no section info at all) rank in between,
+# which keeps the pre-section behavior as the fallback.
+_SECTION_TIEBREAK_RANK: Dict[str, int] = {"TOTAL_LINE": 0, "PAYMENT": 2}
+_SECTION_RANK_NEUTRAL = 1
 _PROPOSED_BY = "geometry_line_items"
 _RECLASS_BY = "arithmetic_totals_reclass"
 
@@ -281,7 +292,9 @@ def reclassify_mislabeled_totals(
 
 
 def dedupe_grand_total(
-    words: List, existing_labels: List[ReceiptWordLabel]
+    words: List,
+    existing_labels: List[ReceiptWordLabel],
+    sections: Optional[Sequence] = None,
 ) -> List[ReceiptWordLabel]:
     """Return redundant ``GRAND_TOTAL`` labels that should be invalidated.
 
@@ -307,7 +320,17 @@ def dedupe_grand_total(
       that copy is canonical and only the ``PENDING`` duplicates of it are
       reported. If a group has *multiple* confirmed copies we abstain entirely.
     * When every copy in a value-group is ``PENDING``, the canonical kept copy is
-      preferred by **grand-total-keyword context first** (a copy whose row carries
+      preferred by **section context first** when ``sections`` is provided: a
+      copy whose line sits inside a ``TOTAL_LINE`` section out-ranks one in
+      neither section, which out-ranks one inside a ``PAYMENT`` (tender)
+      section. The section layer has already decided which row *is* the printed
+      total (swift-worker-v1 marks it at high confidence), and the audited
+      failure mode — "TOTAL $20.56" invalidated while the equal "DEBIT PAYMENT"
+      amount stayed — happens exactly because the tender row both carries a
+      grand-total keyword ("Amount"/"Total Tender") and prints lower. Within
+      the winning section tier (or whenever section info is absent, the
+      pre-existing behavior), the copy is
+      preferred by **grand-total-keyword context** (a copy whose row carries
       "TOTAL"/"BALANCE"/"DUE"/"GRAND"/"AMOUNT" out-ranks a bare restated number),
       then by **lowest-on-receipt** (smallest y-center — header is high-y, the
       final total prints last/lowest). Keyword anchoring matters: a stray copy of
@@ -316,6 +339,11 @@ def dedupe_grand_total(
       downstream validator may invalidate the kept stray and strand the receipt
       with **no** grand total. The equal-valued restatements are the redundant
       copies.
+
+    ``sections`` is optional and advisory: any iterable of objects carrying
+    ``section_type`` (``SectionType`` or its string value) and ``line_ids``
+    (e.g. ``ReceiptSection`` entities). Passing ``None`` or an empty sequence
+    reproduces the pre-section behavior exactly.
 
     Callers should mark each returned label ``INVALID`` (audit trail, never
     delete) and drop it from the pending set so the validators don't resurrect it.
@@ -365,6 +393,28 @@ def dedupe_grand_total(
         and not (toks & _GRAND_TOTAL_DISQUALIFIERS)
     }
 
+    # Line-id -> election rank from the receipt's section layer (see
+    # ``_SECTION_TIEBREAK_RANK``). Empty when the caller has no section info,
+    # which neutralizes the tier entirely.
+    section_rank: Dict[int, int] = {}
+    for sec in sections or ():
+        stype = getattr(sec, "section_type", None)
+        stype = getattr(stype, "value", stype)  # unwrap SectionType enum
+        rank = _SECTION_TIEBREAK_RANK.get(stype)
+        if rank is None:
+            continue
+        for raw_line_id in getattr(sec, "line_ids", None) or ():
+            try:
+                line_id = int(raw_line_id)
+            except (TypeError, ValueError):
+                continue
+            # If a line somehow appears in both a TOTAL_LINE and a PAYMENT
+            # section, the better (TOTAL_LINE) rank wins.
+            section_rank[line_id] = min(rank, section_rank.get(line_id, rank))
+
+    def _rank(lab: ReceiptWordLabel) -> int:
+        return section_rank.get(lab.line_id, _SECTION_RANK_NEUTRAL)
+
     redundant: List[ReceiptWordLabel] = []
     for _val, labs in by_value.items():
         if len(labs) < 2:
@@ -387,11 +437,17 @@ def dedupe_grand_total(
             # duplicates are redundant (never invalidate the confirmed one).
             redundant.extend(pending)
             continue
-        # All PENDING: elect a canonical copy and invalidate the rest. Prefer a
-        # keyword-anchored row (the explicit total) over a bare restated number;
-        # among the chosen pool, keep the lowest-on-receipt copy.
-        anchored = [lab for lab in pending if lab.line_id in keyword_line_ids]
-        candidates = anchored or pending
+        # All PENDING: elect a canonical copy and invalidate the rest. Section
+        # tier first — a copy on the section layer's TOTAL_LINE row out-ranks
+        # an unsectioned copy, which out-ranks a copy inside the PAYMENT
+        # (tender) block. Without section info every copy shares the neutral
+        # tier and this is a no-op. Then prefer a keyword-anchored row (the
+        # explicit total) over a bare restated number; among the chosen pool,
+        # keep the lowest-on-receipt copy.
+        best_rank = min(_rank(lab) for lab in pending)
+        tier = [lab for lab in pending if _rank(lab) == best_rank]
+        anchored = [lab for lab in tier if lab.line_id in keyword_line_ids]
+        candidates = anchored or tier
         candidates.sort(
             key=lambda lab: pos.get((lab.line_id, lab.word_id), 0.0)
         )
