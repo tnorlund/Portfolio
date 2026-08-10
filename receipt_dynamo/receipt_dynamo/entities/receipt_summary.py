@@ -94,9 +94,13 @@ class MonetaryTotals:
 # Regex pattern to extract monetary values from text
 # Matches: $12.99, 12.99, $1,234.56, 1234.56, $1234, 1234
 # Order matters: try comma-grouped first, then ungrouped amounts
+# A trailing "-" is the accounting negative some registers print on
+# refunds (Target returns print "$16.25-"); it is captured so
+# extract_amount can negate, and stays optional so ordinary amounts,
+# dates ("01-15-2024") and phone numbers parse exactly as before.
 MONEY_PATTERN = re.compile(
-    r"\$?\d{1,3}(?:,\d{3})+(?:\.\d{2})?"  # Comma-grouped: $1,234.56
-    r"|\$?\d+(?:\.\d{2})?"  # Ungrouped: $1234.56, 1234, $50
+    r"\$?\d{1,3}(?:,\d{3})+(?:\.\d{2})?-?"  # Comma-grouped: $1,234.56
+    r"|\$?\d+(?:\.\d{2})?-?"  # Ungrouped: $1234.56, 1234, $50, 16.25-
 )
 
 # Regex patterns for date parsing
@@ -170,12 +174,19 @@ def extract_amount(text: str) -> float | None:
 
     # Take the last match (usually the actual amount, not a product code)
     amount_str = matches[-1]
+    # Trailing "-" is the accounting negative refund registers print
+    # ("$16.25-"); strip it and negate so refunds carry their sign into
+    # the summary financial math instead of parsing as positive spend.
+    is_negative = amount_str.endswith("-")
+    if is_negative:
+        amount_str = amount_str[:-1]
     # Remove $ and commas
     amount_str = amount_str.replace("$", "").replace(",", "")
     try:
-        return float(amount_str)
+        value = float(amount_str)
     except ValueError:
         return None
+    return -value if is_negative else value
 
 
 def parse_date(text: str) -> datetime | None:
@@ -634,12 +645,20 @@ def _anchored_amount_words(
 def _apply_printed_total_fallback(
     totals: MonetaryTotals, words: list["ReceiptWord"]
 ) -> None:
-    """Fill grand_total/subtotal from printed rows when labels gave none."""
-    if totals.grand_total is None or totals.grand_total <= 0:
+    """Fill grand_total/subtotal from printed rows when labels gave none.
+
+    A NEGATIVE label-derived total is a real figure, not a missing one:
+    return receipts print trailing-minus amounts ("$16.25-") and
+    extract_amount now carries the sign through. The fallback only knows
+    positive printed amounts, so letting it run on negatives would
+    replace a refund's total with whatever stray positive figure sits in
+    the total row's y-band. Only None/zero totals fall back.
+    """
+    if totals.grand_total is None or totals.grand_total == 0:
         printed = find_printed_grand_total(words)
         if printed is not None:
             totals.grand_total = printed
-    if totals.subtotal is None or totals.subtotal <= 0:
+    if totals.subtotal is None or totals.subtotal == 0:
         printed = find_printed_subtotal(words)
         if printed is not None:
             totals.subtotal = printed

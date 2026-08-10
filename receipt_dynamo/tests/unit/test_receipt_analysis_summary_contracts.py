@@ -69,6 +69,16 @@ def test_receipt_analysis_rejects_invalid_contracts(
         ("SKU 100 TOTAL 12.99", 12.99),
         ("no amount", None),
         ("", None),
+        # Trailing-minus accounting negatives (Target return receipts
+        # print refunds as "$16.25-"): the sign must carry through.
+        ("$16.25-", -16.25),
+        ("16.25-", -16.25),
+        ("$1.26-", -1.26),
+        ("REFUND $1,234.56-", -1234.56),
+        # Hyphens that are separators, not signs, stay positive: the
+        # last match wins and never inherits an interior hyphen.
+        ("01-15-2024", 2024.0),
+        ("TEL 555-1234", 1234.0),
     ],
 )
 def test_extract_amount(text: str, expected: float | None):
