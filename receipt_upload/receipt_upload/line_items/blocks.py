@@ -66,16 +66,21 @@ def _money(v: Any) -> float | None:
 
 
 def _line_amounts(words: list[dict]) -> list[float]:
+    # Local import for the same reason every other geometry reference in
+    # this module is local: geometry pulls in blocks from extract_items.
+    from receipt_upload.line_items.geometry import strip_tax_flag
+
     out = []
     for w in words:
         t = w["text"]
         if t.endswith(")") and "(" not in t:
             continue  # OCR carcass ("80.00)" from "@0.00)"), never a price
         # OCR fuses trailing taxability flags onto amounts ("0.38N",
-        # "0.20N" on Home Depot fee lines); strip a single trailing letter
-        # when what remains is an amount shape.
-        if re.fullmatch(r"\$?\d[\d.,]*\d[A-Z]", t):
-            t = t[:-1]
+        # "0.20N" on Home Depot fee lines). One shared rule with
+        # parse_band -- this used to strip any trailing [A-Z], which
+        # scored Home Depot's "BERNZOMATIC MAP-PRO FUEL 14.10Z" (a 14.1-oz
+        # product SIZE) as a $14.10 price band.
+        t = strip_tax_flag(t)
         if looks_like_receipt_amount(t) and re.search(r"\d[.,]\d{2}(?!\d)", t):
             v = parse_receipt_amount(t)
             if v is not None:
@@ -516,9 +521,42 @@ def filter_summary_figure_items(
                 for f in figures
             ):
                 continue
-            if len(non_disc) - len(drop) - 1 < 2:
-                continue  # at least 2 other items must survive
             new_diff = abs(round(cur - price, 2) - baseline)
+            if len(non_disc) - len(drop) - 1 < 2:
+                # Normally at least 2 other items must survive: a
+                # single-item receipt legitimately has item price ==
+                # total (Barnes & Noble / CVS / Target / LA County), and
+                # dropping its one item would empty the receipt.
+                #
+                # The one exception is fully self-verifying: a band with
+                # NO name text at all, whose removal leaves items that
+                # all DO carry name text and that then reconcile EXACTLY.
+                # That shape is a summary/tender amount the ITEMS
+                # boundary swallowed -- CVS d04dea42 prints its
+                # subtotal's amount one OCR line above the "SUBTOTAL"
+                # label, and 2c9b770c its "20.00 20.00" tender pair below
+                # a "TOTAL 20.00" the zone excluded. The protected
+                # single-item case cannot reach it: that receipt's one
+                # item is a named product, so it is never the candidate.
+                #
+                # "No name text" is deliberately stricter than the
+                # _name_is_real test used above -- 2c9b770c's real item
+                # is "RX #: ****2130000", which is not a real NAME but is
+                # not a bare amount either, and it must be the survivor.
+                survivors = [
+                    it2
+                    for j, it2 in enumerate(items)
+                    if j != idx
+                    and j not in drop
+                    and not it2.get("is_discount")
+                ]
+                if not (
+                    not (it.get("name") or "").strip()
+                    and survivors
+                    and all((s.get("name") or "").strip() for s in survivors)
+                    and new_diff <= tol
+                ):
+                    continue
             if unnamed:
                 ok = new_diff < abs(cur - baseline) - 0.005
             else:

@@ -142,6 +142,27 @@ def test_one_decimal_and_bare_thousands_are_not_prices():
     assert parsed["price"] == 11.62
 
 
+def test_fused_tax_flag_amount_is_a_price():
+    # Registers print a taxability code after the price and OCR may fuse
+    # the two into one token ("7.32N"). CVS never prints a currency
+    # symbol, so without the strip its every line price was invisible
+    # (11 prod / 12 dev CVS receipts decoded zero items).
+    items, _ = items_for(row(1, 0.30, "ADVIL", "TABLETS", "7.32N"))
+    assert [(i["name"], i["price"]) for i in items] == [
+        ("ADVIL TABLETS", 7.32)
+    ]
+
+
+def test_trailing_letter_is_not_always_a_tax_flag():
+    # "14.10Z" is a 14.1-OUNCE product size on Home Depot's BERNZOMATIC
+    # row, not $14.10. The flag alphabet stays [TFNOAB]; under a bare
+    # [A-Z] strip this band grew a phantom price.
+    items, _ = items_for(
+        row(1, 0.30, "BERNZOMATIC", "MAP-PRO", "FUEL", "14.10Z")
+    )
+    assert items == []
+
+
 def test_close_paren_orphan_is_not_a_price():
     # "(2 @0.00)" OCRs as "(2" + "80.00)": the close-paren orphan must not
     # become the price; the band pairs with the price-column META instead.
@@ -220,6 +241,39 @@ def test_summary_figure_single_item_receipt_untouched():
     )
     assert len(items) == 1
     assert items[0]["price"] == 24.99
+
+
+def test_summary_figure_nameless_band_dropped_below_two_survivors():
+    # The self-verifying exception to the two-survivor guard: a band with
+    # NO name text at all, whose removal leaves all-named items that then
+    # reconcile EXACTLY, is a summary amount the ITEMS boundary swallowed
+    # (CVS d04dea42 prints its subtotal's amount one OCR line above the
+    # "SUBTOTAL" label). The bare-amount band drops even though only one
+    # item survives.
+    words = row(1, 0.30, "PLAN", "B", "ONE", "STEP", "49.89") + row(
+        2, 0.25, "49.89"
+    )
+    items = items_with_summary(
+        words, {"subtotal": "49.89", "grand_total": "53.63"}
+    )
+    assert [i["price"] for i in items] == [49.89]
+    assert "PLAN" in items[0]["name"]
+
+
+def test_summary_figure_exception_needs_a_texted_survivor():
+    # The exception is stricter than _name_is_real on purpose: CVS
+    # 2c9b770c's real item is "RX #: ****2130000" -- not a real NAME but
+    # not a bare amount either -- and it must be the survivor when the
+    # "20.00 20.00" tender pair below the excluded TOTAL drops.
+    words = row(1, 0.30, "RX", "#:", "****2130000", "20.00") + row(
+        2, 0.25, "20.00", "20.00"
+    )
+    items = items_with_summary(
+        words, {"subtotal": "20.00", "grand_total": "20.00", "tax": "0.0"}
+    )
+    assert [(i["name"], i["price"]) for i in items] == [
+        ("RX #: ****2130000", 20.0)
+    ]
 
 
 def test_named_item_at_tax_amount_survives():
