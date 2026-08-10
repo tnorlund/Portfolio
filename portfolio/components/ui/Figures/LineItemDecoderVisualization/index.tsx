@@ -519,6 +519,33 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
               </g>
             ))}
 
+            {/* Stage: reconcile — highlight the printed figure the sum is
+                checked against (punches through the out-of-zone dim) */}
+            {reconcileProgress > 0 &&
+              (receipt.reconcile.baseline_source === "subtotal"
+                ? receipt.printed_word_refs.subtotal
+                : receipt.printed_word_refs.grand_total
+              ).map((ref, idx) => {
+                const box = boxFor(ref);
+                if (!box) return null;
+                const PAD = 3;
+                return (
+                  <rect
+                    key={`printed-${idx}`}
+                    x={box.x - PAD}
+                    y={box.y - PAD}
+                    width={box.width + PAD * 2}
+                    height={box.height + PAD * 2}
+                    rx={2}
+                    fill="var(--color-green)"
+                    fillOpacity={0.3 * reconcileProgress}
+                    stroke="var(--color-green)"
+                    strokeWidth={2}
+                    opacity={reconcileProgress}
+                  />
+                );
+              })}
+
             {/* Stage: reconcile — summary-figure rows fade out */}
             {reconcileProgress > 0 &&
               receipt.dropped_items.map((item, idx) => {
@@ -568,6 +595,24 @@ const StageLegend: React.FC<StageLegendProps> = ({ receipt, plan, frame }) => {
     color: "var(--text-color)",
   };
   const itemCount = receipt.items.filter((i) => !i.is_discount).length;
+  const itemSum =
+    receipt.reconcile.item_sum ??
+    receipt.items
+      .filter((i) => !i.is_discount)
+      .reduce((sum, i) => sum + (i.price ?? 0), 0);
+  const printedValue =
+    receipt.reconcile.baseline ??
+    receipt.summary?.grand_total ??
+    receipt.summary?.subtotal ??
+    null;
+  const printedLabel =
+    receipt.reconcile.baseline_source === "subtotal"
+      ? "printed subtotal"
+      : receipt.reconcile.baseline_source === "grand_total_minus_tax"
+        ? receipt.summary?.tax != null
+          ? "total − tax"
+          : "printed total"
+        : "printed total";
 
   return (
     <div className={styles.stageLegend}>
@@ -590,13 +635,17 @@ const StageLegend: React.FC<StageLegendProps> = ({ receipt, plan, frame }) => {
         className={styles.verdictBlock}
         style={{ opacity: showVerdict ? 1 : 0.2 }}
       >
-        <span className={styles.verdictLabel}>
-          {itemCount} items vs printed
-        </span>
-        <span className={styles.verdictValue}>
-          {fmtMoney(receipt.reconcile.item_sum)}{" "}
-          <span style={{ color: status.color }}>{status.icon}</span>
-        </span>
+        <div className={styles.verdictRow}>
+          <span className={styles.verdictLabel}>{itemCount} items</span>
+          <span className={styles.verdictValue}>{fmtMoney(itemSum)}</span>
+        </div>
+        <div className={styles.verdictRow}>
+          <span className={styles.verdictLabel}>{printedLabel}</span>
+          <span className={styles.verdictValue}>
+            {fmtMoney(printedValue)}{" "}
+            <span style={{ color: status.color }}>{status.icon}</span>
+          </span>
+        </div>
       </div>
     </div>
   );

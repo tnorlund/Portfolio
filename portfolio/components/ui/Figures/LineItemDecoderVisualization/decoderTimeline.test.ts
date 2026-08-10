@@ -20,6 +20,7 @@ const makeReceipt = (
   image: { width: 800, height: 2400, cdn_s3_key: "assets/test/1.jpg" },
   words: [],
   items_line_ids: [1, 2],
+  printed_word_refs: { subtotal: [], grand_total: [[10, 2]] },
   bands: [
     {
       band_id: 0,

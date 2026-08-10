@@ -55,7 +55,7 @@ SHOWCASE: list[tuple[str, int, str]] = [
     ("f1844265", 1, "Trader Joe's — settlement guards, 4 qty items, match"),
     ("cf8e3a6e", 1, "Sprouts — 14 items, 5 weighted quantities, match"),
     ("2360d36e", 1, "In-N-Out — summary-figure filter drop, qty math"),
-    ("b4c2a475", 1, "Amazon Fresh — was-price echoes rejected, no-baseline"),
+    ("8d089201", 1, "Gelson's — 4 printed quantities, clean match"),
     ("63243f38", 2, "Sprouts — sale-price guard + discount, near"),
     ("9ed1103e", 1, "Wild Fork — SKU rows, stacked name stealing"),
     ("1bfb07b7", 1, "Home Depot — 17 items, discounts, priors, near"),
@@ -193,6 +193,45 @@ def dump_item(item: dict, y_lookup: dict) -> dict:
             _wref(w) for w in item.get("qty_word_ids", []) if w
         ],
     }
+
+
+def find_figure_words(
+    export_words: list[dict], zone_bottom_y: float, value: Optional[float]
+) -> list[list[int]]:
+    """Word ref(s) for a printed summary figure, so the viz can point at
+    the number the reconciliation compares against.
+
+    Value-matches word text (tax flags and currency stripped) and picks
+    the candidate nearest the bottom edge of the items zone — totals
+    print just below the items on every layout in the golden set.
+    """
+    if value is None:
+        return []
+    candidates = []
+    for w in export_words:
+        text = re.sub(r"[A-Za-z]+$", "", w["text"].replace("$", "").replace(",", "")).strip()
+        try:
+            parsed = float(text)
+        except ValueError:
+            continue
+        if abs(parsed - value) >= 0.005:
+            continue
+        y_mid = w["bbox"]["y"] + w["bbox"]["height"] / 2
+        # Prefer candidates strictly below the zone, then out-of-zone:
+        # settlement rows inside the zone ("Balance to pay $43.94") echo
+        # the total, but the figure the reader should see is the printed
+        # one in the summary block below the items.
+        candidates.append(
+            (
+                y_mid >= zone_bottom_y,
+                w["in_zone"],
+                abs(y_mid - zone_bottom_y),
+                [w["line_id"], w["word_id"]],
+            )
+        )
+    if not candidates:
+        return []
+    return [min(candidates)[3]]
 
 
 def item_key(item: dict) -> tuple:
@@ -365,6 +404,16 @@ def export_receipt(
         if absorbed_into is not None:
             b["absorbed_into"] = absorbed_into
 
+    zone_bottom_y = min(
+        w["bbox"]["y"] for w in export_words if w["in_zone"]
+    )
+    printed_word_refs = {
+        fig: find_figure_words(
+            export_words, zone_bottom_y, (summary or {}).get(fig)
+        )
+        for fig in ("subtotal", "grand_total")
+    }
+
     return {
         "image_id": image_id,
         "receipt_id": receipt_id,
@@ -372,6 +421,7 @@ def export_receipt(
         "image": image,
         "words": export_words,
         "items_line_ids": sorted(zone),
+        "printed_word_refs": printed_word_refs,
         "bands": bands,
         "items": item_by_idx,
         "dropped_items": [

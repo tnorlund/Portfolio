@@ -604,6 +604,12 @@ export interface LineItemDemoReceipt {
   image: LineItemDemoImage;
   words: LineItemDemoWord[];
   items_line_ids: number[];
+  /** Word refs for the printed summary figures (empty when the figure
+   * was not found as a single OCR word). */
+  printed_word_refs: {
+    subtotal: LineItemDemoWordRef[];
+    grand_total: LineItemDemoWordRef[];
+  };
   bands: LineItemDemoBand[];
   items: LineItemDemoItem[];
   dropped_items: LineItemDemoDroppedItem[];
