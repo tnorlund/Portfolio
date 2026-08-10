@@ -20,6 +20,7 @@ import {
   LabelValidationTimeline,
   LabelWordCloud,
   LayoutLMInferenceVisualization,
+  LineItemDecoderVisualization,
   PageCurlLetter,
   PrecisionRecallDartboard,
   QAAgentFlow,
@@ -537,6 +538,38 @@ M1LK 2%           1    $4.4g`}</code>
       <FigureBoundary name="aws-flow" intrinsicSize="240px">
         <ClientOnly>
           <AWSFlowDiagram />
+        </ClientOnly>
+      </FigureBoundary>
+
+      <h2>Turning Labels into Line Items</h2>
+
+      <p>
+        Labels tell me which words are prices. They don&apos;t tell me that
+        &quot;ORGANIC BANANAS&quot; and &quot;$1.69&quot; are the{" "}
+        <em>same purchase</em>. For that I don&apos;t use AI at all — receipts
+        are printed by machines, so the layout itself is the answer. Words
+        cluster into visual rows. Rows that are really payment info, sale-price
+        notes, or &quot;was $3.59&quot; echoes get rejected by vocabulary, not
+        vibes. What&apos;s left pairs names with prices, and printed quantities
+        like &quot;2 @ $0.49&quot; are accepted only when the arithmetic works
+        out — even when OCR mangles &quot;@&quot; into &quot;g&quot;, 6 ×
+        $0.49 still equals $2.94.
+      </p>
+
+      <p>
+        The best part of doing it deterministically: the receipt grades its own
+        homework. If the items I found don&apos;t add up to the printed
+        subtotal, I know I got it wrong — and the visualization below is honest
+        about the receipts where that still happens.
+      </p>
+
+      <FigureBoundary
+        name="line-item-decoder"
+        intrinsicSize="640px"
+        fallback={<LayoutLMLoadingFallback />}
+      >
+        <ClientOnly fallback={<LayoutLMLoadingFallback />}>
+          <LineItemDecoderVisualization />
         </ClientOnly>
       </FigureBoundary>
 
