@@ -10,7 +10,15 @@ For every receipt in the target table this script:
    1454/3931/0663/5894/7123/3960/8712; 9297/6081 have no export and
    7739 is a checking account on ATM slips, so both map to ``none``).
 3. Joins the two ledgers OFFLINE:
-   - Chase: curated matches in ``email_receipts.db`` (read-only).
+   - Chase: curated matches in ``email_receipts.db`` (read-only) take
+     precedence; receipts without one fall through to a live matcher
+     over ``chase_transactions`` that is SYMMETRIC with the Apple one
+     (same amount anchor, same +-3-day gate, same category-gated tip
+     band). Transactions already claimed by a non-rejected curated
+     match to ANOTHER paper receipt are never candidates, so the live
+     matcher can only fill gaps, not re-litigate curation. The
+     candidate pool is gated per account: card 8712 posts to account
+     5981, the debit cards to checking 7739.
    - Apple Card: merged CSV + statement-PDF ledger, amount-anchored
      with a tip band gated on the Google Places category -- only
      tippable businesses (restaurant, cafe, bar, salon, ...) may
@@ -21,9 +29,15 @@ For every receipt in the target table this script:
    ReceiptSummaryRecord.
 
 Match confidence:
-    chase confirmed 1.0 | chase auto 0.9
-    apple exact amount: 0.95 (merchant agrees) / 0.85 (amount-only)
-    apple tip-band:     0.4 + 0.4 * merchant_similarity (cap 0.8)
+    chase curated confirmed 1.0 | chase curated auto 0.9
+    live (apple + chase) exact amount: 0.95 (merchant agrees) /
+        0.85 (amount-only)
+    live (apple + chase) tip-band: 0.4 + 0.4 * merchant_similarity
+        (cap 0.8)
+
+Duplicate-image receipts of one purchase can both live-match the same
+transaction; those collisions are REPORTED (they are the receipt-dedup
+worklist, not silent double evidence).
 
 DRY-RUN BY DEFAULT: pass ``--apply`` to write.
 
@@ -301,14 +315,22 @@ def merch_sim(receipt_name: str, ledger_names: list[str]) -> float:
     return best
 
 
-def match_apple(
+def match_ledger(
     by_amount: dict[float, list[dict[str, Any]]],
     date: datetime.date | None,
     total: float | None,
     merchant: str,
     category: str,
 ) -> dict[str, Any] | None:
-    """Amount-anchored Apple match, tip band gated on category."""
+    """Amount-anchored ledger match, tip band gated on category.
+
+    Ledger-agnostic: the txn dicts only need ``date`` / ``amount`` /
+    ``names`` (and optionally ``txn_id``, echoed back for claim
+    tracking). The 2026-08 recall measurement (#1385) simulated the
+    Chase matcher by feeding Chase transactions to this exact function
+    unmodified -- keep it that way; asymmetries between the ledgers
+    belong in the candidate pools, not in here.
+    """
     if date is None or not total or total <= 0:
         return None
     total = round(total, 2)
@@ -340,6 +362,7 @@ def match_apple(
             "amount": txn["amount"],
             "confidence": round(confidence, 2),
             "exact": exact,
+            "txn_id": txn.get("txn_id"),
         }
     return None
 
@@ -347,6 +370,51 @@ def match_apple(
 def _chase_result(chase: dict[str, Any]) -> tuple[float, float]:
     """Amount + confidence for a curated Chase match."""
     return chase["amount"], 1.0 if chase["status"] == "confirmed" else 0.9
+
+
+def load_chase_ledger(
+    con: sqlite3.Connection,
+) -> list[dict[str, Any]]:
+    """Chase card-purchase debits as matcher candidates.
+
+    ``txn_date`` (extracted from the descriptor when present) over
+    ``posting_date``: a restaurant charge posts 1-2 days late, and the
+    +-3-day gate should measure from when the purchase happened.
+    """
+    out = []
+    for txn_id, account, txn_date, desc, amount_cents in con.execute(
+        """SELECT txn_id, account, txn_date, description, amount_cents
+           FROM chase_transactions
+           WHERE is_card_purchase = 1 AND amount_cents < 0"""
+    ):
+        try:
+            date = datetime.date.fromisoformat(txn_date[:10])
+        except ValueError:
+            continue
+        out.append(
+            {
+                "txn_id": txn_id,
+                "account": account,
+                "date": date,
+                "amount": abs(amount_cents) / 100.0,
+                "names": [desc],
+            }
+        )
+    return out
+
+
+def chase_account_for(last4: str | None) -> str | None:
+    """Which Chase account a card's purchases post to.
+
+    8712 is a card on account 5981 (#1385); the debit cards post to
+    checking 7739. None = no account attribution (unknown card), which
+    matches against both pools.
+    """
+    if last4 == "8712":
+        return "5981"
+    if last4 in CHASE_CARDS:
+        return "7739"
+    return None
 
 
 # ------------------------------------------------------------------- main
@@ -425,10 +493,11 @@ def run(args: argparse.Namespace) -> None:
     ):
         snapshot[(image_id, receipt_id)] = (date, cents, category)
     chase_matches = {}
-    for ref, status, account, amount_cents in con.execute(
-        """SELECT m.ref, m.status, c.account, c.amount_cents
+    claimed_txns = set()
+    for ref, status, txn_id, account, amount_cents in con.execute(
+        """SELECT m.ref, m.status, m.txn_id, c.account, c.amount_cents
            FROM matches m JOIN chase_transactions c USING(txn_id)
-           WHERE m.ref_kind='paper'"""
+           WHERE m.ref_kind='paper' AND m.status != 'rejected'"""
     ):
         image_id, receipt_id = ref.rsplit(":", 1)
         chase_matches[(image_id, int(receipt_id))] = {
@@ -436,10 +505,27 @@ def run(args: argparse.Namespace) -> None:
             "account": account,
             "amount": abs(amount_cents) / 100.0,
         }
+        claimed_txns.add(txn_id)
+    # Live-matcher candidate pools, one per account, EXCLUDING every
+    # transaction a curated match already claims -- the matcher fills
+    # gaps; it never re-litigates curation (4 of the simulated 101
+    # matches wanted a txn curated to a different receipt).
+    chase_by_amount: dict[str, dict[float, list[dict[str, Any]]]] = {
+        "5981": collections.defaultdict(list),
+        "7739": collections.defaultdict(list),
+    }
+    chase_pool = 0
+    for txn in load_chase_ledger(con):
+        if txn["txn_id"] in claimed_txns:
+            continue
+        chase_by_amount[txn["account"]][round(txn["amount"], 2)].append(txn)
+        chase_pool += 1
     con.close()
     logger.info(
-        "chase: %d curated paper matches; snapshot rows: %d",
+        "chase: %d curated paper matches; %d unclaimed txns in the live"
+        " pool; snapshot rows: %d",
         len(chase_matches),
+        chase_pool,
         len(snapshot),
     )
 
@@ -451,6 +537,10 @@ def run(args: argparse.Namespace) -> None:
 
     # ------------------------------------------------------- per receipt
     stats = collections.Counter()
+    # txn_id -> receipts the LIVE chase matcher assigned it to. >1 means
+    # duplicate images of one purchase (or a matcher bug); reported, not
+    # silently allowed.
+    live_chase_claims: dict[str, list] = collections.defaultdict(list)
     tender_dist = collections.Counter()
     ledger_dist = collections.Counter()
     to_write: list[ReceiptSummaryRecord] = []
@@ -532,28 +622,66 @@ def run(args: argparse.Namespace) -> None:
         bank_amount = confidence = None
         chase = chase_matches.get(receipt_key)
 
+        def _match_chase_live(account: str | None):
+            pools = (
+                [chase_by_amount[account]]
+                if account
+                else list(chase_by_amount.values())
+            )
+            best = None
+            for pool in pools:
+                hit = match_ledger(pool, date, total, merchant, category)
+                if hit and (
+                    best is None or hit["confidence"] > best["confidence"]
+                ):
+                    best = hit
+            return best
+
         if ledger == LEDGER_CHASE:
             if chase:
                 bank_amount, confidence = _chase_result(chase)
+            else:
+                live = _match_chase_live(chase_account_for(last4))
+                if live:
+                    bank_amount = live["amount"]
+                    confidence = live["confidence"]
+                    stats["chase_live_matched"] += 1
+                    if not live["exact"]:
+                        stats["chase_live_tip_band"] += 1
+                    live_chase_claims[live["txn_id"]].append(receipt_key)
         elif ledger == LEDGER_APPLE:
-            apple = match_apple(
+            apple = match_ledger(
                 apple_by_amount, date, total, merchant, category
             )
             if apple:
                 bank_amount = apple["amount"]
                 confidence = apple["confidence"]
         elif ledger == LEDGER_UNKNOWN:
-            # no attributable card: accept whichever ledger matched
-            apple = match_apple(
+            # No attributable card: curated Chase wins outright, then
+            # whichever LIVE ledger matched with higher confidence
+            # (tie -> apple, the longer-standing matcher).
+            apple = match_ledger(
                 apple_by_amount, date, total, merchant, category
             )
             if chase:
                 bank_amount, confidence = _chase_result(chase)
                 ledger = LEDGER_CHASE
-            elif apple:
-                bank_amount = apple["amount"]
-                confidence = apple["confidence"]
-                ledger = LEDGER_APPLE
+            else:
+                live = _match_chase_live(None)
+                if live and (
+                    apple is None or live["confidence"] > apple["confidence"]
+                ):
+                    bank_amount = live["amount"]
+                    confidence = live["confidence"]
+                    ledger = LEDGER_CHASE
+                    stats["chase_live_matched"] += 1
+                    if not live["exact"]:
+                        stats["chase_live_tip_band"] += 1
+                    live_chase_claims[live["txn_id"]].append(receipt_key)
+                elif apple:
+                    bank_amount = apple["amount"]
+                    confidence = apple["confidence"]
+                    ledger = LEDGER_APPLE
         elif ledger == LEDGER_NONE:
             # Deliberate: this card has no held ledger, so any curated
             # match is not trustworthy evidence for it. Counted, not
@@ -602,9 +730,22 @@ def run(args: argparse.Namespace) -> None:
     print(f"records to write:        {len(to_write)}")
     print(f"bank-matched:            {stats['bank_matched']}")
     print(
+        f"chase live-matched:      {stats['chase_live_matched']}"
+        f" ({stats['chase_live_tip_band']} tip-band)"
+    )
+    print(
         "curated matches suppressed (ledger=none): "
         f"{stats['suppressed_chase_match_no_ledger']}"
     )
+    multi = {t: keys for t, keys in live_chase_claims.items() if len(keys) > 1}
+    if multi:
+        print(
+            f"\nlive chase txns claimed by >1 receipt ({len(multi)}) --"
+            " duplicate images of one purchase; receipt-dedup worklist:"
+        )
+        for txn_id, keys in sorted(multi.items()):
+            claimants = ", ".join(f"{img[:8]}#{rid}" for img, rid in keys)
+            print(f"  {txn_id[:12]}: {claimants}")
     print("\ntender_detail distribution:")
     for name, count in tender_dist.most_common():
         print(f"  {name:22s} {count:5d}")
