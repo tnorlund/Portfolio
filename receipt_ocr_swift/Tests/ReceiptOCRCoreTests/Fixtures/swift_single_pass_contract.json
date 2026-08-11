@@ -939,12 +939,21 @@
           "line_ids": [
             3
           ],
-          "reconciliation_status": "no-baseline",
+          "reconciliation_status": "match",
           "model_source": "swift-worker-v1",
-          "extractor_version": "swift-worker-v1+line-items-blocks-v2"
+          "extractor_version": "swift-worker-v1+line-items-blocks-v2",
+          "raw_text": "ORGANIC 3.99"
         }
       ],
-      "needs_review": false
+      "needs_review": false,
+      "should_reocr_items_zone": false,
+      "reconciliation": {
+        "status": "match",
+        "item_sum": 3.99,
+        "baseline": 3.99,
+        "baseline_source": "grand_total_minus_tax",
+        "baseline_figures_agreeing": 1
+      }
     }
   ],
   "barcodes": []

@@ -1781,6 +1781,31 @@ class OCRProcessor:
         if not sections_payload and not items_payload:
             return None
 
+        # Receipt-level verdict the worker computed on device (additive;
+        # absent on payloads from earlier worker builds). The graded
+        # baseline agreement is stamped on every row so worker rows carry
+        # the same #1324 diagnostics as cloud-recomputed ones.
+        reconciliation = receipt_data.get("reconciliation") or {}
+        if not isinstance(reconciliation, dict):
+            logger.warning(
+                "Ignoring malformed worker reconciliation for %s:%s: %r",
+                image_id,
+                receipt_id,
+                reconciliation,
+            )
+            reconciliation = {}
+        # The entity documents the grade as an int in 1..3 and raises on
+        # anything else -- including ``True``, since bool subclasses int.
+        # An out-of-band value would fail every row's construction and cost
+        # the receipt its whole line-item set, so drop it to None instead.
+        figures_agreeing = reconciliation.get("baseline_figures_agreeing")
+        if (
+            isinstance(figures_agreeing, bool)
+            or not isinstance(figures_agreeing, int)
+            or not 1 <= figures_agreeing <= 3
+        ):
+            figures_agreeing = None
+
         sections: list[ReceiptSection] = []
         for entry in sections_payload:
             try:
@@ -1844,13 +1869,16 @@ class OCRProcessor:
                         quantity=entry.get("quantity"),
                         unit_price=entry.get("unit_price"),
                         is_discount=bool(entry.get("is_discount")),
+                        raw_text=str(entry.get("raw_text") or ""),
                         name_quality=quality,
-                        # No summary exists at ingest, so the worker's
-                        # reconciliation is almost always "no-baseline"; the
-                        # stream stage re-reconciles once one is written.
+                        # The worker reconciles against its own SCANNED
+                        # printed figures (no summary exists at ingest);
+                        # the stream stage re-reconciles against the real
+                        # summary once one is written.
                         reconciliation_status=(
                             entry.get("reconciliation_status") or None
                         ),
+                        baseline_figures_agreeing=figures_agreeing,
                         source_model_source=SWIFT_WORKER_MODEL_SOURCE,
                         source_section_status=ValidationStatus.PENDING.value,
                     )
@@ -1882,6 +1910,12 @@ class OCRProcessor:
             "extractor_version": (
                 line_items[0].extractor_version if line_items else None
             ),
+            "printed_subtotal": receipt_data.get("printed_subtotal"),
+            "should_reocr_items_zone": receipt_data.get(
+                "should_reocr_items_zone"
+            ),
+            "reconciliation_status": reconciliation.get("status"),
+            "baseline_source": reconciliation.get("baseline_source"),
         }
         logger.info(
             "Persisted worker-decoded structure for %s:%s: %s",

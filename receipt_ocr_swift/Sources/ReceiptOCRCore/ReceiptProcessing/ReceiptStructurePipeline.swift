@@ -50,6 +50,29 @@ public struct ReceiptLineItemPayload: Codable, Sendable, Equatable {
     public let reconciliationStatus: String
     public let modelSource: String
     public let extractorVersion: String
+    /// The band text the item was parsed from (`ReceiptLineItem.raw_text`).
+    /// Optional so payloads from earlier worker builds still decode.
+    public let rawText: String?
+
+    public init(
+        itemIndex: Int, name: String, price: Double, quantity: Double?,
+        unitPrice: Double?, isDiscount: Bool, nameQuality: String,
+        lineIds: [Int], reconciliationStatus: String, modelSource: String,
+        extractorVersion: String, rawText: String? = nil
+    ) {
+        self.itemIndex = itemIndex
+        self.name = name
+        self.price = price
+        self.quantity = quantity
+        self.unitPrice = unitPrice
+        self.isDiscount = isDiscount
+        self.nameQuality = nameQuality
+        self.lineIds = lineIds
+        self.reconciliationStatus = reconciliationStatus
+        self.modelSource = modelSource
+        self.extractorVersion = extractorVersion
+        self.rawText = rawText
+    }
 
     enum CodingKeys: String, CodingKey {
         case itemIndex = "item_index"
@@ -63,6 +86,33 @@ public struct ReceiptLineItemPayload: Codable, Sendable, Equatable {
         case reconciliationStatus = "reconciliation_status"
         case modelSource = "model_source"
         case extractorVersion = "extractor_version"
+        case rawText = "raw_text"
+    }
+}
+
+/// JSON contract for the receipt-level reconciliation verdict: the #1324
+/// graded result the worker always computed but never shipped.
+public struct ReceiptReconciliationPayload: Codable, Sendable, Equatable {
+    public let status: String
+    public let itemSum: Double?
+    public let baseline: Double?
+    public let baselineSource: String?
+    public let baselineFiguresAgreeing: Int?
+
+    public init(_ result: ReconcileResult) {
+        self.status = result.status
+        self.itemSum = result.itemSum
+        self.baseline = result.baseline
+        self.baselineSource = result.baselineSource
+        self.baselineFiguresAgreeing = result.baselineFiguresAgreeing
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case itemSum = "item_sum"
+        case baseline
+        case baselineSource = "baseline_source"
+        case baselineFiguresAgreeing = "baseline_figures_agreeing"
     }
 }
 
@@ -75,6 +125,8 @@ public struct OnDeviceReceiptStructure: Sendable, Equatable {
     public let printedSubtotal: Double?
     public let reconciliationStatus: String
     public let shouldReocrItemsZone: Bool
+    /// The full graded verdict behind `reconciliationStatus`.
+    public let reconciliation: ReceiptReconciliationPayload
 }
 
 private enum ReceiptStructureRegex {
@@ -150,10 +202,12 @@ public func buildOnDeviceReceiptStructure(
     lines: [SectionLine], merchantName: String? = nil
 ) throws -> OnDeviceReceiptStructure {
     guard !lines.isEmpty else {
+        let empty = reconcileLineItemsDetailed(items: [], summary: nil)
         return OnDeviceReceiptStructure(
             sections: [], lineItems: [], printedSubtotal: nil,
             reconciliationStatus: "no-baseline",
-            shouldReocrItemsZone: false
+            shouldReocrItemsZone: false,
+            reconciliation: ReceiptReconciliationPayload(empty)
         )
     }
     let rows = buildReceiptRows(lines: lines)
@@ -164,7 +218,7 @@ public func buildOnDeviceReceiptStructure(
             merchantName: merchantName
         )
     )
-    let sections = predictions.map { section in
+    var sections = predictions.map { section in
         ReceiptSectionPayload(
             sectionType: section.sectionType,
             lineIds: section.lineIds,
@@ -175,7 +229,7 @@ public func buildOnDeviceReceiptStructure(
         )
     }
 
-    let itemsLineIds = Set(
+    var itemsLineIds = Set(
         sections.first { $0.sectionType == "ITEMS" }?.lineIds ?? []
     )
     let zoneWords = lines.flatMap(\.words).map { word in
@@ -188,8 +242,6 @@ public func buildOnDeviceReceiptStructure(
             h: word.boundingBox.height
         )
     }
-    let decoded = itemsLineIds.isEmpty
-        ? [] : extractLineItems(words: zoneWords, zoneLineIds: itemsLineIds)
     let printedSubtotal = findPrintedSubtotal(rows: rows, lines: lines)
     // A receipt that prints no SUBTOTAL still prints a TOTAL, and until
     // now the worker ignored it: `PrintedTotals` (the #1321 port of
@@ -207,9 +259,52 @@ public func buildOnDeviceReceiptStructure(
     let printedGrandTotal = PrintedTotals.grandTotal(
         words: lines.flatMap(\.words).map(PrintedTotalWord.init)
     )
-    let reconciliation = reconcileLineItems(
-        items: decoded.filter { !$0.isDiscount },
-        subtotal: printedSubtotal, grandTotal: printedGrandTotal, tax: nil
+    // Always construct the summary: an all-nil summary reconciles to
+    // no-baseline exactly as nil did, and the summary-figure filter is a
+    // no-op without figures, so subtotal-less receipts are unaffected.
+    let summary = LineItemSummary(
+        subtotal: printedSubtotal, tax: nil, grandTotal: printedGrandTotal
+    )
+
+    // Zone-gap boundary extension (#1329), previously cloud-only: the
+    // proposal is accepted only when the arithmetic strictly improves
+    // (smaller |delta| AND better status), so against an already-matching
+    // zone it always returns nil. The widened ITEMS section ships in the
+    // payload, mirroring how the cloud path persists its own extension.
+    if !itemsLineIds.isEmpty,
+        let proposal = proposeItemsBoundaryExtension(
+            words: zoneWords,
+            summary: summary,
+            currentLineIds: itemsLineIds,
+            sections: sections.map(BoundarySection.init),
+            rows: rows.map(BoundaryRow.init),
+            currentRowIds: sections.first { $0.sectionType == "ITEMS" }?
+                .rowIds
+        )
+    {
+        itemsLineIds = Set(proposal.lineIds)
+        sections = sections.map { section in
+            guard section.sectionType == "ITEMS" else { return section }
+            return ReceiptSectionPayload(
+                sectionType: section.sectionType,
+                lineIds: proposal.lineIds,
+                rowIds: proposal.rowIds ?? section.rowIds,
+                confidence: section.confidence,
+                modelSource: section.modelSource,
+                extractorVersion: section.extractorVersion
+            )
+        }
+    }
+
+    // Decode WITH the scanned summary so the summary-figure filter
+    // (#1320) runs on device exactly as it does in the cloud recompute.
+    let decoded = itemsLineIds.isEmpty
+        ? []
+        : extractLineItems(
+            words: zoneWords, zoneLineIds: itemsLineIds, summary: summary
+        )
+    let reconciliation = reconcileLineItemsDetailed(
+        items: decoded.filter { !$0.isDiscount }, summary: summary
     )
     let lineItems = decoded.enumerated().map { index, item in
         ReceiptLineItemPayload(
@@ -223,7 +318,8 @@ public func buildOnDeviceReceiptStructure(
             lineIds: item.lineIds,
             reconciliationStatus: reconciliation.status,
             modelSource: swiftWorkerModelSource,
-            extractorVersion: swiftWorkerExtractorVersion
+            extractorVersion: swiftWorkerExtractorVersion,
+            rawText: item.rawText
         )
     }
     return OnDeviceReceiptStructure(
@@ -233,7 +329,8 @@ public func buildOnDeviceReceiptStructure(
         reconciliationStatus: reconciliation.status,
         shouldReocrItemsZone: shouldReocrItemsZone(
             items: decoded, printedSubtotal: printedSubtotal
-        )
+        ),
+        reconciliation: ReceiptReconciliationPayload(reconciliation)
     )
 }
 

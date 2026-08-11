@@ -440,8 +440,124 @@ def test_swift_single_pass_persists_worker_sections_and_line_items(
         "swift-worker-v1+line-items-blocks-v2"
     )
     assert line_items[0].source_model_source == "swift-worker-v1"
-    # No summary exists at ingest, so the worker's own verdict rides along.
-    assert line_items[0].reconciliation_status == "no-baseline"
+    # No summary exists at ingest, so the worker's own verdict rides along:
+    # the fixture's ``TOTAL 3.99`` anchors the grand-total baseline, which
+    # the 3.99 item sum matches.
+    assert line_items[0].reconciliation_status == "match"
+    # Tier-1 additive contract: the band text the item was parsed from,
+    # and the receipt-level graded verdict stamped onto every row. The grade
+    # is 1 because the baseline came from the grand total with no tax line
+    # to corroborate it.
+    assert line_items[0].raw_text == "ORGANIC 3.99"
+    assert line_items[0].baseline_figures_agreeing == 1
+
+
+def test_worker_reconciliation_grade_is_stamped_on_rows(
+    aws_stack, swift_payload
+):
+    """A graded worker verdict lands on every persisted row.
+
+    The fixture's receipt reconciles to a grand-total match (grade 1);
+    rewrite the receipt-level verdict to a subtotal-corroborated match and
+    every row must carry the new grade — the same #1324 diagnostics a cloud
+    recompute would stamp.
+    """
+    payload = json.loads(json.dumps(swift_payload))
+    for receipt in payload["receipts"]:
+        receipt["reconciliation"] = {
+            "status": "match",
+            "item_sum": 3.99,
+            "baseline": 3.99,
+            "baseline_source": "subtotal",
+            "baseline_figures_agreeing": 2,
+        }
+        for item in receipt["line_items"]:
+            item["reconciliation_status"] = "match"
+    processor = _processor(aws_stack)
+    ocr_job, routing = _seed_job(processor)
+
+    processor._process_swift_single_pass(payload, ocr_job, routing)
+
+    dynamo = DynamoClient(aws_stack)
+    line_items = dynamo.get_receipt_line_items_from_receipt(IMAGE_ID, 1)
+    assert line_items
+    for item in line_items:
+        assert item.reconciliation_status == "match"
+        assert item.baseline_figures_agreeing == 2
+
+
+@pytest.mark.parametrize(
+    "raw_grade,expected",
+    [
+        (True, None),
+        (0, None),
+        (4, None),
+        (2, 2),
+    ],
+)
+def test_out_of_band_reconciliation_grade_is_dropped(
+    aws_stack, swift_payload, raw_grade, expected
+):
+    """Only a real 1..3 grade is stamped; anything else becomes None.
+
+    ``ReceiptLineItem`` raises on a grade outside 1..3 and on ``True``
+    (bool subclasses int, so a naive isinstance check waves it through).
+    That exception fires inside the per-item try block, so an out-of-band
+    grade would silently cost the receipt every line item rather than just
+    the diagnostic field it came from.
+    """
+    payload = json.loads(json.dumps(swift_payload))
+    for receipt in payload["receipts"]:
+        receipt["reconciliation"] = {
+            "status": "match",
+            "baseline_figures_agreeing": raw_grade,
+        }
+
+    processor = _processor(aws_stack)
+    ocr_job, routing = _seed_job(processor)
+
+    processor._process_swift_single_pass(payload, ocr_job, routing)
+
+    dynamo = DynamoClient(aws_stack)
+    line_items = dynamo.get_receipt_line_items_from_receipt(IMAGE_ID, 1)
+    assert [item.name for item in line_items] == ["ORGANIC"]
+    for item in line_items:
+        assert item.baseline_figures_agreeing == expected
+
+
+def test_malformed_reconciliation_does_not_cost_the_worker_structure(
+    aws_stack, swift_payload
+):
+    """A non-object verdict is dropped, not raised.
+
+    ``reconciliation`` is optional diagnostics riding on an otherwise usable
+    payload. Reading it happens outside the per-entry try blocks, so a
+    truthy non-dict value used to abort the whole ingest — the receipt lost
+    its sections, its line items, and its routing decision over a field the
+    contract calls a bonus.
+    """
+    payload = json.loads(json.dumps(swift_payload))
+    for receipt in payload["receipts"]:
+        receipt["reconciliation"] = "corrupt"
+
+    processor = _processor(aws_stack)
+    ocr_job, routing = _seed_job(processor)
+
+    result = processor._process_swift_single_pass(payload, ocr_job, routing)
+
+    assert result["success"] is True
+    structure = result["per_receipt_data"][1]["worker_structure"]
+    assert structure["sections"] == 3
+    assert structure["line_items"] == 1
+
+    dynamo = DynamoClient(aws_stack)
+    assert {
+        section.section_type
+        for section in dynamo.get_receipt_sections_from_receipt(IMAGE_ID, 1)
+    } == {"ITEMS", "STOREFRONT", "TOTAL_LINE"}
+    line_items = dynamo.get_receipt_line_items_from_receipt(IMAGE_ID, 1)
+    assert [item.name for item in line_items] == ["ORGANIC"]
+    assert line_items[0].baseline_figures_agreeing is None
 
 
 def test_worker_structure_is_ignored_when_the_payload_omits_it(

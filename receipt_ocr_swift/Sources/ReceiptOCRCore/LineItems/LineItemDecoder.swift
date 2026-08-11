@@ -59,6 +59,9 @@ public struct DecodedLineItem: Sendable {
     /// `name_quality`); nil otherwise.
     public var nameQuality: String?
     public var lineIds: [Int]
+    /// The band text the item was parsed from (Python `raw_text`).
+    /// Diagnostic provenance, not compared by the parity gate.
+    public var rawText: String = ""
 }
 
 /// Template -> role prior entry (assets/block_role_priors_v2.json).
@@ -1121,7 +1124,8 @@ public func extractLineItems(
             unitPrice: p.unitPrice,
             isDiscount: p.isDiscount,
             nameQuality: p.nameQuality,
-            lineIds: p.lineIds
+            lineIds: p.lineIds,
+            rawText: p.rawText
         )
     }
 }
