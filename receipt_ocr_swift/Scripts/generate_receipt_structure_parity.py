@@ -16,7 +16,11 @@ from receipt_dynamo.amounts import (
 )
 from receipt_dynamo.entities.receipt_summary import find_printed_grand_total
 from receipt_upload.line_items.blocks import should_reocr_items_zone
-from receipt_upload.line_items.geometry import extract_items, reconcile
+from receipt_upload.line_items.geometry import (
+    extract_items,
+    propose_items_boundary_extension,
+    reconcile_detailed,
+)
 from receipt_upload.section_assignment import (
     assign_row_sections,
     load_prior_model,
@@ -88,15 +92,17 @@ def generate(input_path: Path = DEFAULT_INPUT) -> str:
             rows, lines, model, receipt.get("merchant")
         )
         sections = sections_from_assignments(assignments)
-        items_lines = next(
+        items_section = next(
             (
-                set(section.line_ids)
+                section
                 for section in sections
                 if section.section_type == "ITEMS"
             ),
-            set(),
+            None,
         )
-        items, _ = extract_items(receipt["words"], items_lines)
+        items_lines = (
+            set(items_section.line_ids) if items_section else set()
+        )
         subtotal = _printed_subtotal(rows, lines, words)
         # Mirrors buildOnDeviceReceiptStructure: a receipt that prints no
         # SUBTOTAL still prints a TOTAL, and the worker now anchors on it
@@ -105,16 +111,41 @@ def generate(input_path: Path = DEFAULT_INPUT) -> str:
         # exists, so this only reaches receipts that had no baseline at
         # all. The summary dict is always built, matching the Swift side,
         # which always constructs a LineItemSummary; an all-None dict
-        # reconciles to no-baseline exactly as `None` did.
+        # reconciles to no-baseline exactly as `None` did, and leaves the
+        # summary-figure filter a no-op.
         grand_total = find_printed_grand_total(words)
-        status, _, _ = reconcile(
-            [item for item in items if not item.get("is_discount")],
-            {
-                "subtotal": subtotal,
-                "tax": None,
-                "grand_total": grand_total,
-            },
+        summary = {
+            "subtotal": subtotal,
+            "tax": None,
+            "grand_total": grand_total,
+        }
+        # Mirrors the on-device zone-gap boundary extension (#1329): the
+        # proposal is accepted only on strict arithmetic improvement, so
+        # an already-matching zone always keeps its boundary.
+        proposal = None
+        if items_lines:
+            proposal = propose_items_boundary_extension(
+                receipt["words"],
+                summary,
+                items_lines,
+                sections,
+                rows,
+                current_row_ids=(
+                    items_section.row_ids if items_section else None
+                ),
+            )
+        if proposal:
+            items_lines = set(proposal["line_ids"])
+        # Decode WITH the scanned summary so the summary-figure filter
+        # (#1320) is pinned exactly as the device runs it.
+        items, _ = extract_items(
+            receipt["words"], items_lines, summary=summary
         )
+        rec = reconcile_detailed(
+            [item for item in items if not item.get("is_discount")],
+            summary,
+        )
+        status = rec.status
         expected.append(
             {
                 "image_id": receipt["image_id"],
@@ -122,7 +153,12 @@ def generate(input_path: Path = DEFAULT_INPUT) -> str:
                 "sections": [
                     {
                         "section_type": section.section_type,
-                        "line_ids": section.line_ids,
+                        "line_ids": (
+                            sorted(items_lines)
+                            if proposal
+                            and section.section_type == "ITEMS"
+                            else section.line_ids
+                        ),
                     }
                     for section in sections
                 ],
@@ -137,11 +173,21 @@ def generate(input_path: Path = DEFAULT_INPUT) -> str:
                         "name_quality": item.get("name_quality") or "ok",
                         "line_ids": item["line_ids"],
                         "reconciliation_status": status,
+                        "raw_text": item.get("raw_text") or "",
                     }
                     for index, item in enumerate(items)
                 ],
                 "printed_subtotal": subtotal,
                 "reconciliation_status": status,
+                "reconciliation": {
+                    "status": rec.status,
+                    "item_sum": rec.item_sum,
+                    "baseline": rec.baseline,
+                    "baseline_source": rec.baseline_source,
+                    "baseline_figures_agreeing": (
+                        rec.baseline_figures_agreeing
+                    ),
+                },
                 "should_reocr_items_zone": should_reocr_items_zone(
                     items, subtotal
                 ),

@@ -941,10 +941,20 @@
           ],
           "reconciliation_status": "no-baseline",
           "model_source": "swift-worker-v1",
-          "extractor_version": "swift-worker-v1+line-items-blocks-v2"
+          "extractor_version": "swift-worker-v1+line-items-blocks-v2",
+          "raw_text": "ORGANIC 3.99"
         }
       ],
-      "needs_review": false
+      "needs_review": false,
+      "printed_subtotal": null,
+      "should_reocr_items_zone": false,
+      "reconciliation": {
+        "status": "no-baseline",
+        "item_sum": null,
+        "baseline": null,
+        "baseline_source": null,
+        "baseline_figures_agreeing": null
+      }
     }
   ],
   "barcodes": []

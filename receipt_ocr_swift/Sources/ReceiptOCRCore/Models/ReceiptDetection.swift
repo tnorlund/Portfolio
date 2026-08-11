@@ -136,6 +136,19 @@ public struct ReceiptOutput: Codable {
     /// section and reconciled against its own printed subtotal.
     public let lineItems: [ReceiptLineItemPayload]
 
+    /// The printed SUBTOTAL the worker scanned off the paper, when one
+    /// exists. Optional: absent on payloads from earlier worker builds.
+    public let printedSubtotal: Double?
+
+    /// The worker's own re-OCR verdict for the ITEMS zone (items decoded
+    /// but missing the printed subtotal by more than the near band).
+    /// Previously computed on device and discarded.
+    public let shouldReocrItemsZone: Bool?
+
+    /// The graded receipt-level reconciliation verdict (#1324): status,
+    /// item sum, baseline, baseline source and figure-agreement grade.
+    public let reconciliation: ReceiptReconciliationPayload?
+
     /// True when this crop probably contains multiple overlapping receipts that
     /// couldn't be confidently split — flag for human review.
     public let needsReview: Bool
@@ -173,6 +186,9 @@ public struct ReceiptOutput: Codable {
         self.barcodes = barcodes
         self.sections = sections ?? structure?.sections ?? []
         self.lineItems = lineItems ?? structure?.lineItems ?? []
+        self.printedSubtotal = structure?.printedSubtotal
+        self.shouldReocrItemsZone = structure?.shouldReocrItemsZone
+        self.reconciliation = structure?.reconciliation
         self.needsReview = needsReview
     }
 
@@ -205,6 +221,9 @@ public struct ReceiptOutput: Codable {
         self.barcodes = barcodes
         self.sections = sections ?? structure?.sections ?? []
         self.lineItems = lineItems ?? structure?.lineItems ?? []
+        self.printedSubtotal = structure?.printedSubtotal
+        self.shouldReocrItemsZone = structure?.shouldReocrItemsZone
+        self.reconciliation = structure?.reconciliation
         self.needsReview = processed.needsReview
     }
 
@@ -220,6 +239,9 @@ public struct ReceiptOutput: Codable {
         case barcodes
         case sections
         case lineItems = "line_items"
+        case printedSubtotal = "printed_subtotal"
+        case shouldReocrItemsZone = "should_reocr_items_zone"
+        case reconciliation
         case needsReview = "needs_review"
     }
 }

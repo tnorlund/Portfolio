@@ -442,6 +442,43 @@ def test_swift_single_pass_persists_worker_sections_and_line_items(
     assert line_items[0].source_model_source == "swift-worker-v1"
     # No summary exists at ingest, so the worker's own verdict rides along.
     assert line_items[0].reconciliation_status == "no-baseline"
+    # Tier-1 additive contract: the band text the item was parsed from,
+    # and the receipt-level graded verdict stamped onto every row.
+    assert line_items[0].raw_text == "ORGANIC 3.99"
+    assert line_items[0].baseline_figures_agreeing is None
+
+
+def test_worker_reconciliation_grade_is_stamped_on_rows(
+    aws_stack, swift_payload
+):
+    """A graded worker verdict lands on every persisted row.
+
+    The fixture's receipt reconciles to no-baseline (grade None); rewrite
+    the receipt-level verdict to a graded match and every row must carry
+    the grade — the same #1324 diagnostics a cloud recompute would stamp.
+    """
+    payload = json.loads(json.dumps(swift_payload))
+    for receipt in payload["receipts"]:
+        receipt["reconciliation"] = {
+            "status": "match",
+            "item_sum": 3.99,
+            "baseline": 3.99,
+            "baseline_source": "subtotal",
+            "baseline_figures_agreeing": 2,
+        }
+        for item in receipt["line_items"]:
+            item["reconciliation_status"] = "match"
+    processor = _processor(aws_stack)
+    ocr_job, routing = _seed_job(processor)
+
+    processor._process_swift_single_pass(payload, ocr_job, routing)
+
+    dynamo = DynamoClient(aws_stack)
+    line_items = dynamo.get_receipt_line_items_from_receipt(IMAGE_ID, 1)
+    assert line_items
+    for item in line_items:
+        assert item.reconciliation_status == "match"
+        assert item.baseline_figures_agreeing == 2
 
 
 def test_worker_structure_is_ignored_when_the_payload_omits_it(
