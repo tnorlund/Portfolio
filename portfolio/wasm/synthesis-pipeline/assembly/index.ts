@@ -2,49 +2,60 @@
  * SynthesisPipeline pixel kernels compiled to WebAssembly.
  *
  * Memory layout (managed by the JS host):
- * - A single growable ArrayBuffer owned by this module.
- * - Host allocates two regions via `ensureCapacity` / pointer helpers:
- *   1. RGBA pixel buffer (Uint8) at `pixelPtr`
- *   2. Optional XY point buffer (f32 pairs) at `pointsPtr`
- *
- * Exports operate in-place on those regions. No GC objects cross the boundary.
+ * - Host-owned RGBA (+ optional points) buffers start at `bufferBase()`
+ *   (`__heap_base`), never at address 0 (AS static data lives low).
+ * - `ensureCapacity(bytes)` grows memory to fit `bufferBase() + bytes` and
+ *   returns 1 on success / 0 on `memory.grow` failure.
  */
 
-/** Grow WASM memory so at least `bytes` are addressable from 0. */
-export function ensureCapacity(bytes: i32): void {
-  const pagesNeeded = (bytes + 0xffff) >> 16;
+/** Host-owned buffer base — above AssemblyScript static data. */
+export function bufferBase(): i32 {
+  return i32(__heap_base);
+}
+
+/**
+ * Ensure `bufferBase() + bytes` is addressable.
+ * @returns 1 on success, 0 if memory.grow fails.
+ */
+export function ensureCapacity(bytes: i32): i32 {
+  const needed = bufferBase() + bytes;
+  const pagesNeeded = (needed + 0xffff) >> 16;
   const current = memory.size();
   if (pagesNeeded > current) {
-    memory.grow(pagesNeeded - current);
+    const grown = memory.grow(pagesNeeded - current);
+    if (grown < 0) {
+      return 0;
+    }
   }
+  return 1;
 }
 
 /**
  * Turn opaque dark-ink-on-white receipt pixels into black ink with real alpha.
- * Must match the JS `knockOutReceiptPaper` reference implementation bit-for-bit
- * for the fixtures used in unit tests.
+ * Uses f64 math (`Math.pow`) to match the JS reference in `pixelKernels.ts`
+ * bit-for-bit on the unit-test fixtures.
  */
 export function knockOutReceiptPaper(pixelPtr: i32, byteLength: i32): void {
-  const paperLuminance: f32 = 220.0;
-  const solidInkLuminance: f32 = 70.0;
-  const denom: f32 = paperLuminance - solidInkLuminance;
+  const paperLuminance: f64 = 220.0;
+  const solidInkLuminance: f64 = 70.0;
+  const denom: f64 = paperLuminance - solidInkLuminance;
 
   for (let i: i32 = 0; i < byteLength; i += 4) {
-    const r = f32(load<u8>(pixelPtr + i));
-    const g = f32(load<u8>(pixelPtr + i + 1));
-    const b = f32(load<u8>(pixelPtr + i + 2));
+    const r = f64(load<u8>(pixelPtr + i));
+    const g = f64(load<u8>(pixelPtr + i + 1));
+    const b = f64(load<u8>(pixelPtr + i + 2));
     const a = load<u8>(pixelPtr + i + 3);
 
-    // Math.round equivalent for non-negative values.
-    const luminance = f32(i32(r * 0.2126 + g * 0.7152 + b * 0.0722 + 0.5));
+    // Math.round equivalent for non-negative values (f64 path like JS).
+    const luminance = f64(i32(r * 0.2126 + g * 0.7152 + b * 0.0722 + 0.5));
     let normalizedInk = (paperLuminance - luminance) / denom;
     if (normalizedInk < 0.0) {
       normalizedInk = 0.0;
     } else if (normalizedInk > 1.0) {
       normalizedInk = 1.0;
     }
-    const inkAlpha = Mathf.pow(normalizedInk, 1.5);
-    const outA = i32(f32(a) * inkAlpha + 0.5);
+    const inkAlpha = Math.pow(normalizedInk, 1.5);
+    const outA = i32(f64(a) * inkAlpha + 0.5);
 
     store<u8>(pixelPtr + i, 0);
     store<u8>(pixelPtr + i + 1, 0);

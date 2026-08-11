@@ -73,38 +73,33 @@ const AssetPending: React.FC<{ children: React.ReactNode }> = ({
   </div>
 );
 
-/** Parse CSS color strings (`#rgb`, `#rrggbb`, `rgb()`) into 0–255 channels. */
+/**
+ * Resolve any CSS color the browser understands (named, hex8, hsl, oklch,
+ * space-separated rgb, custom-property tokens) via a 1×1 canvas readback.
+ */
 const parseCssColor = (
   value: string,
 ): { red: number; green: number; blue: number } => {
-  const trimmed = value.trim();
-  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(trimmed);
-  if (hex) {
-    const raw = hex[1];
-    if (raw.length === 3) {
-      return {
-        red: parseInt(raw[0] + raw[0], 16),
-        green: parseInt(raw[1] + raw[1], 16),
-        blue: parseInt(raw[2] + raw[2], 16),
-      };
+  const fallback = { red: 34, green: 34, blue: 34 };
+  if (typeof document === "undefined") {
+    return fallback;
+  }
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) {
+      return fallback;
     }
-    return {
-      red: parseInt(raw.slice(0, 2), 16),
-      green: parseInt(raw.slice(2, 4), 16),
-      blue: parseInt(raw.slice(4, 6), 16),
-    };
+    ctx.fillStyle = "#000";
+    ctx.fillStyle = value.trim() || "#222";
+    ctx.fillRect(0, 0, 1, 1);
+    const data = ctx.getImageData(0, 0, 1, 1).data;
+    return { red: data[0], green: data[1], blue: data[2] };
+  } catch {
+    return fallback;
   }
-  const rgb = /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)/i.exec(
-    trimmed,
-  );
-  if (rgb) {
-    return {
-      red: Math.round(Number(rgb[1])),
-      green: Math.round(Number(rgb[2])),
-      blue: Math.round(Number(rgb[3])),
-    };
-  }
-  return { red: 34, green: 34, blue: 34 };
 };
 
 interface ReceiptInkLayerProps {
@@ -144,11 +139,7 @@ const ReceiptInkLayer: React.FC<ReceiptInkLayerProps> = ({
       canvas.height = source.naturalHeight;
       ctx.drawImage(source, 0, 0);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      void knockOutAndBlit(ctx, imageData).then(() => {
-        if (cancelled) {
-          return;
-        }
-      });
+      void knockOutAndBlit(ctx, imageData, () => cancelled);
     };
     source.src = src;
     return () => {
@@ -354,20 +345,20 @@ const CharacterAct: React.FC<ActProps> = ({
     if (typeof ImageData === "undefined") {
       return;
     }
-    void stampThermalDotsAndBlit(ctx, {
-      width,
-      height,
-      points,
-      count,
-      radius,
-      red,
-      green,
-      blue,
-    }).then(() => {
-      if (cancelled) {
-        return;
-      }
-    });
+    void stampThermalDotsAndBlit(
+      ctx,
+      {
+        width,
+        height,
+        points,
+        count,
+        radius,
+        red,
+        green,
+        blue,
+      },
+      () => cancelled,
+    );
     return () => {
       cancelled = true;
     };

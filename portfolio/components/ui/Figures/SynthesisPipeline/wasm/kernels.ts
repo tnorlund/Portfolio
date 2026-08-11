@@ -8,8 +8,7 @@ import {
   SynthesisPipelineWasmExports,
 } from "./loader";
 
-/** Pixel region starts at 0; points follow after the RGBA buffer. */
-const PIXEL_PTR = 0;
+export type KernelPath = "wasm" | "js";
 
 let cached: SynthesisPipelineWasmExports | null | undefined;
 
@@ -26,13 +25,28 @@ export const __resetWasmKernelCacheForTests = (): void => {
   cached = undefined;
 };
 
+const blitPixels = (
+  ctx: CanvasRenderingContext2D,
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
+  isCancelled?: () => boolean,
+): boolean => {
+  if (isCancelled?.()) {
+    return false;
+  }
+  const copy = new Uint8ClampedArray(pixels);
+  ctx.putImageData(new ImageData(copy, width, height), 0, 0);
+  return true;
+};
+
 /**
  * Prefer WASM knock-out; fall back to the JS reference on any failure.
  * Mutates `pixels` in place in either path.
  */
 export const knockOutReceiptPaperFast = async (
   pixels: Uint8ClampedArray,
-): Promise<"wasm" | "js"> => {
+): Promise<KernelPath> => {
   const wasm = await getWasm();
   if (!wasm) {
     knockOutJs(pixels);
@@ -40,12 +54,14 @@ export const knockOutReceiptPaperFast = async (
   }
   try {
     const byteLength = pixels.byteLength;
-    wasm.ensureCapacity(byteLength);
-    const view = new Uint8Array(wasm.memory.buffer, PIXEL_PTR, byteLength);
-    view.set(pixels);
-    wasm.knockOutReceiptPaper(PIXEL_PTR, byteLength);
-    // memory.grow can detach the previous buffer — re-wrap after the call.
-    pixels.set(new Uint8Array(wasm.memory.buffer, PIXEL_PTR, byteLength));
+    const base = wasm.bufferBase();
+    if (!wasm.ensureCapacity(byteLength)) {
+      knockOutJs(pixels);
+      return "js";
+    }
+    new Uint8Array(wasm.memory.buffer, base, byteLength).set(pixels);
+    wasm.knockOutReceiptPaper(base, byteLength);
+    pixels.set(new Uint8Array(wasm.memory.buffer, base, byteLength));
     return "wasm";
   } catch {
     knockOutJs(pixels);
@@ -55,33 +71,22 @@ export const knockOutReceiptPaperFast = async (
 
 /**
  * Knock out receipt paper on a canvas ImageData and blit back.
- * Uses a single copy into WASM memory, then `putImageData` from a view of
- * that memory (no second full-buffer copy into the original ImageData).
+ * Skips putImageData when `isCancelled()` is true.
  */
 export const knockOutAndBlit = async (
   ctx: CanvasRenderingContext2D,
   imageData: ImageData,
-): Promise<"wasm" | "js"> => {
-  const wasm = await getWasm();
-  if (!wasm) {
-    knockOutJs(imageData.data);
-    ctx.putImageData(imageData, 0, 0);
-    return "js";
-  }
-  try {
-    const { width, height, data } = imageData;
-    const byteLength = data.byteLength;
-    wasm.ensureCapacity(byteLength);
-    new Uint8Array(wasm.memory.buffer, PIXEL_PTR, byteLength).set(data);
-    wasm.knockOutReceiptPaper(PIXEL_PTR, byteLength);
-    const out = new Uint8ClampedArray(wasm.memory.buffer, PIXEL_PTR, byteLength);
-    ctx.putImageData(new ImageData(out, width, height), 0, 0);
-    return "wasm";
-  } catch {
-    knockOutJs(imageData.data);
-    ctx.putImageData(imageData, 0, 0);
-    return "js";
-  }
+  isCancelled?: () => boolean,
+): Promise<KernelPath> => {
+  const path = await knockOutReceiptPaperFast(imageData.data);
+  blitPixels(
+    ctx,
+    imageData.data,
+    imageData.width,
+    imageData.height,
+    isCancelled,
+  );
+  return path;
 };
 
 /**
@@ -90,41 +95,49 @@ export const knockOutAndBlit = async (
 export const stampThermalDotsAndBlit = async (
   ctx: CanvasRenderingContext2D,
   params: ThermalStampParams,
-): Promise<"wasm" | "js"> => {
-  const wasm = await getWasm();
+  isCancelled?: () => boolean,
+): Promise<KernelPath> => {
   const { width, height, points, count, radius, red, green, blue } = params;
+  const wasm = await getWasm();
   if (!wasm) {
     const pixels = new Uint8ClampedArray(width * height * 4);
     stampThermalJs(pixels, params);
-    ctx.putImageData(new ImageData(pixels, width, height), 0, 0);
+    blitPixels(ctx, pixels, width, height, isCancelled);
     return "js";
   }
   try {
+    const safeCount = Math.min(count, points.length >> 1);
     const pixelBytes = width * height * 4;
-    const pointsBytes = count * 8;
-    wasm.ensureCapacity(pixelBytes + pointsBytes);
-    const pointsPtr = pixelBytes;
-    new Float32Array(wasm.memory.buffer, pointsPtr, count * 2).set(
-      points.subarray(0, count * 2),
+    const pointsBytes = safeCount * 8;
+    const base = wasm.bufferBase();
+    if (!wasm.ensureCapacity(pixelBytes + pointsBytes)) {
+      const pixels = new Uint8ClampedArray(width * height * 4);
+      stampThermalJs(pixels, { ...params, count: safeCount });
+      blitPixels(ctx, pixels, width, height, isCancelled);
+      return "js";
+    }
+    const pointsPtr = base + pixelBytes;
+    new Float32Array(wasm.memory.buffer, pointsPtr, safeCount * 2).set(
+      points.subarray(0, safeCount * 2),
     );
     wasm.stampThermalDots(
-      PIXEL_PTR,
+      base,
       width,
       height,
       pointsPtr,
-      count,
+      safeCount,
       radius,
       red,
       green,
       blue,
     );
-    const out = new Uint8ClampedArray(wasm.memory.buffer, PIXEL_PTR, pixelBytes);
-    ctx.putImageData(new ImageData(out, width, height), 0, 0);
+    const out = new Uint8ClampedArray(wasm.memory.buffer, base, pixelBytes);
+    blitPixels(ctx, out, width, height, isCancelled);
     return "wasm";
   } catch {
     const pixels = new Uint8ClampedArray(width * height * 4);
     stampThermalJs(pixels, params);
-    ctx.putImageData(new ImageData(pixels, width, height), 0, 0);
+    blitPixels(ctx, pixels, width, height, isCancelled);
     return "js";
   }
 };
@@ -136,7 +149,7 @@ export const stampThermalDotsAndBlit = async (
 export const stampThermalDotsFast = async (
   pixels: Uint8ClampedArray,
   params: ThermalStampParams,
-): Promise<"wasm" | "js"> => {
+): Promise<KernelPath> => {
   const wasm = await getWasm();
   if (!wasm) {
     stampThermalJs(pixels, params);
@@ -144,25 +157,30 @@ export const stampThermalDotsFast = async (
   }
   try {
     const { width, height, points, count, radius, red, green, blue } = params;
+    const safeCount = Math.min(count, points.length >> 1);
     const pixelBytes = width * height * 4;
-    const pointsBytes = count * 8;
-    wasm.ensureCapacity(pixelBytes + pointsBytes);
-    const pointsPtr = pixelBytes;
-    new Float32Array(wasm.memory.buffer, pointsPtr, count * 2).set(
-      points.subarray(0, count * 2),
+    const pointsBytes = safeCount * 8;
+    const base = wasm.bufferBase();
+    if (!wasm.ensureCapacity(pixelBytes + pointsBytes)) {
+      stampThermalJs(pixels, { ...params, count: safeCount });
+      return "js";
+    }
+    const pointsPtr = base + pixelBytes;
+    new Float32Array(wasm.memory.buffer, pointsPtr, safeCount * 2).set(
+      points.subarray(0, safeCount * 2),
     );
     wasm.stampThermalDots(
-      PIXEL_PTR,
+      base,
       width,
       height,
       pointsPtr,
-      count,
+      safeCount,
       radius,
       red,
       green,
       blue,
     );
-    pixels.set(new Uint8Array(wasm.memory.buffer, PIXEL_PTR, pixelBytes));
+    pixels.set(new Uint8Array(wasm.memory.buffer, base, pixelBytes));
     return "wasm";
   } catch {
     stampThermalJs(pixels, params);

@@ -5,7 +5,9 @@
 
 export interface SynthesisPipelineWasmExports {
   memory: WebAssembly.Memory;
-  ensureCapacity(bytes: number): void;
+  bufferBase(): number;
+  /** Returns 1 on success, 0 if memory.grow failed. */
+  ensureCapacity(bytes: number): number;
   knockOutReceiptPaper(pixelPtr: number, byteLength: number): void;
   clearRgba(pixelPtr: number, byteLength: number): void;
   stampThermalDots(
@@ -31,6 +33,7 @@ const asExports = (
   const candidate = value as Partial<SynthesisPipelineWasmExports>;
   if (
     !(candidate.memory instanceof WebAssembly.Memory) ||
+    typeof candidate.bufferBase !== "function" ||
     typeof candidate.ensureCapacity !== "function" ||
     typeof candidate.knockOutReceiptPaper !== "function" ||
     typeof candidate.clearRgba !== "function" ||
