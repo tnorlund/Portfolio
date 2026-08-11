@@ -1,0 +1,38 @@
+name: Stale issues
+
+on:
+  schedule:
+    # Mondays 07:30 UTC
+    - cron: "30 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          # Issues only — Dependabot / feature PRs are handled elsewhere.
+          days-before-issue-stale: 90
+          days-before-issue-close: 14
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          stale-issue-label: stale
+          # Keep actively prioritized work out of auto-close.
+          exempt-issue-labels: "P0: Critical,P1: High"
+          remove-stale-when-updated: true
+          operations-per-run: 60
+          stale-issue-message: >
+            This issue has had no activity for 90 days. It will be closed in 14
+            days unless there is a comment confirming it is still relevant
+            (and ideally a current repro or acceptance criteria).
+            P0/P1 issues are exempt from this bot.
+          close-issue-message: >
+            Closing as not planned due to sustained inactivity after the stale
+            notice. Reopen with an updated repro or split into a focused issue
+            if this is still needed.
+          close-issue-reason: not_planned
