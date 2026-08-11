@@ -329,6 +329,21 @@ public final class SotoDynamoClient: DynamoClientProtocol {
                 throw DynamoMapError.invalid(key)
             }
         }
+        // Mirrors OCRJob.fromItem's optionalSummary: absent, NULL, or a
+        // non-map value all mean "no carried summary"; missing figures
+        // inside the map stay nil rather than collapsing to zero.
+        func getOptionalSummary(_ key: String) -> LineItemSummary? {
+            guard case .m(let map)? = attrs[key] else { return nil }
+            func figure(_ field: String) -> Double? {
+                guard case .n(let n)? = map[field] else { return nil }
+                return Double(n)
+            }
+            return LineItemSummary(
+                subtotal: figure("subtotal"),
+                tax: figure("tax"),
+                grandTotal: figure("grand_total")
+            )
+        }
         let pk = try getS("PK")
         let sk = try getS("SK")
         guard let imageId = pk.split(separator: "#").last.map(String.init) else { throw DynamoMapError.invalid("PK") }
@@ -360,7 +375,13 @@ public final class SotoDynamoClient: DynamoClientProtocol {
             // omitting the fields here silently downgraded every strategy
             // to plain while the fromItem-based tests stayed green.
             reocrStrategy: getOptionalS("reocr_strategy").flatMap(ReOCRStrategy.init(rawValue:)) ?? .plain,
-            reocrMechanism: getOptionalS("reocr_mechanism")
+            reocrMechanism: getOptionalS("reocr_mechanism"),
+            // Same trap as the strategy fields above: a LINE_ITEM_REFINE
+            // job decoded without its summary silently re-grades against
+            // the worker's own scanned figures instead of the printed
+            // ones the trigger carried, which is the entire pass.
+            refineSummary: getOptionalSummary("refine_summary"),
+            refineMerchantName: getOptionalS("refine_merchant_name")
         )
     }
 }

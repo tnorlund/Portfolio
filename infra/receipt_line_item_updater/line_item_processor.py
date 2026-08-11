@@ -690,6 +690,31 @@ def _maybe_trigger_items_reocr(
 
 REFINE_MAX_ATTEMPTS = 3
 
+REFINE_SUMMARY_FIGURES = ("subtotal", "tax", "grand_total")
+
+
+def _refine_summaries_equal(left: dict | None, right: dict | None) -> bool:
+    """Compare two refine_summary payloads figure by figure.
+
+    Dynamo round-trips the figures as Decimal, so raw dict equality is
+    unreliable — normalize through float() and keep None distinct from
+    any number (an absent figure is not a zero).
+    """
+    if left is None or right is None:
+        return left is None and right is None
+    for key in REFINE_SUMMARY_FIGURES:
+        a, b = left.get(key), right.get(key)
+        if a is None or b is None:
+            if a is not None or b is not None:
+                return False
+            continue
+        try:
+            if float(a) != float(b):
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
 
 def _maybe_trigger_line_item_refine(
     image_id: str,
@@ -713,6 +738,14 @@ def _maybe_trigger_line_item_refine(
     and would fail the job trying to OCR a JSON pointer — noisy, not
     destructive, but not free either. Best-effort: failure never fails
     the message (rows are already written).
+
+    The refine pass writes LINE ITEMS ONLY (no sections), so it emits no
+    stream event that could route back here — the loop is closed on the
+    worker side. This function closes it on the cloud side too: a refine
+    job is enqueued only when the summary it would carry DIFFERS from the
+    summary of every existing non-FAILED refine job for the receipt, so
+    repeated summary events (or the same summary re-delivered) cannot
+    burn through REFINE_MAX_ATTEMPTS and lock out a genuine later change.
     """
     enabled = os.environ.get("ENABLE_LINE_ITEM_REFINE", "").lower() in (
         "1",
@@ -735,6 +768,7 @@ def _maybe_trigger_line_item_refine(
         # Without a printed figure the refine pass has no graded
         # baseline to add; the single-pass decode already ran.
         return False
+    pending_job = None
     try:
         import uuid
 
@@ -756,14 +790,43 @@ def _maybe_trigger_line_item_refine(
         if len(refine_jobs) >= REFINE_MAX_ATTEMPTS:
             return False
 
+        refine_summary = {
+            "subtotal": summary_dict.get("subtotal"),
+            "tax": summary_dict.get("tax"),
+            "grand_total": summary_dict.get("grand_total"),
+        }
+        # A second pass only earns its keep when the summary CHANGED:
+        # re-running the same deterministic decode over the same JSON
+        # with the same figures reproduces the same rows. Comparing the
+        # carried figures (rather than counting events) is what keeps a
+        # repeated summary write from consuming the attempt budget.
+        if any(
+            _refine_summaries_equal(
+                getattr(j, "refine_summary", None), refine_summary
+            )
+            for j in refine_jobs
+            if str(getattr(j, "status", "")).upper() != "FAILED"
+        ):
+            return False
+
         # The refine input is the ORIGINAL OCR-result JSON: its 1-based
         # array-position ids are the persisted line/word ids, so the
         # refine decode shares the rows' word universe by construction.
+        # FIRST_PASS results are image-level (receipt_id None) and hold
+        # every receipt's lines, so any of them can source any receipt;
+        # a REFINEMENT result holds ONE receipt's warped-crop lines, so
+        # it is only a valid source for that same receipt.
         source_jobs = [
             j
             for j in jobs
-            if getattr(j, "job_type", "") in ("FIRST_PASS", "REFINEMENT")
-            and str(getattr(j, "status", "")).upper() == "COMPLETED"
+            if str(getattr(j, "status", "")).upper() == "COMPLETED"
+            and (
+                getattr(j, "job_type", "") == "FIRST_PASS"
+                or (
+                    getattr(j, "job_type", "") == "REFINEMENT"
+                    and getattr(j, "receipt_id", None) == receipt_id
+                )
+            )
         ]
         source_jobs.sort(
             key=lambda j: getattr(j, "created_at", None) or datetime.min,
@@ -793,14 +856,11 @@ def _maybe_trigger_line_item_refine(
             status=OCRStatus.PENDING.value,
             job_type=OCRJobType.LINE_ITEM_REFINE.value,
             receipt_id=receipt_id,
-            refine_summary={
-                "subtotal": summary_dict.get("subtotal"),
-                "tax": summary_dict.get("tax"),
-                "grand_total": summary_dict.get("grand_total"),
-            },
+            refine_summary=refine_summary,
             refine_merchant_name=merchant_name,
         )
         dynamo_client.add_ocr_job(refine_job)
+        pending_job = refine_job
 
         import boto3
 
@@ -826,6 +886,23 @@ def _maybe_trigger_line_item_refine(
             image_id[:8],
             receipt_id,
         )
+        # A PENDING row whose queue message never got published would
+        # suppress every future refine for this receipt (the PENDING
+        # check above), so a transient SQS blip would disable the
+        # feature permanently. Mark it FAILED so the suppression lifts.
+        if pending_job is not None:
+            try:
+                from receipt_dynamo.constants import OCRStatus
+
+                pending_job.status = OCRStatus.FAILED.value
+                pending_job.updated_at = datetime.now(timezone.utc)
+                dynamo_client.update_ocr_job(pending_job)
+            except Exception:  # noqa: BLE001 - best effort
+                logger.exception(
+                    "could not fail orphaned refine job for %s:%d",
+                    image_id[:8],
+                    receipt_id,
+                )
         return False
 
 

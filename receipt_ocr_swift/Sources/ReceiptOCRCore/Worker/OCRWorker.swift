@@ -279,11 +279,19 @@ public final class OCRWorker {
 
     /// Second worker pass (LINE_ITEM_REFINE): decode the receipt's STORED
     /// OCR JSON — the same word universe ingest persisted — with the real
-    /// summary carried on the job, then write sections + line items
-    /// straight to DynamoDB. Writing sections is safe here (unlike at
-    /// single-pass time): words exist by construction, so the stream's
-    /// canonical-ITEMS trigger recomputes against a fully-persisted
-    /// receipt and converges on the same deterministic decode.
+    /// summary carried on the job, then write LINE ITEMS straight to
+    /// DynamoDB.
+    ///
+    /// Line items ONLY — deliberately no section write. The cloud
+    /// recompute that runs at summary time performs the same
+    /// deterministic boundary extension and persists the widened section
+    /// itself through `update_receipt_section`, which preserves the
+    /// validation status and verifier provenance the worker cannot read.
+    /// A section put from here would (a) stamp those existing sections
+    /// back to PENDING and drop their verification fields, and (b) fire
+    /// the stream's canonical-ITEMS trigger, re-invoking the updater that
+    /// enqueued this very job. With no section write the pass emits no
+    /// stream event at all, so it cannot retrigger itself.
     func processLineItemRefine(
         job: OCRJob, imageId: String, jobId: String
     ) async -> RefineOutcome {
@@ -323,21 +331,44 @@ public final class OCRWorker {
         // the nested arrays with the snake-case strategy.
         let snakeDecoder = JSONDecoder()
         snakeDecoder.keyDecodingStrategy = .convertFromSnakeCase
-        guard
-            let obj = try? JSONSerialization.jsonObject(with: jsonData)
-                as? [String: Any],
-            let receiptsArray = obj["receipts"] as? [[String: Any]],
-            let receiptDict = receiptsArray.first(
-                where: { ($0["cluster_id"] as? Int) == receiptId }
-            ),
-            let linesArray = receiptDict["lines"] as? [[String: Any]],
-            let linesData = try? JSONSerialization.data(
-                withJSONObject: linesArray
-            ),
-            let lines = try? snakeDecoder.decode(
-                [Line].self, from: linesData
-            )
-        else {
+        func decodeLines(_ array: [[String: Any]]) -> [Line]? {
+            guard
+                let data = try? JSONSerialization.data(withJSONObject: array)
+            else { return nil }
+            return try? snakeDecoder.decode([Line].self, from: data)
+        }
+        // Two stored shapes reach here. A FIRST_PASS result is
+        // image-level: its `receipts` array carries one entry per
+        // detected receipt, keyed by cluster_id. A REFINEMENT result is
+        // already scoped to ONE receipt (the worker runs those with
+        // includeClassification: false), so its warped-crop lines sit in
+        // a top-level `lines` array with no `receipts` key at all — the
+        // job's own receiptId identifies it, exactly as the cloud
+        // refinement path treats that shape. The presence of `receipts`
+        // is therefore the discriminator between the two.
+        let obj =
+            try? JSONSerialization.jsonObject(with: jsonData)
+            as? [String: Any]
+        let receiptsArray = obj?["receipts"] as? [[String: Any]]
+        let receiptDict = receiptsArray?.first(
+            where: { ($0["cluster_id"] as? Int) == receiptId }
+        )
+        let lines: [Line]
+        if let receiptLines = receiptDict?["lines"] as? [[String: Any]],
+            let decoded = decodeLines(receiptLines)
+        {
+            lines = decoded
+        } else if receiptsArray == nil,
+            let topLines = obj?["lines"] as? [[String: Any]],
+            let decoded = decodeLines(topLines)
+        {
+            // The top-level fallback applies ONLY to the single-receipt
+            // shape. An image-level envelope's top-level `lines` are the
+            // WHOLE image's first-pass OCR, so falling back to them when
+            // the requested cluster_id is simply absent would persist
+            // another receipt's lines under this receipt's id.
+            lines = decoded
+        } else {
             logger.warning("refine_receipt_not_in_json image_id=\(imageId) receipt_id=\(receiptId)")
             await failJob()
             return .permanentFailure
@@ -345,7 +376,7 @@ public final class OCRWorker {
 
         var merchantName = job.refineMerchantName
         if merchantName == nil,
-            let predsArray = receiptDict["layoutlm_predictions"]
+            let predsArray = receiptDict?["layoutlm_predictions"]
                 as? [[String: Any]],
             let predsData = try? JSONSerialization.data(
                 withJSONObject: predsArray
@@ -375,12 +406,6 @@ public final class OCRWorker {
         let now = Date()
         do {
             try await Retry.withBackoff {
-                try await self.dynamo.addReceiptSections(
-                    imageId: imageId, receiptId: receiptId,
-                    sections: structure.sections, createdAt: now
-                )
-            }
-            try await Retry.withBackoff {
                 try await self.dynamo.addReceiptLineItems(
                     imageId: imageId, receiptId: receiptId,
                     items: structure.lineItems, extractedAt: now,
@@ -401,7 +426,13 @@ public final class OCRWorker {
                 try await self.dynamo.updateOCRJob(completed)
             }
         } catch {
+            // Acknowledging the message with the job still PENDING in
+            // Dynamo would suppress every future refine for this receipt
+            // (the enqueuer treats a PENDING job as "already running").
+            // Redelivery is cheap: the pass is idempotent — same JSON,
+            // same summary, same deterministic decode, same rows.
             logger.debug("refine_job_update_failed image_id=\(imageId) error=\(error)")
+            return .transient
         }
         logger.info(
             "refine_complete image_id=\(imageId) receipt_id=\(receiptId) items=\(structure.lineItems.count) status=\(structure.reconciliationStatus)"

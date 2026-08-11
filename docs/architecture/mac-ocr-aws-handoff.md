@@ -208,10 +208,11 @@ Returned to AWS by the Swift worker:
   (`failed_write_line_items`) and ingest still persists the same rows
   from the JSON payload (delete-then-add), which remains the staleness
   reconciler of record. Sections are deliberately NOT written by the
-  worker at single-pass time: a section write before the receipt's words
-  exist would fire the stream's canonical-ITEMS trigger and cause a
-  premature cloud recompute against a word-less receipt. The
-  `addReceiptSections` surface exists for the summary-refine pass;
+  worker at all: at single-pass time a section write precedes the
+  receipt's words and would fire the stream's canonical-ITEMS trigger
+  against a word-less receipt, and at refine time the sections already
+  exist with validation/verifier metadata the worker cannot preserve.
+  The `addReceiptSections` protocol surface is currently uncalled;
 - `OCRRoutingDecision` (PENDING) pointing at the JSON;
 - an `ocr-results` SQS message:
   `{image_id, job_id, s3_key, s3_bucket, receipt_count}`.
@@ -224,13 +225,26 @@ OCRJob whose `s3_key` points at the receipt's ORIGINAL OCR-result JSON
 and which carries `refine_summary` (the real printed figures) plus
 `refine_merchant_name`. The worker does no OCR for these jobs: it
 re-decodes the stored JSON — the same 1-based word universe the
-persisted rows reference — with the graded baseline, then writes
-sections AND line items directly via `ReceiptStructureItems`. Writing
-sections is safe here (unlike single-pass): words exist by
-construction, so the stream's canonical-ITEMS trigger recomputes
-against a fully-persisted receipt and converges on the same
-deterministic decode. Capped at 3 attempts per receipt; a PENDING
-refine job suppresses re-enqueue. An outdated worker binary decodes
+persisted rows reference — with the graded baseline, then writes LINE
+ITEMS directly via `ReceiptStructureItems`.
+
+The pass writes NO sections. The cloud recompute that runs at summary
+time already performs the same deterministic boundary extension and
+persists the widened section itself through `update_receipt_section`,
+which preserves validation status and verifier provenance the worker
+cannot read; a batch put from the worker would stamp those sections
+back to PENDING. It would also fire the stream's canonical-ITEMS
+trigger and re-invoke the very Lambda that enqueued the job. With line
+items only, the refine pass emits no stream event and cannot retrigger
+itself.
+
+Two source shapes are accepted: a FIRST_PASS result's `receipts` entry
+matching `cluster_id`, or — for a REFINEMENT result, which is already
+scoped to one receipt — the top-level `lines` array under the job's own
+`receipt_id`. Enqueue is capped at 3 attempts per receipt; a PENDING
+refine job suppresses re-enqueue, and so does an existing non-FAILED
+job carrying the SAME summary figures (a second pass is only worth
+running when the summary actually changed). An outdated worker decodes
 the unknown job_type as FIRST_PASS and fails the job trying to OCR a
 JSON pointer — noisy but not destructive; enable the flag only after
 worker binaries update.

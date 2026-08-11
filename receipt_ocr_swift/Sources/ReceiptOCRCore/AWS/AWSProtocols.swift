@@ -44,10 +44,16 @@ public protocol DynamoClientProtocol {
 
     /// Batch-put worker-decoded sections (upsert semantics, matching the
     /// cloud ingest's batch put "so an SQS redelivery rewrites rather
-    /// than raising"). NOT called at single-pass time — a section write
-    /// before the receipt's words exist would fire the stream's canonical
-    /// ITEMS trigger and cause a premature cloud recompute against a
-    /// word-less receipt. The summary-refine pass is the caller.
+    /// than raising").
+    ///
+    /// Not called anywhere yet. Two reasons the worker does not write
+    /// sections today: at single-pass time a section write precedes the
+    /// receipt's words and would fire the stream's canonical-ITEMS
+    /// trigger against a word-less receipt; at summary-refine time the
+    /// sections already exist and may carry VALID status or verifier
+    /// provenance, which this blind put would erase. Any future caller
+    /// needs read-modify-write semantics — read the existing section,
+    /// carry its validation metadata forward, then write.
     func addReceiptSections(
         imageId: String, receiptId: Int,
         sections: [ReceiptSectionPayload], createdAt: Date

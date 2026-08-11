@@ -145,10 +145,13 @@ import Testing
 
         _ = try await makeWorker(sqs, s3, dynamo).processBatch()
 
-        // Structure written via the Tier-2 surface, message deleted, job
-        // completed with the summary-aware decode.
-        #expect(dynamo.writtenSections.count == 1)
+        // Line items written via the Tier-2 surface, message deleted,
+        // job completed with the summary-aware decode.
         #expect(dynamo.writtenItems.count == 1)
+        // Items ONLY: a section put would clobber existing VALID/verifier
+        // metadata and fire the stream's canonical-ITEMS trigger, which
+        // would re-invoke the updater that enqueued this job.
+        #expect(dynamo.writtenSections.isEmpty)
         #expect(dynamo.writtenItems[0].receiptId == clusterId)
         #expect(!dynamo.writtenItems[0].items.isEmpty)
         #expect(sqs.deleted.map(\.id) == ["m1"])
@@ -161,6 +164,39 @@ import Testing
                 $0.reconciliationStatus == "match"
             }
         )
+    }
+
+    /// A REFINEMENT source job stores its warped-crop OCR under a
+    /// top-level `lines` array with no `receipts` envelope (the worker
+    /// runs those with includeClassification: false). The refine pass
+    /// must accept that shape under the job's own receipt id, not fail
+    /// the job for want of a cluster_id match.
+    @Test func refineAcceptsTopLevelLinesEnvelope() async throws {
+        let sqs = SQSMock()
+        let s3 = S3Mock()
+        let dynamo = DynamoMock()
+        let envelope = try JSONSerialization.jsonObject(
+            with: contractJSON()
+        ) as! [String: Any]
+        let receipts = envelope["receipts"] as! [[String: Any]]
+        let linesArray = receipts[0]["lines"] as! [[String: Any]]
+        let refinementJSON = try JSONSerialization.data(
+            withJSONObject: ["lines": linesArray]
+        )
+
+        sqs.messages = [message()]
+        // Deliberately NOT the contract's cluster_id: the job's own
+        // receipt id is what identifies a single-receipt envelope.
+        dynamo.jobs["\(Self.imageId):\(Self.jobId)"] = refineJob(receiptId: 7)
+        s3.objects["b:ocr_results/contract.json"] = refinementJSON
+
+        _ = try await makeWorker(sqs, s3, dynamo).processBatch()
+
+        #expect(dynamo.writtenItems.count == 1)
+        #expect(dynamo.writtenItems[0].receiptId == 7)
+        #expect(!dynamo.writtenItems[0].items.isEmpty)
+        #expect(dynamo.writtenSections.isEmpty)
+        #expect(dynamo.jobs["\(Self.imageId):\(Self.jobId)"]?.status == .completed)
     }
 
     @Test func refineWithMissingReceiptFailsJobAndDropsMessage() async throws {
