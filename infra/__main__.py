@@ -244,48 +244,11 @@ dynamodb_gateway_endpoint = aws.ec2.VpcEndpoint(
     route_table_ids=[public_vpc.public_route_table_id, nat.private_rt.id],
 )
 
-# CloudWatch Logs Interface Endpoint for faster logging from VPC Lambdas
-# Single AZ for cost savings ($0.12/day savings per endpoint)
-# Lambda functions can access endpoints from any AZ in the VPC
-# If endpoint AZ fails, Lambda falls back to NAT (slower but works)
+# Logs/SQS Interface Endpoints removed: VPC Lambdas reach both services via
+# the NAT instance (no per-hour endpoint charge; NAT instances have no data
+# processing fee). Gateway endpoints above stay — they're free.
 # Get stack name for conditional logic (reused later in file)
 stack = pulumi.get_stack()
-# Use single AZ for both dev and prod - AZ failures are rare (< 0.1%)
-# and Lambda functions have fallback to NAT Instance
-logs_endpoint_subnets = public_vpc.public_subnet_ids.apply(
-    lambda ids: [ids[0]]
-)  # Single AZ
-
-logs_interface_endpoint = aws.ec2.VpcEndpoint(
-    f"logs-interface-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    service_name=f"com.amazonaws.{aws.config.region}.logs",
-    vpc_endpoint_type="Interface",
-    # Conditional: single AZ for dev, multi-AZ for prod
-    subnet_ids=logs_endpoint_subnets,
-    security_group_ids=[security.sg_vpce_id],
-    private_dns_enabled=True,
-)
-
-# SQS Interface Endpoint for cost-effective SQS access from both public and private subnets
-# Keep upload Lambdas private while allowing SQS access without internet.
-# Single AZ for cost savings ($0.12/day savings)
-# Lambda functions can access endpoints from any AZ in the VPC
-# If endpoint AZ fails, Lambda falls back to NAT (slower but works)
-sqs_endpoint_subnets = public_vpc.public_subnet_ids.apply(
-    lambda ids: [ids[0]]
-)  # Single AZ
-
-sqs_interface_endpoint = aws.ec2.VpcEndpoint(
-    f"sqs-interface-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    service_name=f"com.amazonaws.{aws.config.region}.sqs",
-    vpc_endpoint_type="Interface",
-    # Conditional: single AZ for dev, multi-AZ for prod
-    subnet_ids=sqs_endpoint_subnets,
-    security_group_ids=[security.sg_vpce_id],
-    private_dns_enabled=True,
-)
 
 # Word Similarity Cache Generator Lambda (in VPC for DynamoDB Gateway endpoint access)
 # This reduces DynamoDB query latency variance by using AWS backbone instead of public internet

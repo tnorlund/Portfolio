@@ -136,13 +136,14 @@ class HybridLambdaDeployment(ComponentResource):
                 # 15 min allows draining large backlogs in one invocation.
                 # Must match SQS visibility timeout.
                 "timeout": 900,  # 15 minutes - must match visibility timeout
-                # Increased memory to 10240MB (10GB, Lambda max) due to OOM errors:
-                # - ChromaDB collection with ~70K embeddings uses ~8GB
-                # - Snapshot validation downloads and loads full collection
-                # - Standard queue batching processes up to 1000 messages per invocation
-                "memory_size": 10240,  # 10GB (Lambda max) for large collections
-                # Increased ephemeral storage from 5GB to 10GB for large snapshot operations
-                "ephemeral_storage": 10240,  # 10GB for ChromaDB snapshots (largest seen: 552MB)
+                # Right-sized from 10240MB after the Chroma Cloud migration:
+                # observed @maxMemoryUsed over 14 days of heavy backfill traffic
+                # (Jul 28 - Aug 10) peaked at 2.8GB with a ~650MB average, so
+                # 4096MB leaves ~1.5x headroom over the worst observed batch.
+                # The old 10GB sizing dated from loading full local collections,
+                # which no longer happens with Chroma Cloud dual-write.
+                "memory_size": 4096,
+                "ephemeral_storage": 2048,  # ChromaDB snapshots (largest seen: 552MB)
                 # Must equal the sum of the two event source mappings'
                 # maximum_concurrency (2 lines + 2 words).  Standard-queue ESMs
                 # cannot go below 2, so reserved=2 left half the poller slots
@@ -922,7 +923,10 @@ class HybridLambdaDeployment(ComponentResource):
             event_source_arn=chromadb_queues.lines_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
             batch_size=1000,  # Standard queues support up to 10,000
-            maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
+            # 60s window: compaction is background work with no latency SLA,
+            # and trickle traffic at a 5s window produced thousands of
+            # near-empty 4GB invocations per day during backfill sessions.
+            maximum_batching_window_in_seconds=60,
             function_response_types=["ReportBatchItemFailures"],
             # Minimum for standard queues is 2.  Combined with the
             # Lambda's reserved_concurrent_executions=2, each queue
@@ -938,7 +942,8 @@ class HybridLambdaDeployment(ComponentResource):
             event_source_arn=chromadb_queues.words_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
             batch_size=1000,  # Standard queues support up to 10,000
-            maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
+            # 60s window: see lines mapping above.
+            maximum_batching_window_in_seconds=60,
             function_response_types=["ReportBatchItemFailures"],
             scaling_config=aws.lambda_.EventSourceMappingScalingConfigArgs(
                 maximum_concurrency=2,
