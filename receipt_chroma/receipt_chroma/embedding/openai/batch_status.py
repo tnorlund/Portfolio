@@ -23,28 +23,34 @@ from receipt_dynamo.entities import BatchSummary
 logger = logging.getLogger(__name__)
 
 
-def map_openai_to_dynamo_status(openai_status: str) -> BatchStatus:
+def map_openai_to_dynamo_status(openai_status: str) -> str:
     """
-    Map OpenAI batch status to DynamoDB BatchStatus enum.
+    Map OpenAI batch status to the DynamoDB BatchStatus string value.
+
+    Returns the enum ``.value`` (e.g. ``\"IN_PROGRESS\"``), never the member
+    itself. Assigning a ``BatchStatus`` member onto ``BatchSummary.status``
+    and persisting without re-normalization embeds the enum repr into
+    ``GSI1PK`` (``STATUS#BatchStatus.IN_PROGRESS``), which
+    ``get_batch_summaries_by_status`` cannot query.
 
     Args:
         openai_status: Status string from OpenAI API
 
     Returns:
-        Corresponding BatchStatus enum value
+        Corresponding BatchStatus ``.value`` string
 
     Raises:
         ValueError: If status is unknown
     """
     mapping = {
-        "validating": BatchStatus.VALIDATING,
-        "in_progress": BatchStatus.IN_PROGRESS,
-        "finalizing": BatchStatus.FINALIZING,
-        "completed": BatchStatus.COMPLETED,
-        "failed": BatchStatus.FAILED,
-        "expired": BatchStatus.EXPIRED,
-        "canceling": BatchStatus.CANCELING,
-        "cancelled": BatchStatus.CANCELLED,
+        "validating": BatchStatus.VALIDATING.value,
+        "in_progress": BatchStatus.IN_PROGRESS.value,
+        "finalizing": BatchStatus.FINALIZING.value,
+        "completed": BatchStatus.COMPLETED.value,
+        "failed": BatchStatus.FAILED.value,
+        "expired": BatchStatus.EXPIRED.value,
+        "canceling": BatchStatus.CANCELING.value,
+        "cancelled": BatchStatus.CANCELLED.value,
     }
 
     if openai_status not in mapping:
@@ -268,7 +274,7 @@ def handle_failed_status(
 
     # Update batch summary in DynamoDB
     batch_summary = dynamo_client.get_batch_summary(batch_id)
-    batch_summary.status = BatchStatus.FAILED
+    batch_summary.status = BatchStatus.FAILED.value
     dynamo_client.update_batch_summary(batch_summary)
 
     # Mark all failed items for retry based on batch type
@@ -341,7 +347,7 @@ def handle_expired_status(
 
     # Update batch summary
     batch_summary = dynamo_client.get_batch_summary(batch_id)
-    batch_summary.status = BatchStatus.EXPIRED
+    batch_summary.status = BatchStatus.EXPIRED.value
     dynamo_client.update_batch_summary(batch_summary)
 
     # An expired provider batch is terminal.  Requeue both the failed IDs and

@@ -3,48 +3,23 @@
 Pure business logic - no Lambda-specific code.
 """
 
+import json
 import os
-from typing import Any, Dict, List
+import tempfile
+from typing import Any, Dict
 
-from receipt_dynamo.constants import BatchType
+import boto3
+from receipt_chroma.embedding.openai.poll import (
+    list_pending_line_embedding_batches,
+    list_pending_word_embedding_batches,
+)
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import BatchSummary
 
 import utils.logging
 
 get_logger = utils.logging.get_logger
 
 logger = get_logger(__name__)
-
-
-def _list_pending_batches(
-    dynamo_client: DynamoClient, batch_type: BatchType
-) -> List[BatchSummary]:
-    """
-    List pending embedding batches from DynamoDB with pagination.
-
-    Args:
-        dynamo_client: DynamoDB client instance
-        batch_type: Type of batches to list (LINE_EMBEDDING or WORD_EMBEDDING)
-
-    Returns:
-        List of pending batch summaries
-    """
-    summaries, lek = dynamo_client.get_batch_summaries_by_status(
-        status="PENDING",
-        batch_type=batch_type,
-        limit=25,
-        last_evaluated_key=None,
-    )
-    while lek:
-        next_summaries, lek = dynamo_client.get_batch_summaries_by_status(
-            status="PENDING",
-            batch_type=batch_type,
-            limit=25,
-            last_evaluated_key=lek,
-        )
-        summaries.extend(next_summaries)
-    return summaries
 
 
 def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
@@ -80,40 +55,30 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     )
 
     try:
-        # Initialize DynamoDB client
         dynamo_client = DynamoClient(os.environ.get("DYNAMODB_TABLE_NAME"))
 
-        # Get pending batches from DynamoDB
+        # Keep every provider-live status visible (PENDING through CANCELING).
         if batch_type == "word":
-            pending_batches = _list_pending_batches(
-                dynamo_client, BatchType.WORD_EMBEDDING
-            )
+            pending_batches = list_pending_word_embedding_batches(dynamo_client)
             logger.info(
                 "Found pending word embedding batches",
                 count=len(pending_batches),
             )
         else:
-            pending_batches = _list_pending_batches(
-                dynamo_client, BatchType.LINE_EMBEDDING
-            )
+            pending_batches = list_pending_line_embedding_batches(dynamo_client)
             logger.info(
                 "Found pending line embedding batches",
                 count=len(pending_batches),
             )
 
-        # Format response for Step Function
-        # Create batch_indices array for Map state
         batch_indices = list(range(len(pending_batches)))
 
-        # Check if we need to use S3 (if batches array is large)
-        # Step Functions has a 256KB limit, so we'll use S3 if batches > 100KB
-        import json
-
+        # Step Functions has a 256KB limit; spill to S3 above 100KB.
         batches_payload = json.dumps(
             [batch.__dict__ for batch in pending_batches]
         )
         batches_size = len(batches_payload.encode("utf-8"))
-        use_s3 = batches_size > 100 * 1024  # 100KB threshold
+        use_s3 = batches_size > 100 * 1024
 
         response = {
             "total_batches": len(pending_batches),
@@ -122,11 +87,6 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         }
 
         if use_s3:
-            # Upload batches to S3 manifest
-            import tempfile
-
-            import boto3
-
             bucket = os.environ.get("CHROMADB_BUCKET")
             if not bucket:
                 raise ValueError(
@@ -134,8 +94,6 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 )
 
             manifest_s3_key = f"manifests/{execution_id}/batches.json"
-
-            # Serialize batches to JSON
             batches_data = [
                 {
                     "batch_id": batch.batch_id,
@@ -168,19 +126,18 @@ def handle(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             finally:
                 try:
                     os.unlink(tmp_file_path)
-                except Exception:
+                except OSError:
                     pass
 
             response.update(
                 {
-                    "pending_batches": None,  # Not included when using S3
+                    "pending_batches": None,
                     "manifest_s3_key": manifest_s3_key,
                     "manifest_s3_bucket": bucket,
                     "use_s3": True,
                 }
             )
         else:
-            # Include batches inline
             response.update(
                 {
                     "pending_batches": [

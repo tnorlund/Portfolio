@@ -10,11 +10,51 @@ from typing import List
 
 from openai import OpenAI
 
-from receipt_dynamo.constants import BatchType
+from receipt_dynamo.constants import BatchStatus, BatchType
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import BatchSummary
 
 logger = logging.getLogger(__name__)
+
+# Provider-live statuses that ingest must keep polling. Writing the OpenAI
+# status onto BatchSummary means a batch leaves PENDING after the first poll;
+# querying only PENDING strands it until a manual reset.
+ACTIVE_BATCH_STATUSES = (
+    BatchStatus.PENDING,
+    BatchStatus.VALIDATING,
+    BatchStatus.IN_PROGRESS,
+    BatchStatus.FINALIZING,
+    BatchStatus.CANCELING,
+)
+
+
+def _list_active_batches(
+    dynamo_client: DynamoClient, batch_type: BatchType
+) -> List[BatchSummary]:
+    """List every provider-live embedding batch with pagination."""
+    summaries: dict[str, BatchSummary] = {}
+    for status in ACTIVE_BATCH_STATUSES:
+        page, lek = dynamo_client.get_batch_summaries_by_status(
+            status=status,
+            batch_type=batch_type,
+            limit=25,
+            last_evaluated_key=None,
+        )
+        for summary in page:
+            summaries[summary.batch_id] = summary
+        while lek:
+            page, lek = dynamo_client.get_batch_summaries_by_status(
+                status=status,
+                batch_type=batch_type,
+                limit=25,
+                last_evaluated_key=lek,
+            )
+            for summary in page:
+                summaries[summary.batch_id] = summary
+    return sorted(
+        summaries.values(),
+        key=lambda summary: (summary.submitted_at, summary.batch_id),
+    )
 
 
 def get_openai_batch_status(
@@ -110,55 +150,35 @@ def list_pending_line_embedding_batches(
     dynamo_client: DynamoClient,
 ) -> List[BatchSummary]:
     """
-    List line embedding batches that are pending processing.
+    List line embedding batches that still need polling.
+
+    Includes every provider-live status (PENDING through CANCELING), not just
+    PENDING. The first poll writes the OpenAI status onto the summary, so a
+    PENDING-only query would strand in-flight batches across ingest runs.
 
     Args:
         dynamo_client: DynamoDB client instance
 
     Returns:
-        List of pending batch identifiers
+        Deduplicated active batch summaries, oldest first.
     """
-    summaries, lek = dynamo_client.get_batch_summaries_by_status(
-        status="PENDING",
-        batch_type=BatchType.LINE_EMBEDDING,
-        limit=25,
-        last_evaluated_key=None,
-    )
-    while lek:
-        next_summaries, lek = dynamo_client.get_batch_summaries_by_status(
-            status="PENDING",
-            batch_type=BatchType.LINE_EMBEDDING,
-            limit=25,
-            last_evaluated_key=lek,
-        )
-        summaries.extend(next_summaries)
-    return summaries  # type: ignore[no-any-return]
+    return _list_active_batches(dynamo_client, BatchType.LINE_EMBEDDING)
 
 
 def list_pending_word_embedding_batches(
     dynamo_client: DynamoClient,
 ) -> List[BatchSummary]:
     """
-    List word embedding batches that are pending processing.
+    List word embedding batches that still need polling.
+
+    Includes every provider-live status (PENDING through CANCELING), not just
+    PENDING. The first poll writes the OpenAI status onto the summary, so a
+    PENDING-only query would strand in-flight batches across ingest runs.
 
     Args:
         dynamo_client: DynamoDB client instance
 
     Returns:
-        List of pending batch identifiers
+        Deduplicated active batch summaries, oldest first.
     """
-    summaries, lek = dynamo_client.get_batch_summaries_by_status(
-        status="PENDING",
-        batch_type=BatchType.WORD_EMBEDDING,
-        limit=25,
-        last_evaluated_key=None,
-    )
-    while lek:
-        next_summaries, lek = dynamo_client.get_batch_summaries_by_status(
-            status="PENDING",
-            batch_type=BatchType.WORD_EMBEDDING,
-            limit=25,
-            last_evaluated_key=lek,
-        )
-        summaries.extend(next_summaries)
-    return summaries  # type: ignore[no-any-return]
+    return _list_active_batches(dynamo_client, BatchType.WORD_EMBEDDING)
