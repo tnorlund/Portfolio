@@ -292,6 +292,10 @@ public final class OCRWorker {
             /// region (REGIONAL_REOCR only; nil otherwise). Recorded in
             /// the uploaded result JSON as `reocr_strategy_applied`.
             let strategyApplied: String?
+            /// Whether the job row was already COMPLETED when it was fetched,
+            /// i.e. this delivery is a redelivery of work that already
+            /// finished. Gates the direct line-item write (see below).
+            let jobWasCompleted: Bool
         }
         var imageURLs: [URL] = []
         var contexts: [Context] = []
@@ -386,7 +390,8 @@ public final class OCRWorker {
                         jobId: jobId,
                         s3Bucket: config.rawBucketName,
                         jobType: job.jobType,
-                        strategyApplied: strategy.rawValue
+                        strategyApplied: strategy.rawValue,
+                        jobWasCompleted: job.status == .completed
                     )
                 )
                 logger.info(
@@ -407,7 +412,8 @@ public final class OCRWorker {
                     jobId: jobId,
                     s3Bucket: config.rawBucketName,
                     jobType: job.jobType,
-                    strategyApplied: nil
+                    strategyApplied: nil,
+                    jobWasCompleted: job.status == .completed
                 )
             )
         }
@@ -553,27 +559,43 @@ public final class OCRWorker {
             // write before the receipt's words exist would fire the
             // stream's canonical-ITEMS trigger and cause a premature
             // cloud recompute against a word-less receipt.
+            //
+            // Skipped when the job was already COMPLETED at fetch time: that
+            // means an earlier attempt already handed results to the cloud
+            // pipeline, which may since have enriched these rows (merchant
+            // rollup keys, VALID section provenance, reconciliation against
+            // the real summary). The worker's payload is sparse by design, so
+            // re-putting it over enriched rows can only destroy information.
+            // A first attempt that crashed leaves the job PENDING and never
+            // emitted a results message, so no enrichment exists and the
+            // write is safe.
             if ctx.jobType != .regionalReocr {
-                for receipt in receipts where !receipt.lineItems.isEmpty {
-                    let receiptId = receipt.clusterId
-                    do {
-                        try await Retry.withBackoff {
-                            try await self.dynamo.addReceiptLineItems(
-                                imageId: ctx.imageId,
-                                receiptId: receiptId,
-                                items: receipt.lineItems,
-                                extractedAt: now,
-                                baselineFiguresAgreeing: receipt
-                                    .reconciliation?.baselineFiguresAgreeing
+                if ctx.jobWasCompleted {
+                    logger.info(
+                        "worker_line_items_skip_redelivery image_id=\(ctx.imageId) job_id=\(ctx.jobId)"
+                    )
+                } else {
+                    for receipt in receipts where !receipt.lineItems.isEmpty {
+                        let receiptId = receipt.clusterId
+                        do {
+                            try await Retry.withBackoff {
+                                try await self.dynamo.addReceiptLineItems(
+                                    imageId: ctx.imageId,
+                                    receiptId: receiptId,
+                                    items: receipt.lineItems,
+                                    extractedAt: now,
+                                    baselineFiguresAgreeing: receipt
+                                        .reconciliation?.baselineFiguresAgreeing
+                                )
+                            }
+                            logger.info(
+                                "worker_line_items_written image_id=\(ctx.imageId) receipt_id=\(receiptId) count=\(receipt.lineItems.count)"
+                            )
+                        } catch {
+                            logger.warning(
+                                "failed_write_line_items image_id=\(ctx.imageId) receipt_id=\(receiptId) error=\(error)"
                             )
                         }
-                        logger.info(
-                            "worker_line_items_written image_id=\(ctx.imageId) receipt_id=\(receiptId) count=\(receipt.lineItems.count)"
-                        )
-                    } catch {
-                        logger.warning(
-                            "failed_write_line_items image_id=\(ctx.imageId) receipt_id=\(receiptId) error=\(error)"
-                        )
                     }
                 }
             }
