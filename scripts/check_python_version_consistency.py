@@ -27,8 +27,9 @@ SCAN_NAMES = {
     ".pre-commit-config.yaml",
     "pyrightconfig.json",
 }
+DOCUMENT_SUFFIXES = {".adoc", ".markdown", ".md", ".mdx", ".rst"}
 
-# Markdown outside these locations is maintained operational documentation and
+# Documentation outside these locations is maintained operational guidance and
 # must agree with the active runtime baseline. These directories contain frozen
 # handoffs, review evidence, or explicitly archived material whose version
 # references describe the repository at an earlier point in time.
@@ -73,8 +74,8 @@ OLD_VERSION_DECLARATION = re.compile(
     r"[^\n]*3\.(?:8|9|10|11|12)\b",
     re.IGNORECASE,
 )
-OLD_DOCUMENT_VERSION_TOKEN = re.compile(
-    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?3\.(?:8|9|10|11|12)\b",
+NON_BASELINE_DOCUMENT_VERSION_TOKEN = re.compile(
+    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?" r"(?:2\.\d+|3\.(?!13\b)\d+)\b",
     re.IGNORECASE,
 )
 PYTHON_CLASSIFIER = re.compile(r"^Programming Language :: Python :: (3\.\d+)$")
@@ -82,6 +83,10 @@ PYTHON_CLASSIFIER = re.compile(r"^Programming Language :: Python :: (3\.\d+)$")
 
 def _is_scannable(path: Path) -> bool:
     return path.name.startswith("Dockerfile") or path.suffix in SCAN_SUFFIXES
+
+
+def _is_document(path: Path) -> bool:
+    return path.suffix.lower() in DOCUMENT_SUFFIXES
 
 
 def _is_ignored_path(path: Path) -> bool:
@@ -110,8 +115,9 @@ def _active_runtime_files() -> list[Path]:
 
     paths.extend(
         path
-        for path in REPOSITORY_ROOT.rglob("*.md")
+        for path in REPOSITORY_ROOT.rglob("*")
         if path.is_file()
+        and _is_document(path)
         and not _is_ignored_path(path)
         and not _is_historical_document(path)
     )
@@ -130,13 +136,13 @@ def _check_runtime_files() -> list[str]:
             continue
         text = path.read_text(encoding="utf-8")
         patterns = [OLD_VERSION_TOKEN, OLD_VERSION_DECLARATION]
-        if path.suffix == ".md":
-            patterns.append(OLD_DOCUMENT_VERSION_TOKEN)
+        if _is_document(path):
+            patterns.append(NON_BASELINE_DOCUMENT_VERSION_TOKEN)
         for pattern in patterns:
             match = pattern.search(text)
             if match:
                 errors.append(
-                    f"{relative}: legacy Python target {match.group(0)!r}"
+                    f"{relative}: non-baseline Python target {match.group(0)!r}"
                 )
                 break
     return errors
@@ -150,9 +156,7 @@ def _check_tool_version(
     expected: object,
 ) -> None:
     if value is not None and value != expected:
-        errors.append(
-            f"{relative}: {tool_name} is {value!r}; expected {expected!r}"
-        )
+        errors.append(f"{relative}: {tool_name} is {value!r}; expected {expected!r}")
 
 
 def _check_pyprojects() -> list[str]:
