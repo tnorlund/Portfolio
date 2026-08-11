@@ -760,7 +760,7 @@ class LabelValidationVizCache(ComponentResource):
                                             "--conf spark.sql.files.openCostInBytes=134217728 "
                                             "--conf spark.sql.files.maxPartitionBytes=268435456 "
                                             "--conf spark.eventLog.enabled=true "
-                                            f"--conf spark.eventLog.dir=s3://{args[5]}/spark-event-logs/ "
+                                            f"--conf spark.eventLog.dir=s3a://{args[5]}/spark-event-logs/ "
                                             "--conf spark.executor.cores=2 "
                                             "--conf spark.executor.memory=4g "
                                             "--conf spark.executor.instances=2 "

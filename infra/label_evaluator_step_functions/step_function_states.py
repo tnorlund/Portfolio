@@ -508,7 +508,7 @@ def build_emr_states(emr: EmrConfig) -> dict[str, Any]:
     if not emr.enabled:
         return {}
 
-    # Build SparkSubmitParameters - uses Python from custom Docker image
+    # Application-level defaults attach the packaged Python environment.
     artifacts_bucket = emr.spark_artifacts_bucket
     spark_submit_params = (
         "--conf spark.sql.legacy.parquet.nanosAsLong=true "
