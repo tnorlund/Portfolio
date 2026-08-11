@@ -1,5 +1,8 @@
 """Tests for the shared EMR Serverless Spark runtime settings."""
 
+import tomllib
+from pathlib import Path
+
 from infra.components.emr_serverless_analytics import (
     _python_environment_buildspec,
 )
@@ -9,6 +12,8 @@ from infra.components.emr_serverless_runtime import (
     EMR_SPARK_VERSION,
     spark_runtime_properties,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_emr_runtime_targets_spark_8_and_python_313() -> None:
@@ -55,3 +60,21 @@ def test_python_environment_excludes_emr_native_dependencies() -> None:
     assert "include-system-site-packages = true" in command_text
     assert "receipt_langsmith[pyspark]" not in command_text
     assert "receipt_langsmith[emr]" not in command_text
+
+
+def test_local_spark_extra_matches_emr_runtime() -> None:
+    package_config = tomllib.loads(
+        (REPO_ROOT / "receipt_langsmith" / "pyproject.toml").read_text()
+    )
+    local_spark_dependencies = package_config["project"][
+        "optional-dependencies"
+    ]["pyspark"]
+
+    assert f"pyspark=={EMR_SPARK_VERSION}" in local_spark_dependencies
+    assert any(
+        dependency.startswith("pyarrow")
+        for dependency in local_spark_dependencies
+    )
+
+    workflow = (REPO_ROOT / ".github" / "workflows" / "main.yml").read_text()
+    assert 'pip install -e "receipt_langsmith[pyspark,dev]"' in workflow
