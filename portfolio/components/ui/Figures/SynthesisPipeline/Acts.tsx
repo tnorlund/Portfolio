@@ -40,8 +40,10 @@ import {
   WEIGHT_STEP,
 } from "./pipelineData";
 import styles from "./SynthesisPipeline.module.css";
+import { getKnockedOutInkBitmap } from "./inkCache";
 import {
   knockOutAndBlit,
+  knockOutReceiptPaperFast,
   stampThermalDotsAndBlit,
 } from "./wasm/kernels";
 
@@ -125,26 +127,61 @@ const ReceiptInkLayer: React.FC<ReceiptInkLayerProps> = ({
       return;
     }
     let cancelled = false;
-    const source = new Image();
-    source.decoding = "async";
-    source.onload = () => {
-      if (cancelled) {
-        return;
-      }
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    const paintBitmap = (bitmap: ImageBitmap, width: number, height: number) => {
+      // Display canvas is write-only — no willReadFrequently / getImageData.
+      const ctx = canvas.getContext("2d");
       if (!ctx) {
         return;
       }
-      canvas.width = source.naturalWidth;
-      canvas.height = source.naturalHeight;
-      ctx.drawImage(source, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      void knockOutAndBlit(ctx, imageData, () => cancelled);
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(bitmap, 0, 0);
     };
-    source.src = src;
+
+    const fallbackImagePath = () => {
+      const source = new Image();
+      source.decoding = "async";
+      source.onload = () => {
+        if (cancelled) {
+          return;
+        }
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) {
+          return;
+        }
+        canvas.width = source.naturalWidth;
+        canvas.height = source.naturalHeight;
+        ctx.drawImage(source, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        void knockOutAndBlit(ctx, imageData, () => cancelled);
+      };
+      source.src = src;
+      return () => {
+        source.onload = null;
+      };
+    };
+
+    let disposeFallback: (() => void) | undefined;
+    void getKnockedOutInkBitmap(src, async (pixels) => {
+      await knockOutReceiptPaperFast(pixels);
+    }).then((entry) => {
+      if (cancelled) {
+        return;
+      }
+      if (entry) {
+        paintBitmap(entry.bitmap, entry.width, entry.height);
+        return;
+      }
+      disposeFallback = fallbackImagePath();
+    });
+
     return () => {
       cancelled = true;
-      source.onload = null;
+      disposeFallback?.();
     };
   }, [src]);
 
