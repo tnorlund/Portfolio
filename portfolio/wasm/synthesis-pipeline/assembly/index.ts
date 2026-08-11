@@ -78,11 +78,19 @@ export function stampThermalDots(
   green: u8,
   blue: u8,
 ): void {
-  if (width <= 0 || height <= 0 || count <= 0 || radius <= 0.0) {
+  // Invalid canvas size: nothing to clear or stamp.
+  if (width <= 0 || height <= 0) {
     return;
   }
 
   const byteLength = width * height * 4;
+  // Zero dots / non-positive radius must still clear shared memory so a later
+  // blit cannot show leftover knockout pixels or prior thermal frames.
+  if (count <= 0 || radius <= 0.0) {
+    clearRgba(pixelPtr, byteLength);
+    return;
+  }
+
   clearRgba(pixelPtr, byteLength);
 
   const outer = radius + 0.5;

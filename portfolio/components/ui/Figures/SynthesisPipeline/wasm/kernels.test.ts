@@ -97,3 +97,39 @@ test("fast kernels fall back to JS when WASM fetch fails", async () => {
   expect(pathUsed).toBe("js");
   expect(Array.from(pixels)).toEqual([0, 0, 0, 255, 0, 0, 0, 0]);
 });
+
+test("WASM stamp with count=0 clears shared memory instead of leaving leftovers", async () => {
+  mockWasmFetch(true);
+
+  const width = 8;
+  const height = 8;
+  // First paint some dots so memory is dirty.
+  const dirty = new Uint8ClampedArray(width * height * 4);
+  await stampThermalDotsFast(dirty, {
+    width,
+    height,
+    points: new Float32Array([3.5, 3.5]),
+    count: 1,
+    radius: 2,
+    red: 10,
+    green: 20,
+    blue: 30,
+  });
+  expect(dirty.some((v, i) => i % 4 === 3 && v > 0)).toBe(true);
+
+  const cleared = new Uint8ClampedArray(width * height * 4);
+  cleared.fill(255);
+  const pathUsed = await stampThermalDotsFast(cleared, {
+    width,
+    height,
+    points: new Float32Array(0),
+    count: 0,
+    radius: 2,
+    red: 10,
+    green: 20,
+    blue: 30,
+  });
+
+  expect(pathUsed).toBe("wasm");
+  expect(Array.from(cleared).every((v) => v === 0)).toBe(true);
+});
