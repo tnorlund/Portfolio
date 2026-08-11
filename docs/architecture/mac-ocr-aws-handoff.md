@@ -212,6 +212,14 @@ Returned to AWS by the Swift worker:
   receipt's words and would fire the stream's canonical-ITEMS trigger
   against a word-less receipt, and at refine time the sections already
   exist with validation/verifier metadata the worker cannot preserve.
+  **Redelivery guard:** the write is skipped entirely (logged
+  `worker_line_items_skip_redelivery`) when the job row was already
+  COMPLETED at fetch time — a redelivered message whose first attempt
+  already reached the cloud pipeline, so the rows may carry enrichment
+  (merchant rollup keys, VALID section provenance, reconciliation against
+  the real summary) that the worker's sparse payload would erase. A first
+  attempt that crashed leaves the job PENDING and emitted no results
+  message, so no enrichment exists and the write still runs.
   The `addReceiptSections` protocol surface is currently uncalled;
 - `OCRRoutingDecision` (PENDING) pointing at the JSON;
 - an `ocr-results` SQS message:
