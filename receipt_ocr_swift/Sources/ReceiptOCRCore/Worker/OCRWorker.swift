@@ -46,6 +46,11 @@ private struct ParsedReceiptInfo {
     let warpedHeight: Int
     let lineIndices: [Int]
     let layoutLMPredictions: [ParsedLinePrediction]?
+    /// On-device decoded line items, re-read from the result JSON so the
+    /// worker can write them to DynamoDB directly.
+    let lineItems: [ReceiptLineItemPayload]
+    /// Receipt-level graded reconciliation verdict, when present.
+    let reconciliation: ReceiptReconciliationPayload?
 }
 
 /// Parsed LayoutLM prediction for a line
@@ -116,6 +121,25 @@ private func parseReceiptsFromJSON(_ jsonData: Data) -> [ParsedReceiptInfo] {
             }
         }
 
+        // Re-decode the typed structure payloads through Codable so the
+        // Dynamo write path shares one source of truth with the wire
+        // contract (a hand-rolled dict parse here would be a third schema).
+        var lineItems: [ReceiptLineItemPayload] = []
+        if let itemsArray = receiptDict["line_items"] as? [[String: Any]],
+           let data = try? JSONSerialization.data(withJSONObject: itemsArray),
+           let decoded = try? JSONDecoder().decode(
+               [ReceiptLineItemPayload].self, from: data
+           ) {
+            lineItems = decoded
+        }
+        var reconciliation: ReceiptReconciliationPayload? = nil
+        if let recDict = receiptDict["reconciliation"] as? [String: Any],
+           let data = try? JSONSerialization.data(withJSONObject: recDict) {
+            reconciliation = try? JSONDecoder().decode(
+                ReceiptReconciliationPayload.self, from: data
+            )
+        }
+
         return ParsedReceiptInfo(
             clusterId: clusterId,
             localFileName: s3Key,  // s3Key initially contains local filename
@@ -123,7 +147,9 @@ private func parseReceiptsFromJSON(_ jsonData: Data) -> [ParsedReceiptInfo] {
             warpedWidth: warpedWidth,
             warpedHeight: warpedHeight,
             lineIndices: lineIndices,
-            layoutLMPredictions: layoutLMPredictions
+            layoutLMPredictions: layoutLMPredictions,
+            lineItems: lineItems,
+            reconciliation: reconciliation
         )
     }
 }
@@ -517,6 +543,40 @@ public final class OCRWorker {
                 }
             }
             #endif
+
+            // Write the on-device decoded line items straight to DynamoDB
+            // (Tier 2 of the worker-authority migration). Best-effort like
+            // the labels write: the ingest Lambda still persists the same
+            // rows from the JSON payload (delete-then-add), so a failure
+            // here costs nothing but the head start. Sections are NOT
+            // written from the worker at single-pass time — a section
+            // write before the receipt's words exist would fire the
+            // stream's canonical-ITEMS trigger and cause a premature
+            // cloud recompute against a word-less receipt.
+            if ctx.jobType != .regionalReocr {
+                for receipt in receipts where !receipt.lineItems.isEmpty {
+                    let receiptId = receipt.clusterId
+                    do {
+                        try await Retry.withBackoff {
+                            try await self.dynamo.addReceiptLineItems(
+                                imageId: ctx.imageId,
+                                receiptId: receiptId,
+                                items: receipt.lineItems,
+                                extractedAt: now,
+                                baselineFiguresAgreeing: receipt
+                                    .reconciliation?.baselineFiguresAgreeing
+                            )
+                        }
+                        logger.info(
+                            "worker_line_items_written image_id=\(ctx.imageId) receipt_id=\(receiptId) count=\(receipt.lineItems.count)"
+                        )
+                    } catch {
+                        logger.warning(
+                            "failed_write_line_items image_id=\(ctx.imageId) receipt_id=\(receiptId) error=\(error)"
+                        )
+                    }
+                }
+            }
 
             // Record the applied preprocess strategy in the uploaded result
             // JSON (REGIONAL_REOCR only) so the overlay Lambda can persist

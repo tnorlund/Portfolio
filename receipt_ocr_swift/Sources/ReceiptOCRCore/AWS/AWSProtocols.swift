@@ -41,6 +41,27 @@ public protocol DynamoClientProtocol {
     func updateOCRJobStage(imageId: String, jobId: String, stage: String) async throws
     func addOCRRoutingDecision(_ decision: OCRRoutingDecision) async throws
     func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws
+
+    /// Batch-put worker-decoded sections (upsert semantics, matching the
+    /// cloud ingest's batch put "so an SQS redelivery rewrites rather
+    /// than raising"). NOT called at single-pass time — a section write
+    /// before the receipt's words exist would fire the stream's canonical
+    /// ITEMS trigger and cause a premature cloud recompute against a
+    /// word-less receipt. The summary-refine pass is the caller.
+    func addReceiptSections(
+        imageId: String, receiptId: Int,
+        sections: [ReceiptSectionPayload], createdAt: Date
+    ) async throws
+
+    /// Batch-put worker-decoded line items (upsert semantics). Line-item
+    /// writes fire no stream trigger, so the single-pass worker calls
+    /// this directly; the cloud ingest's delete-then-add over the same
+    /// payload remains the staleness reconciler of record.
+    func addReceiptLineItems(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?
+    ) async throws
 }
 
 

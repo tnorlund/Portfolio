@@ -1,0 +1,34 @@
+{
+  "section": {
+    "PK": { "S": "IMAGE#12345678-1234-4123-8123-123456789012" },
+    "SK": { "S": "RECEIPT#00001#SECTION#ITEMS" },
+    "TYPE": { "S": "RECEIPT_SECTION" },
+    "section_type": { "S": "ITEMS" },
+    "line_ids": { "L": [{ "N": "3" }, { "N": "4" }] },
+    "created_at": { "S": "2026-08-11T00:00:00.000+00:00" },
+    "confidence": { "N": "0.95" },
+    "model_source": { "S": "swift-worker-v1" },
+    "validation_status": { "S": "PENDING" },
+    "row_ids": { "L": [{ "N": "3" }] }
+  },
+  "line_item": {
+    "PK": { "S": "IMAGE#12345678-1234-4123-8123-123456789012" },
+    "SK": { "S": "RECEIPT#00001#LINE_ITEM#00000" },
+    "TYPE": { "S": "RECEIPT_LINE_ITEM" },
+    "name": { "S": "ORGANIC" },
+    "price": { "S": "3.99" },
+    "line_ids": { "L": [{ "N": "3" }] },
+    "extractor_version": { "S": "swift-worker-v1+line-items-blocks-v2" },
+    "extracted_at": { "S": "2026-08-11T00:00:00.000+00:00" },
+    "is_discount": { "BOOL": false },
+    "collapsed_banding": { "BOOL": false },
+    "name_quality": { "S": "ok" },
+    "raw_text": { "S": "ORGANIC 3.99" },
+    "source_section_status": { "S": "PENDING" },
+    "source_model_source": { "S": "swift-worker-v1" },
+    "reconciliation_status": { "S": "match" },
+    "quantity": { "N": "2.0" },
+    "unit_price": { "N": "1.99" },
+    "baseline_figures_agreeing": { "N": "2" }
+  }
+}

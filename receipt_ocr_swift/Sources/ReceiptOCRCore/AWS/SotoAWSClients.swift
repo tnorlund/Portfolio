@@ -180,20 +180,60 @@ public final class SotoDynamoClient: DynamoClientProtocol {
     }
 
     public func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws {
-        guard !labels.isEmpty else { return }
+        try await batchPutItems(
+            labels.map {
+                Self.convertToAttributeValues($0.toDynamoItemDict())
+            }
+        )
+    }
+
+    public func addReceiptSections(
+        imageId: String, receiptId: Int,
+        sections: [ReceiptSectionPayload], createdAt: Date
+    ) async throws {
+        try await batchPutItems(
+            sections.map {
+                ReceiptStructureItems.sectionItem(
+                    imageId: imageId, receiptId: receiptId,
+                    section: $0, createdAt: createdAt
+                )
+            }
+        )
+    }
+
+    public func addReceiptLineItems(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?
+    ) async throws {
+        try await batchPutItems(
+            items.map {
+                ReceiptStructureItems.lineItemItem(
+                    imageId: imageId, receiptId: receiptId,
+                    item: $0, extractedAt: extractedAt,
+                    baselineFiguresAgreeing: baselineFiguresAgreeing
+                )
+            }
+        )
+    }
+
+    /// Batch-put with chunking, unprocessed-item retry and backoff —
+    /// shared by labels, sections and line items.
+    private func batchPutItems(
+        _ items: [[String: DynamoDB.AttributeValue]]
+    ) async throws {
+        guard !items.isEmpty else { return }
 
         // Process in chunks of 25 (DynamoDB batch write limit)
         let chunkSize = 25
-        var remaining = labels[...]
+        var remaining = items[...]
 
         while !remaining.isEmpty {
             let chunk = remaining.prefix(chunkSize)
             remaining = remaining.dropFirst(chunkSize)
 
-            var writeRequests = chunk.map { label -> DynamoDB.WriteRequest in
-                let dict = label.toDynamoItemDict()
-                let item = Self.convertToAttributeValues(dict)
-                return DynamoDB.WriteRequest(putRequest: .init(item: item))
+            var writeRequests = chunk.map { item -> DynamoDB.WriteRequest in
+                DynamoDB.WriteRequest(putRequest: .init(item: item))
             }
 
             // Retry with exponential backoff until all items are processed

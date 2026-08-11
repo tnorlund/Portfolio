@@ -198,6 +198,20 @@ Returned to AWS by the Swift worker:
   receipt's model labels (the words pipeline then runs with whatever
   labels exist, possibly none). A durable retry/reconciliation path is
   listed under follow-ups;
+- `ReceiptLineItem` items written directly to DynamoDB (Tier 2 of the
+  worker-authority migration): the worker re-reads its own decoded
+  `line_items` from the result JSON and batch-puts them via
+  `ReceiptStructureItems.lineItemItem`, whose serialization is pinned
+  byte-for-byte against `ReceiptLineItem.to_item()` by the shared
+  fixture `swift_dynamo_items_contract.json` (Swift + Python contract
+  tests). **Best-effort like labels** — a failure is logged
+  (`failed_write_line_items`) and ingest still persists the same rows
+  from the JSON payload (delete-then-add), which remains the staleness
+  reconciler of record. Sections are deliberately NOT written by the
+  worker at single-pass time: a section write before the receipt's words
+  exist would fire the stream's canonical-ITEMS trigger and cause a
+  premature cloud recompute against a word-less receipt. The
+  `addReceiptSections` surface exists for the summary-refine pass;
 - `OCRRoutingDecision` (PENDING) pointing at the JSON;
 - an `ocr-results` SQS message:
   `{image_id, job_id, s3_key, s3_bucket, receipt_count}`.
