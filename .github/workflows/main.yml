@@ -457,35 +457,3 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-
-  # ============================================================================
-  # Docs (runs on main, doesn't block anything)
-  # ============================================================================
-
-  docs:
-    name: Generate Docs
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: "portfolio/package-lock.json"
-
-      - name: Generate and commit docs
-        working-directory: portfolio
-        run: |
-          npm ci --prefer-offline
-          npm run docs
-
-      - uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "docs: update TypeDoc documentation [skip ci]"
-          file_pattern: "portfolio/docs/**"

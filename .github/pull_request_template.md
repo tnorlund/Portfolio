@@ -39,7 +39,7 @@
 
 - [ ] Documentation or comments updated for complex logic
 - [ ] README updated (if introducing new feature/dependency)
-- [ ] TypeDoc/JSDoc comments added where needed
+- [ ] JSDoc comments added where needed
 - [ ] No new warnings or linting issues introduced
 - [ ] Code follows project style guidelines
 
