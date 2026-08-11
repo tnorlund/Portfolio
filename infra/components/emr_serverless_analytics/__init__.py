@@ -130,6 +130,45 @@ def _python_environment_buildspec() -> dict[str, object]:
     }
 
 
+def _python_environment_policy(
+    artifacts_bucket_arn: str,
+    log_group_arn: str,
+) -> dict[str, object]:
+    """Return least-privilege permissions for the environment build."""
+    return {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "s3:GetBucketAcl",
+                    "s3:GetBucketLocation",
+                    "s3:GetBucketVersioning",
+                    "s3:ListBucket",
+                ],
+                "Resource": artifacts_bucket_arn,
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "s3:GetObject",
+                    "s3:GetObjectVersion",
+                    "s3:PutObject",
+                ],
+                "Resource": f"{artifacts_bucket_arn}/*",
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents",
+                ],
+                "Resource": [log_group_arn, f"{log_group_arn}:*"],
+            },
+        ],
+    }
+
+
 def _wait_for_codebuild_script(project_name: str) -> str:
     """Return a deployment command that builds and verifies the environment."""
     safe_project_name = shlex.quote(project_name)
@@ -603,28 +642,7 @@ class EMRServerlessAnalytics(ComponentResource):
                 log_group.arn,
             ).apply(
                 lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:PutObject",
-                                    "s3:ListBucket",
-                                ],
-                                "Resource": [args[0], f"{args[0]}/*"],
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "logs:CreateLogStream",
-                                    "logs:PutLogEvents",
-                                ],
-                                "Resource": [args[1], f"{args[1]}:*"],
-                            },
-                        ],
-                    }
+                    _python_environment_policy(args[0], args[1])
                 )
             ),
             opts=ResourceOptions(parent=codebuild_role),

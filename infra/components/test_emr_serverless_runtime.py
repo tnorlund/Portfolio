@@ -5,6 +5,7 @@ from pathlib import Path
 
 from infra.components.emr_serverless_analytics import (
     _python_environment_buildspec,
+    _python_environment_policy,
 )
 from infra.components.emr_serverless_runtime import (
     EMR_PYTHON_VERSION,
@@ -84,3 +85,30 @@ def test_local_spark_extra_matches_emr_runtime() -> None:
 
     workflow = (REPO_ROOT / ".github" / "workflows" / "main.yml").read_text()
     assert 'pip install -e "receipt_langsmith[pyspark,dev]"' in workflow
+
+
+def test_python_environment_policy_allows_codebuild_s3_source() -> None:
+    """CodeBuild can inspect the bucket and download versioned source."""
+    bucket_arn = "arn:aws:s3:::artifacts"
+    policy = _python_environment_policy(
+        bucket_arn,
+        "arn:aws:logs:us-east-1:123456789012:log-group:environment",
+    )
+    statements = policy["Statement"]
+    assert isinstance(statements, list)
+
+    bucket_statement = statements[0]
+    assert bucket_statement["Resource"] == bucket_arn
+    assert set(bucket_statement["Action"]) == {
+        "s3:GetBucketAcl",
+        "s3:GetBucketLocation",
+        "s3:GetBucketVersioning",
+        "s3:ListBucket",
+    }
+    object_statement = statements[1]
+    assert object_statement["Resource"] == f"{bucket_arn}/*"
+    assert set(object_statement["Action"]) == {
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:PutObject",
+    }
