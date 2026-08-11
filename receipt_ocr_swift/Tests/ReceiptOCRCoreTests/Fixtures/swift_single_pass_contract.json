@@ -946,7 +946,6 @@
         }
       ],
       "needs_review": false,
-      "printed_subtotal": null,
       "should_reocr_items_zone": false,
       "reconciliation": {
         "status": "match",

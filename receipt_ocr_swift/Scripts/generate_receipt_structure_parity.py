@@ -44,8 +44,7 @@ def _printed_subtotal(rows, lines, words) -> float | None:
             (
                 word
                 for word in words
-                if word.line_id in row_ids
-                and looks_like_receipt_amount(word.text)
+                if word.line_id in row_ids and looks_like_receipt_amount(word.text)
             ),
             key=lambda word: (
                 word.bounding_box["x"],
@@ -63,9 +62,7 @@ def _printed_subtotal(rows, lines, words) -> float | None:
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _PACKAGE_DIR = _SCRIPT_DIR.parent
 _REPO_ROOT = _PACKAGE_DIR.parent
-DEFAULT_INPUT = (
-    _REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden_ocr.json"
-)
+DEFAULT_INPUT = _REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden_ocr.json"
 DEFAULT_OUTPUT = (
     _PACKAGE_DIR
     / "Tests/ReceiptOCRCoreTests/Fixtures/receipt_structure_parity_expected.json"
@@ -88,21 +85,13 @@ def generate(input_path: Path = DEFAULT_INPUT) -> str:
     for receipt in fixture["receipts"]:
         lines, words = reconstruct(receipt)
         rows = build_receipt_rows(lines, words)
-        assignments = assign_row_sections(
-            rows, lines, model, receipt.get("merchant")
-        )
+        assignments = assign_row_sections(rows, lines, model, receipt.get("merchant"))
         sections = sections_from_assignments(assignments)
         items_section = next(
-            (
-                section
-                for section in sections
-                if section.section_type == "ITEMS"
-            ),
+            (section for section in sections if section.section_type == "ITEMS"),
             None,
         )
-        items_lines = (
-            set(items_section.line_ids) if items_section else set()
-        )
+        items_lines = set(items_section.line_ids) if items_section else set()
         subtotal = _printed_subtotal(rows, lines, words)
         # Mirrors buildOnDeviceReceiptStructure: a receipt that prints no
         # SUBTOTAL still prints a TOTAL, and the worker now anchors on it
@@ -130,17 +119,13 @@ def generate(input_path: Path = DEFAULT_INPUT) -> str:
                 items_lines,
                 sections,
                 rows,
-                current_row_ids=(
-                    items_section.row_ids if items_section else None
-                ),
+                current_row_ids=(items_section.row_ids if items_section else None),
             )
         if proposal:
             items_lines = set(proposal["line_ids"])
         # Decode WITH the scanned summary so the summary-figure filter
         # (#1320) is pinned exactly as the device runs it.
-        items, _ = extract_items(
-            receipt["words"], items_lines, summary=summary
-        )
+        items, _ = extract_items(receipt["words"], items_lines, summary=summary)
         rec = reconcile_detailed(
             [item for item in items if not item.get("is_discount")],
             summary,
@@ -155,8 +140,7 @@ def generate(input_path: Path = DEFAULT_INPUT) -> str:
                         "section_type": section.section_type,
                         "line_ids": (
                             sorted(items_lines)
-                            if proposal
-                            and section.section_type == "ITEMS"
+                            if proposal and section.section_type == "ITEMS"
                             else section.line_ids
                         ),
                     }
@@ -184,21 +168,16 @@ def generate(input_path: Path = DEFAULT_INPUT) -> str:
                     "item_sum": rec.item_sum,
                     "baseline": rec.baseline,
                     "baseline_source": rec.baseline_source,
-                    "baseline_figures_agreeing": (
-                        rec.baseline_figures_agreeing
-                    ),
+                    "baseline_figures_agreeing": (rec.baseline_figures_agreeing),
                 },
-                "should_reocr_items_zone": should_reocr_items_zone(
-                    items, subtotal
-                ),
+                "should_reocr_items_zone": should_reocr_items_zone(items, subtotal),
             }
         )
 
     # The golden set grows; derive the count instead of pinning it.
     if len(expected) != len(fixture["receipts"]):
         raise RuntimeError(
-            f"expected {len(fixture['receipts'])} receipts, "
-            f"got {len(expected)}"
+            f"expected {len(fixture['receipts'])} receipts, " f"got {len(expected)}"
         )
     return json.dumps(expected, indent=2) + "\n"
 
