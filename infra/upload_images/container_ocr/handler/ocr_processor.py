@@ -1794,8 +1794,16 @@ class OCRProcessor:
                 reconciliation,
             )
             reconciliation = {}
+        # The entity documents the grade as an int in 1..3 and raises on
+        # anything else -- including ``True``, since bool subclasses int.
+        # An out-of-band value would fail every row's construction and cost
+        # the receipt its whole line-item set, so drop it to None instead.
         figures_agreeing = reconciliation.get("baseline_figures_agreeing")
-        if not isinstance(figures_agreeing, int):
+        if (
+            isinstance(figures_agreeing, bool)
+            or not isinstance(figures_agreeing, int)
+            or not 1 <= figures_agreeing <= 3
+        ):
             figures_agreeing = None
 
         sections: list[ReceiptSection] = []
