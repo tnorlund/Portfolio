@@ -83,6 +83,7 @@ PYTHON_TEST_DEPS = (
     "moto",
     "responses",
 )
+MINIMUM_PYTHON_VERSION = (3, 13)
 VERSION_PAIR_RE = re.compile(
     r"\bfrom\s+`?([^`\s]+)`?\s+to\s+`?([^`\s]+)`?",
     re.IGNORECASE,
@@ -734,9 +735,79 @@ def pyproject_extras(pyproject: Path) -> str:
     return ",".join(extras)
 
 
-def python_bin() -> str:
+def _python_version(python: str) -> tuple[int, int, int]:
+    """Return the interpreter's exact semantic version."""
+    try:
+        completed = subprocess.run(
+            [
+                python,
+                "-c",
+                (
+                    "import sys; "
+                    "print('.'.join(map(str, sys.version_info[:3])))"
+                ),
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        raise RuntimeError(f"could not execute: {exc}") from exc
+
+    if completed.returncode != 0:
+        detail = completed.stderr.strip().splitlines()
+        suffix = f": {detail[-1]}" if detail else ""
+        raise RuntimeError(
+            f"exited with status {completed.returncode}{suffix}"
+        )
+
+    version_text = completed.stdout.strip()
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version_text)
+    if not match:
+        raise RuntimeError(f"reported an invalid version: {version_text!r}")
     return (
-        shutil.which("python3.13") or shutil.which("python3") or sys.executable
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3)),
+    )
+
+
+def python_bin() -> str:
+    """Resolve an executable running Python 3.13 or newer."""
+    candidates: list[str] = []
+    problems: list[str] = []
+    for command in ("python3.13", "python3"):
+        candidate = shutil.which(command)
+        if candidate:
+            if candidate not in candidates:
+                candidates.append(candidate)
+        else:
+            problems.append(f"{command} was not found on PATH")
+
+    if sys.executable:
+        if sys.executable not in candidates:
+            candidates.append(sys.executable)
+    else:
+        problems.append("the current interpreter path is unavailable")
+
+    for candidate in candidates:
+        try:
+            version = _python_version(candidate)
+        except RuntimeError as exc:
+            problems.append(f"{candidate}: {exc}")
+            continue
+        version_text = ".".join(str(part) for part in version)
+        if version[:2] >= MINIMUM_PYTHON_VERSION:
+            return candidate
+        problems.append(f"{candidate} is Python {version_text}")
+
+    required = ".".join(str(part) for part in MINIMUM_PYTHON_VERSION)
+    detail = "; ".join(problems) or "no interpreter candidates were found"
+    raise RuntimeError(
+        f"Python {required} or newer is required for Dependabot verification. "
+        f"Checked: {detail}. Install Python {required}+ and ensure "
+        "python3.13 is available on PATH."
     )
 
 
@@ -999,6 +1070,12 @@ def command_verify(args: argparse.Namespace) -> int:
                 verify_python_dir(worktree, rel_dir)
             else:
                 print(f"Skipping {rel_dir}: no supported dependency manifest")
+    except RuntimeError as exc:
+        print(
+            f"Refusing to verify PR #{args.pr_number}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
     finally:
         if args.keep_worktree:
             print(f"Kept verification worktree: {worktree}")

@@ -1,5 +1,6 @@
 """Tests for the repository-wide Python runtime baseline."""
 
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -78,3 +79,80 @@ def test_historical_markdown_is_excluded(
     )
 
     assert checker._check_runtime_files() == []
+
+
+@pytest.mark.parametrize(
+    "ignored_directory",
+    sorted(checker.IGNORED_DIRECTORY_NAMES) + [".venv", ".venv-python"],
+)
+def test_generated_pyprojects_are_excluded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    ignored_directory: str,
+) -> None:
+    """Generated third-party pyprojects must not be parsed or reported."""
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
+    pyproject = (
+        tmp_path
+        / "nested"
+        / ignored_directory
+        / "dependency"
+        / "pyproject.toml"
+    )
+    pyproject.parent.mkdir(parents=True)
+    pyproject.write_text(
+        "[project\nmalformed generated TOML", encoding="utf-8"
+    )
+
+    assert checker._check_pyprojects() == []
+
+
+def test_maintained_pyprojects_are_still_validated(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ignored-path filtering must not weaken maintained package checks."""
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
+    old_version = "3." + "12"
+    old_target = "py" + "312"
+    pyproject = tmp_path / "maintained" / "pyproject.toml"
+    pyproject.parent.mkdir(parents=True)
+    pyproject.write_text(
+        "\n".join(
+            [
+                "[project]",
+                'name = "maintained"',
+                f'requires-python = ">={old_version}"',
+                "classifiers = [",
+                f'  "Programming Language :: Python :: {old_version}",',
+                "]",
+                "",
+                "[tool.black]",
+                f'target-version = ["{old_target}"]',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    errors = checker._check_pyprojects()
+
+    assert len(errors) == 3
+    assert any("requires-python" in error for error in errors)
+    assert any("Python classifiers" in error for error in errors)
+    assert any("Black target-version" in error for error in errors)
+
+
+def test_malformed_maintained_pyproject_is_not_silently_ignored(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only generated paths may bypass TOML parsing."""
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
+    pyproject = tmp_path / "maintained" / "pyproject.toml"
+    pyproject.parent.mkdir(parents=True)
+    pyproject.write_text(
+        "[project\nmalformed maintained TOML", encoding="utf-8"
+    )
+
+    with pytest.raises(tomllib.TOMLDecodeError):
+        checker._check_pyprojects()

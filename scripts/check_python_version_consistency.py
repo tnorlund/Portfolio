@@ -75,7 +75,7 @@ OLD_VERSION_DECLARATION = re.compile(
     re.IGNORECASE,
 )
 NON_BASELINE_DOCUMENT_VERSION_TOKEN = re.compile(
-    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?" r"(?:2\.\d+|3\.(?!13\b)\d+)\b",
+    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?" + r"(?:2\.\d+|3\.(?!13\b)\d+)\b",
     re.IGNORECASE,
 )
 PYTHON_CLASSIFIER = re.compile(r"^Programming Language :: Python :: (3\.\d+)$")
@@ -141,8 +141,10 @@ def _check_runtime_files() -> list[str]:
         for pattern in patterns:
             match = pattern.search(text)
             if match:
+                matched_text = match.group(0)
                 errors.append(
-                    f"{relative}: non-baseline Python target {match.group(0)!r}"
+                    f"{relative}: non-baseline Python target "
+                    f"{matched_text!r}"
                 )
                 break
     return errors
@@ -164,7 +166,7 @@ def _check_tool_version(
 def _check_pyprojects() -> list[str]:
     errors: list[str] = []
     for path in sorted(REPOSITORY_ROOT.rglob("pyproject.toml")):
-        if any(part.startswith(".venv") for part in path.parts):
+        if _is_ignored_path(path):
             continue
 
         relative = _relative(path)
@@ -193,7 +195,8 @@ def _check_pyprojects() -> list[str]:
         if version_classifiers and version_classifiers != {PYTHON_VERSION}:
             errors.append(
                 f"{relative}: Python classifiers are "
-                f"{sorted(version_classifiers)!r}; expected only {PYTHON_VERSION}"
+                f"{sorted(version_classifiers)!r}; expected only "
+                f"{PYTHON_VERSION}"
             )
 
         tools = data.get("tool", {})
@@ -228,7 +231,8 @@ def check_repository() -> list[str]:
     pinned_version = version_file.read_text(encoding="utf-8").strip()
     if pinned_version != PYTHON_VERSION:
         errors.append(
-            f".python-version is {pinned_version!r}; expected {PYTHON_VERSION!r}"
+            f".python-version is {pinned_version!r}; expected "
+            f"{PYTHON_VERSION!r}"
         )
     errors.extend(_check_runtime_files())
     errors.extend(_check_pyprojects())
