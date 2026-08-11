@@ -1359,22 +1359,6 @@ pulumi.export(
 )
 pulumi.export("label_validation_project_name", label_validation_project_name)
 
-# EMR Serverless Docker Image (for custom Spark image with receipt_langsmith)
-from components.emr_serverless_docker_image import (
-    create_emr_serverless_docker_image,
-)
-
-emr_docker_image = create_emr_serverless_docker_image(
-    name="emr-spark",
-    emr_release="emr-7.5.0",  # Using 7.5.0 base with Python 3.13 installed
-    # CodeBuild will stop and update the EMR Application after building the image
-    emr_application_name=f"langsmith-analytics-{stack}",
-    # Use sync mode on first deployment to ensure image exists before EMR App is created
-    # After first deployment, this can be set to False for faster deployments
-    sync_mode=True,
-)
-pulumi.export("emr_docker_image_uri", emr_docker_image.image_uri)
-
 # EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
 from components.emr_serverless_analytics import create_emr_serverless_analytics
 
@@ -1383,14 +1367,8 @@ from components.emr_serverless_analytics import create_emr_serverless_analytics
 # label_evaluator_shared) so that `pulumi --target` reconciles cleanly; see the
 # comment there. The instance is reused here via label_evaluator_shared.
 
-# NOTE: On first deployment, don't pass custom_image_uri - the EMR Application will use
-# the default EMR image initially. After the CodeBuild pipeline completes, it will
-# update the EMR Application with the custom image (see emr_application_name above).
-# On subsequent deployments, the image already exists so custom_image_uri can be used.
 emr_analytics = create_emr_serverless_analytics(
     langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
-    # Uncomment after first successful deployment:
-    # custom_image_uri=emr_docker_image.image_uri,
     # Shared buckets - grant EMR job access
     cache_bucket_arn=label_evaluator_shared.viz_cache_bucket_arn,
     batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
@@ -1398,6 +1376,10 @@ emr_analytics = create_emr_serverless_analytics(
 pulumi.export("emr_application_id", emr_analytics.emr_application.id)
 pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
 pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
+pulumi.export(
+    "emr_python_environment_uri",
+    emr_analytics.python_environment_uri,
+)
 pulumi.export(
     "label_evaluator_viz_cache_merged_bucket",
     label_evaluator_shared.viz_cache_bucket_name,

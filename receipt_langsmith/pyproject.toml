@@ -27,9 +27,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# PySpark variant for EMR Serverless processing
+# Local-only Spark dependencies. EMR supplies both PySpark and PyArrow natively;
+# the deployment archive installs only the package's base dependencies.
 pyspark = [
-    "pyspark>=3.5.0",
+    "pyspark==4.0.2",
     "pyarrow>=14.0.0",  # Required by parsers/parquet.py
 ]
 

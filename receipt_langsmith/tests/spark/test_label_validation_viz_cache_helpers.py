@@ -4,13 +4,53 @@ from __future__ import annotations
 
 from typing import Any
 
+from receipt_langsmith.spark import (
+    label_validation_viz_cache_helpers as helpers,
+)
+
+# Test doubles intentionally expose minimal Spark-like interfaces.
+# pylint: disable=missing-class-docstring,missing-function-docstring
+# pylint: disable=too-few-public-methods,protected-access
+
+
+def test_read_traces_uses_s3a_for_spark(monkeypatch) -> None:
+    """EMR Spark 8 reads persistent S3 data through the S3A connector."""
+
+    class FakeDataFrame:
+        columns = ["id"]
+
+        def select(self, *_columns: str) -> "FakeDataFrame":
+            return self
+
+        def count(self) -> int:
+            return 1
+
+    class FakeReader:
+        path: str | None = None
+
+        def parquet(self, path: str) -> FakeDataFrame:
+            self.path = path
+            return FakeDataFrame()
+
+    class FakeSpark:
+        read = FakeReader()
+
+    monkeypatch.setattr(
+        helpers,
+        "normalize_trace_df",
+        lambda dataframe, _options: dataframe,
+    )
+    monkeypatch.setattr(helpers, "trace_columns", lambda _options: ["id"])
+
+    helpers.read_traces(FakeSpark(), "s3://exports/traces/")
+
+    assert FakeSpark.read.path == "s3a://exports/traces/"
+
 
 def test_build_viz_receipts_scans_until_max_buildable(
     monkeypatch,
 ) -> None:
     """Do not stop at first N roots; stop after N buildable receipts."""
-    import receipt_langsmith.spark.label_validation_viz_cache_helpers as helpers
-
     root_traces = [
         {"trace_id": "trace-1"},
         {"trace_id": "trace-2"},

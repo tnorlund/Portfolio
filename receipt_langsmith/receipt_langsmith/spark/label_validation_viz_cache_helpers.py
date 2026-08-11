@@ -26,7 +26,7 @@ from receipt_langsmith.spark.trace_df import (
     normalize_trace_df,
     trace_columns,
 )
-from receipt_langsmith.spark.utils import parse_json_object
+from receipt_langsmith.spark.utils import parse_json_object, to_s3a
 
 logger = logging.getLogger(__name__)
 LABEL_DRIVER_ROW_WARN_THRESHOLD = 50_000
@@ -98,7 +98,7 @@ def read_traces(spark: SparkSession, parquet_path: str) -> Any:
     logger.info("Reading traces from %s", parquet_path)
 
     # Read all columns first to check what's available
-    df = spark.read.parquet(parquet_path)
+    df = spark.read.parquet(to_s3a(parquet_path))
     available_columns = set(df.columns)
 
     logger.info("Available columns in parquet: %s", sorted(available_columns))
