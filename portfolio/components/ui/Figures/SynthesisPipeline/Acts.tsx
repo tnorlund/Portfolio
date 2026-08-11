@@ -14,6 +14,7 @@ import {
   nodeCount,
   skeletonPathDsCloud,
 } from "./geometry";
+import { knockOutReceiptPaper } from "./pixelKernels";
 import {
   ActId,
   BOLD_WEIGHT_CALLOUT,
@@ -39,6 +40,13 @@ import {
   WEIGHT_STEP,
 } from "./pipelineData";
 import styles from "./SynthesisPipeline.module.css";
+import {
+  knockOutAndBlit,
+  stampThermalDotsAndBlit,
+} from "./wasm/kernels";
+
+/** Re-export for existing tests that import from Acts. */
+export { knockOutReceiptPaper };
 
 export interface ActProps {
   merchant: Merchant;
@@ -65,32 +73,38 @@ const AssetPending: React.FC<{ children: React.ReactNode }> = ({
   </div>
 );
 
-/**
- * Turn opaque dark-ink-on-white receipt pixels into black ink with real alpha.
- * The grayscale intensity is preserved as opacity, so antialiasing and the
- * consensus cloud survive while the receipt-paper pixels disappear entirely.
- */
-export const knockOutReceiptPaper = (pixels: Uint8ClampedArray): void => {
-  const paperLuminance = 220;
-  const solidInkLuminance = 70;
-  for (let i = 0; i < pixels.length; i += 4) {
-    const luminance = Math.round(
-      pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722,
-    );
-    const normalizedInk = Math.min(
-      1,
-      Math.max(
-        0,
-        (paperLuminance - luminance) /
-          (paperLuminance - solidInkLuminance),
-      ),
-    );
-    const inkAlpha = normalizedInk ** 1.5;
-    pixels[i + 3] = Math.round(pixels[i + 3] * inkAlpha);
-    pixels[i] = 0;
-    pixels[i + 1] = 0;
-    pixels[i + 2] = 0;
+/** Parse CSS color strings (`#rgb`, `#rrggbb`, `rgb()`) into 0–255 channels. */
+const parseCssColor = (
+  value: string,
+): { red: number; green: number; blue: number } => {
+  const trimmed = value.trim();
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(trimmed);
+  if (hex) {
+    const raw = hex[1];
+    if (raw.length === 3) {
+      return {
+        red: parseInt(raw[0] + raw[0], 16),
+        green: parseInt(raw[1] + raw[1], 16),
+        blue: parseInt(raw[2] + raw[2], 16),
+      };
+    }
+    return {
+      red: parseInt(raw.slice(0, 2), 16),
+      green: parseInt(raw.slice(2, 4), 16),
+      blue: parseInt(raw.slice(4, 6), 16),
+    };
   }
+  const rgb = /^rgba?\(\s*([0-9.]+)\s*,\s*([0-9.]+)\s*,\s*([0-9.]+)/i.exec(
+    trimmed,
+  );
+  if (rgb) {
+    return {
+      red: Math.round(Number(rgb[1])),
+      green: Math.round(Number(rgb[2])),
+      blue: Math.round(Number(rgb[3])),
+    };
+  }
+  return { red: 34, green: 34, blue: 34 };
 };
 
 interface ReceiptInkLayerProps {
@@ -130,8 +144,11 @@ const ReceiptInkLayer: React.FC<ReceiptInkLayerProps> = ({
       canvas.height = source.naturalHeight;
       ctx.drawImage(source, 0, 0);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      knockOutReceiptPaper(imageData.data);
-      ctx.putImageData(imageData, 0, 0);
+      void knockOutAndBlit(ctx, imageData).then(() => {
+        if (cancelled) {
+          return;
+        }
+      });
     };
     source.src = src;
     return () => {
@@ -301,33 +318,59 @@ const CharacterAct: React.FC<ActProps> = ({
   const dotReveal = reducedMotion ? 1 : phase(p, 0.62, 1);
 
   // Thermal dots stamp along the path as the handles fade.
+  // Prefer the WASM ImageData kernel; fall back to the JS reference stamp.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !geom || !dotParams) {
       return;
     }
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) {
       return; // jsdom / no 2d context
     }
+    let cancelled = false;
     const dpr =
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-    canvas.width = Math.round(geom.viewBox.width * dpr);
-    canvas.height = Math.round(geom.viewBox.height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, geom.viewBox.width, geom.viewBox.height);
-    const radius = (dotParams.dotSize / 2) * dotWeight * geom.pxPerUnit;
+    const width = Math.round(geom.viewBox.width * dpr);
+    const height = Math.round(geom.viewBox.height * dpr);
+    canvas.width = width;
+    canvas.height = height;
+    const radius = Math.max(
+      0.5,
+      (dotParams.dotSize / 2) * dotWeight * geom.pxPerUnit * dpr,
+    );
     const reveal = active && !reducedMotion ? dotReveal : 1;
     const count = Math.max(0, Math.round(geom.points.length * reveal));
-    ctx.fillStyle =
+    const points = new Float32Array(count * 2);
+    for (let i = 0; i < count && i < geom.points.length; i += 1) {
+      points[i * 2] = geom.points[i].x * dpr;
+      points[i * 2 + 1] = geom.points[i].y * dpr;
+    }
+    const cssColor =
       getComputedStyle(canvas).getPropertyValue("--text-color").trim() ||
       "#222";
-    for (let i = 0; i < count && i < geom.points.length; i += 1) {
-      const pt = geom.points[i];
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, Math.max(0.5, radius), 0, Math.PI * 2);
-      ctx.fill();
+    const { red, green, blue } = parseCssColor(cssColor);
+    // jsdom's canvas mock lacks a real ImageData — skip paint there.
+    if (typeof ImageData === "undefined") {
+      return;
     }
+    void stampThermalDotsAndBlit(ctx, {
+      width,
+      height,
+      points,
+      count,
+      radius,
+      red,
+      green,
+      blue,
+    }).then(() => {
+      if (cancelled) {
+        return;
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [geom, dotParams, dotWeight, dotReveal, active, reducedMotion]);
 
   if (!geom || !dotParams) {

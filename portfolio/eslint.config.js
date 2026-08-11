@@ -32,6 +32,9 @@ module.exports = [
       "build/**",
       "dist/**",
       "next-env.d.ts",
+      // AssemblyScript sources use AS builtins (i32, Mathf, load/store) that
+      // standard ESLint/TypeScript do not understand. Compiled via `asc`.
+      "wasm/synthesis-pipeline/assembly/**",
     ],
   },
 
