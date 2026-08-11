@@ -6,7 +6,7 @@
 
 # Interface: FinancialMathEquation
 
-Defined in: [types/api.ts:832](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L832)
+Defined in: [types/api.ts:832](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L832)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:832](https://github.com/tnorlund/Portfolio/blob/6c6820
 
 > **actual\_value**: `string` \| `number` \| `null`
 
-Defined in: [types/api.ts:836](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L836)
+Defined in: [types/api.ts:836](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L836)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:836](https://github.com/tnorlund/Portfolio/blob/6c6820
 
 > **description**: `string`
 
-Defined in: [types/api.ts:834](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L834)
+Defined in: [types/api.ts:834](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L834)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:834](https://github.com/tnorlund/Portfolio/blob/6c6820
 
 > **difference**: `string` \| `number` \| `null`
 
-Defined in: [types/api.ts:837](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L837)
+Defined in: [types/api.ts:837](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L837)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:837](https://github.com/tnorlund/Portfolio/blob/6c6820
 
 > **expected\_value**: `string` \| `number` \| `null`
 
-Defined in: [types/api.ts:835](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L835)
+Defined in: [types/api.ts:835](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L835)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:835](https://github.com/tnorlund/Portfolio/blob/6c6820
 
 > **involved\_words**: [`FinancialMathWord`](FinancialMathWord.md)[]
 
-Defined in: [types/api.ts:838](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L838)
+Defined in: [types/api.ts:838](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L838)
 
 ***
 
@@ -54,4 +54,4 @@ Defined in: [types/api.ts:838](https://github.com/tnorlund/Portfolio/blob/6c6820
 
 > **issue\_type**: `string`
 
-Defined in: [types/api.ts:833](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L833)
+Defined in: [types/api.ts:833](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L833)

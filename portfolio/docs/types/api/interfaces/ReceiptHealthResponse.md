@@ -6,7 +6,7 @@
 
 # Interface: ReceiptHealthResponse
 
-Defined in: [types/api.ts:1080](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L1080)
+Defined in: [types/api.ts:1080](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L1080)
 
 ## Properties
 
@@ -14,7 +14,7 @@ Defined in: [types/api.ts:1080](https://github.com/tnorlund/Portfolio/blob/6c682
 
 > **aggregate\_stats**: [`ReceiptHealthAggregateStats`](ReceiptHealthAggregateStats.md)
 
-Defined in: [types/api.ts:1086](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L1086)
+Defined in: [types/api.ts:1086](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L1086)
 
 ***
 
@@ -22,7 +22,7 @@ Defined in: [types/api.ts:1086](https://github.com/tnorlund/Portfolio/blob/6c682
 
 > **has\_more**: `boolean`
 
-Defined in: [types/api.ts:1084](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L1084)
+Defined in: [types/api.ts:1084](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L1084)
 
 ***
 
@@ -30,7 +30,7 @@ Defined in: [types/api.ts:1084](https://github.com/tnorlund/Portfolio/blob/6c682
 
 > **offset**: `number`
 
-Defined in: [types/api.ts:1083](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L1083)
+Defined in: [types/api.ts:1083](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L1083)
 
 ***
 
@@ -38,7 +38,7 @@ Defined in: [types/api.ts:1083](https://github.com/tnorlund/Portfolio/blob/6c682
 
 > **receipts**: [`ReceiptHealthReceipt`](ReceiptHealthReceipt.md)[]
 
-Defined in: [types/api.ts:1081](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L1081)
+Defined in: [types/api.ts:1081](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L1081)
 
 ***
 
@@ -46,7 +46,7 @@ Defined in: [types/api.ts:1081](https://github.com/tnorlund/Portfolio/blob/6c682
 
 > **seed**: `number`
 
-Defined in: [types/api.ts:1085](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L1085)
+Defined in: [types/api.ts:1085](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L1085)
 
 ***
 
@@ -54,7 +54,7 @@ Defined in: [types/api.ts:1085](https://github.com/tnorlund/Portfolio/blob/6c682
 
 > **total\_count**: `number`
 
-Defined in: [types/api.ts:1082](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L1082)
+Defined in: [types/api.ts:1082](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L1082)
 
 ***
 
@@ -62,7 +62,7 @@ Defined in: [types/api.ts:1082](https://github.com/tnorlund/Portfolio/blob/6c682
 
 > `optional` **cached\_at?**: `string`
 
-Defined in: [types/api.ts:1088](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L1088)
+Defined in: [types/api.ts:1088](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L1088)
 
 ***
 
@@ -70,7 +70,7 @@ Defined in: [types/api.ts:1088](https://github.com/tnorlund/Portfolio/blob/6c682
 
 > `optional` **execution\_id?**: `string`
 
-Defined in: [types/api.ts:1087](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L1087)
+Defined in: [types/api.ts:1087](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L1087)
 
 ***
 
@@ -78,4 +78,4 @@ Defined in: [types/api.ts:1087](https://github.com/tnorlund/Portfolio/blob/6c682
 
 > `optional` **fetched\_at?**: `string`
 
-Defined in: [types/api.ts:1089](https://github.com/tnorlund/Portfolio/blob/6c68209e7a7d91eee3c1253dc43f00fca094baf4/portfolio/types/api.ts#L1089)
+Defined in: [types/api.ts:1089](https://github.com/tnorlund/Portfolio/blob/f9963bd3ca84bb28fa126556734518b67332005c/portfolio/types/api.ts#L1089)
