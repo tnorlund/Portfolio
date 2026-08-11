@@ -68,6 +68,26 @@ public protocol DynamoClientProtocol {
         items: [ReceiptLineItemPayload], extractedAt: Date,
         baselineFiguresAgreeing: Int?
     ) async throws
+
+    /// Make the receipt's stored line items EXACTLY `items`: put the new
+    /// rows, then delete any existing `LINE_ITEM` row the new set does
+    /// not cover.
+    ///
+    /// The refine pass needs this rather than `addReceiptLineItems`
+    /// because its summary-aware decode can produce FEWER items than the
+    /// cloud decode it supersedes (a real summary filtering a spurious
+    /// total, say). A plain batch put only overwrites the indices it
+    /// writes, so the higher stale indices would survive as phantom
+    /// items — and an empty decode would be a no-op that changes
+    /// nothing while the job is marked completed.
+    ///
+    /// `merchantName` rides along because the refine pass runs after
+    /// cloud merchant resolution; see `ReceiptStructureItems`.
+    func replaceReceiptLineItems(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?, merchantName: String?
+    ) async throws
 }
 
 

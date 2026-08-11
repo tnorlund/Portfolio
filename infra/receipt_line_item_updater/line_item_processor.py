@@ -144,7 +144,10 @@ from typing import Any
 # Warning #6 requires one first-party block in infra files.
 # isort: off
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 from receipt_upload.line_items.geometry import (
     extract_items,
@@ -332,8 +335,18 @@ def update_receipt_line_items(
         [word for word in word_dicts if word["line_id"] in line_ids],
         reocr_mechanism=reocr_mechanism,
     )
-    refine = _maybe_trigger_line_item_refine(
-        image_id, receipt_id, summary_dict, merchant
+    # Never in the same pass as a re-OCR. The regional job rewrites the
+    # ITEMS zone's words and re-fires this summary path when it lands, so
+    # a refine job enqueued now would point the worker at the
+    # PRE-re-OCR result JSON — a word universe about to be replaced —
+    # and its write emits no stream event that would repair the rows.
+    # The re-OCR's own summary rebuild triggers the refine instead.
+    refine = (
+        False
+        if reocr
+        else _maybe_trigger_line_item_refine(
+            image_id, receipt_id, summary_dict, merchant
+        )
     )
     return {
         "items": len(entities),
@@ -716,6 +729,23 @@ def _refine_summaries_equal(left: dict | None, right: dict | None) -> bool:
     return True
 
 
+def _claim_figure(value: Any) -> str:
+    """Stable text for one summary figure inside the refine job id.
+
+    Dynamo round-trips the figures as Decimal while a freshly computed
+    summary carries floats, so formatting the raw value would give the
+    same summary two different "deterministic" ids -- and two ids are
+    two claims. This is the normalization ``_refine_summaries_equal``
+    already applies to decide the figures are the same.
+    """
+    if value is None:
+        return "none"
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
 def _maybe_trigger_line_item_refine(
     image_id: str,
     receipt_id: int,
@@ -844,7 +874,25 @@ def _maybe_trigger_line_item_refine(
             return False
 
         now = datetime.now(timezone.utc)
-        job_id = str(uuid.uuid4())
+        # DETERMINISTIC job id, derived from the receipt and the exact
+        # figures this job would carry. The read above (no PENDING job,
+        # no job with this summary) is advisory: two concurrent Lambda
+        # batches holding duplicate summary messages both pass it. Both
+        # then derive the SAME id here, so `add_ocr_job` -- a conditional
+        # put -- admits exactly one and raises for the other, making the
+        # read-and-create decision atomic in effect. A v5 UUID satisfies
+        # receipt_dynamo's `assert_valid_uuid` (its regex accepts
+        # version 4 or 5 with the RFC-4122 variant).
+        figures = ":".join(
+            _claim_figure(refine_summary[key])
+            for key in REFINE_SUMMARY_FIGURES
+        )
+        job_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_OID,
+                f"line-item-refine:{image_id}:{receipt_id}:{figures}",
+            )
+        )
         refine_job = OCRJob(
             image_id=image_id,
             job_id=job_id,
@@ -858,7 +906,16 @@ def _maybe_trigger_line_item_refine(
             refine_summary=refine_summary,
             refine_merchant_name=merchant_name,
         )
-        dynamo_client.add_ocr_job(refine_job)
+        try:
+            dynamo_client.add_ocr_job(refine_job)
+        except EntityAlreadyExistsError:
+            # A concurrent invocation claimed this exact job first.
+            logger.info(
+                "line-item refine already claimed for %s:%d",
+                image_id[:8],
+                receipt_id,
+            )
+            return False
         pending_job = refine_job
 
         import boto3
@@ -883,23 +940,36 @@ def _maybe_trigger_line_item_refine(
             image_id[:8],
             receipt_id,
         )
-        # A PENDING row whose queue message never got published would
-        # suppress every future refine for this receipt (the PENDING
-        # check above), so a transient SQS blip would disable the
-        # feature permanently. Mark it FAILED so the suppression lifts.
+        # A row whose queue message never got published never reaches a
+        # worker, so it must leave no trace: PENDING it would suppress
+        # every future refine for this receipt, and FAILED it would
+        # still consume one of REFINE_MAX_ATTEMPTS (the cap counts rows,
+        # not outcomes) -- three SQS blips would disable the feature for
+        # good. DELETE it instead. The job id is deterministic, so a
+        # later summary event carrying these same figures recreates the
+        # identical row cleanly. Falling back to FAILED keeps the old
+        # behavior when even the delete fails.
         if pending_job is not None:
             try:
-                from receipt_dynamo.constants import OCRStatus
-
-                pending_job.status = OCRStatus.FAILED.value
-                pending_job.updated_at = datetime.now(timezone.utc)
-                dynamo_client.update_ocr_job(pending_job)
+                dynamo_client.delete_ocr_job(pending_job)
             except Exception:  # noqa: BLE001 - best effort
                 logger.exception(
-                    "could not fail orphaned refine job for %s:%d",
+                    "could not delete unpublished refine job for %s:%d",
                     image_id[:8],
                     receipt_id,
                 )
+                try:
+                    from receipt_dynamo.constants import OCRStatus
+
+                    pending_job.status = OCRStatus.FAILED.value
+                    pending_job.updated_at = datetime.now(timezone.utc)
+                    dynamo_client.update_ocr_job(pending_job)
+                except Exception:  # noqa: BLE001 - best effort
+                    logger.exception(
+                        "could not fail orphaned refine job for %s:%d",
+                        image_id[:8],
+                        receipt_id,
+                    )
         return False
 
 

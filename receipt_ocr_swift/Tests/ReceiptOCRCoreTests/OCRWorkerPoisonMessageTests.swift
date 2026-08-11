@@ -64,6 +64,11 @@ import CoreGraphics
             items: [ReceiptLineItemPayload], extractedAt: Date,
             baselineFiguresAgreeing: Int?
         ) async throws {}
+        func replaceReceiptLineItems(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?, merchantName: String?
+        ) async throws {}
     }
 
     struct StubOCREngine: OCREngineProtocol {

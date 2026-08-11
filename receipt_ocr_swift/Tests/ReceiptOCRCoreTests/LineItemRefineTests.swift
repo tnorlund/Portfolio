@@ -36,6 +36,10 @@ import Testing
         var jobs: [String: OCRJob] = [:]
         var writtenSections: [(receiptId: Int, sections: [ReceiptSectionPayload])] = []
         var writtenItems: [(receiptId: Int, items: [ReceiptLineItemPayload], grade: Int?)] = []
+        var replacedItems: [(receiptId: Int, items: [ReceiptLineItemPayload], merchantName: String?)] = []
+        /// Fails every `updateOCRJob` — used to prove a job whose
+        /// terminal status will not persist leaves its message queued.
+        var updatesFail = false
         func getOCRJob(imageId: String, jobId: String) async throws -> OCRJob {
             guard let job = jobs["\(imageId):\(jobId)"] else {
                 throw DynamoMapError.missing("item")
@@ -43,6 +47,7 @@ import Testing
             return job
         }
         func updateOCRJob(_ job: OCRJob) async throws {
+            if updatesFail { throw DynamoMapError.missing("update") }
             jobs["\(job.imageId):\(job.jobId)"] = job
         }
         func updateOCRJobStage(imageId: String, jobId: String, stage: String) async throws {}
@@ -60,6 +65,13 @@ import Testing
             baselineFiguresAgreeing: Int?
         ) async throws {
             writtenItems.append((receiptId, items, baselineFiguresAgreeing))
+        }
+        func replaceReceiptLineItems(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?, merchantName: String?
+        ) async throws {
+            replacedItems.append((receiptId, items, merchantName))
         }
     }
 
@@ -145,22 +157,32 @@ import Testing
 
         _ = try await makeWorker(sqs, s3, dynamo).processBatch()
 
-        // Line items written via the Tier-2 surface, message deleted,
+        // Line items REPLACED via the Tier-2 surface (a put-only write
+        // would leave stale higher indices behind when the
+        // summary-aware decode yields fewer items), message deleted,
         // job completed with the summary-aware decode.
-        #expect(dynamo.writtenItems.count == 1)
+        #expect(dynamo.replacedItems.count == 1)
+        #expect(dynamo.writtenItems.isEmpty)
         // Items ONLY: a section put would clobber existing VALID/verifier
         // metadata and fire the stream's canonical-ITEMS trigger, which
         // would re-invoke the updater that enqueued this job.
         #expect(dynamo.writtenSections.isEmpty)
-        #expect(dynamo.writtenItems[0].receiptId == clusterId)
-        #expect(!dynamo.writtenItems[0].items.isEmpty)
+        #expect(dynamo.replacedItems[0].receiptId == clusterId)
+        #expect(!dynamo.replacedItems[0].items.isEmpty)
+        // The merchant the cloud resolved rides back onto the rows, so
+        // the refined put keeps the merchant rollup keys the cloud
+        // writer put there.
+        #expect(
+            dynamo.replacedItems[0].merchantName
+                == "SPROUTS FARMERS MARKET"
+        )
         #expect(sqs.deleted.map(\.id) == ["m1"])
         let job = dynamo.jobs["\(Self.imageId):\(Self.jobId)"]
         #expect(job?.status == .completed)
         // The contract receipt's single 3.99 item matches the carried
         // subtotal: the graded verdict must ride on the rows.
         #expect(
-            dynamo.writtenItems[0].items.allSatisfy {
+            dynamo.replacedItems[0].items.allSatisfy {
                 $0.reconciliationStatus == "match"
             }
         )
@@ -192,9 +214,9 @@ import Testing
 
         _ = try await makeWorker(sqs, s3, dynamo).processBatch()
 
-        #expect(dynamo.writtenItems.count == 1)
-        #expect(dynamo.writtenItems[0].receiptId == 7)
-        #expect(!dynamo.writtenItems[0].items.isEmpty)
+        #expect(dynamo.replacedItems.count == 1)
+        #expect(dynamo.replacedItems[0].receiptId == 7)
+        #expect(!dynamo.replacedItems[0].items.isEmpty)
         #expect(dynamo.writtenSections.isEmpty)
         #expect(dynamo.jobs["\(Self.imageId):\(Self.jobId)"]?.status == .completed)
     }
@@ -211,7 +233,7 @@ import Testing
 
         _ = try await makeWorker(sqs, s3, dynamo).processBatch()
 
-        #expect(dynamo.writtenItems.isEmpty)
+        #expect(dynamo.replacedItems.isEmpty)
         #expect(sqs.deleted.map(\.id) == ["m1"])
         #expect(dynamo.jobs["\(Self.imageId):\(Self.jobId)"]?.status == .failed)
     }
@@ -226,9 +248,33 @@ import Testing
 
         _ = try await makeWorker(sqs, s3, dynamo).processBatch()
 
-        #expect(dynamo.writtenItems.isEmpty)
+        #expect(dynamo.replacedItems.isEmpty)
         #expect(sqs.deleted.map(\.id) == ["m1"])
         #expect(dynamo.jobs["\(Self.imageId):\(Self.jobId)"]?.status == .failed)
+    }
+
+    /// A permanent failure whose FAILED status will not persist must
+    /// NOT drop its message: acknowledging it would leave the row
+    /// PENDING, which the enqueuer reads as "a refine is already
+    /// running" and never retries for this receipt again.
+    @Test func refineLeavesMessageWhenFailedStatusCannotPersist()
+        async throws
+    {
+        let sqs = SQSMock()
+        let s3 = S3Mock()
+        let dynamo = DynamoMock()
+        sqs.messages = [message()]
+        dynamo.jobs["\(Self.imageId):\(Self.jobId)"] = refineJob(
+            receiptId: 999
+        )
+        s3.objects["b:ocr_results/contract.json"] = try contractJSON()
+        dynamo.updatesFail = true
+
+        _ = try await makeWorker(sqs, s3, dynamo).processBatch()
+
+        #expect(dynamo.replacedItems.isEmpty)
+        #expect(sqs.deleted.isEmpty)
+        #expect(dynamo.jobs["\(Self.imageId):\(Self.jobId)"]?.status == .pending)
     }
 
     @Test func refineJobRoundTripsThroughDynamoItemMapping() throws {

@@ -91,6 +91,96 @@ struct DynamoItemContractTests {
         )
     }
 
+    /// The refine pass carries the cloud-resolved merchant back onto the
+    /// rows it replaces, which turns on `merchant_name` and the sparse
+    /// merchant rollup keys. Those keys are built by hand on both sides
+    /// (`MerchantKeys` here, `slugify_merchant` /
+    /// `normalize_product_text` in receipt_dynamo), so the fixture uses a
+    /// name and a merchant that exercise both regexes: punctuation runs,
+    /// a `#`, and mixed case.
+    @Test func lineItemWithMerchantMatchesTheContractFixture() throws {
+        let fixture = try loadFixture()
+        let payload = ReceiptLineItemPayload(
+            itemIndex: 3,
+            name: "Org. Bananas 2/$3",
+            price: 3.0,
+            quantity: nil,
+            unitPrice: nil,
+            isDiscount: false,
+            nameQuality: "ok",
+            lineIds: [9],
+            reconciliationStatus: "match",
+            modelSource: swiftWorkerModelSource,
+            extractorVersion: swiftWorkerExtractorVersion,
+            rawText: "Org. Bananas 2/$3  3.00"
+        )
+        let item = ReceiptStructureItems.lineItemItem(
+            imageId: Self.imageId, receiptId: 1,
+            item: payload, extractedAt: Self.fixtureTimestamp,
+            baselineFiguresAgreeing: nil,
+            merchantName: "Sprouts Farmers Market #123"
+        )
+        #expect(
+            try canonical(item)
+                == canonical(try #require(fixture["line_item_with_merchant"]))
+        )
+    }
+
+    /// `gsi1_key` returns None for a low-quality name, but `to_item()`
+    /// still writes `merchant_name` — the split matters, because a
+    /// refined row that dropped the merchant would lose metadata the
+    /// cloud resolved and nothing downstream rebuilds it.
+    @Test func lowQualityNameKeepsMerchantButDropsTheGSI() throws {
+        let payload = ReceiptLineItemPayload(
+            itemIndex: 4,
+            name: "",
+            price: 2.0,
+            quantity: nil,
+            unitPrice: nil,
+            isDiscount: false,
+            nameQuality: "low",
+            lineIds: [11],
+            reconciliationStatus: "match",
+            modelSource: swiftWorkerModelSource,
+            extractorVersion: swiftWorkerExtractorVersion,
+            rawText: nil
+        )
+        let item = ReceiptStructureItems.lineItemItem(
+            imageId: Self.imageId, receiptId: 1,
+            item: payload, extractedAt: Self.fixtureTimestamp,
+            baselineFiguresAgreeing: nil,
+            merchantName: "Sprouts Farmers Market #123"
+        )
+        if case .s(let merchant)? = item["merchant_name"] {
+            #expect(merchant == "Sprouts Farmers Market #123")
+        } else {
+            Issue.record("merchant_name must survive a low-quality name")
+        }
+        #expect(item["GSI1PK"] == nil)
+        #expect(item["GSI1SK"] == nil)
+    }
+
+    @Test func merchantKeysMatchThePythonRegexes() throws {
+        #expect(
+            MerchantKeys.slugifyMerchant("Sprouts Farmers Market #123")
+                == "sprouts-farmers-market-123"
+        )
+        // Leading/trailing runs strip; an all-punctuation name has no
+        // slug at all and falls back to the Python sentinel.
+        #expect(MerchantKeys.slugifyMerchant("  --CVS/pharmacy--  ") == "cvs-pharmacy")
+        #expect(MerchantKeys.slugifyMerchant("!!!") == "unknown")
+        #expect(MerchantKeys.slugifyMerchant("") == "unknown")
+        #expect(
+            MerchantKeys.normalizeProductText("Org. Bananas 2/$3")
+                == "ORG BANANAS 2 3"
+        )
+        #expect(
+            MerchantKeys.normalizeProductText("  gala\tapples  ")
+                == "GALA APPLES"
+        )
+        #expect(MerchantKeys.normalizeProductText("***") == "")
+    }
+
     @Test func optionalFieldsAreOmittedNotNulled() throws {
         let payload = ReceiptLineItemPayload(
             itemIndex: 1,

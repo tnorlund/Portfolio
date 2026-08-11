@@ -295,17 +295,33 @@ public final class OCRWorker {
     func processLineItemRefine(
         job: OCRJob, imageId: String, jobId: String
     ) async -> RefineOutcome {
-        func failJob() async {
+        /// Persist the terminal FAILED status and report the outcome the
+        /// caller should return. `.permanentFailure` deletes the SQS
+        /// message, so it is only safe once the row is durably FAILED —
+        /// otherwise the job stays PENDING forever and the enqueuer,
+        /// which reads a PENDING refine job as "already running",
+        /// suppresses every future refine for this receipt. When the
+        /// update cannot be persisted, leave the message instead.
+        func failJob() async -> RefineOutcome {
             var failed = job
             failed.status = .failed
             failed.updatedAt = Date()
-            try? await self.dynamo.updateOCRJob(failed)
+            do {
+                try await Retry.withBackoff {
+                    try await self.dynamo.updateOCRJob(failed)
+                }
+                return .permanentFailure
+            } catch {
+                logger.warning(
+                    "refine_fail_status_unpersisted image_id=\(imageId) job_id=\(jobId) error=\(error)"
+                )
+                return .transient
+            }
         }
 
         guard let receiptId = job.receiptId else {
             logger.warning("refine_missing_receipt_id image_id=\(imageId) job_id=\(jobId)")
-            await failJob()
-            return .permanentFailure
+            return await failJob()
         }
 
         let jsonData: Data
@@ -317,8 +333,7 @@ public final class OCRWorker {
             }
         } catch is ObjectNotFoundError {
             logger.warning("refine_result_json_gone image_id=\(imageId) key=\(job.s3Key)")
-            await failJob()
-            return .permanentFailure
+            return await failJob()
         } catch {
             logger.warning("refine_deferred stage=download image_id=\(imageId) error=\(error)")
             return .transient
@@ -370,8 +385,7 @@ public final class OCRWorker {
             lines = decoded
         } else {
             logger.warning("refine_receipt_not_in_json image_id=\(imageId) receipt_id=\(receiptId)")
-            await failJob()
-            return .permanentFailure
+            return await failJob()
         }
 
         var merchantName = job.refineMerchantName
@@ -399,18 +413,25 @@ public final class OCRWorker {
             )
         } catch {
             logger.warning("refine_decode_failed image_id=\(imageId) receipt_id=\(receiptId) error=\(error)")
-            await failJob()
-            return .permanentFailure
+            return await failJob()
         }
 
         let now = Date()
         do {
+            // REPLACE, not add: this decode supersedes the cloud's, and a
+            // summary that filters a spurious total leaves fewer items
+            // than the rows already stored. A put-only write would leave
+            // the surplus indices behind as phantom items. The merchant
+            // carried on the job goes back onto the rows too — cloud
+            // resolution already ran, and this path emits no stream event
+            // that would re-enrich them.
             try await Retry.withBackoff {
-                try await self.dynamo.addReceiptLineItems(
+                try await self.dynamo.replaceReceiptLineItems(
                     imageId: imageId, receiptId: receiptId,
                     items: structure.lineItems, extractedAt: now,
                     baselineFiguresAgreeing: structure.reconciliation
-                        .baselineFiguresAgreeing
+                        .baselineFiguresAgreeing,
+                    merchantName: job.refineMerchantName
                 )
             }
         } catch {
@@ -440,8 +461,7 @@ public final class OCRWorker {
         return .completed
         #else
         logger.warning("refine_unsupported_platform image_id=\(imageId)")
-        await failJob()
-        return .permanentFailure
+        return await failJob()
         #endif
     }
 

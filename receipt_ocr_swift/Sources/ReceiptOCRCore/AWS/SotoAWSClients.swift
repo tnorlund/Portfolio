@@ -217,24 +217,97 @@ public final class SotoDynamoClient: DynamoClientProtocol {
         )
     }
 
+    public func replaceReceiptLineItems(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?, merchantName: String?
+    ) async throws {
+        let newItems = items.map {
+            ReceiptStructureItems.lineItemItem(
+                imageId: imageId, receiptId: receiptId,
+                item: $0, extractedAt: extractedAt,
+                baselineFiguresAgreeing: baselineFiguresAgreeing,
+                merchantName: merchantName
+            )
+        }
+        let existingKeys = try await receiptLineItemKeys(
+            imageId: imageId, receiptId: receiptId
+        )
+        try await batchPutItems(newItems)
+
+        // Delete AFTER the put so a failure between the two leaves the
+        // old rows in place rather than an empty item set.
+        let written = Set(newItems.compactMap { Self.sortKey($0) })
+        let stale = existingKeys.filter { key in
+            guard let sk = Self.sortKey(key) else { return false }
+            return !written.contains(sk)
+        }
+        try await batchWrite(
+            stale.map { DynamoDB.WriteRequest(deleteRequest: .init(key: $0)) }
+        )
+    }
+
+    /// Every stored `LINE_ITEM` key for the receipt, keys only.
+    private func receiptLineItemKeys(
+        imageId: String, receiptId: Int
+    ) async throws -> [[String: DynamoDB.AttributeValue]] {
+        var keys: [[String: DynamoDB.AttributeValue]] = []
+        var startKey: [String: DynamoDB.AttributeValue]?
+        repeat {
+            let req = DynamoDB.QueryInput(
+                exclusiveStartKey: startKey,
+                expressionAttributeValues: [
+                    ":pk": .s("IMAGE#\(imageId)"),
+                    ":sk": .s(
+                        String(
+                            format: "RECEIPT#%05d#LINE_ITEM#", receiptId
+                        )
+                    ),
+                ],
+                keyConditionExpression:
+                    "PK = :pk AND begins_with(SK, :sk)",
+                projectionExpression: "PK, SK",
+                tableName: tableName
+            )
+            let resp = try await dynamo.query(req)
+            keys.append(contentsOf: resp.items ?? [])
+            let last = resp.lastEvaluatedKey
+            startKey = (last?.isEmpty ?? true) ? nil : last
+        } while startKey != nil
+        return keys
+    }
+
+    private static func sortKey(
+        _ item: [String: DynamoDB.AttributeValue]
+    ) -> String? {
+        if case .s(let sk)? = item["SK"] { return sk }
+        return nil
+    }
+
     /// Batch-put with chunking, unprocessed-item retry and backoff —
     /// shared by labels, sections and line items.
     private func batchPutItems(
         _ items: [[String: DynamoDB.AttributeValue]]
     ) async throws {
-        guard !items.isEmpty else { return }
+        try await batchWrite(
+            items.map { DynamoDB.WriteRequest(putRequest: .init(item: $0)) }
+        )
+    }
+
+    /// Chunked BatchWriteItem (puts, deletes, or both) with
+    /// unprocessed-item retry and backoff.
+    private func batchWrite(
+        _ requests: [DynamoDB.WriteRequest]
+    ) async throws {
+        guard !requests.isEmpty else { return }
 
         // Process in chunks of 25 (DynamoDB batch write limit)
         let chunkSize = 25
-        var remaining = items[...]
+        var remaining = requests[...]
 
         while !remaining.isEmpty {
-            let chunk = remaining.prefix(chunkSize)
+            var writeRequests = Array(remaining.prefix(chunkSize))
             remaining = remaining.dropFirst(chunkSize)
-
-            var writeRequests = chunk.map { item -> DynamoDB.WriteRequest in
-                DynamoDB.WriteRequest(putRequest: .init(item: item))
-            }
 
             // Retry with exponential backoff until all items are processed
             let maxRetries = 8
