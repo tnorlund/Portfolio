@@ -38,6 +38,20 @@ final class WorkerTests: XCTestCase {
         }
         func addOCRRoutingDecision(_ decision: OCRRoutingDecision) async throws { routing.append(decision) }
         func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws { wordLabels.append(contentsOf: labels) }
+        func addReceiptSections(
+            imageId: String, receiptId: Int,
+            sections: [ReceiptSectionPayload], createdAt: Date
+        ) async throws {}
+        func addReceiptLineItems(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?
+        ) async throws {}
+        func addReceiptLineItemsIfWorkerOwned(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?
+        ) async throws -> Int { 0 }
     }
 
     struct TestOCREngine: OCREngineProtocol {

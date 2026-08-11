@@ -180,20 +180,99 @@ public final class SotoDynamoClient: DynamoClientProtocol {
     }
 
     public func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws {
-        guard !labels.isEmpty else { return }
+        try await batchPutItems(
+            labels.map {
+                Self.convertToAttributeValues($0.toDynamoItemDict())
+            }
+        )
+    }
+
+    public func addReceiptSections(
+        imageId: String, receiptId: Int,
+        sections: [ReceiptSectionPayload], createdAt: Date
+    ) async throws {
+        try await batchPutItems(
+            sections.map {
+                ReceiptStructureItems.sectionItem(
+                    imageId: imageId, receiptId: receiptId,
+                    section: $0, createdAt: createdAt
+                )
+            }
+        )
+    }
+
+    public func addReceiptLineItems(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?
+    ) async throws {
+        try await batchPutItems(
+            items.map {
+                ReceiptStructureItems.lineItemItem(
+                    imageId: imageId, receiptId: receiptId,
+                    item: $0, extractedAt: extractedAt,
+                    baselineFiguresAgreeing: baselineFiguresAgreeing
+                )
+            }
+        )
+    }
+
+    @discardableResult
+    public func addReceiptLineItemsIfWorkerOwned(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?
+    ) async throws -> Int {
+        // One PutItem per row: DynamoDB batch writes cannot carry a
+        // condition expression, and the condition is the whole point here.
+        // The row is ours to write only if nothing is there yet or the
+        // worker stamped what is (see the protocol's ownership rule).
+        var skipped = 0
+        for payload in items {
+            let item = ReceiptStructureItems.lineItemItem(
+                imageId: imageId, receiptId: receiptId,
+                item: payload, extractedAt: extractedAt,
+                baselineFiguresAgreeing: baselineFiguresAgreeing
+            )
+            let req = DynamoDB.PutItemInput(
+                conditionExpression:
+                    "attribute_not_exists(PK) OR begins_with(extractor_version, :worker)",
+                expressionAttributeValues: [
+                    ":worker": .s(swiftWorkerExtractorVersionPrefix)
+                ],
+                item: item,
+                tableName: tableName
+            )
+            do {
+                _ = try await dynamo.putItem(req)
+            } catch let error as AWSErrorType
+                where error.errorCode
+                    == DynamoDBErrorType.conditionalCheckFailedException.errorCode
+            {
+                // Cloud-owned row: leave it exactly as the pipeline left it.
+                skipped += 1
+            }
+        }
+        return skipped
+    }
+
+    /// Batch-put with chunking, unprocessed-item retry and backoff —
+    /// shared by labels, sections and line items.
+    private func batchPutItems(
+        _ items: [[String: DynamoDB.AttributeValue]]
+    ) async throws {
+        guard !items.isEmpty else { return }
 
         // Process in chunks of 25 (DynamoDB batch write limit)
         let chunkSize = 25
-        var remaining = labels[...]
+        var remaining = items[...]
 
         while !remaining.isEmpty {
             let chunk = remaining.prefix(chunkSize)
             remaining = remaining.dropFirst(chunkSize)
 
-            var writeRequests = chunk.map { label -> DynamoDB.WriteRequest in
-                let dict = label.toDynamoItemDict()
-                let item = Self.convertToAttributeValues(dict)
-                return DynamoDB.WriteRequest(putRequest: .init(item: item))
+            var writeRequests = chunk.map { item -> DynamoDB.WriteRequest in
+                DynamoDB.WriteRequest(putRequest: .init(item: item))
             }
 
             // Retry with exponential backoff until all items are processed
