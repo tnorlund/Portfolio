@@ -152,6 +152,12 @@ class OCRJobType(Enum):
     REFINEMENT = "REFINEMENT"
     FIRST_PASS = "FIRST_PASS"
     REGIONAL_REOCR = "REGIONAL_REOCR"
+    # Second worker pass: re-decode line items on the Mac worker once the
+    # receipt's summary exists, so the graded baseline and zone-gap
+    # boundary extension run on device. The job's s3_key points at the
+    # receipt's ORIGINAL OCR-result JSON (not an image): the refine pass
+    # must decode over the same word universe as the persisted rows.
+    LINE_ITEM_REFINE = "LINE_ITEM_REFINE"
 
 
 class ImageType(Enum):

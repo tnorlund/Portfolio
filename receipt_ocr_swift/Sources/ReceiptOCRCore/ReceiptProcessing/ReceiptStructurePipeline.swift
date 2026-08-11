@@ -198,8 +198,14 @@ public func findPrintedSubtotal(
 }
 
 /// Run rows -> sections -> line items -> subtotal reconciliation.
+///
+/// `summaryOverride` (LINE_ITEM_REFINE) substitutes the REAL summary for
+/// the worker's own scanned figures: boundary extension, the
+/// summary-figure filter and the graded reconciliation all run against
+/// it. `printedSubtotal` on the result still reports the scanned figure.
 public func buildOnDeviceReceiptStructure(
-    lines: [SectionLine], merchantName: String? = nil
+    lines: [SectionLine], merchantName: String? = nil,
+    summaryOverride: LineItemSummary? = nil
 ) throws -> OnDeviceReceiptStructure {
     guard !lines.isEmpty else {
         let empty = reconcileLineItemsDetailed(items: [], summary: nil)
@@ -262,9 +268,11 @@ public func buildOnDeviceReceiptStructure(
     // Always construct the summary: an all-nil summary reconciles to
     // no-baseline exactly as nil did, and the summary-figure filter is a
     // no-op without figures, so subtotal-less receipts are unaffected.
-    let summary = LineItemSummary(
-        subtotal: printedSubtotal, tax: nil, grandTotal: printedGrandTotal
-    )
+    let summary = summaryOverride
+        ?? LineItemSummary(
+            subtotal: printedSubtotal, tax: nil,
+            grandTotal: printedGrandTotal
+        )
 
     // Zone-gap boundary extension (#1329), previously cloud-only: the
     // proposal is accepted only when the arithmetic strictly improves
@@ -338,13 +346,15 @@ public func buildOnDeviceReceiptStructure(
 /// Production adapter for refinement OCR. Empty lines/words are skipped to
 /// mirror the cloud parser while their original 1-based IDs are preserved.
 public func buildOnDeviceReceiptStructure(
-    lines: [Line], receiptId: Int, merchantName: String? = nil
+    lines: [Line], receiptId: Int, merchantName: String? = nil,
+    summaryOverride: LineItemSummary? = nil
 ) throws -> OnDeviceReceiptStructure {
     let sectionLines = makeSectionLines(
         lines, imageId: "", receiptId: receiptId
     )
     return try buildOnDeviceReceiptStructure(
-        lines: sectionLines, merchantName: merchantName
+        lines: sectionLines, merchantName: merchantName,
+        summaryOverride: summaryOverride
     )
 }
 #endif

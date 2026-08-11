@@ -332,6 +332,9 @@ def update_receipt_line_items(
         [word for word in word_dicts if word["line_id"] in line_ids],
         reocr_mechanism=reocr_mechanism,
     )
+    refine = _maybe_trigger_line_item_refine(
+        image_id, receipt_id, summary_dict, merchant
+    )
     return {
         "items": len(entities),
         "deleted": deleted,
@@ -340,6 +343,7 @@ def update_receipt_line_items(
         "baseline_figures_agreeing": recon.baseline_figures_agreeing,
         "section_extension": extension,
         "reocr_triggered": reocr,
+        "refine_triggered": refine,
         "worker_divergence": divergence,
     }
 
@@ -678,6 +682,147 @@ def _maybe_trigger_items_reocr(
     except Exception:  # noqa: BLE001 - best-effort improvement pass
         logger.exception(
             "re-OCR trigger failed for %s:%d (non-fatal)",
+            image_id[:8],
+            receipt_id,
+        )
+        return False
+
+
+REFINE_MAX_ATTEMPTS = 3
+
+
+def _maybe_trigger_line_item_refine(
+    image_id: str,
+    receipt_id: int,
+    summary_dict: dict | None,
+    merchant_name: str | None,
+) -> bool:
+    """Enqueue a LINE_ITEM_REFINE pass on the Mac worker (Tier 3 of the
+    worker-authority migration).
+
+    The worker re-decodes the receipt's STORED OCR JSON — the same word
+    universe the persisted rows reference — with the real summary carried
+    on the job, so the graded baseline and zone-gap boundary extension
+    run on device and land via the worker's own Dynamo write surface.
+    The cloud recompute above remains authoritative-by-default: both
+    sides run the same deterministic decoder over the same inputs, so
+    the pass converges rather than races.
+
+    Gated by ENABLE_LINE_ITEM_REFINE so ops controls rollout: an
+    outdated worker binary decodes the unknown job_type as FIRST_PASS
+    and would fail the job trying to OCR a JSON pointer — noisy, not
+    destructive, but not free either. Best-effort: failure never fails
+    the message (rows are already written).
+    """
+    enabled = os.environ.get("ENABLE_LINE_ITEM_REFINE", "").lower() in (
+        "1",
+        "true",
+    )
+    # The OCR job queue is created AFTER this component in __main__, so
+    # (like TRIGGER_REOCR_FUNCTION_NAME) no resource ref is possible:
+    # the deterministic queue NAME is passed and the URL resolved at
+    # runtime.
+    queue_url = os.environ.get("OCR_JOB_QUEUE_URL")
+    queue_name = os.environ.get("OCR_JOB_QUEUE_NAME")
+    if not enabled or dynamo_client is None:
+        return False
+    if not queue_url and not queue_name:
+        return False
+    if summary_dict is None or not any(
+        summary_dict.get(k) is not None
+        for k in ("subtotal", "grand_total")
+    ):
+        # Without a printed figure the refine pass has no graded
+        # baseline to add; the single-pass decode already ran.
+        return False
+    try:
+        import uuid
+
+        from receipt_dynamo.constants import OCRJobType, OCRStatus
+        from receipt_dynamo.entities import OCRJob
+
+        jobs, _ = dynamo_client.list_ocr_jobs_for_image(image_id)
+        refine_jobs = [
+            j
+            for j in jobs
+            if getattr(j, "job_type", "") == "LINE_ITEM_REFINE"
+            and getattr(j, "receipt_id", None) == receipt_id
+        ]
+        if any(
+            str(getattr(j, "status", "")).upper() == "PENDING"
+            for j in refine_jobs
+        ):
+            return False
+        if len(refine_jobs) >= REFINE_MAX_ATTEMPTS:
+            return False
+
+        # The refine input is the ORIGINAL OCR-result JSON: its 1-based
+        # array-position ids are the persisted line/word ids, so the
+        # refine decode shares the rows' word universe by construction.
+        source_jobs = [
+            j
+            for j in jobs
+            if getattr(j, "job_type", "") in ("FIRST_PASS", "REFINEMENT")
+            and str(getattr(j, "status", "")).upper() == "COMPLETED"
+        ]
+        source_jobs.sort(
+            key=lambda j: getattr(j, "created_at", None) or datetime.min,
+            reverse=True,
+        )
+        decision = None
+        for source in source_jobs:
+            try:
+                decision = dynamo_client.get_ocr_routing_decision(
+                    image_id, source.job_id
+                )
+                break
+            except EntityNotFoundError:
+                continue
+        if decision is None:
+            return False
+
+        now = datetime.now(timezone.utc)
+        job_id = str(uuid.uuid4())
+        refine_job = OCRJob(
+            image_id=image_id,
+            job_id=job_id,
+            s3_bucket=decision.s3_bucket,
+            s3_key=decision.s3_key,
+            created_at=now,
+            updated_at=now,
+            status=OCRStatus.PENDING.value,
+            job_type=OCRJobType.LINE_ITEM_REFINE.value,
+            receipt_id=receipt_id,
+            refine_summary={
+                "subtotal": summary_dict.get("subtotal"),
+                "tax": summary_dict.get("tax"),
+                "grand_total": summary_dict.get("grand_total"),
+            },
+            refine_merchant_name=merchant_name,
+        )
+        dynamo_client.add_ocr_job(refine_job)
+
+        import boto3
+
+        sqs = boto3.client("sqs")
+        if not queue_url:
+            queue_url = sqs.get_queue_url(QueueName=queue_name)["QueueUrl"]
+        sqs.send_message(
+            QueueUrl=queue_url,
+            MessageBody=json.dumps(
+                {"job_id": job_id, "image_id": image_id}
+            ),
+        )
+        logger.info(
+            "triggered line-item refine for %s:%d (attempt %d)",
+            image_id[:8],
+            receipt_id,
+            len(refine_jobs) + 1,
+        )
+        return True
+    except Exception:  # noqa: BLE001 - best-effort improvement pass
+        logger.exception(
+            "line-item refine trigger failed for %s:%d (non-fatal)",
             image_id[:8],
             receipt_id,
         )

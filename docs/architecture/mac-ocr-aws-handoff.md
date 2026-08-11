@@ -216,6 +216,25 @@ Returned to AWS by the Swift worker:
 - an `ocr-results` SQS message:
   `{image_id, job_id, s3_key, s3_bucket, receipt_count}`.
 
+### LINE_ITEM_REFINE (second worker pass)
+
+When a receipt's summary is written, the line-item stream Lambda —
+gated by `ENABLE_LINE_ITEM_REFINE` — enqueues a `LINE_ITEM_REFINE`
+OCRJob whose `s3_key` points at the receipt's ORIGINAL OCR-result JSON
+and which carries `refine_summary` (the real printed figures) plus
+`refine_merchant_name`. The worker does no OCR for these jobs: it
+re-decodes the stored JSON — the same 1-based word universe the
+persisted rows reference — with the graded baseline, then writes
+sections AND line items directly via `ReceiptStructureItems`. Writing
+sections is safe here (unlike single-pass): words exist by
+construction, so the stream's canonical-ITEMS trigger recomputes
+against a fully-persisted receipt and converges on the same
+deterministic decode. Capped at 3 attempts per receipt; a PENDING
+refine job suppresses re-enqueue. An outdated worker binary decodes
+the unknown job_type as FIRST_PASS and fails the job trying to OCR a
+JSON pointer — noisy but not destructive; enable the flag only after
+worker binaries update.
+
 ## The OCR JSON schema (Swift → Python)
 
 Swift encodes with the shared `makeOCRResultEncoder()` factory
