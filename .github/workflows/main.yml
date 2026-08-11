@@ -34,7 +34,7 @@ jobs:
 
       - name: Resolve Python
         run: |
-          PYTHON_BIN="$(scripts/resolve_python_runtime.sh "$PYTHON_VERSION")"
+          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "$PYTHON_VERSION")"
           echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
           echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
           "$PYTHON_BIN" --version
@@ -89,7 +89,7 @@ jobs:
 
       - name: Setup Python
         run: |
-          PYTHON_BIN="$(scripts/resolve_python_runtime.sh "$PYTHON_VERSION")"
+          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "$PYTHON_VERSION")"
           echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
           echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
           "$PYTHON_BIN" --version
@@ -215,7 +215,7 @@ jobs:
 
       - name: Setup Python
         run: |
-          PYTHON_BIN="$(scripts/resolve_python_runtime.sh "$PYTHON_VERSION")"
+          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "$PYTHON_VERSION")"
           echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
           echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
           "$PYTHON_BIN" --version
