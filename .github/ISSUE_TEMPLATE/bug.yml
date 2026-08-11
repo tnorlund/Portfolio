@@ -1,0 +1,59 @@
+name: Bug report
+description: Something broken or incorrect in production/dev
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: Use existing P0–P3 labels after filing if the form cannot apply them.
+      options:
+        - P0: Critical (blocks other work)
+        - P1: High (core functionality)
+        - P2: Medium (important, not blocking)
+        - P3: Low (nice to have)
+      default: 2
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - receipt_dynamo / data
+        - receipt_upload / OCR pipeline
+        - receipt_places / merchant
+        - receipt_agent / QA
+        - LayoutLM / CoreML
+        - Swift OCR worker
+        - portfolio frontend
+        - infra / Pulumi
+        - other
+      default: 8
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is wrong, in 1–3 sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Repro
+      description: Concrete IDs, commands, or steps. Prefer image_id / receipt_id when relevant.
+      placeholder: |
+        image_id: …
+        receipt_id: …
+        env: dev | prod
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual
+    validations:
+      required: true
