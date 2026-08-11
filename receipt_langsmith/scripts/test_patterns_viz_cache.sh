@@ -14,7 +14,7 @@
 # Prerequisites:
 #   - AWS CLI configured with credentials for the dev account
 #   - Pulumi CLI (only for auto-discovery; skip with env vars below)
-#   - Python 3.12+
+#   - Python 3.13+
 #
 # Usage:
 #   ./receipt_langsmith/scripts/test_patterns_viz_cache.sh

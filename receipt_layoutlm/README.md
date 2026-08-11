@@ -104,8 +104,14 @@ Install from the repo root:
 
 ```bash
 pip install -e receipt_dynamo
-pip install -e receipt_layoutlm
+pip install -e 'receipt_layoutlm[training]'
 ```
+
+The `training` extra installs `seqeval` and scikit-learn for evaluation
+metrics. Do not install it in the CoreML export worker: CoreMLtools 9.0 only
+supports scikit-learn through 1.5.1, which has no Python 3.13 macOS ARM wheel.
+The worker uses the separate `coreml` extra documented in the repository
+runbook.
 
 Train locally against DynamoDB:
 

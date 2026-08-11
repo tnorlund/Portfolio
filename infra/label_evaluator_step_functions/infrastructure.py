@@ -92,7 +92,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         batch_bucket_arn: Optional[pulumi.Input[str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
-        super().__init__(f"label-evaluator-step-function:{name}", name, None, opts)
+        super().__init__(
+            f"label-evaluator-step-function:{name}", name, None, opts
+        )
         stack = pulumi.get_stack()
 
         self.chromadb_bucket_name = chromadb_bucket_name
@@ -118,7 +120,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
         self._external_batch_bucket = batch_bucket_name is not None
         if self._external_batch_bucket:
             # Use the externally-provided bucket
-            self._batch_bucket_name = pulumi.Output.from_input(batch_bucket_name)
+            self._batch_bucket_name = pulumi.Output.from_input(
+                batch_bucket_name
+            )
             self._batch_bucket_arn = pulumi.Output.from_input(batch_bucket_arn)
 
             class ExternalBucketRef:
@@ -198,7 +202,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -336,7 +341,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
             "LANGCHAIN_API_KEY": langchain_api_key,
             "LANGCHAIN_TRACING_V2": "true",
             "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
-            "LANGCHAIN_PROJECT": config.get("langchain_project") or "label-evaluator",
+            "LANGCHAIN_PROJECT": config.get("langchain_project")
+            or "label-evaluator",
         }
 
         # ============================================================
@@ -348,7 +354,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             f"{name}-list-all-receipts",
             name=f"{name}-list-all-receipts",
             role=lambda_role.arn,
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             handler="list_all_receipts.handler",
             code=AssetArchive(
@@ -362,7 +368,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "handlers/evaluator_types.py": FileAsset(
                         os.path.join(CURRENT_DIR, "evaluator_types.py")
                     ),
-                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
                 }
             ),
             timeout=300,
@@ -387,7 +395,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             f"{name}-final-aggregate",
             name=f"{name}-final-aggregate",
             role=lambda_role.arn,
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             handler="final_aggregate.handler",
             code=AssetArchive(
@@ -395,7 +403,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     "final_aggregate.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "final_aggregate.py")
                     ),
-                    "tracing.py": FileAsset(os.path.join(UTILS_DIR, "tracing.py")),
+                    "tracing.py": FileAsset(
+                        os.path.join(UTILS_DIR, "tracing.py")
+                    ),
                 }
             ),
             timeout=300,
@@ -458,7 +468,8 @@ class LabelEvaluatorStepFunction(ComponentResource):
         unified_docker_image = CodeBuildDockerImage(
             f"{name}-unified-img",
             dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/" "Dockerfile.unified"
+                "infra/label_evaluator_step_functions/lambdas/"
+                "Dockerfile.unified"
             ),
             build_context_path=".",
             source_paths=[
@@ -540,7 +551,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
                         "Statement": [
                             {
                                 "Effect": "Allow",
-                                "Principal": {"Service": "lambda.amazonaws.com"},
+                                "Principal": {
+                                    "Service": "lambda.amazonaws.com"
+                                },
                                 "Action": "sts:AssumeRole",
                             }
                         ],
@@ -611,7 +624,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 f"{name}-build-viz-cache",
                 name=f"{name}-build-viz-cache",
                 role=build_viz_cache_role.arn,
-                runtime="python3.12",
+                runtime="python3.13",
                 architectures=["arm64"],
                 handler="build_viz_cache.handler",
                 code=AssetArchive(
@@ -629,7 +642,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
             LogGroup(
                 f"{name}-build-viz-cache-logs",
-                name=build_viz_cache_lambda.name.apply(lambda n: f"/aws/lambda/{n}"),
+                name=build_viz_cache_lambda.name.apply(
+                    lambda n: f"/aws/lambda/{n}"
+                ),
                 retention_in_days=14,
                 opts=ResourceOptions(parent=self),
             )
@@ -820,7 +835,9 @@ class LabelEvaluatorStepFunction(ComponentResource):
             """Build EmrConfig from resolved outputs."""
             emr_base_idx = 5
             return EmrConfig(
-                application_id=(args[emr_base_idx] if self.emr_enabled else None),
+                application_id=(
+                    args[emr_base_idx] if self.emr_enabled else None
+                ),
                 job_execution_role_arn=(
                     args[emr_base_idx + 1] if self.emr_enabled else None
                 ),

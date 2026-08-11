@@ -13,7 +13,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-
 PASSING_CONCLUSIONS = {"SUCCESS", "SKIPPED", "NEUTRAL"}
 PASSING_STATES = {"SUCCESS"}
 DEPENDABOT_AUTHORS = {"dependabot[bot]", "app/dependabot"}
@@ -84,6 +83,7 @@ PYTHON_TEST_DEPS = (
     "moto",
     "responses",
 )
+MINIMUM_PYTHON_VERSION = (3, 13)
 VERSION_PAIR_RE = re.compile(
     r"\bfrom\s+`?([^`\s]+)`?\s+to\s+`?([^`\s]+)`?",
     re.IGNORECASE,
@@ -131,12 +131,16 @@ def run_json(cmd: list[str], *, cwd: Path) -> Any:
 
 
 def repo_root() -> Path:
-    completed = run(["git", "rev-parse", "--show-toplevel"], cwd=Path.cwd(), capture=True)
+    completed = run(
+        ["git", "rev-parse", "--show-toplevel"], cwd=Path.cwd(), capture=True
+    )
     return Path(completed.stdout.strip())
 
 
 def repo_full_name(root: Path) -> str:
-    data = run_json(["gh", "repo", "view", "--json", "nameWithOwner"], cwd=root)
+    data = run_json(
+        ["gh", "repo", "view", "--json", "nameWithOwner"], cwd=root
+    )
     return data["nameWithOwner"]
 
 
@@ -377,9 +381,11 @@ def version_pairs_from_diff(
         if line.startswith("-"):
             parsed = dependency_spec_from_line(
                 line[1:],
-                current_lock_name=current_lock_name
-                if is_lockfile_path(current_path)
-                else None,
+                current_lock_name=(
+                    current_lock_name
+                    if is_lockfile_path(current_path)
+                    else None
+                ),
             )
             if parsed:
                 removed_specs[parsed[0]] = parsed[1]
@@ -390,15 +396,19 @@ def version_pairs_from_diff(
                     f"{current_path}: unparsed removed version line"
                 )
             elif is_opaque_lockfile_line(current_path, line[1:]):
-                unknown_changes.append(f"{current_path}: opaque removed lockfile line")
+                unknown_changes.append(
+                    f"{current_path}: opaque removed lockfile line"
+                )
             continue
 
         if line.startswith("+"):
             parsed = dependency_spec_from_line(
                 line[1:],
-                current_lock_name=current_lock_name
-                if is_lockfile_path(current_path)
-                else None,
+                current_lock_name=(
+                    current_lock_name
+                    if is_lockfile_path(current_path)
+                    else None
+                ),
             )
             if parsed and parsed[0] in removed_specs:
                 pairs.append((parsed[0], removed_specs[parsed[0]], parsed[1]))
@@ -410,9 +420,13 @@ def version_pairs_from_diff(
             elif is_lockfile_path(current_path) and is_version_metadata_line(
                 line[1:]
             ):
-                unknown_changes.append(f"{current_path}: unparsed added version line")
+                unknown_changes.append(
+                    f"{current_path}: unparsed added version line"
+                )
             elif is_opaque_lockfile_line(current_path, line[1:]):
-                unknown_changes.append(f"{current_path}: opaque added lockfile line")
+                unknown_changes.append(
+                    f"{current_path}: opaque added lockfile line"
+                )
 
     flush_removed()
     return pairs, unknown_changes
@@ -442,7 +456,9 @@ def major_update_reasons(
 
     if diff_text is None:
         if any(is_dependency_file(path) for path in changed_paths(pr)):
-            return ["could not prove update is non-major without dependency diff"]
+            return [
+                "could not prove update is non-major without dependency diff"
+            ]
         return ["could not prove update is non-major without dependency diff"]
 
     diff_pairs, unknown_changes = version_pairs_from_diff(diff_text)
@@ -584,9 +600,7 @@ def commit_provenance_reasons(
                 or raw_author.get("email")
                 or raw_author.get("name")
             )
-            reasons.append(
-                f"commit {oid} author is {author_label!r}"
-            )
+            reasons.append(f"commit {oid} author is {author_label!r}")
 
         if not (
             is_dependabot_identity(github_committer.get("login"))
@@ -597,9 +611,7 @@ def commit_provenance_reasons(
                 or raw_committer.get("email")
                 or raw_committer.get("name")
             )
-            reasons.append(
-                f"commit {oid} committer is {committer_label!r}"
-            )
+            reasons.append(f"commit {oid} committer is {committer_label!r}")
 
     return reasons
 
@@ -620,7 +632,9 @@ def base_guard_reasons(root: Path, repo: str, pr: dict[str, Any]) -> list[str]:
     paths = changed_paths(pr)
     disallowed = [path for path in paths if not is_dependency_file(path)]
     if disallowed:
-        reasons.append("non-dependency files changed: " + ", ".join(disallowed))
+        reasons.append(
+            "non-dependency files changed: " + ", ".join(disallowed)
+        )
 
     reasons.extend(commit_provenance_reasons(root, repo, pr))
 
@@ -721,8 +735,80 @@ def pyproject_extras(pyproject: Path) -> str:
     return ",".join(extras)
 
 
+def _python_version(python: str) -> tuple[int, int, int]:
+    """Return the interpreter's exact semantic version."""
+    try:
+        completed = subprocess.run(
+            [
+                python,
+                "-c",
+                (
+                    "import sys; "
+                    "print('.'.join(map(str, sys.version_info[:3])))"
+                ),
+            ],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        raise RuntimeError(f"could not execute: {exc}") from exc
+
+    if completed.returncode != 0:
+        detail = completed.stderr.strip().splitlines()
+        suffix = f": {detail[-1]}" if detail else ""
+        raise RuntimeError(
+            f"exited with status {completed.returncode}{suffix}"
+        )
+
+    version_text = completed.stdout.strip()
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version_text)
+    if not match:
+        raise RuntimeError(f"reported an invalid version: {version_text!r}")
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3)),
+    )
+
+
 def python_bin() -> str:
-    return shutil.which("python3.12") or shutil.which("python3") or sys.executable
+    """Resolve an executable running Python 3.13 or newer."""
+    candidates: list[str] = []
+    problems: list[str] = []
+    for command in ("python3.13", "python3"):
+        candidate = shutil.which(command)
+        if candidate:
+            if candidate not in candidates:
+                candidates.append(candidate)
+        else:
+            problems.append(f"{command} was not found on PATH")
+
+    if sys.executable:
+        if sys.executable not in candidates:
+            candidates.append(sys.executable)
+    else:
+        problems.append("the current interpreter path is unavailable")
+
+    for candidate in candidates:
+        try:
+            version = _python_version(candidate)
+        except RuntimeError as exc:
+            problems.append(f"{candidate}: {exc}")
+            continue
+        version_text = ".".join(str(part) for part in version)
+        if version[:2] >= MINIMUM_PYTHON_VERSION:
+            return candidate
+        problems.append(f"{candidate} is Python {version_text}")
+
+    required = ".".join(str(part) for part in MINIMUM_PYTHON_VERSION)
+    detail = "; ".join(problems) or "no interpreter candidates were found"
+    raise RuntimeError(
+        f"Python {required} or newer is required for Dependabot verification. "
+        f"Checked: {detail}. Install Python {required}+ and ensure "
+        "python3.13 is available on PATH."
+    )
 
 
 def verify_receipt_upload_dir(worktree: Path, venv_python: Path) -> None:
@@ -732,11 +818,25 @@ def verify_receipt_upload_dir(worktree: Path, venv_python: Path) -> None:
     )
     for package in RECEIPT_UPLOAD_LOCAL_STACK[1:]:
         run(
-            [str(venv_python), "-m", "pip", "install", "--no-deps", "-e", package],
+            [
+                str(venv_python),
+                "-m",
+                "pip",
+                "install",
+                "--no-deps",
+                "-e",
+                package,
+            ],
             cwd=worktree,
         )
     run(
-        [str(venv_python), "-m", "pip", "install", *RECEIPT_UPLOAD_EXTERNAL_DEPS],
+        [
+            str(venv_python),
+            "-m",
+            "pip",
+            "install",
+            *RECEIPT_UPLOAD_EXTERNAL_DEPS,
+        ],
         cwd=worktree,
     )
     run(
@@ -768,7 +868,18 @@ def verify_python_dir(worktree: Path, rel_dir: Path) -> None:
     if not venv_python.exists():
         venv_python = venv / "Scripts" / "python.exe"
 
-    run([str(venv_python), "-m", "pip", "install", "--upgrade", "pip", "wheel"], cwd=package_dir)
+    run(
+        [
+            str(venv_python),
+            "-m",
+            "pip",
+            "install",
+            "--upgrade",
+            "pip",
+            "wheel",
+        ],
+        cwd=package_dir,
+    )
 
     if rel_dir == Path("receipt_upload"):
         verify_receipt_upload_dir(worktree, venv_python)
@@ -776,11 +887,17 @@ def verify_python_dir(worktree: Path, rel_dir: Path) -> None:
         pyproject = package_dir / "pyproject.toml"
         extras = pyproject_extras(pyproject)
         target = f".[{extras}]" if extras else "."
-        run([str(venv_python), "-m", "pip", "install", "-e", target], cwd=package_dir)
+        run(
+            [str(venv_python), "-m", "pip", "install", "-e", target],
+            cwd=package_dir,
+        )
     else:
         reqs = sorted(package_dir.glob("requirements*.txt"))
         for req in reqs:
-            run([str(venv_python), "-m", "pip", "install", "-r", req.name], cwd=package_dir)
+            run(
+                [str(venv_python), "-m", "pip", "install", "-r", req.name],
+                cwd=package_dir,
+            )
 
     run([str(venv_python), "-m", "pip", "check"], cwd=package_dir)
     run([str(venv_python), "-m", "compileall", "-q", "."], cwd=package_dir)
@@ -927,13 +1044,17 @@ def command_verify(args: argparse.Namespace) -> int:
     dirs = dependency_dirs(paths)
 
     if not dirs:
-        print("No local dependency directories detected. Rely on CI for this PR.")
+        print(
+            "No local dependency directories detected. Rely on CI for this PR."
+        )
         return 0
 
     try:
         ref = fetch_pr_ref(root, repo, args.pr_number, pr["headRefOid"])
     except RuntimeError as exc:
-        print(f"Refusing to verify PR #{args.pr_number}: {exc}", file=sys.stderr)
+        print(
+            f"Refusing to verify PR #{args.pr_number}: {exc}", file=sys.stderr
+        )
         return 1
 
     worktree = create_pr_worktree(root, ref)
@@ -943,15 +1064,27 @@ def command_verify(args: argparse.Namespace) -> int:
             full_dir = worktree / rel_dir
             if (full_dir / "package.json").exists():
                 verify_npm_dir(worktree, rel_dir)
-            elif (full_dir / "pyproject.toml").exists() or list(full_dir.glob("requirements*.txt")):
+            elif (full_dir / "pyproject.toml").exists() or list(
+                full_dir.glob("requirements*.txt")
+            ):
                 verify_python_dir(worktree, rel_dir)
             else:
                 print(f"Skipping {rel_dir}: no supported dependency manifest")
+    except RuntimeError as exc:
+        print(
+            f"Refusing to verify PR #{args.pr_number}: {exc}",
+            file=sys.stderr,
+        )
+        return 1
     finally:
         if args.keep_worktree:
             print(f"Kept verification worktree: {worktree}")
         else:
-            run(["git", "worktree", "remove", "--force", str(worktree)], cwd=root, check=False)
+            run(
+                ["git", "worktree", "remove", "--force", str(worktree)],
+                cwd=root,
+                check=False,
+            )
             shutil.rmtree(worktree, ignore_errors=True)
     return 0
 
@@ -969,7 +1102,10 @@ def command_merge(args: argparse.Namespace) -> int:
         diff_text=diff_text,
     )
     if status != "ready":
-        print(f"Refusing to merge PR #{args.pr_number}: {status}", file=sys.stderr)
+        print(
+            f"Refusing to merge PR #{args.pr_number}: {status}",
+            file=sys.stderr,
+        )
         for reason in reasons:
             print(f"- {reason}", file=sys.stderr)
         return 1
@@ -979,7 +1115,10 @@ def command_merge(args: argparse.Namespace) -> int:
         return 1
 
     subject = args.subject or pr["title"].split(" from ", 1)[0]
-    body = args.body or "Merged by Dependabot Maintainer after guardrails and CI passed."
+    body = (
+        args.body
+        or "Merged by Dependabot Maintainer after guardrails and CI passed."
+    )
     run(
         [
             "gh",
@@ -1008,27 +1147,37 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    report = subparsers.add_parser("report", help="List open Dependabot PRs and guardrail status")
+    report = subparsers.add_parser(
+        "report", help="List open Dependabot PRs and guardrail status"
+    )
     report.add_argument("--limit", type=int, default=30)
     report.add_argument("--allow-major", action="store_true")
     report.set_defaults(func=command_report)
 
-    guard = subparsers.add_parser("guard", help="Return success only when a PR is safe to merge")
+    guard = subparsers.add_parser(
+        "guard", help="Return success only when a PR is safe to merge"
+    )
     guard.add_argument("pr_number", type=int)
     guard.add_argument("--allow-major", action="store_true")
     guard.set_defaults(func=command_guard)
 
-    verify = subparsers.add_parser("verify", help="Run local dependency checks for a PR")
+    verify = subparsers.add_parser(
+        "verify", help="Run local dependency checks for a PR"
+    )
     verify.add_argument("pr_number", type=int)
     verify.add_argument("--keep-worktree", action="store_true")
     verify.add_argument("--allow-major", action="store_true")
     verify.set_defaults(func=command_verify)
 
-    rebase = subparsers.add_parser("rebase", help="Ask Dependabot to rebase a PR")
+    rebase = subparsers.add_parser(
+        "rebase", help="Ask Dependabot to rebase a PR"
+    )
     rebase.add_argument("pr_number", type=int)
     rebase.set_defaults(func=command_rebase)
 
-    merge = subparsers.add_parser("merge", help="Squash merge a ready Dependabot PR")
+    merge = subparsers.add_parser(
+        "merge", help="Squash merge a ready Dependabot PR"
+    )
     merge.add_argument("pr_number", type=int)
     merge.add_argument("--allow-major", action="store_true")
     merge.add_argument("--yes", action="store_true")

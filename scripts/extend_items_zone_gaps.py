@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3.13
 """Zone-gap ITEMS boundary extension (failure-mode H batch repair).
 
 Mode H in the failure-mode audit is 45% of dev reconciliation mismatches
@@ -50,10 +50,10 @@ table; gzip pre-image journal fsynced before the first write (the
 repair_item_sections Journal).
 
 Usage:
-    python3.12 scripts/extend_items_zone_gaps.py                # dry run
-    python3.12 scripts/extend_items_zone_gaps.py --apply
-    python3.12 scripts/extend_items_zone_gaps.py --histogram
-    python3.12 scripts/extend_items_zone_gaps.py --receipt IMG_ID:1
+    python3.13 scripts/extend_items_zone_gaps.py                # dry run
+    python3.13 scripts/extend_items_zone_gaps.py --apply
+    python3.13 scripts/extend_items_zone_gaps.py --histogram
+    python3.13 scripts/extend_items_zone_gaps.py --receipt IMG_ID:1
 """
 
 from __future__ import annotations

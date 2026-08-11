@@ -39,13 +39,13 @@ fact. Use both, and do not read either one's silence as coverage.
 
 Usage:
     # read-only drift report (works against prod)
-    python3.12 scripts/backfill_receipt_line_items.py --check \
+    python3.13 scripts/backfill_receipt_line_items.py --check \
         --table ReceiptsTable-d7ff76a
 
     # dry run / write, dev only
-    python3.12 scripts/backfill_receipt_line_items.py
-    python3.12 scripts/backfill_receipt_line_items.py --apply
-    python3.12 scripts/backfill_receipt_line_items.py \
+    python3.13 scripts/backfill_receipt_line_items.py
+    python3.13 scripts/backfill_receipt_line_items.py --apply
+    python3.13 scripts/backfill_receipt_line_items.py \
         --receipt IMAGE_ID:RID --apply
 """
 

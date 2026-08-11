@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "portfolio-infra"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 dependencies = [
     "pulumi>=3.255.0,<4.0.0",
     "pulumi-aws>=7.40.0,<8.0.0",
@@ -31,7 +31,7 @@ packages = ["infra"]
 
 [tool.black]
 line-length = 79
-target-version = ["py312"]
+target-version = ["py313"]
 include = '\.pyi?$'
 
 [tool.isort]
@@ -42,7 +42,7 @@ line_length = 79
 [tool.mypy]
 # Configuration for mypy type checking
 # Applies to all Python code in infra/, including embedding_step_functions
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

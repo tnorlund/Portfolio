@@ -121,7 +121,7 @@ class LayoutLMBatchCacheGenerator(ComponentResource):
         # Create List Receipts Lambda
         self.list_receipts_lambda = aws.lambda_.Function(
             f"{name}-list-receipts-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.list_receipts_role.arn,
             code=AssetArchive(

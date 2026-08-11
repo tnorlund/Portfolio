@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3.13
 """full_fidelity_eval.py -- the 7-metric full-fidelity gate (#1188 P1).
 
 Supersedes section_compare's eyeball role: renders one receipt through the

@@ -252,7 +252,7 @@ class QAAgentStepFunction(ComponentResource):
         # ============================================================
         self.query_metadata_lambda = aws.lambda_.Function(
             f"{name}-query-receipt-metadata",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=lambda_role.arn,
             code=AssetArchive(

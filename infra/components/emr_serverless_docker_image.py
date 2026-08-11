@@ -325,7 +325,7 @@ class EMRServerlessDockerImage(ComponentResource):
     def _generate_dockerfile(self) -> str:
         """Generate Dockerfile content for EMR Serverless.
 
-        Uses EMR 7.x base image with Python 3.12 installed on top,
+        Uses EMR 7.x base image with Python 3.13 installed on top,
         since EMR 8.0 preview doesn't have a public Docker base image yet.
         """
         # Extract base release (e.g., "7.5.0" from "emr-7.5.0" or use default)
@@ -338,29 +338,28 @@ class EMRServerlessDockerImage(ComponentResource):
                     base_release = part
                     break
 
-        return f"""# EMR Serverless Spark image with receipt_langsmith and Python 3.12
-# Base: EMR {base_release} with Python 3.12 installed
+        return f"""# EMR Serverless Spark image with receipt_langsmith and Python 3.13
+# Base: EMR {base_release} with Python 3.13 installed
 FROM public.ecr.aws/emr-serverless/spark/emr-{base_release}:latest
 
 USER root
 
-# Install Python 3.12 and set as PySpark default
-RUN dnf install -y python3.12 python3.12-pip python3.12-devel && \\
-    alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \\
-    python3.12 -m pip install --upgrade pip
+# Install Python 3.13 without replacing AL2023's system Python symlink.
+RUN dnf install -y python3.13 python3.13-pip python3.13-devel && \\
+    python3.13 -m pip install --upgrade pip
 
-# Set PySpark to use Python 3.12
-ENV PYSPARK_PYTHON=/usr/bin/python3.12
-ENV PYSPARK_DRIVER_PYTHON=/usr/bin/python3.12
+# Set PySpark to use Python 3.13
+ENV PYSPARK_PYTHON=/usr/bin/python3.13
+ENV PYSPARK_DRIVER_PYTHON=/usr/bin/python3.13
 
 # Install receipt_langsmith with pyspark extras
 COPY receipt_langsmith /tmp/receipt_langsmith
-RUN python3.12 -m pip install /tmp/receipt_langsmith[pyspark] && \\
+RUN python3.13 -m pip install /tmp/receipt_langsmith[pyspark] && \\
     rm -rf /tmp/receipt_langsmith
 
 # Verify installation
-RUN python3.12 -c "import receipt_langsmith; print(receipt_langsmith.__file__)"
-RUN python3.12 --version
+RUN python3.13 -c "import receipt_langsmith; print(receipt_langsmith.__file__)"
+RUN python3.13 --version
 
 USER hadoop:hadoop
 """

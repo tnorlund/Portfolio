@@ -15,9 +15,9 @@ The workspace uses a **best practices approach** for Python IntelliSense in Curs
 
 ### Initial Setup
 
-1. **Create virtual environment with Python 3.12** (matches Lambda runtime):
+1. **Create virtual environment with Python 3.13** (matches Lambda runtime):
    ```bash
-   python3.12 -m venv .venv
+   python3.13 -m venv .venv
    source .venv/bin/activate
    pip install --upgrade pip setuptools wheel
    ```
@@ -89,7 +89,7 @@ IntelliSense will automatically pick it up - no configuration changes needed!
 3. Check packages are installed: `pip list | grep receipt`
 
 **Missing type hints:**
-- Verify Python interpreter is set correctly (should auto-detect Python 3.12 from venv)
+- Verify Python interpreter is set correctly (should auto-detect Python 3.13 from venv)
 - Some third-party packages may not have type stubs - this is normal
 
 **Import errors:**
@@ -230,7 +230,7 @@ Example:
 ```python
 lambda_function = Function(
     "my-function",
-    runtime="python3.12",
+    runtime="python3.13",
     architectures=["arm64"],  # Required for compatibility with layers
     handler="handler.main",
     layers=[dynamo_layer.arn, label_layer.arn],

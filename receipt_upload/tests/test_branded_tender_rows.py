@@ -12,7 +12,7 @@ The vocabulary is CLOSED and every entry below is a measured observation,
 not a guess -- so it goes stale silently unless someone re-measures. The
 corpus drift check is that re-measurement::
 
-    python3.12 scripts/backfill_receipt_line_items.py --check \\
+    python3.13 scripts/backfill_receipt_line_items.py --check \\
         --table ReceiptsTable-d7ff76a
 
 It is read-only (prod-safe) and prints every receipt whose STORED

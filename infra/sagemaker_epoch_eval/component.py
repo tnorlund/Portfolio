@@ -116,7 +116,7 @@ class EpochEvalInfra(ComponentResource):
 
         self.trigger_lambda = aws.lambda_.Function(
             f"{name}-trigger",
-            runtime="python3.12",
+            runtime="python3.13",
             handler="index.handler",
             role=self.lambda_role.arn,
             timeout=30,
@@ -164,9 +164,7 @@ class EpochEvalInfra(ComponentResource):
                 event_pattern=json.dumps(
                     {
                         "source": ["aws.sagemaker"],
-                        "detail-type": [
-                            "SageMaker Training Job State Change"
-                        ],
+                        "detail-type": ["SageMaker Training Job State Change"],
                         "detail": {
                             "TrainingJobStatus": ["Completed"],
                             "TrainingJobName": [{"prefix": "layoutlm-"}],
@@ -191,9 +189,7 @@ class EpochEvalInfra(ComponentResource):
                 opts=ResourceOptions(parent=self),
             )
 
-        self.register_outputs(
-            {"trigger_lambda_arn": self.trigger_lambda.arn}
-        )
+        self.register_outputs({"trigger_lambda_arn": self.trigger_lambda.arn})
 
 
 # Inline Lambda that launches the SageMaker Processing job. Kept inline (like

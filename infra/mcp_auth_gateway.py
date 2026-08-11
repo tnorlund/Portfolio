@@ -74,7 +74,9 @@ def _callback_urls(config: Config) -> List[str]:
             "of callback URLs"
         )
     if not value:
-        raise ValueError("portfolio:mcpOAuthCallbackUrls must contain at least one URL")
+        raise ValueError(
+            "portfolio:mcpOAuthCallbackUrls must contain at least one URL"
+        )
     return value
 
 
@@ -136,7 +138,9 @@ class McpAuthGateway(ComponentResource):
                 "allow_admin_create_user_only": True,
             },
             account_recovery_setting={
-                "recovery_mechanisms": [{"name": "verified_email", "priority": 1}]
+                "recovery_mechanisms": [
+                    {"name": "verified_email", "priority": 1}
+                ]
             },
             password_policy={
                 "minimum_length": 16,
@@ -245,7 +249,9 @@ class McpAuthGateway(ComponentResource):
         automation_secret = aws.secretsmanager.Secret(
             f"{name}-receipt-automation-credentials",
             name=f"/{stack}/mcp/oauth/receipt-automation-client",
-            description=("OAuth client credentials for scheduled receipt MCP callers"),
+            description=(
+                "OAuth client credentials for scheduled receipt MCP callers"
+            ),
             opts=child_opts,
         )
         automation_credentials: Output[str] = Output.json_dumps(
@@ -285,7 +291,9 @@ class McpAuthGateway(ComponentResource):
             },
             opts=child_opts,
         )
-        self.receipt_url = Output.format("{}/receipt/mcp", self.api.api_endpoint)
+        self.receipt_url = Output.format(
+            "{}/receipt/mcp", self.api.api_endpoint
+        )
         self.glyph_url = Output.format("{}/glyph/mcp", self.api.api_endpoint)
 
         # Cognito access tokens carry the client id in the client_id
@@ -361,7 +369,8 @@ class McpAuthGateway(ComponentResource):
             f"{name}-metadata-role-logs",
             role=metadata_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=metadata_role),
         )
@@ -384,7 +393,7 @@ class McpAuthGateway(ComponentResource):
         metadata_lambda = aws.lambda_.Function(
             f"{name}-metadata",
             role=metadata_role.arn,
-            runtime="python3.12",
+            runtime="python3.13",
             handler="index.handler",
             timeout=5,
             memory_size=128,
@@ -407,9 +416,12 @@ class McpAuthGateway(ComponentResource):
                 f"{name}-metadata-route-{route_name}",
                 api_id=self.api.id,
                 route_key=(
-                    "GET /.well-known/oauth-protected-resource" f"/{route_name}/mcp"
+                    "GET /.well-known/oauth-protected-resource"
+                    f"/{route_name}/mcp"
                 ),
-                target=metadata_integration.id.apply(lambda iid: f"integrations/{iid}"),
+                target=metadata_integration.id.apply(
+                    lambda iid: f"integrations/{iid}"
+                ),
                 authorization_type="NONE",
                 opts=child_opts,
             )

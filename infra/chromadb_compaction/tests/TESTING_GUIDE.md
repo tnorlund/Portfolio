@@ -101,7 +101,7 @@ test-stream-processor:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.12'
+        python-version: '3.13'
     - name: Install dependencies
       run: |
         cd infra
@@ -178,4 +178,3 @@ For now, the **41 passing tests provide solid coverage** of:
 - Dataclass behavior
 
 The integration test failures are environmental (mocking SQS/observability), not logic bugs.
-

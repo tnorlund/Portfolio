@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3.13
 """Regenerate the committed §7.2 variant-aware merchant-truth fixture.
 
 Sibling of ``build_fixture.py``. Where that mints a variant-BLIND bundle
@@ -21,7 +21,7 @@ longer sits on the ink and the columns metric goes UNTESTED instead of PASS.
 
 Deterministic: re-running writes byte-identical JSON. Run from the repo root:
 
-    python3.12 tests/fixtures/merchant_truth/build_variant_fixture.py
+    python3.13 tests/fixtures/merchant_truth/build_variant_fixture.py
 """
 
 from __future__ import annotations

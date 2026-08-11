@@ -4,9 +4,9 @@ Integration tests for close_chromadb_client functionality.
 These tests verify that close_chromadb_client properly releases SQLite file locks
 so that files can be copied, uploaded, or accessed by other processes.
 
-Run with Python 3.12 (recommended):
-    # Create venv with Python 3.12
-    python3.12 -m venv .venv_test_chromadb
+Run with Python 3.13 (recommended):
+    # Create venv with Python 3.13
+    python3.13 -m venv .venv_test_chromadb
     source .venv_test_chromadb/bin/activate
     pip install pytest chromadb
 
@@ -16,7 +16,7 @@ Run with Python 3.12 (recommended):
 Or use the standalone test (easier):
     python3 infra/embedding_step_functions/unified_embedding/handlers/tests/standalone_test_close_client.py
 
-NOTE: ChromaDB has compatibility issues with Python 3.14. Use Python 3.12.
+NOTE: ChromaDB has compatibility issues with Python 3.14. Use Python 3.13.
 """
 
 import importlib.util

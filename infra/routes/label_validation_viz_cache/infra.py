@@ -193,7 +193,7 @@ class LabelValidationVizCache(ComponentResource):
         # ============================================================
         self.api_lambda = aws.lambda_.Function(
             f"{name}-api-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.api_lambda_role.arn,
             code=AssetArchive({".": FileArchive(LAMBDAS_DIR)}),
@@ -301,7 +301,7 @@ class LabelValidationVizCache(ComponentResource):
         # DynamoDB query code - exports receipts, words, and labels
         self.dynamo_query_lambda = aws.lambda_.Function(
             f"{name}-dynamo-query-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.dynamo_query_role.arn,
             code=AssetArchive(
@@ -384,7 +384,7 @@ class LabelValidationVizCache(ComponentResource):
 
         self.trigger_export_lambda = aws.lambda_.Function(
             f"{name}-trigger-export-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.trigger_export_role.arn,
             code=AssetArchive(
@@ -448,7 +448,7 @@ class LabelValidationVizCache(ComponentResource):
 
         self.check_export_lambda = aws.lambda_.Function(
             f"{name}-check-export-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.check_export_role.arn,
             code=AssetArchive(
