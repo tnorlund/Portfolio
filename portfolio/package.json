@@ -28,9 +28,6 @@
     "monitor": "node monitor-project.js",
     "monitor:watch": "node monitor-project.js --watch",
     "optimize-image": "node scripts/optimize-images.js",
-    "docs": "typedoc",
-    "docs:md": "typedoc --theme markdown --out docs-md",
-    "ci:docs": "npm run docs && npm run docs:md && git diff --exit-code",
     "analyze": "ANALYZE=true next build --webpack",
     "analyze:bundle": "next build --webpack && node scripts/analyze-bundle.js",
     "lighthouse": "lhci autorun",
@@ -76,9 +73,6 @@
     "eslint-config-next": "^16.2.10",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
-    "typedoc": "^0.28.20",
-    "typedoc-material-theme": "^1.4.1",
-    "typedoc-plugin-markdown": "^4.12.0",
     "typescript": "^5.9.3",
     "web-vitals": "^5.2.0"
   }
