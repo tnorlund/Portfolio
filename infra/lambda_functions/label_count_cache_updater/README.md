@@ -13,7 +13,7 @@ The function serves as a background process that:
 
 ## Architecture
 
-- **Runtime**: Python 3.12
+- **Runtime**: Python 3.13
 - **Memory**: 2048 MB
 - **Timeout**: 5 minutes
 - **Trigger**: CloudWatch Events (rate: 5 minutes)

@@ -82,12 +82,12 @@ replacement because S3 snapshots are now the deployed persistence boundary.
 
 ## Development
 
-Python 3.12 is the production and test baseline. From this directory:
+Python 3.13 is the production and test baseline. From this directory:
 
 ```bash
-python3.12 -m pip install -e ".[test,dev]"
-python3.12 -m pytest tests/unit
-python3.12 -m pytest tests/integration
+python3.13 -m pip install -e ".[test,dev]"
+python3.13 -m pytest tests/unit
+python3.13 -m pytest tests/integration
 ```
 
 The S3 integration suite uses Moto and does not require writes to a live AWS

@@ -59,10 +59,13 @@ public protocol DynamoClientProtocol {
         sections: [ReceiptSectionPayload], createdAt: Date
     ) async throws
 
-    /// Batch-put worker-decoded line items (upsert semantics). Line-item
-    /// writes fire no stream trigger, so the single-pass worker calls
-    /// this directly; the cloud ingest's delete-then-add over the same
-    /// payload remains the staleness reconciler of record.
+    /// Batch-put worker-decoded line items (upsert semantics, unconditional).
+    /// Line-item writes fire no stream trigger, so the worker can call this
+    /// directly; the cloud ingest's delete-then-add over the same payload
+    /// remains the staleness reconciler of record. The summary-refine pass
+    /// is the caller — it runs after the cloud pipeline and is meant to
+    /// overwrite whatever is there. The single-pass write must NOT use this;
+    /// see `addReceiptLineItemsIfWorkerOwned`.
     func addReceiptLineItems(
         imageId: String, receiptId: Int,
         items: [ReceiptLineItemPayload], extractedAt: Date,
@@ -88,6 +91,32 @@ public protocol DynamoClientProtocol {
         items: [ReceiptLineItemPayload], extractedAt: Date,
         baselineFiguresAgreeing: Int?, merchantName: String?
     ) async throws
+    /// Per-item conditional put of worker-decoded line items: a row is
+    /// written only when it does not exist yet or the worker itself wrote
+    /// it (`extractor_version` begins with
+    /// `swiftWorkerExtractorVersionPrefix`).
+    ///
+    /// Ownership rule: rows the cloud pipeline produced carry the bare
+    /// decoder version (`line-items-blocks-v2`) with no `swift-worker`
+    /// prefix, and may have been enriched since (merchant_name plus the
+    /// GSI1 rollup keys it unlocks, VALID section provenance,
+    /// reconciliation against the real summary). The worker's single-pass
+    /// payload is sparse by design, so replacing such a row can only
+    /// destroy information — the condition makes that impossible for every
+    /// ordering of crash, redelivery and cloud enrichment, not just the
+    /// ones the job-status check happens to catch.
+    ///
+    /// Conditional writes cannot ride a DynamoDB batch, so this issues one
+    /// `PutItem` per row. A `ConditionalCheckFailedException` is not an
+    /// error: it means the row is cloud-owned and is skipped.
+    ///
+    /// - Returns: how many rows were skipped as cloud-owned.
+    @discardableResult
+    func addReceiptLineItemsIfWorkerOwned(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?
+    ) async throws -> Int
 }
 
 

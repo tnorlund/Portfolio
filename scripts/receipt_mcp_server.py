@@ -2704,7 +2704,13 @@ async def get_receipt_impl(
 
         formatted_receipt = "\n".join(formatted_lines)
 
-        # Extract amounts
+        # Extract amounts. parse_receipt_amount accepts the accounting
+        # negatives return receipts print ("$16.25-" trailing minus,
+        # parenthesized, leading minus) that a bare float() rejects, so
+        # refunds stay visible to spend aggregation. TIP is a money
+        # label like the others and must surface here too.
+        from receipt_dynamo.amounts import parse_receipt_amount
+
         amounts = []
         currency_labels = [
             "TAX",
@@ -2712,11 +2718,12 @@ async def get_receipt_impl(
             "GRAND_TOTAL",
             "LINE_TOTAL",
             "UNIT_PRICE",
+            "TIP",
         ]
         for w in sorted_words:
             if w["label"] in currency_labels:
-                try:
-                    amount = float(w["text"].replace("$", "").replace(",", ""))
+                amount = parse_receipt_amount(w["text"])
+                if amount is not None:
                     amounts.append(
                         {
                             "label": w["label"],
@@ -2724,8 +2731,6 @@ async def get_receipt_impl(
                             "amount": amount,
                         }
                     )
-                except ValueError:
-                    pass
 
         return {
             "image_id": image_id,

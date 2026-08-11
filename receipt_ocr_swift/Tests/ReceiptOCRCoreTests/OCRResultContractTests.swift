@@ -379,6 +379,11 @@ final class OCRResultContractTests: XCTestCase {
             items: [ReceiptLineItemPayload], extractedAt: Date,
             baselineFiguresAgreeing: Int?, merchantName: String?
         ) async throws {}
+        func addReceiptLineItemsIfWorkerOwned(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?
+        ) async throws -> Int { 0 }
     }
 
     /// Engine that "produces" the shared contract fixture plus the warped

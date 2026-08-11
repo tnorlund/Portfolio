@@ -133,6 +133,11 @@ import CoreGraphics
             items: [ReceiptLineItemPayload], extractedAt: Date,
             baselineFiguresAgreeing: Int?, merchantName: String?
         ) async throws {}
+        func addReceiptLineItemsIfWorkerOwned(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?
+        ) async throws -> Int { 0 }
     }
 
     /// Captures the image URLs the worker hands to Vision OCR so tests can

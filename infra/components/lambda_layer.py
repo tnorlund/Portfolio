@@ -1395,14 +1395,14 @@ layers_to_build = [
         "package_dir": "receipt_dynamo",
         "name": "receipt-dynamo",
         "description": "DynamoDB layer for receipt-dynamo",
-        "python_versions": ["3.12"],
+        "python_versions": ["3.13"],
         "needs_pillow": False,
     },
     {
         "package_dir": "receipt_dynamo_stream",
         "name": "receipt-dynamo-stream",
         "description": "DynamoDB stream parsing layer",
-        "python_versions": ["3.12"],
+        "python_versions": ["3.13"],
         "needs_pillow": False,
     },
     # NOTE: receipt-upload layer removed - upload_receipt Lambda now uses container deployment

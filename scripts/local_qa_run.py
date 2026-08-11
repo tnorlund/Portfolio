@@ -8,10 +8,10 @@ to the dev cache bucket so dev.tylernorlund.com serves them immediately —
 no merge, CI, deploy, step function, LangSmith export, or EMR required.
 
 Usage:
-    python3.12 scripts/local_qa_run.py --questions 24,13,10   # subset
-    python3.12 scripts/local_qa_run.py --all                  # all 32
-    python3.12 scripts/local_qa_run.py --all --dry-run        # no upload
-    python3.12 scripts/local_qa_run.py --questions 24 --model openai/gpt-5.6-luna
+    python3.13 scripts/local_qa_run.py --questions 24,13,10   # subset
+    python3.13 scripts/local_qa_run.py --all                  # all 32
+    python3.13 scripts/local_qa_run.py --all --dry-run        # no upload
+    python3.13 scripts/local_qa_run.py --questions 24 --model openai/gpt-5.6-luna
 
 Credentials/env are pulled from the deployed dev run-question Lambda so
 local runs always match the dev stack's configuration. The previous cache

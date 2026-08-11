@@ -271,6 +271,6 @@ GOOGLE_PLACES_API_KEY # Required for address validation
 
 ## Additional Notes
 
-- Use Python 3.12 or higher.
+- Use Python 3.13 or higher.
 - The entities are stored in `receipt_dynamo/receipt_dynamo/entities` and the accessors are in `receipt_dynamo/receipt_dynamo/data`. The style and formatting should remain similar in these directories.
 - When working with `receipt_label`, ensure you understand the batch processing flow and status tracking mechanisms.

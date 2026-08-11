@@ -113,7 +113,7 @@ pulumi up
 When using async mode (default), the build happens in the background:
 
 1. Check CodeBuild console: https://console.aws.amazon.com/codesuite/codebuild/projects
-2. Look for projects named `test-fast-layer-build-py312-<stack>`
+2. Look for projects named `test-fast-layer-build-py313-<stack>`
 3. Check CodePipeline for the full pipeline: `test-fast-layer-pipeline-<stack>`
 
 ## Troubleshooting

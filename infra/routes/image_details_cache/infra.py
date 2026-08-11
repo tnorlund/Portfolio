@@ -84,7 +84,7 @@ def create_image_details_cache_lambda(
     """Create the image details cache API Lambda function."""
     image_details_cache_lambda = aws.lambda_.Function(
         f"api_{ROUTE_NAME}_GET_lambda",
-        runtime="python3.12",
+        runtime="python3.13",
         architectures=["arm64"],
         role=lambda_role.arn,
         code=AssetArchive(

@@ -3,7 +3,7 @@
 # Updated to fix compaction package import issues
 
 # Stage 1: Build and install dependencies (cached layer)
-FROM public.ecr.aws/lambda/python:3.12 AS dependencies
+FROM public.ecr.aws/lambda/python:3.13 AS dependencies
 
 # Set environment variable to avoid compilation issues
 ENV HNSWLIB_NO_NATIVE=1

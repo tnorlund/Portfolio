@@ -296,7 +296,7 @@ class LangSmithBulkExport(ComponentResource):
 
         self.setup_lambda = aws.lambda_.Function(
             f"{name}-setup-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.lambda_role.arn,
             code=AssetArchive({".": FileArchive(LAMBDAS_DIR)}),
@@ -331,7 +331,7 @@ class LangSmithBulkExport(ComponentResource):
         # ============================================================
         self.trigger_lambda = aws.lambda_.Function(
             f"{name}-trigger-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.lambda_role.arn,
             code=AssetArchive({".": FileArchive(LAMBDAS_DIR)}),

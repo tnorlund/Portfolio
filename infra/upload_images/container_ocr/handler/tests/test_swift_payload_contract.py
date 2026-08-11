@@ -486,6 +486,45 @@ def test_worker_reconciliation_grade_is_stamped_on_rows(
         assert item.baseline_figures_agreeing == 2
 
 
+@pytest.mark.parametrize(
+    "raw_grade,expected",
+    [
+        (True, None),
+        (0, None),
+        (4, None),
+        (2, 2),
+    ],
+)
+def test_out_of_band_reconciliation_grade_is_dropped(
+    aws_stack, swift_payload, raw_grade, expected
+):
+    """Only a real 1..3 grade is stamped; anything else becomes None.
+
+    ``ReceiptLineItem`` raises on a grade outside 1..3 and on ``True``
+    (bool subclasses int, so a naive isinstance check waves it through).
+    That exception fires inside the per-item try block, so an out-of-band
+    grade would silently cost the receipt every line item rather than just
+    the diagnostic field it came from.
+    """
+    payload = json.loads(json.dumps(swift_payload))
+    for receipt in payload["receipts"]:
+        receipt["reconciliation"] = {
+            "status": "match",
+            "baseline_figures_agreeing": raw_grade,
+        }
+
+    processor = _processor(aws_stack)
+    ocr_job, routing = _seed_job(processor)
+
+    processor._process_swift_single_pass(payload, ocr_job, routing)
+
+    dynamo = DynamoClient(aws_stack)
+    line_items = dynamo.get_receipt_line_items_from_receipt(IMAGE_ID, 1)
+    assert [item.name for item in line_items] == ["ORGANIC"]
+    for item in line_items:
+        assert item.baseline_figures_agreeing == expected
+
+
 def test_malformed_reconciliation_does_not_cost_the_worker_structure(
     aws_stack, swift_payload
 ):

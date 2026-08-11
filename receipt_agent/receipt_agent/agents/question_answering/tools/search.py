@@ -298,7 +298,12 @@ def create_qa_tools(
                     for w in line_words
                 ]
 
-            # Extract amounts with line context
+            # Extract amounts with line context. parse_receipt_amount
+            # accepts the accounting negatives return receipts print
+            # ("$16.25-" trailing minus) that a bare float() rejects,
+            # and TIP is a money label like the others.
+            from receipt_dynamo.amounts import parse_receipt_amount
+
             amounts = []
             currency_labels = [
                 "TAX",
@@ -306,14 +311,13 @@ def create_qa_tools(
                 "GRAND_TOTAL",
                 "LINE_TOTAL",
                 "UNIT_PRICE",
+                "TIP",
             ]
             for line_idx, line_words in words_by_line.items():
                 for w in line_words:
                     if w["label"] in currency_labels:
-                        try:
-                            amount = float(
-                                w["text"].replace("$", "").replace(",", "")
-                            )
+                        amount = parse_receipt_amount(w["text"])
+                        if amount is not None:
                             amounts.append(
                                 {
                                     "label": w["label"],
@@ -323,8 +327,6 @@ def create_qa_tools(
                                     "word_id": w["word_id"],
                                 }
                             )
-                        except ValueError:
-                            pass
 
             # Format as text for LLM display (still useful for debugging/display)
             formatted_lines = []

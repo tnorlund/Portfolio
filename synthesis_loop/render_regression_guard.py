@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3.13
 """Byte-identical re-render gate for shipped merchants.
 
 Renders each pinned shipped receipt through the exact ``glyph_review.py

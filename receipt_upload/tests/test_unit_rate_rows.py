@@ -40,7 +40,7 @@ are extrapolation on the same terms.
 
 Re-measure with the corpus drift check rather than by eye::
 
-    python3.12 scripts/backfill_receipt_line_items.py --check \\
+    python3.13 scripts/backfill_receipt_line_items.py --check \\
         --table ReceiptsTable-d7ff76a
 
 It is read-only (prod-safe) and prints every receipt whose STORED

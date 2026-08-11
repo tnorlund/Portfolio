@@ -100,7 +100,7 @@ aws.iam.RolePolicyAttachment(
 # Create the Lambda function
 ai_usage_sync_lambda = aws.lambda_.Function(
     f"{FUNCTION_NAME}_lambda",
-    runtime="python3.12",
+    runtime="python3.13",
     architectures=["arm64"],
     role=lambda_role.arn,
     code=AssetArchive(

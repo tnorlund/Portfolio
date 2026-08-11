@@ -6,10 +6,12 @@ import Testing
 #if os(macOS)
 import CoreGraphics
 
-/// The worker's direct line-item write must not run when the job it is
-/// processing had already COMPLETED — that delivery is a duplicate of work the
-/// cloud pipeline already ingested and may have enriched, and the worker's
-/// sparse payload would replace the enrichment.
+/// The worker's direct line-item write must never replace a row the cloud
+/// pipeline owns: that row may carry enrichment the worker's sparse payload
+/// would erase. The per-row ownership condition is the guarantee, so the
+/// single-pass write always goes through the conditional surface; the
+/// COMPLETED-at-fetch-time skip is only a fast path around a delivery whose
+/// puts would all be rejected anyway.
 /// Uses swift-testing so the suite also runs under CommandLineTools.
 @Suite struct SinglePassRedeliveryTests {
 
@@ -37,7 +39,10 @@ import CoreGraphics
 
     final class DynamoMock: DynamoClientProtocol {
         var jobs: [String: OCRJob] = [:] // "imageId:jobId"
+        /// Conditional (worker-owned) puts — the single-pass path.
         var lineItemCalls: [(imageId: String, receiptId: Int, count: Int)] = []
+        /// Unconditional puts — must stay empty for single-pass work.
+        var unconditionalLineItemCalls: [(imageId: String, receiptId: Int, count: Int)] = []
         var sectionCalls: [(imageId: String, receiptId: Int)] = []
         func getOCRJob(imageId: String, jobId: String) async throws -> OCRJob {
             guard let job = jobs["\(imageId):\(jobId)"] else {
@@ -60,7 +65,15 @@ import CoreGraphics
             items: [ReceiptLineItemPayload], extractedAt: Date,
             baselineFiguresAgreeing: Int?
         ) async throws {
+            unconditionalLineItemCalls.append((imageId, receiptId, items.count))
+        }
+        func addReceiptLineItemsIfWorkerOwned(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?
+        ) async throws -> Int {
             lineItemCalls.append((imageId, receiptId, items.count))
+            return 0
         }
         func replaceReceiptLineItems(
             imageId: String, receiptId: Int,
@@ -144,7 +157,12 @@ import CoreGraphics
         return (sqs, s3, dynamo, worker)
     }
 
-    @Test func pendingJobWritesLineItems() async throws {
+    /// The PENDING path writes, and it writes through the CONDITIONAL
+    /// surface: a first attempt that crashed after sending its results
+    /// message but before marking the job COMPLETED also arrives here, so
+    /// the per-row ownership condition — not the status check — is what
+    /// keeps cloud-enriched rows intact.
+    @Test func pendingJobWritesLineItemsConditionally() async throws {
         let (sqs, _, dynamo, worker) = makeFixture(status: .pending)
 
         let hadMessages = try await worker.processBatch()
@@ -153,6 +171,9 @@ import CoreGraphics
         #expect(dynamo.lineItemCalls.count == 1)
         #expect(dynamo.lineItemCalls.first?.imageId == "img-1")
         #expect((dynamo.lineItemCalls.first?.count ?? 0) > 0)
+        // Never the unconditional surface — that one belongs to the
+        // summary-refine pass, which runs after the cloud pipeline.
+        #expect(dynamo.unconditionalLineItemCalls.isEmpty)
         #expect(sqs.deleted.map(\.id) == ["m1"])
     }
 
@@ -165,6 +186,7 @@ import CoreGraphics
         // but the batch still finishes and the duplicate leaves the queue.
         #expect(hadMessages)
         #expect(dynamo.lineItemCalls.isEmpty)
+        #expect(dynamo.unconditionalLineItemCalls.isEmpty)
         #expect(sqs.deleted.map(\.id) == ["m1"])
         #expect(sqs.sentMessages.count == 1)
     }

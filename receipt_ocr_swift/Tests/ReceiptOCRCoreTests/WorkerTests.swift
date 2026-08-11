@@ -52,6 +52,11 @@ final class WorkerTests: XCTestCase {
             items: [ReceiptLineItemPayload], extractedAt: Date,
             baselineFiguresAgreeing: Int?, merchantName: String?
         ) async throws {}
+        func addReceiptLineItemsIfWorkerOwned(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?
+        ) async throws -> Int { 0 }
     }
 
     struct TestOCREngine: OCREngineProtocol {

@@ -284,6 +284,45 @@ public final class SotoDynamoClient: DynamoClientProtocol {
         return nil
     }
 
+    @discardableResult
+    public func addReceiptLineItemsIfWorkerOwned(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?
+    ) async throws -> Int {
+        // One PutItem per row: DynamoDB batch writes cannot carry a
+        // condition expression, and the condition is the whole point here.
+        // The row is ours to write only if nothing is there yet or the
+        // worker stamped what is (see the protocol's ownership rule).
+        var skipped = 0
+        for payload in items {
+            let item = ReceiptStructureItems.lineItemItem(
+                imageId: imageId, receiptId: receiptId,
+                item: payload, extractedAt: extractedAt,
+                baselineFiguresAgreeing: baselineFiguresAgreeing
+            )
+            let req = DynamoDB.PutItemInput(
+                conditionExpression:
+                    "attribute_not_exists(PK) OR begins_with(extractor_version, :worker)",
+                expressionAttributeValues: [
+                    ":worker": .s(swiftWorkerExtractorVersionPrefix)
+                ],
+                item: item,
+                tableName: tableName
+            )
+            do {
+                _ = try await dynamo.putItem(req)
+            } catch let error as AWSErrorType
+                where error.errorCode
+                    == DynamoDBErrorType.conditionalCheckFailedException.errorCode
+            {
+                // Cloud-owned row: leave it exactly as the pipeline left it.
+                skipped += 1
+            }
+        }
+        return skipped
+    }
+
     /// Batch-put with chunking, unprocessed-item retry and backoff —
     /// shared by labels, sections and line items.
     private func batchPutItems(

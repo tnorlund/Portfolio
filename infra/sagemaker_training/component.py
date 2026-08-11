@@ -541,7 +541,7 @@ class SageMakerTrainingInfra(ComponentResource):
 
         self.start_training_lambda = aws.lambda_.Function(
             f"{name}-start-training",
-            runtime="python3.11",
+            runtime="python3.13",
             handler="index.handler",
             role=self.lambda_role.arn,
             timeout=30,

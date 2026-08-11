@@ -66,6 +66,11 @@ import Testing
         ) async throws {
             writtenItems.append((receiptId, items, baselineFiguresAgreeing))
         }
+        func addReceiptLineItemsIfWorkerOwned(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?
+        ) async throws -> Int { 0 }
         func replaceReceiptLineItems(
             imageId: String, receiptId: Int,
             items: [ReceiptLineItemPayload], extractedAt: Date,

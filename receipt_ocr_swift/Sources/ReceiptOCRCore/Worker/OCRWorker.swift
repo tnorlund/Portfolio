@@ -493,7 +493,9 @@ public final class OCRWorker {
             let strategyApplied: String?
             /// Whether the job row was already COMPLETED when it was fetched,
             /// i.e. this delivery is a redelivery of work that already
-            /// finished. Gates the direct line-item write (see below).
+            /// finished. A cheap fast path around the direct line-item write,
+            /// whose per-row condition is the actual safety guarantee (see
+            /// below).
             let jobWasCompleted: Bool
         }
         var imageURLs: [URL] = []
@@ -779,15 +781,19 @@ public final class OCRWorker {
             // stream's canonical-ITEMS trigger and cause a premature
             // cloud recompute against a word-less receipt.
             //
-            // Skipped when the job was already COMPLETED at fetch time: that
-            // means an earlier attempt already handed results to the cloud
-            // pipeline, which may since have enriched these rows (merchant
-            // rollup keys, VALID section provenance, reconciliation against
-            // the real summary). The worker's payload is sparse by design, so
-            // re-putting it over enriched rows can only destroy information.
-            // A first attempt that crashed leaves the job PENDING and never
-            // emitted a results message, so no enrichment exists and the
-            // write is safe.
+            // Every row is written CONDITIONALLY: a put lands only where no
+            // row exists yet or the worker itself wrote the one that does.
+            // Rows the cloud pipeline produced may since have been enriched
+            // (merchant rollup keys, VALID section provenance, reconciliation
+            // against the real summary), and the worker's sparse payload
+            // would erase that — the condition is what guarantees it cannot,
+            // under any interleaving of crash, redelivery and enrichment.
+            //
+            // The COMPLETED-at-fetch-time check below is only a fast path: a
+            // redelivery of finished work would have every put rejected
+            // anyway, so skip the round trips. It is NOT the guarantee —
+            // a first attempt that crashed after sending its results message
+            // but before marking the job COMPLETED comes back as PENDING.
             if ctx.jobType != .regionalReocr {
                 if ctx.jobWasCompleted {
                     logger.info(
@@ -797,18 +803,20 @@ public final class OCRWorker {
                     for receipt in receipts where !receipt.lineItems.isEmpty {
                         let receiptId = receipt.clusterId
                         do {
-                            try await Retry.withBackoff {
-                                try await self.dynamo.addReceiptLineItems(
-                                    imageId: ctx.imageId,
-                                    receiptId: receiptId,
-                                    items: receipt.lineItems,
-                                    extractedAt: now,
-                                    baselineFiguresAgreeing: receipt
-                                        .reconciliation?.baselineFiguresAgreeing
-                                )
+                            let skipped = try await Retry.withBackoff {
+                                try await self.dynamo
+                                    .addReceiptLineItemsIfWorkerOwned(
+                                        imageId: ctx.imageId,
+                                        receiptId: receiptId,
+                                        items: receipt.lineItems,
+                                        extractedAt: now,
+                                        baselineFiguresAgreeing: receipt
+                                            .reconciliation?
+                                            .baselineFiguresAgreeing
+                                    )
                             }
                             logger.info(
-                                "worker_line_items_written image_id=\(ctx.imageId) receipt_id=\(receiptId) count=\(receipt.lineItems.count)"
+                                "worker_line_items_written image_id=\(ctx.imageId) receipt_id=\(receiptId) count=\(receipt.lineItems.count - skipped) skipped_cloud_owned=\(skipped)"
                             )
                         } catch {
                             logger.warning(

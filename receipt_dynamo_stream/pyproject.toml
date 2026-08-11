@@ -7,13 +7,13 @@ name = "receipt-dynamo-stream"
 version = "0.1.0"
 description = "Lightweight DynamoDB stream parsing and change detection for receipt workflows"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 authors = [
   { name="Tyler Norlund", email="tnorlund@icloud.com" },
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Development Status :: 4 - Beta",
@@ -102,7 +102,7 @@ exclude_lines = [
 
 [tool.black]
 line-length = 79
-target-version = ["py312"]
+target-version = ["py313"]
 include = '\\.pyi?$'
 
 [tool.pylint.format]
@@ -121,7 +121,7 @@ line_length = 79
 known_first_party = ["receipt_dynamo_stream", "receipt_dynamo"]
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

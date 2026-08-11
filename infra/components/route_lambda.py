@@ -69,7 +69,7 @@ class RouteLambdaDefinition:
     log_retention_in_days: int = 30
     explicit_log_group_name: pulumi.Input[str] | None = None
     use_function_log_group_name: bool = False
-    runtime: str = "python3.12"
+    runtime: str = "python3.13"
     architecture: str = "arm64"
     handler: str = "index.handler"
     reserved_concurrent_executions: int | None = None

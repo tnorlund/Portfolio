@@ -78,11 +78,11 @@ rather than equate SQLite integrity with collection readability.
 ## Reproduction
 
 ```bash
-python3.12 scripts/local_analytics_cache.py sync \
+python3.13 scripts/local_analytics_cache.py sync \
   --env dev --components dynamodb,chroma
 
 PYTHONPATH=receipt_dynamo:receipt_chroma:receipt_upload \
-python3.12 scripts/evaluate_section_geometry.py \
+python3.13 scripts/evaluate_section_geometry.py \
   --output .cache/section-geometry/report.json
 ```
 

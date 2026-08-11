@@ -18,6 +18,12 @@ public let swiftWorkerDecoderVersion = "line-items-blocks-v2"
 public let swiftWorkerExtractorVersion =
     "\(swiftWorkerModelSource)+\(swiftWorkerDecoderVersion)"
 
+/// The prefix every worker-written `extractor_version` shares, whatever the
+/// build or decoder version. Cloud-written rows carry the bare decoder
+/// version (`line-items-blocks-v2`), so a `begins_with` test on this prefix
+/// distinguishes "the worker owns this row" from "the cloud owns this row".
+public let swiftWorkerExtractorVersionPrefix = "swift-worker"
+
 /// JSON contract for one on-device section prediction.
 public struct ReceiptSectionPayload: Codable, Sendable, Equatable {
     public let sectionType: String

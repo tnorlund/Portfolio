@@ -68,8 +68,7 @@ However, the bootstrap push can still fail gracefully, causing Lambda creation t
    ```bash
    # For each renamed function, push bootstrap image manually
    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin <ECR_REPO_URL>
-   docker pull public.ecr.aws/lambda/python:3.12-arm64
-   docker tag public.ecr.aws/lambda/python:3.12-arm64 <ECR_REPO_URL>:latest
+   docker pull public.ecr.aws/lambda/python:3.13-arm64
+   docker tag public.ecr.aws/lambda/python:3.13-arm64 <ECR_REPO_URL>:latest
    docker push <ECR_REPO_URL>:latest
    ```
-

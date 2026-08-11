@@ -212,14 +212,27 @@ Returned to AWS by the Swift worker:
   receipt's words and would fire the stream's canonical-ITEMS trigger
   against a word-less receipt, and at refine time the sections already
   exist with validation/verifier metadata the worker cannot preserve.
-  **Redelivery guard:** the write is skipped entirely (logged
-  `worker_line_items_skip_redelivery`) when the job row was already
-  COMPLETED at fetch time — a redelivered message whose first attempt
-  already reached the cloud pipeline, so the rows may carry enrichment
-  (merchant rollup keys, VALID section provenance, reconciliation against
-  the real summary) that the worker's sparse payload would erase. A first
-  attempt that crashed leaves the job PENDING and emitted no results
-  message, so no enrichment exists and the write still runs.
+  **Redelivery guard:** the single-pass write is *conditional per row*
+  (`addReceiptLineItemsIfWorkerOwned`) — one `PutItem` each, with
+  `attribute_not_exists(PK) OR begins_with(extractor_version,
+  "swift-worker")`, because DynamoDB batch writes cannot carry a
+  condition. Cloud-written rows stamp the bare decoder version
+  (`line-items-blocks-v2`) with no `swift-worker` prefix, so the condition
+  fails on exactly the rows the cloud owns and may have enriched since
+  (merchant name plus the GSI1 rollup keys it unlocks, VALID section
+  provenance, reconciliation against the real summary); a
+  `ConditionalCheckFailedException` is not an error — the row is left
+  alone and counted into `skipped_cloud_owned` on the
+  `worker_line_items_written` log line. This holds for every interleaving,
+  including the one the job-status check misses: a first attempt that
+  crashed *after* sending its `ocr-results` message but *before* marking
+  the job COMPLETED comes back as PENDING. The COMPLETED-at-fetch-time
+  skip (logged `worker_line_items_skip_redelivery`) is kept purely as a
+  fast path — every put in that delivery would be rejected anyway, so the
+  round trips are wasted. The summary-refine pass deliberately uses
+  `replaceReceiptLineItems` instead: it runs after the cloud pipeline, is
+  meant to overwrite, and must also delete stale higher-index rows when
+  the summary-aware decode produces fewer items.
   The `addReceiptSections` protocol surface is currently uncalled;
 - `OCRRoutingDecision` (PENDING) pointing at the JSON;
 - an `ocr-results` SQS message:

@@ -54,7 +54,7 @@ The DynamoDB Stream Processor enables real-time synchronization of place changes
 
 ### 1. Stream Processor Lambda (`stream_processor.py`)
 
-- **Runtime**: Python 3.12
+- **Runtime**: Python 3.13
 - **Memory**: 256 MB
 - **Timeout**: 5 minutes
 - **Trigger**: DynamoDB Stream events

@@ -17,7 +17,7 @@ Validation built in:
      outside SUMMARY / TOTAL_LINE / PAYMENT / TRANSACTION_INFO sections.
 
 Usage:
-    python3.12 scripts/extract_line_items.py [--table ReceiptsTable-dc5be22]
+    python3.13 scripts/extract_line_items.py [--table ReceiptsTable-dc5be22]
         [--out /path/to/items.jsonl] [--limit N] [--receipt IMAGE_ID:RID]
 """
 
