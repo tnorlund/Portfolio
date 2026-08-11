@@ -855,10 +855,45 @@ const AssembleAct: React.FC<ActProps> = ({
       });
     }
 
-    // Erase previous carets by redrawing the word under the leading edge, then
-    // optionally paint new carets. Avoids a full-canvas clear each blink.
+    // Carets are overlaid on ink. Erase at the *previous* leading edge (where
+    // the old caret was drawn), restore every revealed crop that intersects
+    // that strip, then paint carets at the new leading edge.
     const caretOn = caretVisibleAt(t);
-    const eraseCaretAt = (count: number, group: number[]) => {
+    const cropsIntersect = (
+      a: { sx: number; sy: number; sw: number; sh: number },
+      b: { sx: number; sy: number; sw: number; sh: number },
+    ): boolean =>
+      a.sx < b.sx + b.sw &&
+      a.sx + a.sw > b.sx &&
+      a.sy < b.sy + b.sh &&
+      a.sy + a.sh > b.sy;
+
+    const drawWord = (wordIndex: number) => {
+      const r = wordRects[wordIndex];
+      if (!r) {
+        return;
+      }
+      const crop = rectToCrop(r, renderW, renderH);
+      if (!crop) {
+        return;
+      }
+      ctx.drawImage(
+        img,
+        crop.sx,
+        crop.sy,
+        crop.sw,
+        crop.sh,
+        crop.sx,
+        crop.sy,
+        crop.sw,
+        crop.sh,
+      );
+    };
+
+    const eraseCaretAt = (count: number, group: number[], revealed: number) => {
+      if (group.length === 0) {
+        return;
+      }
       const idx = group[Math.min(group.length - 1, count)];
       const r = wordRects[idx];
       if (!r) {
@@ -868,30 +903,27 @@ const AssembleAct: React.FC<ActProps> = ({
       if (!crop) {
         return;
       }
-      // Clear a strip that covers the caret (4px left of the word).
-      ctx.clearRect(crop.sx - 4, crop.sy, 6, crop.sh);
-      if (count > 0) {
-        const under = wordRects[group[Math.min(group.length - 1, count - 1)]];
-        const underCrop = under ? rectToCrop(under, renderW, renderH) : null;
-        if (underCrop) {
-          ctx.drawImage(
-            img,
-            underCrop.sx,
-            underCrop.sy,
-            underCrop.sw,
-            underCrop.sh,
-            underCrop.sx,
-            underCrop.sy,
-            underCrop.sw,
-            underCrop.sh,
-          );
+      const strip = {
+        sx: crop.sx - 4,
+        sy: crop.sy,
+        sw: 6,
+        sh: crop.sh,
+      };
+      ctx.clearRect(strip.sx, strip.sy, strip.sw, strip.sh);
+      // Heal any ink the strip removed — not just the previous logical word.
+      const healThrough = Math.max(revealed, count);
+      for (let i = 0; i < healThrough && i < group.length; i += 1) {
+        const word = wordRects[group[i]];
+        const wordCrop = word ? rectToCrop(word, renderW, renderH) : null;
+        if (wordCrop && cropsIntersect(wordCrop, strip)) {
+          drawWord(group[i]);
         }
       }
     };
 
-    if (prevCaretOnRef.current || caretOn) {
+    if (prevCaretOnRef.current) {
       groups.forEach((g, gi) => {
-        eraseCaretAt(nextCounts[gi] ?? 0, g);
+        eraseCaretAt(prevCounts[gi] ?? 0, g, nextCounts[gi] ?? 0);
       });
     }
     if (caretOn) {
