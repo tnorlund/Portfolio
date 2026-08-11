@@ -348,21 +348,24 @@ df.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX"  // Produces Z
 
 ### Export Worker Python Environment
 
-CoreML tools has version constraints that don't work with bleeding-edge Python:
-- **Python 3.14**: Not supported (typing compatibility issues)
-- **Torch 2.9+**: Not tested with coremltools 9.0
-- **scikit-learn 1.6+**: Not supported (max 1.5.1)
+The worker dependency set is intentionally separate from the LayoutLM training
+metrics dependencies:
+- **coremltools 9.0** supports PyTorch through 2.7.0.
+- **scikit-learn** is not installed in the worker. CoreMLtools 9.0 supports it
+  only through 1.5.1, while Python 3.13 macOS ARM wheels start after that
+  supported range. The worker converts PyTorch models and does not use the
+  scikit-learn converter.
+- The `training` extra installs scikit-learn 1.6+ and `seqeval` only in training
+  environments.
 
 Create a compatible venv using Python 3.13:
 ```bash
 # Create venv with compatible Python version
 /usr/local/bin/python3.13 -m venv ~/.coreml-venv
 
-# Install dependencies
-~/.coreml-venv/bin/pip install coremltools 'torch<2.8' transformers boto3
-
-# Install local packages (editable mode for development)
-~/.coreml-venv/bin/pip install -e receipt_layoutlm -e receipt_dynamo
+# Install the local runtime and the isolated CoreML worker dependencies.
+# Quoting protects the extras syntax in zsh.
+~/.coreml-venv/bin/pip install -e receipt_dynamo -e 'receipt_layoutlm[coreml]'
 
 # Run export worker
 ~/.coreml-venv/bin/layoutlm-cli export-worker --once \
@@ -370,7 +373,9 @@ Create a compatible venv using Python 3.13:
   --results-queue-url "<results-queue-url>"
 ```
 
-**Note:** Even with Python 3.13, you may see warnings about version compatibility. These are typically non-fatal.
+Do not add the `training` extra to this venv. A clean worker install resolves
+CoreMLtools 9.0 with PyTorch 2.7.0 and contains no scikit-learn installation or
+unsupported-version warning.
 
 ## QA Agent Evaluation Workflow
 

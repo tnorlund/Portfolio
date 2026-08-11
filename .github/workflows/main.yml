@@ -32,27 +32,29 @@ jobs:
         with:
           clean: true
 
+      - name: Resolve Python
+        run: |
+          PYTHON_BIN="$(scripts/resolve_python_runtime.sh "$PYTHON_VERSION")"
+          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
+          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
+          "$PYTHON_BIN" --version
+
       - name: Compile all Lambda handler sources
         run: |
-          PYTHON=$(command -v "python${PYTHON_VERSION}")
-          if [ -z "$PYTHON" ]; then
-            echo "::error::Python ${PYTHON_VERSION} not found on PATH"
-            exit 1
-          fi
           # Compile every .py file under infra/ — catches SyntaxError before
           # docker build copies broken code into a Lambda image. Specifically
           # guards against `keyword argument repeated`-class regressions like
           # the one that crashed unified_evaluator after #861's rebase.
           find infra -name '*.py' -not -path '*/node_modules/*' -not -path '*/.venv*/*' -print0 \
-            | xargs -0 "$PYTHON" -m py_compile
+            | xargs -0 "$PYTHON_BIN" -m py_compile
 
       - name: Verify Python version declarations
-        run: python3.13 scripts/check_python_version_consistency.py
+        run: |
+          "$PYTHON_BIN" scripts/check_python_version_consistency.py
 
       - name: Test inbound email sender authentication
         run: |
-          PYTHON=$(command -v "python${PYTHON_VERSION}")
-          "$PYTHON" -m venv .venv-email-receipt
+          "$PYTHON_BIN" -m venv .venv-email-receipt
           source .venv-email-receipt/bin/activate
           python -m pip install --quiet boto3 pytest
           python -m pytest -q infra/tests/test_email_receipt_inbox_handler.py
@@ -87,24 +89,16 @@ jobs:
 
       - name: Setup Python
         run: |
-          # Detect the repository's pinned Python minor (framework or Homebrew).
-          FRAMEWORK_BIN="/Library/Frameworks/Python.framework/Versions/${PYTHON_VERSION}/bin"
-          if [ -x "$FRAMEWORK_BIN/python${PYTHON_VERSION}" ]; then
-            echo "$FRAMEWORK_BIN" >> "$GITHUB_PATH"
-          elif [ -x "/opt/homebrew/bin/python${PYTHON_VERSION}" ]; then
-            echo "/opt/homebrew/bin" >> $GITHUB_PATH
-          fi
+          PYTHON_BIN="$(scripts/resolve_python_runtime.sh "$PYTHON_VERSION")"
+          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
+          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
+          "$PYTHON_BIN" --version
 
       - name: Install and test
         run: |
           # Never fall back to the system interpreter: packages and Lambda use
           # the same Python minor as CI.
-          PYTHON=$(command -v "python${PYTHON_VERSION}")
-          if [ -z "$PYTHON" ]; then
-            echo "::error::Python ${PYTHON_VERSION} not found on PATH"
-            exit 1
-          fi
-          "$PYTHON" -m venv .venv-${{ matrix.package }}
+          "$PYTHON_BIN" -m venv .venv-${{ matrix.package }}
           source .venv-${{ matrix.package }}/bin/activate
           pip install --upgrade pip wheel
 
@@ -221,21 +215,14 @@ jobs:
 
       - name: Setup Python
         run: |
-          FRAMEWORK_BIN="/Library/Frameworks/Python.framework/Versions/${PYTHON_VERSION}/bin"
-          if [ -x "$FRAMEWORK_BIN/python${PYTHON_VERSION}" ]; then
-            echo "$FRAMEWORK_BIN" >> "$GITHUB_PATH"
-          elif [ -x "/opt/homebrew/bin/python${PYTHON_VERSION}" ]; then
-            echo "/opt/homebrew/bin" >> $GITHUB_PATH
-          fi
+          PYTHON_BIN="$(scripts/resolve_python_runtime.sh "$PYTHON_VERSION")"
+          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
+          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
+          "$PYTHON_BIN" --version
 
       - name: Install editable local stack
         run: |
-          PYTHON=$(command -v "python${PYTHON_VERSION}")
-          if [ -z "$PYTHON" ]; then
-            echo "::error::Python ${PYTHON_VERSION} not found on PATH"
-            exit 1
-          fi
-          "$PYTHON" -m venv .venv-repository-tests
+          "$PYTHON_BIN" -m venv .venv-repository-tests
           source .venv-repository-tests/bin/activate
           pip install --upgrade pip wheel
           pip install -e receipt_dynamo

@@ -11,7 +11,7 @@ Full-stack applications demonstrating modern web development, machine learning, 
 ```bash
 # Required
 node >= 18.0.0
-python >= 3.12
+python >= 3.13
 aws-cli (configured)
 
 # Optional

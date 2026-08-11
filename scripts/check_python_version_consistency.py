@@ -28,6 +28,30 @@ SCAN_NAMES = {
     "pyrightconfig.json",
 }
 
+# Markdown outside these locations is maintained operational documentation and
+# must agree with the active runtime baseline. These directories contain frozen
+# handoffs, review evidence, or explicitly archived material whose version
+# references describe the repository at an earlier point in time.
+HISTORICAL_DOCUMENT_ROOTS = (
+    Path(".review-loop"),
+    Path("docs/archive"),
+    Path("docs/handoff"),
+    Path("docs/handoffs"),
+    Path("docs/review-loops"),
+)
+
+# Repository-local environments and generated dependency trees can contain
+# third-party Markdown that is not maintained by this repository.
+IGNORED_DIRECTORY_NAMES = {
+    ".git",
+    ".mypy_cache",
+    ".next",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "node_modules",
+}
+
 # This cleanup script names already-deployed Python 3.12 resources. Those
 # physical identifiers must remain intact until the old resources are removed.
 LEGACY_RESOURCE_FILES = {
@@ -46,13 +70,34 @@ OLD_VERSION_TOKEN = re.compile(
 )
 OLD_VERSION_DECLARATION = re.compile(
     r"(?:python[-_]version|python_versions|requires-python)"
-    r"[^\n]*3\.(?:8|9|10|11|12)\b"
+    r"[^\n]*3\.(?:8|9|10|11|12)\b",
+    re.IGNORECASE,
+)
+OLD_DOCUMENT_VERSION_TOKEN = re.compile(
+    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?3\.(?:8|9|10|11|12)\b",
+    re.IGNORECASE,
 )
 PYTHON_CLASSIFIER = re.compile(r"^Programming Language :: Python :: (3\.\d+)$")
 
 
 def _is_scannable(path: Path) -> bool:
     return path.name.startswith("Dockerfile") or path.suffix in SCAN_SUFFIXES
+
+
+def _is_ignored_path(path: Path) -> bool:
+    relative = _relative(path)
+    return any(
+        part in IGNORED_DIRECTORY_NAMES or part.startswith(".venv")
+        for part in relative.parts
+    )
+
+
+def _is_historical_document(path: Path) -> bool:
+    relative = _relative(path)
+    return any(
+        relative == root or root in relative.parents
+        for root in HISTORICAL_DOCUMENT_ROOTS
+    )
 
 
 def _active_runtime_files() -> list[Path]:
@@ -62,6 +107,14 @@ def _active_runtime_files() -> list[Path]:
         if not root.exists():
             continue
         paths.extend(path for path in root.rglob("*") if _is_scannable(path))
+
+    paths.extend(
+        path
+        for path in REPOSITORY_ROOT.rglob("*.md")
+        if path.is_file()
+        and not _is_ignored_path(path)
+        and not _is_historical_document(path)
+    )
     return sorted({path for path in paths if path.is_file()})
 
 
@@ -76,10 +129,15 @@ def _check_runtime_files() -> list[str]:
         if relative in LEGACY_RESOURCE_FILES:
             continue
         text = path.read_text(encoding="utf-8")
-        for pattern in (OLD_VERSION_TOKEN, OLD_VERSION_DECLARATION):
+        patterns = [OLD_VERSION_TOKEN, OLD_VERSION_DECLARATION]
+        if path.suffix == ".md":
+            patterns.append(OLD_DOCUMENT_VERSION_TOKEN)
+        for pattern in patterns:
             match = pattern.search(text)
             if match:
-                errors.append(f"{relative}: legacy Python target {match.group(0)!r}")
+                errors.append(
+                    f"{relative}: legacy Python target {match.group(0)!r}"
+                )
                 break
     return errors
 
@@ -92,7 +150,9 @@ def _check_tool_version(
     expected: object,
 ) -> None:
     if value is not None and value != expected:
-        errors.append(f"{relative}: {tool_name} is {value!r}; expected {expected!r}")
+        errors.append(
+            f"{relative}: {tool_name} is {value!r}; expected {expected!r}"
+        )
 
 
 def _check_pyprojects() -> list[str]:

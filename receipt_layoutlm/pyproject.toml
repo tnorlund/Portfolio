@@ -24,7 +24,9 @@ dependencies = [
   # Pin to the stricter 2.6 floor so anything below silently breaks the
   # resume-from-checkpoint path. Keep transformers <6.0 to avoid blind
   # dependabot bumps across the next major.
-  "torch>=2.6.0,<2.8",
+  # coremltools 9.0 validates PyTorch through 2.7.0. Keep the shared runtime
+  # inside that tested range so training checkpoints remain exportable.
+  "torch>=2.6.0,<=2.7.0",
   "transformers>=4.46.0,<6.0.0",
   "datasets>=2.19.0,<6.0.0",
   "numpy>=1.26.0,<3.0.0",
@@ -35,13 +37,20 @@ dependencies = [
   "filelock>=3.13.0,<4.0.0",
   "Pillow>=10.0.0,<13.0.0",
   "sentencepiece>=0.1.99,<1.0.0",
-  "seqeval>=1.2.2,<2.0.0",
-  # 1.6 is the first release with CPython 3.13 wheels.
-  "scikit-learn>=1.6.0,<2.0.0",
   "accelerate>=0.21.0,<2.0.0",
 ]
 
 [project.optional-dependencies]
+training = [
+  # scikit-learn 1.6 is the first release with CPython 3.13 wheels. Keep
+  # these metrics-only dependencies out of the CoreML worker environment:
+  # coremltools 9.0 supports scikit-learn only through 1.5.1.
+  "seqeval>=1.2.2,<2.0.0",
+  "scikit-learn>=1.6.0,<2.0.0",
+]
+coreml = [
+  "coremltools==9.0",
+]
 dev = [
   "pytest>=7.0.0",
   "pytest-cov>=4.0.0",
@@ -49,6 +58,8 @@ dev = [
   "isort==8.0.1",
   "mypy>=1.19.0",
   "flake8>=7.0.0",
+  "seqeval>=1.2.2,<2.0.0",
+  "scikit-learn>=1.6.0,<2.0.0",
 ]
 
 [project.scripts]

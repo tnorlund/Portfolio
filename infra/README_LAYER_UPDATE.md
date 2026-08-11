@@ -39,7 +39,7 @@ The tool:
 
 1. **Pulumi CLI** installed and authenticated
 2. **AWS CLI** configured with appropriate permissions
-3. **Python 3.8+** with required packages:
+3. **Python 3.13+** with required packages:
    ```bash
    pip install boto3 pyyaml
    ```
