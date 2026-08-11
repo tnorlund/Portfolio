@@ -16,7 +16,9 @@ def test_training_image_uses_python313_for_package_install() -> None:
     create_env = dockerfile.index('"python=${PYTHON_VERSION}" pip wheel')
     activate_env = dockerfile.index('ENV PATH="${PYTHON_ENV}/bin:${PATH}"')
     install_dynamo = dockerfile.index("/opt/ml/code/receipt_dynamo")
-    install_layoutlm = dockerfile.index('"/opt/ml/code/receipt_layoutlm[training]"')
+    install_layoutlm = dockerfile.index(
+        '"/opt/ml/code/receipt_layoutlm[training]"'
+    )
 
     assert "ARG PYTHON_VERSION=3.13" in dockerfile
     assert " AS training-runtime" in dockerfile
@@ -34,8 +36,9 @@ def test_training_image_installs_matching_cuda_torch_wheel() -> None:
     assert "torch.version.cuda == '12.4'" in dockerfile
     assert "sys.version_info[:2] == (3, 13)" in dockerfile
     assert "python -m pip check" in dockerfile
-    assert "import receipt_dynamo, receipt_layoutlm, seqeval, sklearn, torch" in (
-        dockerfile
+    assert (
+        "import receipt_dynamo, receipt_layoutlm, seqeval, sklearn, torch"
+        in (dockerfile)
     )
 
 
@@ -43,6 +46,9 @@ def test_epoch_eval_reuses_the_training_image() -> None:
     """Epoch evaluation must inherit the corrected training runtime."""
     component = EPOCH_EVAL_COMPONENT.read_text()
 
-    assert "This reuses the *existing* LayoutLM training container image" in component
+    assert (
+        "This reuses the *existing* LayoutLM training container image"
+        in component
+    )
     assert '"ECR_IMAGE_URI": f"{args[0]}:latest"' in component
     assert '"ImageUri": os.environ["ECR_IMAGE_URI"]' in component
