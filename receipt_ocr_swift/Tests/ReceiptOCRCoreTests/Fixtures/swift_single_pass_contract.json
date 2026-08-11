@@ -939,7 +939,7 @@
           "line_ids": [
             3
           ],
-          "reconciliation_status": "no-baseline",
+          "reconciliation_status": "match",
           "model_source": "swift-worker-v1",
           "extractor_version": "swift-worker-v1+line-items-blocks-v2",
           "raw_text": "ORGANIC 3.99"
@@ -949,11 +949,11 @@
       "printed_subtotal": null,
       "should_reocr_items_zone": false,
       "reconciliation": {
-        "status": "no-baseline",
-        "item_sum": null,
-        "baseline": null,
-        "baseline_source": null,
-        "baseline_figures_agreeing": null
+        "status": "match",
+        "item_sum": 3.99,
+        "baseline": 3.99,
+        "baseline_source": "grand_total_minus_tax",
+        "baseline_figures_agreeing": 1
       }
     }
   ],

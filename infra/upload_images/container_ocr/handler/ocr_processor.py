@@ -1786,6 +1786,14 @@ class OCRProcessor:
         # baseline agreement is stamped on every row so worker rows carry
         # the same #1324 diagnostics as cloud-recomputed ones.
         reconciliation = receipt_data.get("reconciliation") or {}
+        if not isinstance(reconciliation, dict):
+            logger.warning(
+                "Ignoring malformed worker reconciliation for %s:%s: %r",
+                image_id,
+                receipt_id,
+                reconciliation,
+            )
+            reconciliation = {}
         figures_agreeing = reconciliation.get("baseline_figures_agreeing")
         if not isinstance(figures_agreeing, int):
             figures_agreeing = None
