@@ -87,15 +87,24 @@ if runtime="$(resolve_runtime)"; then
 fi
 
 printf 'Installing Python %s with Homebrew...\n' "$required_minor" >&2
+install_status=0
 HOMEBREW_NO_AUTO_UPDATE=1 \
 HOMEBREW_NO_INSTALL_CLEANUP=1 \
-    "$brew_binary" install "python@${required_minor}" >&2
+    "$brew_binary" install "python@${required_minor}" >&2 \
+    || install_status=$?
 
 if runtime="$(resolve_runtime)"; then
+    if [[ "$install_status" -ne 0 ]]; then
+        printf 'Homebrew post-install exited %s; using validated runtime %s\n' \
+            "$install_status" "$runtime" >&2
+    fi
     printf '%s\n' "$runtime"
     exit 0
 fi
 
-printf 'Homebrew completed, but Python %s is still unavailable\n' \
-    "$required_minor" >&2
-exit 1
+printf 'Homebrew exited %s and Python %s is still unavailable\n' \
+    "$install_status" "$required_minor" >&2
+if [[ "$install_status" -eq 0 ]]; then
+    exit 1
+fi
+exit "$install_status"

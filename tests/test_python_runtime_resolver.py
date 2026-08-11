@@ -73,7 +73,8 @@ def test_ensure_runtime_serializes_homebrew_bootstrap(
         "#!/usr/bin/env bash\n"
         'printf \'%s\\n\' "$*" >> "$FAKE_BREW_ARGUMENTS"\n'
         "sleep 0.2\n"
-        'touch "$FAKE_RUNTIME_READY"\n',
+        'touch "$FAKE_RUNTIME_READY"\n'
+        'exit "${FAKE_BREW_STATUS:-0}"\n',
         encoding="utf-8",
     )
     fake_resolver.chmod(0o755)
@@ -83,6 +84,7 @@ def test_ensure_runtime_serializes_homebrew_bootstrap(
         **dict(os.environ),
         "FAKE_RUNTIME_READY": str(ready_file),
         "FAKE_BREW_ARGUMENTS": str(brew_arguments),
+        "FAKE_BREW_STATUS": "17",
         "HOMEBREW_BIN": str(fake_brew),
         "PYTHON_RUNTIME_RESOLVER": str(fake_resolver),
         "PYTHON_INSTALL_LOCK_ROOT": str(tmp_path),
