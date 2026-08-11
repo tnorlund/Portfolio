@@ -75,6 +75,13 @@ import CoreGraphics
             lineItemCalls.append((imageId, receiptId, items.count))
             return 0
         }
+        func replaceReceiptLineItems(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?, merchantName: String?
+        ) async throws {
+            lineItemCalls.append((imageId, receiptId, items.count))
+        }
     }
 
     /// Emits the pinned single-pass contract fixture, whose `receipts[0]`

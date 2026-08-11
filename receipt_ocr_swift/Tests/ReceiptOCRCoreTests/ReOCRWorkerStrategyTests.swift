@@ -128,6 +128,11 @@ import CoreGraphics
             items: [ReceiptLineItemPayload], extractedAt: Date,
             baselineFiguresAgreeing: Int?
         ) async throws {}
+        func replaceReceiptLineItems(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?, merchantName: String?
+        ) async throws {}
         func addReceiptLineItemsIfWorkerOwned(
             imageId: String, receiptId: Int,
             items: [ReceiptLineItemPayload], extractedAt: Date,

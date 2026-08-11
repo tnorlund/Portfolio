@@ -30,5 +30,27 @@
     "quantity": { "N": "2.0" },
     "unit_price": { "N": "1.99" },
     "baseline_figures_agreeing": { "N": "2" }
+  },
+  "line_item_with_merchant": {
+    "PK": { "S": "IMAGE#12345678-1234-4123-8123-123456789012" },
+    "SK": { "S": "RECEIPT#00001#LINE_ITEM#00003" },
+    "TYPE": { "S": "RECEIPT_LINE_ITEM" },
+    "name": { "S": "Org. Bananas 2/$3" },
+    "price": { "S": "3.00" },
+    "line_ids": { "L": [{ "N": "9" }] },
+    "extractor_version": { "S": "swift-worker-v1+line-items-blocks-v2" },
+    "extracted_at": { "S": "2026-08-11T00:00:00.000+00:00" },
+    "is_discount": { "BOOL": false },
+    "collapsed_banding": { "BOOL": false },
+    "name_quality": { "S": "ok" },
+    "raw_text": { "S": "Org. Bananas 2/$3  3.00" },
+    "source_section_status": { "S": "PENDING" },
+    "source_model_source": { "S": "swift-worker-v1" },
+    "reconciliation_status": { "S": "match" },
+    "merchant_name": { "S": "Sprouts Farmers Market #123" },
+    "GSI1PK": { "S": "MERCHANT#sprouts-farmers-market-123" },
+    "GSI1SK": {
+      "S": "LINE_ITEM#ORG BANANAS 2 3#12345678-1234-4123-8123-123456789012#00001#00003"
+    }
   }
 }

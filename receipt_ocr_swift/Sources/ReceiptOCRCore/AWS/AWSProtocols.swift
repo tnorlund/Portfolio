@@ -44,10 +44,16 @@ public protocol DynamoClientProtocol {
 
     /// Batch-put worker-decoded sections (upsert semantics, matching the
     /// cloud ingest's batch put "so an SQS redelivery rewrites rather
-    /// than raising"). NOT called at single-pass time — a section write
-    /// before the receipt's words exist would fire the stream's canonical
-    /// ITEMS trigger and cause a premature cloud recompute against a
-    /// word-less receipt. The summary-refine pass is the caller.
+    /// than raising").
+    ///
+    /// Not called anywhere yet. Two reasons the worker does not write
+    /// sections today: at single-pass time a section write precedes the
+    /// receipt's words and would fire the stream's canonical-ITEMS
+    /// trigger against a word-less receipt; at summary-refine time the
+    /// sections already exist and may carry VALID status or verifier
+    /// provenance, which this blind put would erase. Any future caller
+    /// needs read-modify-write semantics — read the existing section,
+    /// carry its validation metadata forward, then write.
     func addReceiptSections(
         imageId: String, receiptId: Int,
         sections: [ReceiptSectionPayload], createdAt: Date
@@ -66,6 +72,25 @@ public protocol DynamoClientProtocol {
         baselineFiguresAgreeing: Int?
     ) async throws
 
+    /// Make the receipt's stored line items EXACTLY `items`: put the new
+    /// rows, then delete any existing `LINE_ITEM` row the new set does
+    /// not cover.
+    ///
+    /// The refine pass needs this rather than `addReceiptLineItems`
+    /// because its summary-aware decode can produce FEWER items than the
+    /// cloud decode it supersedes (a real summary filtering a spurious
+    /// total, say). A plain batch put only overwrites the indices it
+    /// writes, so the higher stale indices would survive as phantom
+    /// items — and an empty decode would be a no-op that changes
+    /// nothing while the job is marked completed.
+    ///
+    /// `merchantName` rides along because the refine pass runs after
+    /// cloud merchant resolution; see `ReceiptStructureItems`.
+    func replaceReceiptLineItems(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?, merchantName: String?
+    ) async throws
     /// Per-item conditional put of worker-decoded line items: a row is
     /// written only when it does not exist yet or the worker itself wrote
     /// it (`extractor_version` begins with

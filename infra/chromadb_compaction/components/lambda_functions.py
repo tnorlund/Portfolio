@@ -632,6 +632,19 @@ class HybridLambdaDeployment(ComponentResource):
                     "TRIGGER_REOCR_FUNCTION_NAME": (
                         f"trigger-reocr-{stack}-trigger-reocr"
                     ),
+                    # LINE_ITEM_REFINE (Tier 3): deterministic queue NAME
+                    # (the queue is created later in __main__ by
+                    # UploadImages, so no resource ref is possible); the
+                    # processor resolves the URL at runtime. Rollout is
+                    # gated: an outdated worker binary fails refine jobs
+                    # noisily, so enable only after workers update.
+                    "OCR_JOB_QUEUE_NAME": (f"upload-images-{stack}-ocr-queue"),
+                    "ENABLE_LINE_ITEM_REFINE": (
+                        pulumi.Config("chromadb").get(
+                            "enable-line-item-refine"
+                        )
+                        or "false"
+                    ),
                 }
             },
             description=(
@@ -672,6 +685,33 @@ class HybridLambdaDeployment(ComponentResource):
                             "Resource": (
                                 "arn:aws:lambda:*:*:function:"
                                 f"trigger-reocr-{stack}-trigger-reocr"
+                            ),
+                        }
+                    ],
+                }
+            ),
+            opts=ResourceOptions(parent=self),
+        )
+
+        # LINE_ITEM_REFINE (Tier 3): the updater enqueues Mac-worker
+        # refine jobs on the OCR job queue (deterministic name, wildcard
+        # account/region — the queue is created later in __main__).
+        aws.iam.RolePolicy(
+            f"{name}-line-item-refine-queue-policy",
+            role=self.lambda_role.id,
+            policy=json.dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Action": [
+                                "sqs:SendMessage",
+                                "sqs:GetQueueUrl",
+                            ],
+                            "Resource": (
+                                "arn:aws:sqs:*:*:"
+                                f"upload-images-{stack}-ocr-queue"
                             ),
                         }
                     ],

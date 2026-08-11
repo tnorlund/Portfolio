@@ -208,10 +208,10 @@ Returned to AWS by the Swift worker:
   (`failed_write_line_items`) and ingest still persists the same rows
   from the JSON payload (delete-then-add), which remains the staleness
   reconciler of record. Sections are deliberately NOT written by the
-  worker at single-pass time: a section write before the receipt's words
-  exist would fire the stream's canonical-ITEMS trigger and cause a
-  premature cloud recompute against a word-less receipt. The
-  `addReceiptSections` surface exists for the summary-refine pass.
+  worker at all: at single-pass time a section write precedes the
+  receipt's words and would fire the stream's canonical-ITEMS trigger
+  against a word-less receipt, and at refine time the sections already
+  exist with validation/verifier metadata the worker cannot preserve.
   **Redelivery guard:** the single-pass write is *conditional per row*
   (`addReceiptLineItemsIfWorkerOwned`) — one `PutItem` each, with
   `attribute_not_exists(PK) OR begins_with(extractor_version,
@@ -229,12 +229,46 @@ Returned to AWS by the Swift worker:
   the job COMPLETED comes back as PENDING. The COMPLETED-at-fetch-time
   skip (logged `worker_line_items_skip_redelivery`) is kept purely as a
   fast path — every put in that delivery would be rejected anyway, so the
-  round trips are wasted. The summary-refine pass deliberately keeps using
-  the unconditional `addReceiptLineItems`: it runs after the cloud
-  pipeline and is meant to overwrite;
+  round trips are wasted. The summary-refine pass deliberately uses
+  `replaceReceiptLineItems` instead: it runs after the cloud pipeline, is
+  meant to overwrite, and must also delete stale higher-index rows when
+  the summary-aware decode produces fewer items.
+  The `addReceiptSections` protocol surface is currently uncalled;
 - `OCRRoutingDecision` (PENDING) pointing at the JSON;
 - an `ocr-results` SQS message:
   `{image_id, job_id, s3_key, s3_bucket, receipt_count}`.
+
+### LINE_ITEM_REFINE (second worker pass)
+
+When a receipt's summary is written, the line-item stream Lambda —
+gated by `ENABLE_LINE_ITEM_REFINE` — enqueues a `LINE_ITEM_REFINE`
+OCRJob whose `s3_key` points at the receipt's ORIGINAL OCR-result JSON
+and which carries `refine_summary` (the real printed figures) plus
+`refine_merchant_name`. The worker does no OCR for these jobs: it
+re-decodes the stored JSON — the same 1-based word universe the
+persisted rows reference — with the graded baseline, then writes LINE
+ITEMS directly via `ReceiptStructureItems`.
+
+The pass writes NO sections. The cloud recompute that runs at summary
+time already performs the same deterministic boundary extension and
+persists the widened section itself through `update_receipt_section`,
+which preserves validation status and verifier provenance the worker
+cannot read; a batch put from the worker would stamp those sections
+back to PENDING. It would also fire the stream's canonical-ITEMS
+trigger and re-invoke the very Lambda that enqueued the job. With line
+items only, the refine pass emits no stream event and cannot retrigger
+itself.
+
+Two source shapes are accepted: a FIRST_PASS result's `receipts` entry
+matching `cluster_id`, or — for a REFINEMENT result, which is already
+scoped to one receipt — the top-level `lines` array under the job's own
+`receipt_id`. Enqueue is capped at 3 attempts per receipt; a PENDING
+refine job suppresses re-enqueue, and so does an existing non-FAILED
+job carrying the SAME summary figures (a second pass is only worth
+running when the summary actually changed). An outdated worker decodes
+the unknown job_type as FIRST_PASS and fails the job trying to OCR a
+JSON pointer — noisy but not destructive; enable the flag only after
+worker binaries update.
 
 ## The OCR JSON schema (Swift → Python)
 

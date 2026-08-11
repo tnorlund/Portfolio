@@ -4,6 +4,11 @@ public enum OCRJobType: String {
     case firstPass = "FIRST_PASS"
     case refinement = "REFINEMENT"
     case regionalReocr = "REGIONAL_REOCR"
+    /// Second worker pass: re-decode line items once the receipt's
+    /// summary exists. The job's s3_key points at the receipt's ORIGINAL
+    /// OCR-result JSON, never an image — the refine decode must run over
+    /// the same word universe as the persisted rows.
+    case lineItemRefine = "LINE_ITEM_REFINE"
 }
 
 /// Preprocessing strategy applied to the cropped region before Vision OCR.
@@ -49,6 +54,13 @@ public struct OCRJob: Equatable {
     /// Informational string written by the Python side describing what
     /// triggered/selected the strategy. Passed through untouched.
     public var reocrMechanism: String?
+    /// LINE_ITEM_REFINE: the real summary (from ReceiptSummary), carried
+    /// on the job so the refine decode uses the graded baseline instead
+    /// of the worker's own scanned figures.
+    public var refineSummary: LineItemSummary?
+    /// LINE_ITEM_REFINE: the resolved merchant, for the section assigner's
+    /// merchant-conditioned prior.
+    public var refineMerchantName: String?
 
     public init(
         imageId: String,
@@ -63,7 +75,9 @@ public struct OCRJob: Equatable {
         reocrRegion: ReOCRRegion? = nil,
         reocrReason: String? = nil,
         reocrStrategy: ReOCRStrategy = .plain,
-        reocrMechanism: String? = nil
+        reocrMechanism: String? = nil,
+        refineSummary: LineItemSummary? = nil,
+        refineMerchantName: String? = nil
     ) {
         self.imageId = imageId
         self.jobId = jobId
@@ -78,6 +92,8 @@ public struct OCRJob: Equatable {
         self.reocrReason = reocrReason
         self.reocrStrategy = reocrStrategy
         self.reocrMechanism = reocrMechanism
+        self.refineSummary = refineSummary
+        self.refineMerchantName = refineMerchantName
     }
 }
 
@@ -133,6 +149,28 @@ public extension OCRJob {
             item["reocr_mechanism"] = ["NULL": true]
         }
 
+        if let summary = refineSummary {
+            func figure(_ value: Double?) -> [String: Any] {
+                if let value { return ["N": "\(value)"] }
+                return ["NULL": true]
+            }
+            item["refine_summary"] = [
+                "M": [
+                    "subtotal": figure(summary.subtotal),
+                    "tax": figure(summary.tax),
+                    "grand_total": figure(summary.grandTotal),
+                ]
+            ]
+        } else {
+            item["refine_summary"] = ["NULL": true]
+        }
+
+        if let merchant = refineMerchantName {
+            item["refine_merchant_name"] = ["S": merchant]
+        } else {
+            item["refine_merchant_name"] = ["NULL": true]
+        }
+
         return item
     }
 
@@ -170,6 +208,22 @@ public extension OCRJob {
             )
         }
 
+        func optionalSummary(_ key: String) -> LineItemSummary? {
+            guard let dict = item[key] as? [String: Any] else { return nil }
+            if let isNull = dict["NULL"] as? Bool, isNull { return nil }
+            guard let map = dict["M"] as? [String: Any] else { return nil }
+            func figure(_ field: String) -> Double? {
+                guard let f = map[field] as? [String: Any],
+                      let n = f["N"] as? String else { return nil }
+                return Double(n)
+            }
+            return LineItemSummary(
+                subtotal: figure("subtotal"),
+                tax: figure("tax"),
+                grandTotal: figure("grand_total")
+            )
+        }
+
         let pk = try str("PK")
         let sk = try str("SK")
         guard let imageId = pk.split(separator: "#").last.map(String.init) else { throw DynamoMapError.invalid("PK") }
@@ -198,7 +252,9 @@ public extension OCRJob {
             reocrReason: optionalString("reocr_reason"),
             // Contract: absent (or unrecognized) reocr_strategy → plain.
             reocrStrategy: optionalString("reocr_strategy").flatMap(ReOCRStrategy.init(rawValue:)) ?? .plain,
-            reocrMechanism: optionalString("reocr_mechanism")
+            reocrMechanism: optionalString("reocr_mechanism"),
+            refineSummary: optionalSummary("refine_summary"),
+            refineMerchantName: optionalString("refine_merchant_name")
         )
     }
 }

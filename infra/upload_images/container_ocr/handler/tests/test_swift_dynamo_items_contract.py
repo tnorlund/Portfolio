@@ -22,6 +22,8 @@ from pathlib import Path
 
 from receipt_dynamo.entities.receipt_line_item import (
     item_to_receipt_line_item,
+    normalize_product_text,
+    slugify_merchant,
 )
 from receipt_dynamo.entities.receipt_section import item_to_receipt_section
 
@@ -80,6 +82,27 @@ def test_swift_line_item_parses_into_a_valid_entity():
     assert "GSI1PK" not in item.to_item()
 
 
+def test_swift_merchant_line_item_parses_into_a_valid_entity():
+    """The refine pass carries the cloud-resolved merchant back.
+
+    The refine worker replaces rows the cloud already enriched, so it
+    re-emits ``merchant_name`` and the sparse merchant rollup keys. Those
+    keys are built by hand in Swift (``MerchantKeys``); this asserts the
+    result is exactly what ``slugify_merchant`` /
+    ``normalize_product_text`` produce.
+    """
+    item = item_to_receipt_line_item(_fixture()["line_item_with_merchant"])
+    assert item.item_index == 3
+    assert item.merchant_name == "Sprouts Farmers Market #123"
+    assert item.name_quality == "ok"
+    assert slugify_merchant(item.merchant_name) == "sprouts-farmers-market-123"
+    assert normalize_product_text(item.name) == "ORG BANANAS 2 3"
+    assert item.gsi1_key == {
+        "GSI1PK": {"S": "MERCHANT#sprouts-farmers-market-123"},
+        "GSI1SK": {"S": (f"LINE_ITEM#ORG BANANAS 2 3#{IMAGE_ID}#00001#00003")},
+    }
+
+
 def test_swift_line_item_round_trips_through_the_python_writer():
     """The Swift item and the Python writer's item agree key-for-key.
 
@@ -104,6 +127,15 @@ def test_swift_line_item_round_trips_through_the_python_writer():
         fixture_item
     )
     assert entity._extracted_at_iso().startswith("2026-08-11T00:00:00")
+
+    # Same round trip for the merchant-enriched row the refine pass
+    # writes: this is what proves the Swift GSI serialization matches the
+    # Python writer byte-for-byte rather than merely being parseable.
+    merchant_item = _fixture()["line_item_with_merchant"]
+    merchant_entity = item_to_receipt_line_item(merchant_item)
+    assert _without_timestamps(
+        merchant_entity.to_item()
+    ) == _without_timestamps(merchant_item)
 
     fixture_section = _fixture()["section"]
     section = item_to_receipt_section(fixture_section)

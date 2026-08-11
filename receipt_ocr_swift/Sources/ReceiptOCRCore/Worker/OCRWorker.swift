@@ -266,6 +266,205 @@ public final class OCRWorker {
     }
     #endif
 
+    enum RefineOutcome: Equatable {
+        /// Structure written and job completed — delete the message.
+        case completed
+        /// The job can never succeed (bad payload, receipt not in the
+        /// JSON, decode failure) — job FAILED, delete the message.
+        case permanentFailure
+        /// Transient (S3/Dynamo hiccup) — leave the message for
+        /// redelivery.
+        case transient
+    }
+
+    /// Second worker pass (LINE_ITEM_REFINE): decode the receipt's STORED
+    /// OCR JSON — the same word universe ingest persisted — with the real
+    /// summary carried on the job, then write LINE ITEMS straight to
+    /// DynamoDB.
+    ///
+    /// Line items ONLY — deliberately no section write. The cloud
+    /// recompute that runs at summary time performs the same
+    /// deterministic boundary extension and persists the widened section
+    /// itself through `update_receipt_section`, which preserves the
+    /// validation status and verifier provenance the worker cannot read.
+    /// A section put from here would (a) stamp those existing sections
+    /// back to PENDING and drop their verification fields, and (b) fire
+    /// the stream's canonical-ITEMS trigger, re-invoking the updater that
+    /// enqueued this very job. With no section write the pass emits no
+    /// stream event at all, so it cannot retrigger itself.
+    func processLineItemRefine(
+        job: OCRJob, imageId: String, jobId: String
+    ) async -> RefineOutcome {
+        /// Persist the terminal FAILED status and report the outcome the
+        /// caller should return. `.permanentFailure` deletes the SQS
+        /// message, so it is only safe once the row is durably FAILED —
+        /// otherwise the job stays PENDING forever and the enqueuer,
+        /// which reads a PENDING refine job as "already running",
+        /// suppresses every future refine for this receipt. When the
+        /// update cannot be persisted, leave the message instead.
+        func failJob() async -> RefineOutcome {
+            var failed = job
+            failed.status = .failed
+            failed.updatedAt = Date()
+            do {
+                try await Retry.withBackoff {
+                    try await self.dynamo.updateOCRJob(failed)
+                }
+                return .permanentFailure
+            } catch {
+                logger.warning(
+                    "refine_fail_status_unpersisted image_id=\(imageId) job_id=\(jobId) error=\(error)"
+                )
+                return .transient
+            }
+        }
+
+        guard let receiptId = job.receiptId else {
+            logger.warning("refine_missing_receipt_id image_id=\(imageId) job_id=\(jobId)")
+            return await failJob()
+        }
+
+        let jsonData: Data
+        do {
+            jsonData = try await Retry.withBackoff {
+                try await self.s3.getObject(
+                    bucket: job.s3Bucket, key: job.s3Key
+                )
+            }
+        } catch is ObjectNotFoundError {
+            logger.warning("refine_result_json_gone image_id=\(imageId) key=\(job.s3Key)")
+            return await failJob()
+        } catch {
+            logger.warning("refine_deferred stage=download image_id=\(imageId) error=\(error)")
+            return .transient
+        }
+
+        // ReceiptOutput cannot be decoded whole: its own coding keys are
+        // explicit snake_case while nested Line/LinePrediction rely on
+        // .convertFromSnakeCase (the same reason the contract tests use a
+        // custom envelope). Extract the receipt dict manually and decode
+        // the nested arrays with the snake-case strategy.
+        let snakeDecoder = JSONDecoder()
+        snakeDecoder.keyDecodingStrategy = .convertFromSnakeCase
+        func decodeLines(_ array: [[String: Any]]) -> [Line]? {
+            guard
+                let data = try? JSONSerialization.data(withJSONObject: array)
+            else { return nil }
+            return try? snakeDecoder.decode([Line].self, from: data)
+        }
+        // Two stored shapes reach here. A FIRST_PASS result is
+        // image-level: its `receipts` array carries one entry per
+        // detected receipt, keyed by cluster_id. A REFINEMENT result is
+        // already scoped to ONE receipt (the worker runs those with
+        // includeClassification: false), so its warped-crop lines sit in
+        // a top-level `lines` array with no `receipts` key at all — the
+        // job's own receiptId identifies it, exactly as the cloud
+        // refinement path treats that shape. The presence of `receipts`
+        // is therefore the discriminator between the two.
+        let obj =
+            try? JSONSerialization.jsonObject(with: jsonData)
+            as? [String: Any]
+        let receiptsArray = obj?["receipts"] as? [[String: Any]]
+        let receiptDict = receiptsArray?.first(
+            where: { ($0["cluster_id"] as? Int) == receiptId }
+        )
+        let lines: [Line]
+        if let receiptLines = receiptDict?["lines"] as? [[String: Any]],
+            let decoded = decodeLines(receiptLines)
+        {
+            lines = decoded
+        } else if receiptsArray == nil,
+            let topLines = obj?["lines"] as? [[String: Any]],
+            let decoded = decodeLines(topLines)
+        {
+            // The top-level fallback applies ONLY to the single-receipt
+            // shape. An image-level envelope's top-level `lines` are the
+            // WHOLE image's first-pass OCR, so falling back to them when
+            // the requested cluster_id is simply absent would persist
+            // another receipt's lines under this receipt's id.
+            lines = decoded
+        } else {
+            logger.warning("refine_receipt_not_in_json image_id=\(imageId) receipt_id=\(receiptId)")
+            return await failJob()
+        }
+
+        var merchantName = job.refineMerchantName
+        if merchantName == nil,
+            let predsArray = receiptDict?["layoutlm_predictions"]
+                as? [[String: Any]],
+            let predsData = try? JSONSerialization.data(
+                withJSONObject: predsArray
+            ),
+            let predictions = try? snakeDecoder.decode(
+                [LinePrediction].self, from: predsData
+            )
+        {
+            merchantName = merchantNameFromLayoutPredictions(predictions)
+        }
+
+        #if os(macOS)
+        let structure: OnDeviceReceiptStructure
+        do {
+            structure = try buildOnDeviceReceiptStructure(
+                lines: lines,
+                receiptId: receiptId,
+                merchantName: merchantName,
+                summaryOverride: job.refineSummary
+            )
+        } catch {
+            logger.warning("refine_decode_failed image_id=\(imageId) receipt_id=\(receiptId) error=\(error)")
+            return await failJob()
+        }
+
+        let now = Date()
+        do {
+            // REPLACE, not add: this decode supersedes the cloud's, and a
+            // summary that filters a spurious total leaves fewer items
+            // than the rows already stored. A put-only write would leave
+            // the surplus indices behind as phantom items. The merchant
+            // carried on the job goes back onto the rows too — cloud
+            // resolution already ran, and this path emits no stream event
+            // that would re-enrich them.
+            try await Retry.withBackoff {
+                try await self.dynamo.replaceReceiptLineItems(
+                    imageId: imageId, receiptId: receiptId,
+                    items: structure.lineItems, extractedAt: now,
+                    baselineFiguresAgreeing: structure.reconciliation
+                        .baselineFiguresAgreeing,
+                    merchantName: job.refineMerchantName
+                )
+            }
+        } catch {
+            logger.warning("refine_deferred stage=dynamo_write image_id=\(imageId) error=\(error)")
+            return .transient
+        }
+
+        var completed = job
+        completed.status = .completed
+        completed.updatedAt = now
+        do {
+            try await Retry.withBackoff {
+                try await self.dynamo.updateOCRJob(completed)
+            }
+        } catch {
+            // Acknowledging the message with the job still PENDING in
+            // Dynamo would suppress every future refine for this receipt
+            // (the enqueuer treats a PENDING job as "already running").
+            // Redelivery is cheap: the pass is idempotent — same JSON,
+            // same summary, same deterministic decode, same rows.
+            logger.debug("refine_job_update_failed image_id=\(imageId) error=\(error)")
+            return .transient
+        }
+        logger.info(
+            "refine_complete image_id=\(imageId) receipt_id=\(receiptId) items=\(structure.lineItems.count) status=\(structure.reconciliationStatus)"
+        )
+        return .completed
+        #else
+        logger.warning("refine_unsupported_platform image_id=\(imageId)")
+        return await failJob()
+        #endif
+    }
+
     public func processBatch() async throws -> Bool {
         logger.info("sqs_receive_start max=10 visibility=60 queue=\(config.ocrJobQueueURL)")
         let messages = try await Retry.withBackoff {
@@ -335,6 +534,26 @@ public final class OCRWorker {
                 logger.warning("job_deferred stage=get_job image_id=\(imageId) job_id=\(jobId) error=\(error)")
                 continue
             }
+            // LINE_ITEM_REFINE is not an OCR job: no image download, no
+            // Vision pass. Re-decode the stored OCR JSON with the real
+            // summary and write the structure directly (Tier 2 surface),
+            // then delete the message. Transient failures leave the
+            // message for redelivery.
+            if job.jobType == .lineItemRefine {
+                let outcome = await processLineItemRefine(
+                    job: job, imageId: imageId, jobId: jobId
+                )
+                if outcome != .transient {
+                    poisonEntries.append(
+                        SQSDeleteEntry(
+                            id: msg.messageId,
+                            receiptHandle: msg.receiptHandle
+                        )
+                    )
+                }
+                continue
+            }
+
             // Update processing stage to DOWNLOADING
             do {
                 try await self.dynamo.updateOCRJobStage(imageId: imageId, jobId: jobId, stage: "DOWNLOADING")

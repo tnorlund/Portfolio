@@ -43,16 +43,22 @@ public enum ReceiptStructureItems {
 
     /// Mirror of `ReceiptLineItem.to_item()` for a worker-produced row.
     ///
-    /// The merchant GSI (GSI1) is always omitted: merchant resolution is
-    /// cloud-side, so worker rows never carry a `merchant_name`, and the
-    /// sparse-GSI rule skips exactly that case. `collapsed_banding` is
-    /// always false — the Python band-block decoder pins it false too.
+    /// `merchantName` is nil on the single-pass path — merchant
+    /// resolution is cloud-side and has not run at ingest — and the
+    /// sparse-GSI rule skips exactly that case. The refine pass runs
+    /// AFTER resolution and carries the merchant on its job, so it
+    /// passes one through: without it the refined put would replace
+    /// merchant-aware cloud rows with rows missing `merchant_name` and
+    /// the merchant rollup keys, and this path emits no stream event
+    /// that would rebuild them. `collapsed_banding` is always false —
+    /// the Python band-block decoder pins it false too.
     public static func lineItemItem(
         imageId: String,
         receiptId: Int,
         item payload: ReceiptLineItemPayload,
         extractedAt: Date,
-        baselineFiguresAgreeing: Int?
+        baselineFiguresAgreeing: Int?,
+        merchantName: String? = nil
     ) -> [String: DynamoDB.AttributeValue] {
         var item: [String: DynamoDB.AttributeValue] = [
             "PK": .s("IMAGE#\(imageId)"),
@@ -84,6 +90,31 @@ public enum ReceiptStructureItems {
         }
         if let grade = baselineFiguresAgreeing {
             item["baseline_figures_agreeing"] = .n(String(grade))
+        }
+        if let merchant = merchantName {
+            // `to_item()` writes merchant_name whenever the field is
+            // set, INCLUDING on low-quality rows; only the GSI pair is
+            // gated, by `gsi1_key`'s sparse rule. Keeping that split
+            // means a low-quality refined row still carries the
+            // merchant the cloud resolved for it. The empty-name guard
+            // is belt-and-braces: the decoder already stamps
+            // name_quality "low" when it finds no real name, so an
+            // empty GSI1SK product segment is unreachable.
+            item["merchant_name"] = .s(merchant)
+            if !merchant.isEmpty, payload.nameQuality != "low",
+                !payload.name.isEmpty
+            {
+                item["GSI1PK"] = .s(
+                    "MERCHANT#\(MerchantKeys.slugifyMerchant(merchant))"
+                )
+                item["GSI1SK"] = .s(
+                    String(
+                        format: "LINE_ITEM#%@#%@#%05d#%05d",
+                        MerchantKeys.normalizeProductText(payload.name),
+                        imageId, receiptId, payload.itemIndex
+                    )
+                )
+            }
         }
         return item
     }

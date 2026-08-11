@@ -144,7 +144,10 @@ from typing import Any
 # Warning #6 requires one first-party block in infra files.
 # isort: off
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
 from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 from receipt_upload.line_items.geometry import (
     extract_items,
@@ -332,6 +335,19 @@ def update_receipt_line_items(
         [word for word in word_dicts if word["line_id"] in line_ids],
         reocr_mechanism=reocr_mechanism,
     )
+    # Never in the same pass as a re-OCR. The regional job rewrites the
+    # ITEMS zone's words and re-fires this summary path when it lands, so
+    # a refine job enqueued now would point the worker at the
+    # PRE-re-OCR result JSON — a word universe about to be replaced —
+    # and its write emits no stream event that would repair the rows.
+    # The re-OCR's own summary rebuild triggers the refine instead.
+    refine = (
+        False
+        if reocr
+        else _maybe_trigger_line_item_refine(
+            image_id, receipt_id, summary_dict, merchant
+        )
+    )
     return {
         "items": len(entities),
         "deleted": deleted,
@@ -340,6 +356,7 @@ def update_receipt_line_items(
         "baseline_figures_agreeing": recon.baseline_figures_agreeing,
         "section_extension": extension,
         "reocr_triggered": reocr,
+        "refine_triggered": refine,
         "worker_divergence": divergence,
     }
 
@@ -681,6 +698,278 @@ def _maybe_trigger_items_reocr(
             image_id[:8],
             receipt_id,
         )
+        return False
+
+
+REFINE_MAX_ATTEMPTS = 3
+
+REFINE_SUMMARY_FIGURES = ("subtotal", "tax", "grand_total")
+
+
+def _refine_summaries_equal(left: dict | None, right: dict | None) -> bool:
+    """Compare two refine_summary payloads figure by figure.
+
+    Dynamo round-trips the figures as Decimal, so raw dict equality is
+    unreliable — normalize through float() and keep None distinct from
+    any number (an absent figure is not a zero).
+    """
+    if left is None or right is None:
+        return left is None and right is None
+    for key in REFINE_SUMMARY_FIGURES:
+        a, b = left.get(key), right.get(key)
+        if a is None or b is None:
+            if a is not None or b is not None:
+                return False
+            continue
+        try:
+            if float(a) != float(b):
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
+
+
+def _claim_figure(value: Any) -> str:
+    """Stable text for one summary figure inside the refine job id.
+
+    Dynamo round-trips the figures as Decimal while a freshly computed
+    summary carries floats, so formatting the raw value would give the
+    same summary two different "deterministic" ids -- and two ids are
+    two claims. This is the normalization ``_refine_summaries_equal``
+    already applies to decide the figures are the same.
+    """
+    if value is None:
+        return "none"
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _maybe_trigger_line_item_refine(
+    image_id: str,
+    receipt_id: int,
+    summary_dict: dict | None,
+    merchant_name: str | None,
+) -> bool:
+    """Enqueue a LINE_ITEM_REFINE pass on the Mac worker (Tier 3 of the
+    worker-authority migration).
+
+    The worker re-decodes the receipt's STORED OCR JSON — the same word
+    universe the persisted rows reference — with the real summary carried
+    on the job, so the graded baseline and zone-gap boundary extension
+    run on device and land via the worker's own Dynamo write surface.
+    The cloud recompute above remains authoritative-by-default: both
+    sides run the same deterministic decoder over the same inputs, so
+    the pass converges rather than races.
+
+    Gated by ENABLE_LINE_ITEM_REFINE so ops controls rollout: an
+    outdated worker binary decodes the unknown job_type as FIRST_PASS
+    and would fail the job trying to OCR a JSON pointer — noisy, not
+    destructive, but not free either. Best-effort: failure never fails
+    the message (rows are already written).
+
+    The refine pass writes LINE ITEMS ONLY (no sections), so it emits no
+    stream event that could route back here — the loop is closed on the
+    worker side. This function closes it on the cloud side too: a refine
+    job is enqueued only when the summary it would carry DIFFERS from the
+    summary of every existing non-FAILED refine job for the receipt, so
+    repeated summary events (or the same summary re-delivered) cannot
+    burn through REFINE_MAX_ATTEMPTS and lock out a genuine later change.
+    """
+    enabled = os.environ.get("ENABLE_LINE_ITEM_REFINE", "").lower() in (
+        "1",
+        "true",
+    )
+    # The OCR job queue is created AFTER this component in __main__, so
+    # (like TRIGGER_REOCR_FUNCTION_NAME) no resource ref is possible:
+    # the deterministic queue NAME is passed and the URL resolved at
+    # runtime.
+    queue_url = os.environ.get("OCR_JOB_QUEUE_URL")
+    queue_name = os.environ.get("OCR_JOB_QUEUE_NAME")
+    if not enabled or dynamo_client is None:
+        return False
+    if not queue_url and not queue_name:
+        return False
+    if summary_dict is None or not any(
+        summary_dict.get(k) is not None for k in ("subtotal", "grand_total")
+    ):
+        # Without a printed figure the refine pass has no graded
+        # baseline to add; the single-pass decode already ran.
+        return False
+    pending_job = None
+    try:
+        import uuid
+
+        from receipt_dynamo.constants import OCRJobType, OCRStatus
+        from receipt_dynamo.entities import OCRJob
+
+        jobs, _ = dynamo_client.list_ocr_jobs_for_image(image_id)
+        refine_jobs = [
+            j
+            for j in jobs
+            if getattr(j, "job_type", "") == "LINE_ITEM_REFINE"
+            and getattr(j, "receipt_id", None) == receipt_id
+        ]
+        if any(
+            str(getattr(j, "status", "")).upper() == "PENDING"
+            for j in refine_jobs
+        ):
+            return False
+        if len(refine_jobs) >= REFINE_MAX_ATTEMPTS:
+            return False
+
+        refine_summary = {
+            "subtotal": summary_dict.get("subtotal"),
+            "tax": summary_dict.get("tax"),
+            "grand_total": summary_dict.get("grand_total"),
+        }
+        # A second pass only earns its keep when the summary CHANGED:
+        # re-running the same deterministic decode over the same JSON
+        # with the same figures reproduces the same rows. Comparing the
+        # carried figures (rather than counting events) is what keeps a
+        # repeated summary write from consuming the attempt budget.
+        if any(
+            _refine_summaries_equal(
+                getattr(j, "refine_summary", None), refine_summary
+            )
+            for j in refine_jobs
+            if str(getattr(j, "status", "")).upper() != "FAILED"
+        ):
+            return False
+
+        # The refine input is the ORIGINAL OCR-result JSON: its 1-based
+        # array-position ids are the persisted line/word ids, so the
+        # refine decode shares the rows' word universe by construction.
+        # FIRST_PASS results are image-level (receipt_id None) and hold
+        # every receipt's lines, so any of them can source any receipt;
+        # a REFINEMENT result holds ONE receipt's warped-crop lines, so
+        # it is only a valid source for that same receipt.
+        source_jobs = [
+            j
+            for j in jobs
+            if str(getattr(j, "status", "")).upper() == "COMPLETED"
+            and (
+                getattr(j, "job_type", "") == "FIRST_PASS"
+                or (
+                    getattr(j, "job_type", "") == "REFINEMENT"
+                    and getattr(j, "receipt_id", None) == receipt_id
+                )
+            )
+        ]
+        source_jobs.sort(
+            key=lambda j: getattr(j, "created_at", None) or datetime.min,
+            reverse=True,
+        )
+        decision = None
+        for source in source_jobs:
+            try:
+                decision = dynamo_client.get_ocr_routing_decision(
+                    image_id, source.job_id
+                )
+                break
+            except EntityNotFoundError:
+                continue
+        if decision is None:
+            return False
+
+        now = datetime.now(timezone.utc)
+        # DETERMINISTIC job id, derived from the receipt and the exact
+        # figures this job would carry. The read above (no PENDING job,
+        # no job with this summary) is advisory: two concurrent Lambda
+        # batches holding duplicate summary messages both pass it. Both
+        # then derive the SAME id here, so `add_ocr_job` -- a conditional
+        # put -- admits exactly one and raises for the other, making the
+        # read-and-create decision atomic in effect. A v5 UUID satisfies
+        # receipt_dynamo's `assert_valid_uuid` (its regex accepts
+        # version 4 or 5 with the RFC-4122 variant).
+        figures = ":".join(
+            _claim_figure(refine_summary[key])
+            for key in REFINE_SUMMARY_FIGURES
+        )
+        job_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_OID,
+                f"line-item-refine:{image_id}:{receipt_id}:{figures}",
+            )
+        )
+        refine_job = OCRJob(
+            image_id=image_id,
+            job_id=job_id,
+            s3_bucket=decision.s3_bucket,
+            s3_key=decision.s3_key,
+            created_at=now,
+            updated_at=now,
+            status=OCRStatus.PENDING.value,
+            job_type=OCRJobType.LINE_ITEM_REFINE.value,
+            receipt_id=receipt_id,
+            refine_summary=refine_summary,
+            refine_merchant_name=merchant_name,
+        )
+        try:
+            dynamo_client.add_ocr_job(refine_job)
+        except EntityAlreadyExistsError:
+            # A concurrent invocation claimed this exact job first.
+            logger.info(
+                "line-item refine already claimed for %s:%d",
+                image_id[:8],
+                receipt_id,
+            )
+            return False
+        pending_job = refine_job
+
+        import boto3
+
+        sqs = boto3.client("sqs")
+        if not queue_url:
+            queue_url = sqs.get_queue_url(QueueName=queue_name)["QueueUrl"]
+        sqs.send_message(
+            QueueUrl=queue_url,
+            MessageBody=json.dumps({"job_id": job_id, "image_id": image_id}),
+        )
+        logger.info(
+            "triggered line-item refine for %s:%d (attempt %d)",
+            image_id[:8],
+            receipt_id,
+            len(refine_jobs) + 1,
+        )
+        return True
+    except Exception:  # noqa: BLE001 - best-effort improvement pass
+        logger.exception(
+            "line-item refine trigger failed for %s:%d (non-fatal)",
+            image_id[:8],
+            receipt_id,
+        )
+        # A row whose queue message never got published never reaches a
+        # worker, so it must leave no trace: PENDING it would suppress
+        # every future refine for this receipt, and FAILED it would
+        # still consume one of REFINE_MAX_ATTEMPTS (the cap counts rows,
+        # not outcomes) -- three SQS blips would disable the feature for
+        # good. DELETE it instead. The job id is deterministic, so a
+        # later summary event carrying these same figures recreates the
+        # identical row cleanly. Falling back to FAILED keeps the old
+        # behavior when even the delete fails.
+        if pending_job is not None:
+            try:
+                dynamo_client.delete_ocr_job(pending_job)
+            except Exception:  # noqa: BLE001 - best effort
+                logger.exception(
+                    "could not delete unpublished refine job for %s:%d",
+                    image_id[:8],
+                    receipt_id,
+                )
+                try:
+                    from receipt_dynamo.constants import OCRStatus
+
+                    pending_job.status = OCRStatus.FAILED.value
+                    pending_job.updated_at = datetime.now(timezone.utc)
+                    dynamo_client.update_ocr_job(pending_job)
+                except Exception:  # noqa: BLE001 - best effort
+                    logger.exception(
+                        "could not fail orphaned refine job for %s:%d",
+                        image_id[:8],
+                        receipt_id,
+                    )
         return False
 
 

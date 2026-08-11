@@ -43,9 +43,18 @@ its expected movement of this count (or its eligibility denominator).
 - **Bank-proven golden loop FIRST**: auto-promote every PROVEN receipt into
   the golden set (33 → ~250) so no decoder change can silently undo the NOW
   work. Then self-labeling priors v3 harvested from bank-proven only.
-- Swift parity repair: regenerate parity expectations from live Python in CI
-  (red build on drift), re-port #1320's guards; only then wire the Mac worker
-  as the line-item producer on new ingest (the on-device end-goal).
+- Swift parity repair: DONE (#1367 regenerate-in-CI; #1368 worker produces
+  line items on ingest). The on-device end-goal continued as three tiers:
+  Tier 1 ships the worker's computed-but-discarded verdicts over the wire
+  (graded reconciliation, printed subtotal, re-OCR verdict, raw_text) and
+  wires boundary extension on device; Tier 2 gives the worker a direct
+  Dynamo write surface (contract-pinned item serialization); Tier 3 adds
+  the LINE_ITEM_REFINE second pass — on summary arrival the stream Lambda
+  enqueues a Mac job carrying the real summary, and the worker re-decodes
+  the stored OCR JSON (same word universe as the persisted rows) and
+  writes sections + line items itself. Gated by ENABLE_LINE_ITEM_REFINE
+  until worker binaries update; the cloud recompute stays authoritative
+  and converges with the worker by determinism.
 - Bank-gap work: 27 recoverable matcher misses; card-8712 + Amex exports
   (+~50 eligible); dev/prod parity (20 grand_total disagreements, 123 label
   drifts) via recompute, never row copy.
