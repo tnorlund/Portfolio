@@ -23,499 +23,121 @@ interface SegmentSpec {
 
 type Pt = { x: number; y: number };
 
-// Default CI/CD segments (in order around the figure-8)
-// Plan -> Code -> Build -> Test -> Review -> Deploy -> Monitor
+// Default CI/CD segments, in flow order around the figure-8:
+// Plan -> Code -> Build -> Test -> Release -> Deploy -> Operate -> Monitor.
+// The order must match SEGMENT_GEOMETRY, which carries the shape for each slot.
 const DEFAULT_SEGMENTS: SegmentSpec[] = [
   { label: "Plan", color: "var(--color-yellow)" },
   { label: "Code", color: "var(--color-green)" },
   { label: "Build", color: "var(--color-green)" },
   { label: "Test", color: "var(--color-blue)" },
-  { label: "Review", color: "var(--color-blue)" },
+  { label: "Release", color: "var(--color-blue)" },
   { label: "Deploy", color: "var(--color-red)" },
+  { label: "Operate", color: "var(--color-red)" },
   { label: "Monitor", color: "var(--color-yellow)" },
 ];
 
-/**
- * The original figure-8 path from Adobe Illustrator, normalized to center (0,0).
- * This is the exact path exported from the reference design.
- */
-const ILLUSTRATOR_PATH = "M331.65,460.21l-68.3-79.42c-22.88-26.61-63.46-29.88-89.47-6.32-11.73,10.63-19.58,25.8-20.1,43.92-.02.7-.03,1.4-.03,2.11h0c0,.71.01,1.41.03,2.11.52,18.12,8.37,33.29,20.1,43.92,26.01,23.56,66.59,20.29,89.47-6.32l68.3-79.42c22.88-26.61,63.46-29.88,89.47-6.32,11.73,10.63,19.58,25.8,20.1,43.92.02.7.03,1.4.03,2.11h0c0,.71-.01,1.41-.03,2.11-.52,18.12-8.37,33.29-20.1,43.92-26.01,23.56-66.59,20.29-89.47-6.32Z";
+// Static geometry extracted from the reference Illustrator design (CICD_loop.ai),
+// scaled into a 600x300 base coordinate space. Each entry carries:
+// - ribbonD: the exact ribbon outline (arrow tip + chevron notch as authored),
+// - textPts: a polyline along the ribbon's centerline for the label textPath,
+// - center: the ribbon's bounding-box center, used as the pulse transform origin.
+// The two center-crossing transitions (Test -> Release, Monitor -> Plan) are
+// butt joints hidden under the crossing bands, exactly as in the reference.
+const BASE_WIDTH = 600;
+const BASE_HEIGHT = 300;
+
+const SEGMENT_GEOMETRY: {
+  ribbonD: string;
+  textPts: Pt[];
+  /** startOffset (%) centering the label on the visible ribbon body */
+  textOffset: number;
+  center: Pt;
+}[] = [
+  {
+    // Plan
+    ribbonD:
+      "M190.9 79.1 L192.8 94.6 L317.2 195.6 L314.2 160.2 L347.9 157.3 L222.3 55.3 L188.4 59.6 Z M207.9 57.1 L188.4 59.6 L190.9 79.1 L197.0 70.8 Z",
+    textPts: [
+      { x: 161.3, y: 47.8 }, { x: 172.6, y: 48.8 }, { x: 183.7, y: 50.9 }, { x: 194.5, y: 54.4 }, { x: 204.8, y: 59.0 }, { x: 214.6, y: 64.7 }, { x: 223.6, y: 71.5 }, { x: 231.9, y: 79.2 }, { x: 239.2, y: 87.8 }, { x: 246.1, y: 96.8 }, { x: 254.2, y: 104.7 }, { x: 262.3, y: 112.7 }, { x: 270.3, y: 120.6 }, { x: 278.4, y: 128.6 }, { x: 286.5, y: 136.5 }, { x: 294.6, y: 144.5 }, { x: 302.6, y: 152.4 }, { x: 310.7, y: 160.3 }, { x: 318.8, y: 168.3 }, { x: 326.9, y: 176.2 }, { x: 334.9, y: 184.2 }, { x: 343.0, y: 192.1 }, { x: 345.7, y: 194.8 },
+    ],
+    textOffset: 53.1,
+    center: { x: 268.1, y: 125.4 },
+  },
+  {
+    // Code
+    ribbonD:
+      "M59.4 109.9 L74.0 107.2 C88.3 85.7 112.2 72.6 138.5 72.6 C153.4 72.6 167.7 76.9 180.2 84.9 L175.7 49.8 L209.6 45.5 C188.5 31.2 164.1 23.5 138.5 23.5 C94.8 23.5 55.0 45.7 31.9 82.1 L37.8 114.0 Z",
+    textPts: [
+      { x: 56.8, y: 149.3 }, { x: 57.4, y: 137.9 }, { x: 59.3, y: 126.8 }, { x: 62.4, y: 115.9 }, { x: 66.8, y: 105.4 }, { x: 72.2, y: 95.5 }, { x: 78.8, y: 86.3 }, { x: 86.3, y: 77.8 }, { x: 94.7, y: 70.2 }, { x: 103.9, y: 63.6 }, { x: 113.8, y: 58.1 }, { x: 124.2, y: 53.7 }, { x: 135.0, y: 50.5 }, { x: 146.2, y: 48.5 }, { x: 157.5, y: 47.8 }, { x: 168.8, y: 48.3 }, { x: 180.0, y: 50.1 }, { x: 190.9, y: 53.1 }, { x: 201.4, y: 57.3 }, { x: 211.4, y: 62.7 }, { x: 217.7, y: 66.8 },
+    ],
+    textOffset: 47.5,
+    center: { x: 120.8, y: 68.8 },
+  },
+  {
+    // Build
+    ribbonD:
+      "M107.2 221.5 C77.6 211.5 61.1 184.0 61.1 150.0 C61.1 138.8 62.9 129.3 67.0 120.0 L28.8 127.2 L23.3 97.9 C16.1 113.8 12.0 131.4 12.0 150.0 C12.0 202.7 44.4 247.9 90.3 266.9 L104.1 261.4 L112.4 234.5 Z M112.4 234.5 L104.1 261.4 L120.5 254.8 Z",
+    textPts: [
+      { x: 153.4, y: 250.9 }, { x: 142.2, y: 249.7 }, { x: 131.1, y: 247.3 }, { x: 120.4, y: 243.7 }, { x: 110.1, y: 238.8 }, { x: 100.5, y: 232.9 }, { x: 91.6, y: 225.9 }, { x: 83.5, y: 218.0 }, { x: 76.3, y: 209.3 }, { x: 70.1, y: 199.8 }, { x: 65.1, y: 189.7 }, { x: 61.2, y: 179.0 }, { x: 58.5, y: 168.0 }, { x: 57.0, y: 156.8 }, { x: 56.9, y: 145.5 }, { x: 57.9, y: 134.2 }, { x: 60.2, y: 123.1 }, { x: 63.7, y: 112.4 }, { x: 68.5, y: 102.1 }, { x: 74.3, y: 92.4 }, { x: 81.2, y: 83.4 },
+    ],
+    textOffset: 50.0,
+    center: { x: 62.2, y: 182.4 },
+  },
+  {
+    // Test
+    ribbonD:
+      "M273.0 170.1 L239.0 167.9 L184.0 212.6 C170.7 222.3 155.0 227.4 138.5 227.4 C132.5 227.4 126.7 226.7 120.9 225.4 L135.2 261.1 L107.0 272.4 C117.2 275.1 127.8 276.5 138.5 276.5 C165.8 276.5 191.7 267.9 213.6 251.7 L270.7 205.4 Z",
+    textPts: [
+      { x: 302.9, y: 147.0 }, { x: 294.8, y: 154.9 }, { x: 286.7, y: 162.8 }, { x: 278.6, y: 170.8 }, { x: 270.5, y: 178.7 }, { x: 262.4, y: 186.6 }, { x: 254.3, y: 194.5 }, { x: 246.2, y: 202.4 }, { x: 239.1, y: 211.2 }, { x: 231.7, y: 219.8 }, { x: 223.4, y: 227.5 }, { x: 214.3, y: 234.3 }, { x: 204.5, y: 240.0 }, { x: 194.2, y: 244.6 }, { x: 183.4, y: 247.9 }, { x: 172.3, y: 250.1 }, { x: 161.0, y: 251.0 }, { x: 149.6, y: 250.7 }, { x: 138.4, y: 249.1 }, { x: 127.5, y: 246.2 }, { x: 116.9, y: 242.2 }, { x: 106.8, y: 237.0 }, { x: 97.4, y: 230.7 }, { x: 91.6, y: 225.9 },
+    ],
+    textOffset: 48.5,
+    center: { x: 190.0, y: 222.2 },
+  },
+  {
+    // Release
+    ribbonD:
+      "M410.3 58.2 L376.8 56.0 L252.0 157.4 L285.1 159.6 L282.7 195.7 L407.9 94.0 Z",
+    textPts: [
+      { x: 443.1, y: 48.4 }, { x: 431.8, y: 48.8 }, { x: 420.6, y: 50.5 }, { x: 409.7, y: 53.5 }, { x: 399.1, y: 57.7 }, { x: 389.1, y: 63.0 }, { x: 379.8, y: 69.3 }, { x: 371.2, y: 76.7 }, { x: 363.5, y: 85.0 }, { x: 356.7, y: 94.1 }, { x: 348.8, y: 102.1 }, { x: 340.7, y: 110.1 }, { x: 332.6, y: 118.0 }, { x: 324.5, y: 125.9 }, { x: 316.4, y: 133.8 }, { x: 308.3, y: 141.7 }, { x: 300.2, y: 149.6 }, { x: 292.1, y: 157.6 }, { x: 284.0, y: 165.5 }, { x: 275.9, y: 173.4 }, { x: 267.8, y: 181.3 }, { x: 259.7, y: 189.2 }, { x: 254.3, y: 194.5 },
+    ],
+    textOffset: 46.2,
+    center: { x: 331.1, y: 125.8 },
+  },
+  {
+    // Deploy
+    ribbonD:
+      "M559.5 116.5 L569.4 84.0 C546.5 46.5 506.1 23.5 461.5 23.5 C435.9 23.5 411.4 31.2 390.4 45.6 L422.3 47.7 L419.9 84.8 C432.3 76.8 446.6 72.6 461.5 72.6 C487.3 72.6 510.9 85.2 525.2 106.1 Z",
+    textPts: [
+      { x: 543.2, y: 150.4 }, { x: 542.7, y: 139.1 }, { x: 540.8, y: 127.9 }, { x: 537.8, y: 117.1 }, { x: 533.5, y: 106.6 }, { x: 528.1, y: 96.6 }, { x: 521.6, y: 87.3 }, { x: 514.1, y: 78.8 }, { x: 505.8, y: 71.2 }, { x: 496.6, y: 64.5 }, { x: 486.8, y: 58.9 }, { x: 476.4, y: 54.5 }, { x: 465.5, y: 51.2 }, { x: 454.4, y: 49.2 }, { x: 443.1, y: 48.4 }, { x: 431.8, y: 48.8 }, { x: 420.6, y: 50.5 }, { x: 409.7, y: 53.5 }, { x: 399.1, y: 57.7 }, { x: 389.1, y: 63.0 }, { x: 382.8, y: 67.1 },
+    ],
+    textOffset: 47.8,
+    center: { x: 479.9, y: 70.0 },
+  },
+  {
+    // Operate
+    ribbonD:
+      "M576.9 98.2 L567.0 130.6 L533.0 120.2 C536.9 129.6 538.9 139.6 538.9 150.0 C538.9 180.3 521.7 207.0 495.2 219.7 L487.1 233.4 L477.1 250.2 L507.0 268.0 C555.8 249.3 588.0 203.0 588.0 150.0 C588.0 131.9 584.2 114.5 576.9 98.2 Z",
+    textPts: [
+      { x: 438.5, y: 251.6 }, { x: 449.8, y: 251.3 }, { x: 461.0, y: 249.8 }, { x: 472.0, y: 247.0 }, { x: 482.6, y: 243.0 }, { x: 492.7, y: 237.9 }, { x: 502.1, y: 231.7 }, { x: 510.8, y: 224.4 }, { x: 518.7, y: 216.3 }, { x: 525.6, y: 207.3 }, { x: 531.4, y: 197.6 }, { x: 536.2, y: 187.3 }, { x: 539.7, y: 176.6 }, { x: 542.1, y: 165.5 }, { x: 543.1, y: 154.2 }, { x: 543.0, y: 142.9 }, { x: 541.6, y: 131.7 }, { x: 538.9, y: 120.6 }, { x: 535.1, y: 110.0 }, { x: 530.0, y: 99.9 }, { x: 523.9, y: 90.3 }, { x: 519.2, y: 84.4 },
+    ],
+    textOffset: 51.6,
+    center: { x: 532.5, y: 183.1 },
+  },
+  {
+    // Monitor
+    ribbonD:
+      "M329.4 205.5 L385.5 251.0 L386.4 251.7 C408.3 267.9 434.3 276.5 461.5 276.5 C472.0 276.5 482.4 275.1 492.5 272.6 L461.5 254.2 L478.6 225.5 C473.0 226.8 467.3 227.4 461.5 227.4 C445.0 227.4 429.3 222.3 416.0 212.6 L360.5 167.5 L326.4 170.5 Z",
+    textPts: [
+      { x: 297.3, y: 147.1 }, { x: 305.3, y: 155.1 }, { x: 313.4, y: 163.0 }, { x: 321.5, y: 170.9 }, { x: 329.5, y: 178.9 }, { x: 337.6, y: 186.8 }, { x: 345.7, y: 194.8 }, { x: 353.8, y: 202.7 }, { x: 360.6, y: 211.4 }, { x: 367.9, y: 220.0 }, { x: 376.2, y: 227.7 }, { x: 385.2, y: 234.6 }, { x: 395.0, y: 240.3 }, { x: 405.3, y: 244.9 }, { x: 416.1, y: 248.4 }, { x: 427.2, y: 250.6 }, { x: 438.5, y: 251.6 }, { x: 449.8, y: 251.3 }, { x: 461.0, y: 249.8 }, { x: 472.0, y: 247.0 }, { x: 482.6, y: 243.0 }, { x: 492.7, y: 237.9 }, { x: 502.1, y: 231.7 },
+    ],
+    textOffset: 53.0,
+    center: { x: 409.4, y: 222.0 },
+  },
+];
 
 const INITIAL_STAGGER_SETTLE_MS = 600;
 const PULSE_START_BUFFER_MS = 1000;
-
-/**
- * Evaluate a cubic Bezier curve at parameter t
- */
-function cubicBezier(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
-  const mt = 1 - t;
-  const mt2 = mt * mt;
-  const mt3 = mt2 * mt;
-  const t2 = t * t;
-  const t3 = t2 * t;
-
-  return {
-    x: mt3 * p0.x + 3 * mt2 * t * p1.x + 3 * mt * t2 * p2.x + t3 * p3.x,
-    y: mt3 * p0.y + 3 * mt2 * t * p1.y + 3 * mt * t2 * p2.y + t3 * p3.y,
-  };
-}
-
-/**
- * Parse the Illustrator SVG path and return sampled points
- */
-function parseAndSamplePath(samples: number): Pt[] {
-  // Manually parsed path segments from the Illustrator export
-  // The path structure: M -> l -> c -> c -> c -> h -> c -> c -> c -> l -> c -> c -> c -> h -> c -> c -> c -> Z
-
-  const segments: { type: string; points: Pt[] }[] = [];
-  let current: Pt = { x: 331.65, y: 460.21 }; // M331.65,460.21
-
-  // l-68.3-79.42 (line to upper-left diagonal)
-  const p1 = { x: current.x - 68.3, y: current.y - 79.42 };
-  segments.push({ type: "L", points: [current, p1] });
-  current = p1;
-
-  // c-22.88-26.61-63.46-29.88-89.47-6.32 (left loop top curve)
-  let cp1 = { x: current.x - 22.88, y: current.y - 26.61 };
-  let cp2 = { x: current.x - 63.46, y: current.y - 29.88 };
-  let end = { x: current.x - 89.47, y: current.y - 6.32 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-  current = end;
-
-  // -11.73,10.63-19.58,25.8-20.1,43.92 (left loop left-top curve)
-  cp1 = { x: current.x - 11.73, y: current.y + 10.63 };
-  cp2 = { x: current.x - 19.58, y: current.y + 25.8 };
-  end = { x: current.x - 20.1, y: current.y + 43.92 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-  current = end;
-
-  // -.02.7-.03,1.4-.03,2.11 (tiny curve at left apex)
-  cp1 = { x: current.x - 0.02, y: current.y + 0.7 };
-  cp2 = { x: current.x - 0.03, y: current.y + 1.4 };
-  end = { x: current.x - 0.03, y: current.y + 2.11 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-  current = end;
-
-  // h0 (horizontal line of 0 length - skip)
-
-  // c0,.71.01,1.41.03,2.11 (tiny curve continuing from apex)
-  cp1 = { x: current.x, y: current.y + 0.71 };
-  cp2 = { x: current.x + 0.01, y: current.y + 1.41 };
-  end = { x: current.x + 0.03, y: current.y + 2.11 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-  current = end;
-
-  // .52,18.12,8.37,33.29,20.1,43.92 (left loop left-bottom curve)
-  cp1 = { x: current.x + 0.52, y: current.y + 18.12 };
-  cp2 = { x: current.x + 8.37, y: current.y + 33.29 };
-  end = { x: current.x + 20.1, y: current.y + 43.92 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-  current = end;
-
-  // 26.01,23.56,66.59,20.29,89.47-6.32 (left loop bottom curve)
-  cp1 = { x: current.x + 26.01, y: current.y + 23.56 };
-  cp2 = { x: current.x + 66.59, y: current.y + 20.29 };
-  end = { x: current.x + 89.47, y: current.y - 6.32 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-  current = end;
-
-  // l68.3-79.42 (line to upper-right diagonal)
-  const p2 = { x: current.x + 68.3, y: current.y - 79.42 };
-  segments.push({ type: "L", points: [current, p2] });
-  current = p2;
-
-  // c22.88-26.61,63.46-29.88,89.47-6.32 (right loop top curve)
-  cp1 = { x: current.x + 22.88, y: current.y - 26.61 };
-  cp2 = { x: current.x + 63.46, y: current.y - 29.88 };
-  end = { x: current.x + 89.47, y: current.y - 6.32 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-  current = end;
-
-  // 11.73,10.63,19.58,25.8,20.1,43.92 (right loop right-top curve)
-  cp1 = { x: current.x + 11.73, y: current.y + 10.63 };
-  cp2 = { x: current.x + 19.58, y: current.y + 25.8 };
-  end = { x: current.x + 20.1, y: current.y + 43.92 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-  current = end;
-
-  // .02.7.03,1.4.03,2.11 (tiny curve at right apex)
-  cp1 = { x: current.x + 0.02, y: current.y + 0.7 };
-  cp2 = { x: current.x + 0.03, y: current.y + 1.4 };
-  end = { x: current.x + 0.03, y: current.y + 2.11 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-  current = end;
-
-  // h0 (horizontal line of 0 length - skip)
-
-  // c0,.71-.01,1.41-.03,2.11 (tiny curve continuing from apex)
-  cp1 = { x: current.x, y: current.y + 0.71 };
-  cp2 = { x: current.x - 0.01, y: current.y + 1.41 };
-  end = { x: current.x - 0.03, y: current.y + 2.11 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-  current = end;
-
-  // -.52,18.12-8.37,33.29-20.1,43.92 (right loop right-bottom curve)
-  cp1 = { x: current.x - 0.52, y: current.y + 18.12 };
-  cp2 = { x: current.x - 8.37, y: current.y + 33.29 };
-  end = { x: current.x - 20.1, y: current.y + 43.92 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-  current = end;
-
-  // -26.01,23.56-66.59,20.29-89.47-6.32 (right loop bottom curve back to start)
-  cp1 = { x: current.x - 26.01, y: current.y + 23.56 };
-  cp2 = { x: current.x - 66.59, y: current.y + 20.29 };
-  end = { x: current.x - 89.47, y: current.y - 6.32 };
-  segments.push({ type: "C", points: [current, cp1, cp2, end] });
-
-  // Sample points along all segments
-  const pts: Pt[] = [];
-  const samplesPerSegment = Math.ceil(samples / segments.length);
-
-  for (const seg of segments) {
-    if (seg.type === "L") {
-      // Line segment
-      for (let i = 0; i < samplesPerSegment; i++) {
-        const t = i / samplesPerSegment;
-        pts.push({
-          x: seg.points[0].x + t * (seg.points[1].x - seg.points[0].x),
-          y: seg.points[0].y + t * (seg.points[1].y - seg.points[0].y),
-        });
-      }
-    } else if (seg.type === "C") {
-      // Cubic Bezier
-      for (let i = 0; i < samplesPerSegment; i++) {
-        const t = i / samplesPerSegment;
-        pts.push(cubicBezier(seg.points[0], seg.points[1], seg.points[2], seg.points[3], t));
-      }
-    }
-  }
-
-  return pts;
-}
-
-/**
- * Sample the figure-8 curve and compute cumulative arc lengths.
- * Uses the exact path from the Illustrator export, scaled to fit the component.
- */
-function sampleCurve({
-  cx,
-  cy,
-  a,
-  b,
-  samples = 1200,
-}: {
-  cx: number;
-  cy: number;
-  a: number;
-  b: number;
-  samples?: number;
-}) {
-  // Get raw points from the Illustrator path
-  const rawPts = parseAndSamplePath(samples);
-
-  // Calculate the bounds of the raw path
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const pt of rawPts) {
-    minX = Math.min(minX, pt.x);
-    maxX = Math.max(maxX, pt.x);
-    minY = Math.min(minY, pt.y);
-    maxY = Math.max(maxY, pt.y);
-  }
-
-  const rawWidth = maxX - minX;
-  const rawHeight = maxY - minY;
-  const rawCx = (minX + maxX) / 2;
-  const rawCy = (minY + maxY) / 2;
-
-  // Scale to fit within the target dimensions (a = half-width, b = half-height)
-  const scaleX = (a * 2) / rawWidth;
-  const scaleY = (b * 2) / rawHeight;
-  const scale = Math.min(scaleX, scaleY) * 0.95; // 95% to leave some margin
-
-  // Transform points to the target coordinate system
-  let pts: Pt[] = rawPts.map(pt => ({
-    x: cx + (pt.x - rawCx) * scale,
-    y: cy + (pt.y - rawCy) * scale,
-  }));
-
-  // Rotate the path starting point to align Test/Review gap under Plan
-  const rotateBy = Math.floor(pts.length * 0.01); // 1% backward
-  if (rotateBy > 0) {
-    pts = [...pts.slice(-rotateBy), ...pts.slice(0, -rotateBy)];
-  }
-
-  // Compute cumulative arc length
-  const cum: number[] = [0];
-  for (let i = 1; i < pts.length; i++) {
-    const dx = pts[i].x - pts[i - 1].x;
-    const dy = pts[i].y - pts[i - 1].y;
-    cum.push(cum[i - 1] + Math.hypot(dx, dy));
-  }
-
-  return { pts, cum, total: cum[cum.length - 1] };
-}
-
-/**
- * Slice points between arc-length s0 and s1
- */
-function sliceByArcLength(
-  pts: Pt[],
-  cum: number[],
-  s0: number,
-  s1: number
-): Pt[] {
-  const out: Pt[] = [];
-
-  const lerpPt = (i0: number, i1: number, t: number): Pt => ({
-    x: pts[i0].x + (pts[i1].x - pts[i0].x) * t,
-    y: pts[i0].y + (pts[i1].y - pts[i0].y) * t,
-  });
-
-  for (let i = 1; i < pts.length; i++) {
-    const a = cum[i - 1];
-    const b = cum[i];
-
-    if (b < s0) continue;
-    if (a > s1) break;
-
-    // Add interpolated start point
-    if (a <= s0 && b >= s0) {
-      const t = (s0 - a) / (b - a || 1);
-      out.push(lerpPt(i - 1, i, t));
-    }
-
-    // Add point if within range
-    if (a >= s0 && b <= s1) {
-      out.push(pts[i]);
-    }
-
-    // Add interpolated end point
-    if (a <= s1 && b >= s1) {
-      const t = (s1 - a) / (b - a || 1);
-      out.push(lerpPt(i - 1, i, t));
-      break;
-    }
-  }
-
-  return out;
-}
-
-/**
- * Normalize a vector
- */
-function unit(vx: number, vy: number): Pt {
-  const m = Math.hypot(vx, vy) || 1;
-  return { x: vx / m, y: vy / m };
-}
-
-/**
- * Get tangent and normal at a point in the samples array
- */
-function tangentAndNormal(
-  samples: Pt[],
-  i: number
-): { t: Pt; n: Pt } {
-  const p0 = samples[Math.max(0, i - 1)];
-  const p1 = samples[Math.min(samples.length - 1, i + 1)];
-  const t = unit(p1.x - p0.x, p1.y - p0.y);
-  const n = { x: -t.y, y: t.x };
-  return { t, n };
-}
-
-/**
- * Find the arc-length position closest to a target point
- */
-function findArcLengthForPoint(
-  pts: Pt[],
-  cum: number[],
-  target: Pt
-): number {
-  let bestDist = Infinity;
-  let bestS = 0;
-
-  for (let i = 0; i < pts.length; i++) {
-    const dist = Math.hypot(pts[i].x - target.x, pts[i].y - target.y);
-    if (dist < bestDist) {
-      bestDist = dist;
-      bestS = cum[i];
-    }
-  }
-
-  return bestS;
-}
-
-/**
- * Get point and tangent at a specific arc-length position
- */
-function getPointAndTangentAtArcLength(
-  pts: Pt[],
-  cum: number[],
-  s: number
-): { pt: Pt; t: Pt; n: Pt } {
-  // Handle edge cases
-  if (s <= 0) {
-    const t = unit(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-    return { pt: pts[0], t, n: { x: -t.y, y: t.x } };
-  }
-  if (s >= cum[cum.length - 1]) {
-    const last = pts.length - 1;
-    const t = unit(pts[last].x - pts[last - 1].x, pts[last].y - pts[last - 1].y);
-    return { pt: pts[last], t, n: { x: -t.y, y: t.x } };
-  }
-
-  // Find the segment containing arc-length s
-  for (let i = 1; i < pts.length; i++) {
-    if (cum[i] >= s) {
-      const a = cum[i - 1];
-      const b = cum[i];
-      const frac = (s - a) / (b - a || 1);
-
-      // Interpolate point
-      const pt = {
-        x: pts[i - 1].x + frac * (pts[i].x - pts[i - 1].x),
-        y: pts[i - 1].y + frac * (pts[i].y - pts[i - 1].y),
-      };
-
-      // Tangent from the segment direction
-      const t = unit(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-      const n = { x: -t.y, y: t.x };
-
-      return { pt, t, n };
-    }
-  }
-
-  // Fallback (shouldn't reach here)
-  const last = pts.length - 1;
-  const t = unit(pts[last].x - pts[last - 1].x, pts[last].y - pts[last - 1].y);
-  return { pt: pts[last], t, n: { x: -t.y, y: t.x } };
-}
-
-/**
- * Build a filled ribbon segment path with:
- * - An explicit arrow tip at the end
- * - An explicit chevron notch at the start
- *
- * @param startGap - Gap geometry for the start (notch): position, tangent, normal, and half-width of gap
- * @param endGap - Gap geometry for the end (arrow): position, tangent, normal, and half-width of gap
- */
-function buildRibbonSegmentPath(
-  center: Pt[],
-  width: number,
-  arrowLen: number,
-  notchLen: number,
-  startGap?: { pt: Pt; t: Pt; n: Pt; halfGap: number },
-  endGap?: { pt: Pt; t: Pt; n: Pt; halfGap: number }
-): string {
-  if (center.length < 2) return "";
-
-  const halfW = width / 2;
-
-  const left: Pt[] = [];
-  const right: Pt[] = [];
-
-  // Offset points by normal to create ribbon edges
-  for (let i = 0; i < center.length; i++) {
-    const { n } = tangentAndNormal(center, i);
-    const p = center[i];
-    left.push({ x: p.x + n.x * halfW, y: p.y + n.y * halfW });
-    right.push({ x: p.x - n.x * halfW, y: p.y - n.y * halfW });
-  }
-
-  // Arrow geometry at end
-  const endI = center.length - 1;
-  const end = center[endI];
-  const localEnd = tangentAndNormal(center, endI);
-
-  let tip: Pt, endL: Pt, endR: Pt;
-
-  if (endGap) {
-    // Use gap geometry for uniform spacing
-    // Arrow base is at: gapCenter - tangent * halfGap (back edge of gap)
-    const arrowBase = {
-      x: endGap.pt.x - endGap.t.x * endGap.halfGap,
-      y: endGap.pt.y - endGap.t.y * endGap.halfGap,
-    };
-    // Arrow tip extends from base
-    tip = {
-      x: arrowBase.x + endGap.t.x * arrowLen,
-      y: arrowBase.y + endGap.t.y * arrowLen,
-    };
-    // Base corners use gap normal for uniform width
-    endL = { x: arrowBase.x + endGap.n.x * halfW, y: arrowBase.y + endGap.n.y * halfW };
-    endR = { x: arrowBase.x - endGap.n.x * halfW, y: arrowBase.y - endGap.n.y * halfW };
-  } else {
-    // Fallback to local geometry
-    tip = { x: end.x + localEnd.t.x * arrowLen, y: end.y + localEnd.t.y * arrowLen };
-    endL = { x: end.x + localEnd.n.x * halfW, y: end.y + localEnd.n.y * halfW };
-    endR = { x: end.x - localEnd.n.x * halfW, y: end.y - localEnd.n.y * halfW };
-  }
-
-  // Notch geometry at start
-  const start = center[0];
-  const localStart = tangentAndNormal(center, 0);
-
-  let notchApex: Pt, notchL: Pt, notchR: Pt;
-
-  if (startGap) {
-    // Use gap geometry for uniform spacing
-    // Notch base is at: gapCenter + tangent * halfGap (front edge of gap)
-    const notchBase = {
-      x: startGap.pt.x + startGap.t.x * startGap.halfGap,
-      y: startGap.pt.y + startGap.t.y * startGap.halfGap,
-    };
-    // Notch apex cuts into segment from base
-    notchApex = {
-      x: notchBase.x + startGap.t.x * notchLen,
-      y: notchBase.y + startGap.t.y * notchLen,
-    };
-    // Base corners use gap normal for uniform width
-    notchL = { x: notchBase.x + startGap.n.x * halfW, y: notchBase.y + startGap.n.y * halfW };
-    notchR = { x: notchBase.x - startGap.n.x * halfW, y: notchBase.y - startGap.n.y * halfW };
-  } else {
-    // Fallback to local geometry
-    notchApex = {
-      x: start.x + localStart.t.x * notchLen,
-      y: start.y + localStart.t.y * notchLen,
-    };
-    notchL = { x: start.x + localStart.n.x * halfW, y: start.y + localStart.n.y * halfW };
-    notchR = { x: start.x - localStart.n.x * halfW, y: start.y - localStart.n.y * halfW };
-  }
-
-  // Replace edge endpoints with arrow/notch corners to avoid discontinuities on curves
-  // This ensures the ribbon body connects smoothly to the arrow/notch geometry
-  const leftEdge = [...left];
-  const rightEdge = [...right];
-
-  // Replace start points with notch corners (if using gap geometry)
-  if (startGap) {
-    leftEdge[0] = notchL;
-    rightEdge[0] = notchR;
-  }
-
-  // Replace end points with arrow corners (if using gap geometry)
-  if (endGap) {
-    leftEdge[leftEdge.length - 1] = endL;
-    rightEdge[rightEdge.length - 1] = endR;
-  }
-
-  // Build one continuous polygon so the arrow-base corners and notch apex are
-  // part of the ribbon outline. The previous compound-path approach omitted
-  // endR and subtracted a triangle whose base coincided with the outer path;
-  // both produced small wedges at the joins when the SVG was rasterized.
-  return (
-    `M ${leftEdge[0].x} ${leftEdge[0].y} ` +
-    leftEdge
-      .slice(1)
-      .map((p) => `L ${p.x} ${p.y}`)
-      .join(" ") +
-    ` L ${tip.x} ${tip.y} ` +
-    rightEdge
-      .reverse()
-      .map((p) => `L ${p.x} ${p.y}`)
-      .join(" ") +
-    ` L ${notchApex.x} ${notchApex.y} Z`
-  );
-}
 
 /**
  * Create a simple polyline path for text to follow
@@ -532,15 +154,15 @@ function polylinePathD(points: Pt[]): string {
 }
 
 /**
- * Check if text on this path would render upside-down
- * (i.e., the path goes predominantly right-to-left)
+ * Check if text on this path would render upside-down.
+ * textPath glyphs stand upright when the path's net direction has
+ * positive dx (glyph "up" is the tangent rotated -90°), so reverse
+ * right-to-left paths regardless of how vertical they are.
  */
 function shouldReverseTextPath(points: Pt[]): boolean {
   if (points.length < 2) return false;
-  // Compare start and end x coordinates
   const startX = points[0].x;
   const endX = points[points.length - 1].x;
-  // If path goes right-to-left, text will be upside down
   return endX < startX;
 }
 
@@ -562,10 +184,17 @@ function polylinePathDReversed(points: Pt[]): string {
 const CICDLoop: React.FC<CICDLoopProps> = ({
   width = 600,
   height = 300,
-  segments = DEFAULT_SEGMENTS,
+  segments: segmentsProp = DEFAULT_SEGMENTS,
   staggerDelay = 150,
   flowDuration = 4000,
 }) => {
+  // Each segment slot maps 1:1 onto a static shape; extra entries have no
+  // geometry to render.
+  const segments = useMemo(
+    () => segmentsProp.slice(0, SEGMENT_GEOMETRY.length),
+    [segmentsProp]
+  );
+
   // Lazy loading: mount when near viewport
   const { ref: lazyRef, inView: nearViewport } = useInView({
     triggerOnce: true,
@@ -763,97 +392,29 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
   // Unmount-only cleanup — clears the pulse when the component goes away.
   useEffect(() => () => clearPulseAnimation(), []);
 
-  // Generate segment geometries
-  const segmentGeoms = useMemo(() => {
-    const cx = width / 2;
-    const cy = height / 2;
-    const a = width * 0.38; // Horizontal scale (reduced to add margin for arrows)
-    const b = height * 0.38; // Vertical scale
-    const ribbonWidth = height * 0.18;
-    const arrowLen = ribbonWidth * 0.6;
-    const notchLen = ribbonWidth * 0.5;
-    const { pts, cum, total } = sampleCurve({ cx, cy, a, b, samples: 1400 });
+  // Per-segment render data from the static geometry
+  const segmentGeoms = useMemo(
+    () =>
+      SEGMENT_GEOMETRY.map((g) => {
+        const needsReverse = shouldReverseTextPath(g.textPts);
+        return {
+          ribbonD: g.ribbonD,
+          textPathD: needsReverse
+            ? polylinePathDReversed(g.textPts)
+            : polylinePathD(g.textPts),
+          textStartOffset: g.textOffset,
+          segmentCenter: g.center,
+        };
+      }),
+    []
+  );
 
-    // Define the gap width as a straight-line distance (not arc-length)
-    // This ensures uniform gap width on both inner and outer edges of curves
-    const gapWidth = ribbonWidth * 0.4;
-    const halfGap = gapWidth / 2;
+  // Uniform scale from the 600x300 base space into the requested size
+  const scale = Math.min(width / BASE_WIDTH, height / BASE_HEIGHT);
+  const offsetX = (width - BASE_WIDTH * scale) / 2;
+  const offsetY = (height - BASE_HEIGHT * scale) / 2;
 
-    // Calculate gap geometry at each segment boundary
-    // Gap i is between segment i-1 and segment i (gap 0 is between segment N-1 and segment 0)
-    const gapGeoms: { pt: Pt; t: Pt; n: Pt; halfGap: number }[] = [];
-    for (let i = 0; i < N; i++) {
-      // Gap position is at the boundary between segments
-      const gapCenter = (i / N) * total;
-      const { pt, t, n } = getPointAndTangentAtArcLength(pts, cum, gapCenter);
-      gapGeoms.push({ pt, t, n, halfGap });
-    }
-
-    return Array.from({ length: N }, (_, i) => {
-      // Get the gap geometry for this segment's start and end
-      const startGapGeom = gapGeoms[i];
-      const endGapGeom = gapGeoms[(i + 1) % N];
-
-      // Calculate the actual notch base and arrow base positions
-      // These define where the segment body should start and end
-      const notchBase = {
-        x: startGapGeom.pt.x + startGapGeom.t.x * startGapGeom.halfGap,
-        y: startGapGeom.pt.y + startGapGeom.t.y * startGapGeom.halfGap,
-      };
-      const arrowBase = {
-        x: endGapGeom.pt.x - endGapGeom.t.x * endGapGeom.halfGap,
-        y: endGapGeom.pt.y - endGapGeom.t.y * endGapGeom.halfGap,
-      };
-
-      // Find arc-length positions for these points
-      const s0 = findArcLengthForPoint(pts, cum, notchBase);
-      const s1 = findArcLengthForPoint(pts, cum, arrowBase);
-      const wrapsAround = s1 < s0;
-      const segmentLength = wrapsAround ? total - s0 + s1 : s1 - s0;
-      const centerPts = wrapsAround
-        ? [
-            ...sliceByArcLength(pts, cum, s0, total),
-            ...sliceByArcLength(pts, cum, 0, s1),
-          ]
-        : sliceByArcLength(pts, cum, s0, s1);
-
-      // Use reversed path for text if the segment goes right-to-left
-      const needsReverse = shouldReverseTextPath(centerPts);
-      const textPathD = needsReverse
-        ? polylinePathDReversed(centerPts)
-        : polylinePathD(centerPts);
-
-      const ribbonD = buildRibbonSegmentPath(
-        centerPts,
-        ribbonWidth,
-        arrowLen,
-        notchLen,
-        startGapGeom,
-        endGapGeom
-      );
-
-      // Calculate text X offset to center on visible ribbon body
-      // The notch apex is at `notchLen` from the path start
-      // The arrow base is at the path end (arrow tip extends beyond)
-      // Center the text between notch apex and arrow base:
-      //   Visual body: from notchLen to pathLength
-      //   Center: (notchLen + pathLength) / 2 = pathLength/2 + notchLen/2
-      //   As percentage: 50% + (notchLen / (2 * pathLength)) * 100%
-      // For reversed paths, flip the direction
-      const offsetAdjustment = (notchLen / (2 * segmentLength)) * 100;
-      const textStartOffset = needsReverse
-        ? 50 - offsetAdjustment
-        : 50 + offsetAdjustment;
-
-      // Calculate segment center for transform-origin (use midpoint of centerPts)
-      const midIndex = Math.floor(centerPts.length / 2);
-      const segmentCenter = centerPts[midIndex] || centerPts[0];
-
-      return { textPathD, ribbonD, textStartOffset, segmentCenter };
-    });
-  }, [N, width, height]);
-
-  const fontSize = height * 0.11;
+  const fontSize = BASE_HEIGHT * 0.088;
 
   // Ref to measure text height
   const measureTextRef = useRef<SVGTextElement>(null);
@@ -978,83 +539,86 @@ const CICDLoop: React.FC<CICDLoopProps> = ({
         viewBox={`0 0 ${width} ${height}`}
         style={{ maxWidth: "100%", height: "auto", overflow: "visible" }}
       >
-        <defs>
-          {/* Define centerline paths for text to follow */}
-          {segmentGeoms.map((g, i) => (
-            <path key={i} id={`segc-${instanceId}-${i}`} d={g.textPathD} fill="none" />
-          ))}
-        </defs>
+        <g transform={`translate(${offsetX} ${offsetY}) scale(${scale})`}>
+          <defs>
+            {/* Define centerline paths for text to follow */}
+            {segmentGeoms.map((g, i) => (
+              <path key={i} id={`segc-${instanceId}-${i}`} d={g.textPathD} fill="none" />
+            ))}
+          </defs>
 
-        {/* Hidden text element to measure actual text height */}
-        <text
-          ref={measureTextRef}
-          style={{
-            fontSize: `${fontSize}px`,
-            fontWeight: "bold",
-            fontStyle: "italic",
-          }}
-          opacity={0}
-          x={0}
-          y={0}
-        >
-          Mg
-        </text>
+          {/* Hidden text element to measure actual text height */}
+          <text
+            ref={measureTextRef}
+            style={{
+              fontSize: `${fontSize}px`,
+              fontWeight: "bold",
+              fontStyle: "italic",
+            }}
+            opacity={0}
+            x={0}
+            y={0}
+          >
+            Mg
+          </text>
 
-        {/* Render segments in two passes: background first, then "Plan" on top */}
-        {(() => {
-          // Render order: all segments except Plan, then Plan last
-          const renderOrder = [
-            ...segments.map((_, i) => i).filter(i => i !== planIndex),
-            planIndex,
-          ];
+          {/* Render segments in two passes: background first, then "Plan" on top.
+              Plan overlaps the Release band at the crossing and its arrow prong
+              overlaps Code's chevron, so it must paint last (as in the source art). */}
+          {(() => {
+            // Render order: all segments except Plan, then Plan last
+            const renderOrder = [
+              ...segments.map((_, i) => i).filter(i => i !== planIndex),
+              planIndex,
+            ];
 
-          return renderOrder.map((i) => {
-            const g = segmentGeoms[i];
-            const { label, color } = segments[i];
+            return renderOrder.map((i) => {
+              const g = segmentGeoms[i];
+              const { label, color } = segments[i];
 
-            // Apply overlap adjustment to text offset
-            const adjustment = textOffsetAdjustments[i] || 0;
-            const finalOffset = g.textStartOffset + adjustment;
+              // Apply overlap adjustment to text offset
+              const adjustment = textOffsetAdjustments[i] || 0;
+              const finalOffset = g.textStartOffset + adjustment;
 
-            return (
-              <animated.g
-                key={i}
-                style={{
-                  ...springs[i],
-                  transformOrigin: `${g.segmentCenter.x}px ${g.segmentCenter.y}px`,
-                }}
-              >
-                {/* Ribbon with notch + arrow tip */}
-                <path
-                  ref={(el) => { ribbonRefs.current[i] = el; }}
-                  d={g.ribbonD}
-                  fill={color}
-                />
-
-                {/* Label along segment centerline */}
-                <text
-                  ref={(el) => { textRefs.current[i] = el; }}
+              return (
+                <animated.g
+                  key={i}
                   style={{
-                    fontSize: `${fontSize}px`,
-                    fontWeight: "bold",
-                    fontStyle: "italic",
-                    fill: "var(--background-color)",
+                    ...springs[i],
+                    transformOrigin: `${g.segmentCenter.x}px ${g.segmentCenter.y}px`,
                   }}
-                  dy={textDy}
                 >
-                  <textPath
-                    href={`#segc-${instanceId}-${i}`}
-                    startOffset={`${finalOffset}%`}
-                    textAnchor="middle"
-                  >
-                    {label}
-                  </textPath>
-                </text>
-              </animated.g>
-            );
-          });
-        })()}
+                  {/* Ribbon with notch + arrow tip */}
+                  <path
+                    ref={(el) => { ribbonRefs.current[i] = el; }}
+                    d={g.ribbonD}
+                    fill={color}
+                  />
 
+                  {/* Label along segment centerline */}
+                  <text
+                    ref={(el) => { textRefs.current[i] = el; }}
+                    style={{
+                      fontSize: `${fontSize}px`,
+                      fontWeight: "bold",
+                      fontStyle: "italic",
+                      fill: "var(--background-color)",
+                    }}
+                    dy={textDy}
+                  >
+                    <textPath
+                      href={`#segc-${instanceId}-${i}`}
+                      startOffset={`${finalOffset}%`}
+                      textAnchor="middle"
+                    >
+                      {label}
+                    </textPath>
+                  </text>
+                </animated.g>
+              );
+            });
+          })()}
+        </g>
       </svg>
     </div>
   );
