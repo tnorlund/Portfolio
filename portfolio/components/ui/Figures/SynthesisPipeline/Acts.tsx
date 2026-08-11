@@ -40,6 +40,12 @@ import {
   WEIGHT_STEP,
 } from "./pipelineData";
 import styles from "./SynthesisPipeline.module.css";
+import {
+  caretVisibleAt,
+  newlyRevealedWordIndices,
+  rectToCrop,
+  revealedCountsForProgress,
+} from "./assembleDraw";
 import { getKnockedOutInkBitmap } from "./inkCache";
 import {
   knockOutAndBlit,
@@ -673,7 +679,9 @@ const AssembleAct: React.FC<ActProps> = ({
   const { compose, finalLabels } = assets;
   const p = reducedMotion ? 1 : progress;
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imgRef = useRef<HTMLImageElement | null>(null);
+  const sourceRef = useRef<HTMLImageElement | ImageBitmap | null>(null);
+  const prevCountsRef = useRef<number[]>([]);
+  const prevCaretOnRef = useRef(false);
   const [imgReady, setImgReady] = useState(false);
 
   const render = finalLabels?.metadata?.render;
@@ -714,25 +722,58 @@ const AssembleAct: React.FC<ActProps> = ({
   const typingP = phase(p, TYPE_START, TYPE_END);
   const labelsShown = p >= TYPE_END + 0.06;
 
-  // Load the printed receipt once.
+  // Load the printed receipt once (prefer ImageBitmap; fall back to <img>).
   useEffect(() => {
     if (!finalLabels) {
       return;
     }
-    const img = new window.Image();
-    img.onload = () => {
-      imgRef.current = img;
-      setImgReady(true);
+    let cancelled = false;
+    const src = finalSrc(merchant);
+
+    const load = async () => {
+      if (typeof createImageBitmap === "function") {
+        try {
+          const response = await fetch(src);
+          if (response.ok) {
+            const bitmap = await createImageBitmap(await response.blob());
+            if (cancelled) {
+              bitmap.close();
+              return;
+            }
+            sourceRef.current = bitmap;
+            setImgReady(true);
+            return;
+          }
+        } catch {
+          // fall through to Image()
+        }
+      }
+      const img = new window.Image();
+      img.onload = () => {
+        if (cancelled) {
+          return;
+        }
+        sourceRef.current = img;
+        setImgReady(true);
+      };
+      img.src = src;
     };
-    img.src = finalSrc(merchant);
+
+    void load();
     return () => {
-      img.onload = null;
+      cancelled = true;
+      const source = sourceRef.current;
+      if (source && typeof ImageBitmap !== "undefined" && source instanceof ImageBitmap) {
+        source.close();
+      }
+      sourceRef.current = null;
+      prevCountsRef.current = [];
+      prevCaretOnRef.current = false;
     };
   }, [merchant, finalLabels]);
 
-  // Draw the revealed words. Each group reveals in order, all groups at once, so
-  // the receipt materializes top-to-bottom in four places simultaneously; a
-  // caret blinks at each section's leading edge.
+  // Incremental typing reveal: size the canvas once, draw only newly revealed
+  // word crops, and redraw carets without wiping the whole receipt buffer.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) {
@@ -742,39 +783,123 @@ const AssembleAct: React.FC<ActProps> = ({
     if (!ctx) {
       return; // jsdom / no 2d context
     }
-    canvas.width = renderW;
-    canvas.height = renderH;
-    ctx.clearRect(0, 0, renderW, renderH);
-    const img = imgRef.current;
+    const sized = canvas.width !== renderW || canvas.height !== renderH;
+    if (sized) {
+      canvas.width = renderW;
+      canvas.height = renderH;
+      prevCountsRef.current = groups.map(() => 0);
+      prevCaretOnRef.current = false;
+    }
+
+    const img = sourceRef.current;
     if (!img || !imgReady) {
       return;
     }
+
     const t = clamp01(typingP);
-    const drawWordCrop = (r: ReturnType<typeof toCssRectInner>) => {
-      const sx = (r.left / 100) * renderW;
-      const sy = (r.top / 100) * renderH;
-      const sw = (r.width / 100) * renderW;
-      const sh = (r.height / 100) * renderH;
-      if (sw > 0 && sh > 0) {
-        ctx.drawImage(img, sx, sy, sw, sh, sx, sy, sw, sh);
+    const nextCounts = revealedCountsForProgress(groups, t);
+    const prevCounts = prevCountsRef.current.length
+      ? prevCountsRef.current
+      : groups.map(() => 0);
+
+    // Progress went backwards (act restart / scrub) — full redraw.
+    const wentBackwards = nextCounts.some((n, i) => n < (prevCounts[i] ?? 0));
+    if (wentBackwards || sized) {
+      ctx.clearRect(0, 0, renderW, renderH);
+      const full = newlyRevealedWordIndices(
+        groups,
+        groups.map(() => 0),
+        nextCounts,
+      );
+      full.forEach((wordIndex) => {
+        const r = wordRects[wordIndex];
+        if (!r) {
+          return;
+        }
+        const crop = rectToCrop(r, renderW, renderH);
+        if (crop) {
+          ctx.drawImage(
+            img,
+            crop.sx,
+            crop.sy,
+            crop.sw,
+            crop.sh,
+            crop.sx,
+            crop.sy,
+            crop.sw,
+            crop.sh,
+          );
+        }
+      });
+    } else {
+      const delta = newlyRevealedWordIndices(groups, prevCounts, nextCounts);
+      delta.forEach((wordIndex) => {
+        const r = wordRects[wordIndex];
+        if (!r) {
+          return;
+        }
+        const crop = rectToCrop(r, renderW, renderH);
+        if (crop) {
+          ctx.drawImage(
+            img,
+            crop.sx,
+            crop.sy,
+            crop.sw,
+            crop.sh,
+            crop.sx,
+            crop.sy,
+            crop.sw,
+            crop.sh,
+          );
+        }
+      });
+    }
+
+    // Erase previous carets by redrawing the word under the leading edge, then
+    // optionally paint new carets. Avoids a full-canvas clear each blink.
+    const caretOn = caretVisibleAt(t);
+    const eraseCaretAt = (count: number, group: number[]) => {
+      const idx = group[Math.min(group.length - 1, count)];
+      const r = wordRects[idx];
+      if (!r) {
+        return;
       }
-    };
-    groups.forEach((g) => {
-      const revealed = Math.round(t * g.length);
-      for (let i = 0; i < revealed; i += 1) {
-        const r = wordRects[g[i]];
-        if (r) {
-          drawWordCrop(r);
+      const crop = rectToCrop(r, renderW, renderH);
+      if (!crop) {
+        return;
+      }
+      // Clear a strip that covers the caret (4px left of the word).
+      ctx.clearRect(crop.sx - 4, crop.sy, 6, crop.sh);
+      if (count > 0) {
+        const under = wordRects[group[Math.min(group.length - 1, count - 1)]];
+        const underCrop = under ? rectToCrop(under, renderW, renderH) : null;
+        if (underCrop) {
+          ctx.drawImage(
+            img,
+            underCrop.sx,
+            underCrop.sy,
+            underCrop.sw,
+            underCrop.sh,
+            underCrop.sx,
+            underCrop.sy,
+            underCrop.sw,
+            underCrop.sh,
+          );
         }
       }
-    });
-    // Blinking carets at each leading edge while typing.
-    if (t > 0 && t < 1 && Math.floor(t * 48) % 2 === 0) {
+    };
+
+    if (prevCaretOnRef.current || caretOn) {
+      groups.forEach((g, gi) => {
+        eraseCaretAt(nextCounts[gi] ?? 0, g);
+      });
+    }
+    if (caretOn) {
       ctx.fillStyle =
         getComputedStyle(canvas).getPropertyValue("--color-blue").trim() ||
         "#4a90d9";
-      groups.forEach((g) => {
-        const revealed = Math.round(t * g.length);
+      groups.forEach((g, gi) => {
+        const revealed = nextCounts[gi] ?? 0;
         const r = wordRects[g[Math.min(g.length - 1, revealed)]];
         if (r) {
           ctx.fillRect(
@@ -786,6 +911,9 @@ const AssembleAct: React.FC<ActProps> = ({
         }
       });
     }
+
+    prevCountsRef.current = nextCounts;
+    prevCaretOnRef.current = caretOn;
   }, [typingP, imgReady, groups, wordRects, renderW, renderH]);
 
   if (!finalLabels || !compose) {
