@@ -7,8 +7,9 @@ import {
   loadSynthesisPipelineWasm,
   SynthesisPipelineWasmExports,
 } from "./loader";
+import { knockOutInWorker, stampThermalInWorker } from "./workerClient";
 
-export type KernelPath = "wasm" | "js";
+export type KernelPath = "worker" | "wasm" | "js";
 
 let cached: SynthesisPipelineWasmExports | null | undefined;
 
@@ -41,12 +42,18 @@ const blitPixels = (
 };
 
 /**
- * Prefer WASM knock-out; fall back to the JS reference on any failure.
- * Mutates `pixels` in place in either path.
+ * Prefer worker (off main thread) → main-thread WASM → JS reference.
+ * Mutates `pixels` in place in every path.
  */
 export const knockOutReceiptPaperFast = async (
   pixels: Uint8ClampedArray,
 ): Promise<KernelPath> => {
+  const workerResult = await knockOutInWorker(pixels);
+  if (workerResult) {
+    pixels.set(workerResult.pixels);
+    return "worker";
+  }
+
   const wasm = await getWasm();
   if (!wasm) {
     knockOutJs(pixels);
@@ -90,7 +97,7 @@ export const knockOutAndBlit = async (
 };
 
 /**
- * Prefer WASM thermal stamping; blit from WASM memory when possible.
+ * Prefer worker thermal stamping; then main-thread WASM; then JS.
  */
 export const stampThermalDotsAndBlit = async (
   ctx: CanvasRenderingContext2D,
@@ -98,21 +105,29 @@ export const stampThermalDotsAndBlit = async (
   isCancelled?: () => boolean,
 ): Promise<KernelPath> => {
   const { width, height, points, count, radius, red, green, blue } = params;
+  const safeCount = Math.min(count, points.length >> 1);
+  const safeParams = { ...params, count: safeCount };
+
+  const workerResult = await stampThermalInWorker(safeParams);
+  if (workerResult) {
+    blitPixels(ctx, workerResult.pixels, width, height, isCancelled);
+    return "worker";
+  }
+
   const wasm = await getWasm();
   if (!wasm) {
     const pixels = new Uint8ClampedArray(width * height * 4);
-    stampThermalJs(pixels, params);
+    stampThermalJs(pixels, safeParams);
     blitPixels(ctx, pixels, width, height, isCancelled);
     return "js";
   }
   try {
-    const safeCount = Math.min(count, points.length >> 1);
     const pixelBytes = width * height * 4;
     const pointsBytes = safeCount * 8;
     const base = wasm.bufferBase();
     if (!wasm.ensureCapacity(pixelBytes + pointsBytes)) {
       const pixels = new Uint8ClampedArray(width * height * 4);
-      stampThermalJs(pixels, { ...params, count: safeCount });
+      stampThermalJs(pixels, safeParams);
       blitPixels(ctx, pixels, width, height, isCancelled);
       return "js";
     }
@@ -136,7 +151,7 @@ export const stampThermalDotsAndBlit = async (
     return "wasm";
   } catch {
     const pixels = new Uint8ClampedArray(width * height * 4);
-    stampThermalJs(pixels, params);
+    stampThermalJs(pixels, safeParams);
     blitPixels(ctx, pixels, width, height, isCancelled);
     return "js";
   }
@@ -144,7 +159,7 @@ export const stampThermalDotsAndBlit = async (
 
 /**
  * Prefer WASM thermal stamping into `pixels`; fall back to JS.
- * Kept for unit tests that assert buffer equality.
+ * Kept for unit tests that assert buffer equality (main-thread path).
  */
 export const stampThermalDotsFast = async (
   pixels: Uint8ClampedArray,
