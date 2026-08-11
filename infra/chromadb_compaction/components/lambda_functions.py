@@ -638,9 +638,7 @@ class HybridLambdaDeployment(ComponentResource):
                     # processor resolves the URL at runtime. Rollout is
                     # gated: an outdated worker binary fails refine jobs
                     # noisily, so enable only after workers update.
-                    "OCR_JOB_QUEUE_NAME": (
-                        f"upload-images-{stack}-ocr-queue"
-                    ),
+                    "OCR_JOB_QUEUE_NAME": (f"upload-images-{stack}-ocr-queue"),
                     "ENABLE_LINE_ITEM_REFINE": (
                         pulumi.Config("chromadb").get(
                             "enable-line-item-refine"

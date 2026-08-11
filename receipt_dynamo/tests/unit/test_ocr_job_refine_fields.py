@@ -10,6 +10,7 @@ the DynamoDB round trip exactly — the Swift side has the mirror test in
 from datetime import datetime, timezone
 
 import pytest
+
 from receipt_dynamo.constants import OCRJobType
 from receipt_dynamo.entities.ocr_job import OCRJob, item_to_ocr_job
 

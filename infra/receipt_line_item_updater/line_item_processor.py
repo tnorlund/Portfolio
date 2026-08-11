@@ -762,8 +762,7 @@ def _maybe_trigger_line_item_refine(
     if not queue_url and not queue_name:
         return False
     if summary_dict is None or not any(
-        summary_dict.get(k) is not None
-        for k in ("subtotal", "grand_total")
+        summary_dict.get(k) is not None for k in ("subtotal", "grand_total")
     ):
         # Without a printed figure the refine pass has no graded
         # baseline to add; the single-pass decode already ran.
@@ -869,9 +868,7 @@ def _maybe_trigger_line_item_refine(
             queue_url = sqs.get_queue_url(QueueName=queue_name)["QueueUrl"]
         sqs.send_message(
             QueueUrl=queue_url,
-            MessageBody=json.dumps(
-                {"job_id": job_id, "image_id": image_id}
-            ),
+            MessageBody=json.dumps({"job_id": job_id, "image_id": image_id}),
         )
         logger.info(
             "triggered line-item refine for %s:%d (attempt %d)",
