@@ -17,12 +17,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_emr_runtime_targets_spark_8_and_python_313() -> None:
+    """The selected local runtime matches EMR Spark 8."""
     assert EMR_SPARK_RELEASE == "emr-spark-8.0.0"
     assert EMR_SPARK_VERSION == "4.0.2"
     assert EMR_PYTHON_VERSION == "3.13"
 
 
 def test_spark_runtime_uses_packaged_python_environment() -> None:
+    """Drivers and executors share the application package."""
     properties = spark_runtime_properties(
         "s3://artifacts/spark/python-environment.tar.gz"
     )
@@ -43,11 +45,13 @@ def test_spark_runtime_uses_packaged_python_environment() -> None:
 
 
 def test_python_environment_excludes_emr_native_dependencies() -> None:
+    """The AWS archive reuses EMR's Spark and Arrow installations."""
     buildspec = _python_environment_buildspec()
     phases = buildspec["phases"]
     assert isinstance(phases, dict)
     build = phases["build"]
     assert isinstance(build, dict)
+    assert build["on-failure"] == "ABORT"
     commands = build["commands"]
     assert isinstance(commands, list)
     command_text = "\n".join(commands)
@@ -63,6 +67,7 @@ def test_python_environment_excludes_emr_native_dependencies() -> None:
 
 
 def test_local_spark_extra_matches_emr_runtime() -> None:
+    """Local and CI installs include the Spark dependencies AWS provides."""
     package_config = tomllib.loads(
         (REPO_ROOT / "receipt_langsmith" / "pyproject.toml").read_text()
     )
@@ -70,6 +75,7 @@ def test_local_spark_extra_matches_emr_runtime() -> None:
         "optional-dependencies"
     ]["pyspark"]
 
+    assert package_config["project"]["requires-python"] == ">=3.13"
     assert f"pyspark=={EMR_SPARK_VERSION}" in local_spark_dependencies
     assert any(
         dependency.startswith("pyarrow")

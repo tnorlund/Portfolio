@@ -4,6 +4,8 @@ from __future__ import annotations
 
 EMR_SPARK_RELEASE = "emr-spark-8.0.0"
 EMR_SPARK_VERSION = "4.0.2"
+# EMR Spark 8 defaults to Python 3.11 but also ships Python 3.13. This package
+# requires Python >=3.13, so drivers and executors deliberately select it.
 EMR_PYTHON_VERSION = "3.13"
 PYTHON_ENVIRONMENT_NAME = "environment"
 

@@ -17,7 +17,7 @@ def test_read_traces_uses_s3a_for_spark(monkeypatch) -> None:
     """EMR Spark 8 reads persistent S3 data through the S3A connector."""
 
     class FakeDataFrame:
-        columns = ["id"]
+        columns = ("id",)
 
         def select(self, *_columns: str) -> "FakeDataFrame":
             return self

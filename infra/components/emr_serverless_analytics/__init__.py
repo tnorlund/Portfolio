@@ -57,20 +57,27 @@ stack = pulumi.get_stack()
 
 def _python_environment_buildspec() -> dict[str, object]:
     """Return the CodeBuild buildspec for the portable Python environment."""
+    python_package = f"python{EMR_PYTHON_VERSION}"
+    python_binary = f"/usr/bin/{python_package}"
     return {
         "version": 0.2,
         "phases": {
             "install": {
                 "runtime-versions": {"python": EMR_PYTHON_VERSION},
                 "commands": [
-                    ("dnf install -y python3.13 python3.13-pip"),
-                    "/usr/bin/python3.13 --version",
+                    f"dnf install -y {python_package} {python_package}-pip",
+                    f"test -x {python_binary}",
+                    f"{python_binary} --version",
                 ],
             },
             "build": {
+                "on-failure": "ABORT",
                 "commands": [
-                    "echo Creating Python 3.13 environment for EMR Spark...",
-                    "/usr/bin/python3.13 -m venv spark_env",
+                    (
+                        f"echo Creating Python {EMR_PYTHON_VERSION} "
+                        "environment for EMR Spark..."
+                    ),
+                    f"{python_binary} -m venv spark_env",
                     "spark_env/bin/python -m pip install --upgrade pip",
                     (
                         "spark_env/bin/python -m pip install "
@@ -95,15 +102,15 @@ def _python_environment_buildspec() -> dict[str, object]:
                         "spark_env/pyvenv.cfg"
                     ),
                     (
-                        'test "$(readlink spark_env/bin/python3.13)" '
-                        '= "/usr/bin/python3.13"'
+                        f'test "$(readlink spark_env/bin/{python_package})" '
+                        f'= "{python_binary}"'
                     ),
                     (
                         'VIRTUAL_ENV="$PWD/spark_env" '
                         "spark_env/bin/venv-pack -f "
                         "-o python-environment.tar.gz"
                     ),
-                ]
+                ],
             },
             "post_build": {
                 "commands": [
@@ -626,7 +633,8 @@ class EMRServerlessAnalytics(ComponentResource):
         self.python_environment_project = aws.codebuild.Project(
             f"{name}-python-environment",
             description=(
-                "Package receipt_langsmith for EMR Spark 8 / Python 3.13"
+                "Package receipt_langsmith for EMR Spark 8 / Python "
+                f"{EMR_PYTHON_VERSION}"
             ),
             build_timeout=30,
             service_role=codebuild_role.arn,
