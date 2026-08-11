@@ -4,9 +4,9 @@ Standalone integration test for close_chromadb_client functionality.
 
 This test can be run directly without pytest to avoid import issues.
 
-Run with Python 3.12 (recommended):
-    # Create venv with Python 3.12
-    python3.12 -m venv .venv_test_chromadb
+Run with Python 3.13 (recommended):
+    # Create venv with Python 3.13
+    python3.13 -m venv .venv_test_chromadb
     source .venv_test_chromadb/bin/activate
     pip install pytest chromadb
 
@@ -17,7 +17,7 @@ Or run directly (may have Python 3.14 compatibility issues):
     python3 standalone_test_close_client.py
 
 NOTE: ChromaDB has compatibility issues with Python 3.14.
-This test works best with Python 3.12.
+This test works best with Python 3.13.
 """
 
 import sys
@@ -28,7 +28,7 @@ if sys.version_info >= (3, 14):
         "⚠️  Warning: Python 3.14+ detected. ChromaDB may have compatibility issues."
     )
     print(
-        "   Consider using Python 3.12: python3.12 -m venv .venv_test_chromadb"
+        "   Consider using Python 3.13: python3.13 -m venv .venv_test_chromadb"
     )
     print()
 
@@ -115,7 +115,7 @@ except Exception as e:
             del sys.modules["chromadb.config"]
     print(f"❌ Failed to import chromadb: {e}")
     print("   This is likely due to Python 3.14 compatibility issues.")
-    print("   Try running with Python 3.12 or install pydantic-settings.")
+    print("   Try running with Python 3.13 or install pydantic-settings.")
     print(f"   Error details: {type(e).__name__}: {e}")
     import traceback
 

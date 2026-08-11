@@ -51,18 +51,18 @@ for runner_dir in "$RUNNER_BASE"/actions-runner*; do
 done
 
 echo ""
-echo -e "${YELLOW}Installing Python 3.12 via Homebrew...${NC}"
-# Check if Python 3.12 is installed
-if ! brew list python@3.12 &>/dev/null; then
-    brew install python@3.12
-    echo -e "${GREEN}✅ Installed Python 3.12${NC}"
+echo -e "${YELLOW}Installing Python 3.13 via Homebrew...${NC}"
+# Check if Python 3.13 is installed
+if ! brew list python@3.13 &>/dev/null; then
+    brew install python@3.13
+    echo -e "${GREEN}✅ Installed Python 3.13${NC}"
 else
-    echo -e "${GREEN}✅ Python 3.12 already installed${NC}"
+    echo -e "${GREEN}✅ Python 3.13 already installed${NC}"
 fi
 
-# Note: python3.12 should be available directly from Homebrew
+# Note: python3.13 should be available directly from Homebrew
 # Creating symlinks in Homebrew directories is not recommended
-# The workflow will use the full python3.12 path directly
+# The workflow will use the full python3.13 path directly
 
 echo ""
 echo -e "${GREEN}🎉 Python setup complete!${NC}"
@@ -74,5 +74,5 @@ echo "3. Re-run any failed CI jobs"
 echo ""
 echo -e "${BLUE}What this fixed:${NC}"
 echo "• Runners will use local tool cache in $TOOL_CACHE_DIR"
-echo "• Python 3.12 available via Homebrew"
+echo "• Python 3.13 available via Homebrew"
 echo "• No sudo permissions required"

@@ -20,7 +20,7 @@ def lambda_handler(event, context):
     response = lambda_client.publish_layer_version(
         LayerName=layer_name,
         Content={"S3Bucket": bucket_name, "S3Key": s3_key},
-        CompatibleRuntimes=["python3.12"],
+        CompatibleRuntimes=["python3.13"],
         Description=description,
         CompatibleArchitectures=compatible_architectures,
     )

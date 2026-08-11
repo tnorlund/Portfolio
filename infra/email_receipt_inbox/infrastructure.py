@@ -203,7 +203,7 @@ class EmailReceiptInbox(ComponentResource):
             opts=child)
         self.parser = aws.lambda_.Function(
             f"{name}-parser",
-            runtime="python3.12",
+            runtime="python3.13",
             handler="handler.lambda_handler",
             role=role.arn,
             timeout=60,

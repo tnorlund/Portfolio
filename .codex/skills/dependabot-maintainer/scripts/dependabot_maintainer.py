@@ -722,7 +722,7 @@ def pyproject_extras(pyproject: Path) -> str:
 
 
 def python_bin() -> str:
-    return shutil.which("python3.12") or shutil.which("python3") or sys.executable
+    return shutil.which("python3.13") or shutil.which("python3") or sys.executable
 
 
 def verify_receipt_upload_dir(worktree: Path, venv_python: Path) -> None:

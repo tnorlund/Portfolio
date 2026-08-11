@@ -271,7 +271,7 @@ class CombineReceiptsStepFunction(ComponentResource):
             f"{name}-list-images",
             name=f"{name}-list-images",
             role=lambda_role.arn,
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             handler="handlers.list_images.handler",
             code=AssetArchive(
@@ -314,7 +314,7 @@ class CombineReceiptsStepFunction(ComponentResource):
             f"{name}-aggregate-results",
             name=f"{name}-aggregate-results",
             role=lambda_role.arn,
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             handler="handlers.aggregate_results.handler",
             code=AssetArchive(

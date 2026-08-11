@@ -17,17 +17,17 @@ before the write is even attempted.
 
 Usage:
     # dry run over the dev corpus, with a blast-radius report
-    python3.12 scripts/backfill_decoder_word_labels.py
+    python3.13 scripts/backfill_decoder_word_labels.py
 
     # one receipt, showing every proposed word
-    python3.12 scripts/backfill_decoder_word_labels.py \
+    python3.13 scripts/backfill_decoder_word_labels.py \
         --receipt 90af9793-b468-475c-bd31-902a922830d4:1 --verbose
 
     # write to dev
-    python3.12 scripts/backfill_decoder_word_labels.py --apply
+    python3.13 scripts/backfill_decoder_word_labels.py --apply
 
     # prod writes need the explicit opt-in
-    python3.12 scripts/backfill_decoder_word_labels.py \
+    python3.13 scripts/backfill_decoder_word_labels.py \
         --table ReceiptsTable-d7ff76a --apply --allow-prod
 """
 

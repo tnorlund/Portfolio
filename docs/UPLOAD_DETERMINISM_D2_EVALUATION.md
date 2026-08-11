@@ -72,13 +72,13 @@ predictions as mismatches rather than removing them from the denominator.
 DYNAMODB_TABLE_NAME=ReceiptsTable-dc5be22 \
 DEPLOYMENT_ENVIRONMENT=dev \
 PYTHONPATH=receipt_upload:receipt_dynamo:receipt_chroma \
-python3.12 scripts/build_section_order_priors.py \
+python3.13 scripts/build_section_order_priors.py \
   --environment dev \
   --exclude-manifest /private/tmp/d2_targets.json
 
 DYNAMODB_TABLE_NAME=ReceiptsTable-dc5be22 \
 PYTHONPATH=receipt_upload:receipt_dynamo:receipt_chroma \
-python3.12 scripts/evaluate_section_assignment.py \
+python3.13 scripts/evaluate_section_assignment.py \
   --targets /private/tmp/d2_targets.json
 ```
 

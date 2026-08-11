@@ -9,10 +9,10 @@ authors = [
   { name="Tyler Norlund", email="tnorlund@icloud.com" },
 ]
 description = "LangSmith trace schemas, API client, and analytics for receipt evaluation"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Development Status :: 4 - Beta",
@@ -76,7 +76,7 @@ include = ["receipt_langsmith/py.typed"]
 
 [tool.black]
 line-length = 79
-target-version = ["py312"]
+target-version = ["py313"]
 
 [tool.isort]
 profile = "black"
@@ -86,7 +86,7 @@ line_length = 79
 max-line-length = 79
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false

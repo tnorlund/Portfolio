@@ -1,7 +1,7 @@
 # Multi-stage build for Combine Receipts Lambda
 
 # Stage 1: Build and install dependencies (cached layer)
-FROM public.ecr.aws/lambda/python:3.12 AS dependencies
+FROM public.ecr.aws/lambda/python:3.13 AS dependencies
 
 # Install system dependencies for image processing
 # Use dnf package manager (microdnf may not be available in all Lambda base images)

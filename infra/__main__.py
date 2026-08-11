@@ -765,7 +765,7 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 #     f"receipt-trainer-{stack}",
 #     packages=["receipt_trainer"],
 #     supplementary_packages=["receipt_dynamo"],
-#     python_version="3.12",
+#     python_version="3.13",
 #     vpc_id=network.vpc_id,  # Use network component output
 #     subnet_ids=network.private_subnet_ids,  # Use network component output
 #     security_group_ids=[network.security_group_id],  # Use new security group
@@ -1366,7 +1366,7 @@ from components.emr_serverless_docker_image import (
 
 emr_docker_image = create_emr_serverless_docker_image(
     name="emr-spark",
-    emr_release="emr-7.5.0",  # Using 7.5.0 base with Python 3.12 installed
+    emr_release="emr-7.5.0",  # Using 7.5.0 base with Python 3.13 installed
     # CodeBuild will stop and update the EMR Application after building the image
     emr_application_name=f"langsmith-analytics-{stack}",
     # Use sync mode on first deployment to ensure image exists before EMR App is created

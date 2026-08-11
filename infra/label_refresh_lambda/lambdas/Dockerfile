@@ -1,4 +1,4 @@
-FROM public.ecr.aws/lambda/python:3.12
+FROM public.ecr.aws/lambda/python:3.13
 
 # Local package install chain. receipt_chroma depends on receipt_dynamo, so
 # both packages must be copied into the build context and installed locally.

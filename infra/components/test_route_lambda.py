@@ -126,7 +126,7 @@ def test_create_route_lambda_with_managed_policy(
         ),
     ]
     function_args = mocked_resources["functions"][0][1]
-    assert function_args["runtime"] == "python3.12"
+    assert function_args["runtime"] == "python3.13"
     assert function_args["architectures"] == ["arm64"]
     assert function_args["role"] == "role-arn"
     assert function_args["handler"] == "index.lambda_handler"

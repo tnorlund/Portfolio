@@ -145,7 +145,7 @@ class EMRServerlessAnalytics(ComponentResource):
         # EMR Serverless Application
         # ============================================================
         # Build application args
-        # Use EMR 7.5.0 with custom image that has Python 3.12 installed
+        # Use EMR 7.5.0 with custom image that has Python 3.13 installed
         # (EMR 8.0 preview doesn't have public Docker base images for custom images yet)
         emr_app_args = {
             "name": f"langsmith-analytics-{stack}",

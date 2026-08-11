@@ -384,7 +384,7 @@ class McpAuthGateway(ComponentResource):
         metadata_lambda = aws.lambda_.Function(
             f"{name}-metadata",
             role=metadata_role.arn,
-            runtime="python3.12",
+            runtime="python3.13",
             handler="index.handler",
             timeout=5,
             memory_size=128,

@@ -348,7 +348,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             f"{name}-list-all-receipts",
             name=f"{name}-list-all-receipts",
             role=lambda_role.arn,
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             handler="list_all_receipts.handler",
             code=AssetArchive(
@@ -387,7 +387,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             f"{name}-final-aggregate",
             name=f"{name}-final-aggregate",
             role=lambda_role.arn,
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             handler="final_aggregate.handler",
             code=AssetArchive(
@@ -611,7 +611,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 f"{name}-build-viz-cache",
                 name=f"{name}-build-viz-cache",
                 role=build_viz_cache_role.arn,
-                runtime="python3.12",
+                runtime="python3.13",
                 architectures=["arm64"],
                 handler="build_viz_cache.handler",
                 code=AssetArchive(

@@ -249,7 +249,7 @@ class HybridLambdaDeployment(ComponentResource):
         # Create zip-based Lambda for stream processing
         self.stream_processor_function = aws.lambda_.Function(
             f"{name}-stream-processor",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             code=pulumi.AssetArchive(
                 {
@@ -439,7 +439,7 @@ class HybridLambdaDeployment(ComponentResource):
 
         self.summary_updater_function = aws.lambda_.Function(
             f"{name}-summary-updater",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             code=summary_updater_code,
             handler="handler.lambda_handler",
@@ -611,7 +611,7 @@ class HybridLambdaDeployment(ComponentResource):
 
         self.line_item_updater_function = aws.lambda_.Function(
             f"{name}-line-item-updater",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             code=line_item_updater_code,
             handler="handler.lambda_handler",

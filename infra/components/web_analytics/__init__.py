@@ -307,7 +307,7 @@ class WebAnalytics(ComponentResource):
         )
         self.transform_lambda = aws.lambda_.Function(
             f"{name}-transform",
-            runtime="python3.12",
+            runtime="python3.13",
             handler="handler.handler",
             code=pulumi.FileArchive(_HANDLER_DIR),
             role=transform_role.arn,
@@ -520,7 +520,7 @@ class WebAnalytics(ComponentResource):
             )
             self.github_lambda = aws.lambda_.Function(
                 f"{name}-gh-extract",
-                runtime="python3.12",
+                runtime="python3.13",
                 handler="handler.handler",
                 code=pulumi.FileArchive(_GH_HANDLER_DIR),
                 role=gh_role.arn,

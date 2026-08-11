@@ -353,10 +353,10 @@ CoreML tools has version constraints that don't work with bleeding-edge Python:
 - **Torch 2.9+**: Not tested with coremltools 9.0
 - **scikit-learn 1.6+**: Not supported (max 1.5.1)
 
-Create a compatible venv using Python 3.12:
+Create a compatible venv using Python 3.13:
 ```bash
 # Create venv with compatible Python version
-/usr/local/bin/python3.12 -m venv ~/.coreml-venv
+/usr/local/bin/python3.13 -m venv ~/.coreml-venv
 
 # Install dependencies
 ~/.coreml-venv/bin/pip install coremltools 'torch<2.8' transformers boto3
@@ -370,7 +370,7 @@ Create a compatible venv using Python 3.12:
   --results-queue-url "<results-queue-url>"
 ```
 
-**Note:** Even with Python 3.12, you may see warnings about version compatibility. These are typically non-fatal.
+**Note:** Even with Python 3.13, you may see warnings about version compatibility. These are typically non-fatal.
 
 ## QA Agent Evaluation Workflow
 

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "glyphstudio"
 version = "0.1.0"
 description = "Parametric stroke-skeleton glyph fonts for synthetic receipts"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "numpy",
     "pillow",

@@ -367,7 +367,7 @@ class LambdaFunctionsComponent(ComponentResource):
 
         return Function(
             f"{name}-lambda-{stack}",
-            runtime="python3.12",
+            runtime="python3.13",
             handler=config["handler"],
             code=FileArchive(str(source_path)),
             role=self.lambda_role.arn,
