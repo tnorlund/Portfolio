@@ -4,6 +4,7 @@ import { ShowcaseLabelFile } from "../AugmentationShowcase/labelGeometry";
 import { GlyphSkeleton } from "./geometry";
 import { ActView } from "./Acts";
 import { useActTransition } from "./actTransition";
+import { shouldPublishAutoplay } from "./autoplayPublish";
 import {
   ACT_COUNT,
   ACT_DWELL_MS,
@@ -103,15 +104,21 @@ const SynthesisPipeline: React.FC = () => {
   const loadedRef = useRef(false);
   const actRef = useRef(0);
   const progRef = useRef(0);
+  // Last values actually published to React — used to throttle setState.
+  const renderedActRef = useRef(0);
+  const renderedProgRef = useRef(0);
+  const lastProgressPublishMsRef = useRef(0);
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Mirror render state into refs so the rAF loop can resume from wherever the
   // timeline currently is (after a pause, a jump, or scrolling back in).
   useEffect(() => {
     actRef.current = activeAct;
+    renderedActRef.current = activeAct;
   }, [activeAct]);
   useEffect(() => {
     progRef.current = actProgress;
+    renderedProgRef.current = actProgress;
   }, [actProgress]);
 
   // Load the Sprouts JSON assets once, when the figure is near view.
@@ -155,9 +162,9 @@ const SynthesisPipeline: React.FC = () => {
 
   const playing = inView && !paused && !reducedMotion;
 
-  // Autoplay clock: while playing, advance the active act's progress each
-  // frame, wrapping to the next act. Cancels (and preserves position via refs)
-  // when playing stops — out of view, paused, or reduced motion.
+  // Autoplay clock: advance refs every frame, but only publish React state at
+  // ~30fps (or on act boundaries) so thermal/assemble aren't starved by
+  // reconciles on every rAF tick.
   useEffect(() => {
     if (!playing) {
       return;
@@ -175,8 +182,24 @@ const SynthesisPipeline: React.FC = () => {
       prog = next.actProgress;
       actRef.current = act;
       progRef.current = prog;
-      setActiveAct(act);
-      setActProgress(prog);
+
+      const decision = shouldPublishAutoplay(
+        act,
+        prog,
+        renderedActRef.current,
+        renderedProgRef.current,
+        lastProgressPublishMsRef.current,
+        ts,
+      );
+      if (decision.publishAct) {
+        renderedActRef.current = act;
+        setActiveAct(act);
+      }
+      if (decision.publishProgress) {
+        renderedProgRef.current = prog;
+        lastProgressPublishMsRef.current = ts;
+        setActProgress(prog);
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -217,6 +240,8 @@ const SynthesisPipeline: React.FC = () => {
       setActProgress(1); // show the act resolved while paused
       actRef.current = index;
       progRef.current = 1;
+      renderedActRef.current = index;
+      renderedProgRef.current = 1;
       pauseForInteraction();
     },
     [pauseForInteraction],
