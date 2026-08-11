@@ -54,3 +54,4 @@ config:
   portfolio:githubTrafficToken:
     secure: AAABAPQhIYOaTK1AvV4KRf1GKzvVoUlskvOjq2jlj2NLoVyfASZQsQwmlIF9fsFlO9z6n6S2PXtXI+tHV4PZmBf1VHIekHzhYttH0gqRh9RimMbcAQZbNMLb+8vB43YeL6226DX76XLt2KiQEVSDzlvNYFRUehRG5R7QSbY=
   portfolio:githubTrafficRepos: tnorlund/Portfolio
+  chromadb:enable-line-item-refine: "true"
