@@ -349,7 +349,12 @@ def create_simplified_qa_tools(
 
             formatted_receipt = "\n".join(formatted_lines)
 
-            # Extract amounts summary
+            # Extract amounts summary. parse_receipt_amount accepts the
+            # accounting negatives return receipts print ("$16.25-"
+            # trailing minus) that a bare float() rejects, and TIP is a
+            # money label like the others.
+            from receipt_dynamo.amounts import parse_receipt_amount
+
             amounts = []
             currency_labels = [
                 "TAX",
@@ -357,13 +362,12 @@ def create_simplified_qa_tools(
                 "GRAND_TOTAL",
                 "LINE_TOTAL",
                 "UNIT_PRICE",
+                "TIP",
             ]
             for w in sorted_words:
                 if w["label"] in currency_labels:
-                    try:
-                        amount = float(
-                            w["text"].replace("$", "").replace(",", "")
-                        )
+                    amount = parse_receipt_amount(w["text"])
+                    if amount is not None:
                         amounts.append(
                             {
                                 "label": w["label"],
@@ -371,8 +375,6 @@ def create_simplified_qa_tools(
                                 "amount": amount,
                             }
                         )
-                    except ValueError:
-                        pass
 
             return {
                 "image_id": image_id,
