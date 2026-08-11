@@ -33,7 +33,9 @@ def test_maintained_documentation_is_scanned(
     monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
     guide = tmp_path / "docs" / "development" / f"setup{suffix}"
     guide.parent.mkdir(parents=True)
-    guide.write_text(f"# Setup\n\n{non_baseline_reference}\n", encoding="utf-8")
+    guide.write_text(
+        f"# Setup\n\n{non_baseline_reference}\n", encoding="utf-8"
+    )
 
     errors = checker._check_runtime_files()
 
@@ -71,6 +73,8 @@ def test_historical_markdown_is_excluded(
     monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
     record = tmp_path / historical_root / "runtime-record.md"
     record.parent.mkdir(parents=True)
-    record.write_text("This snapshot used Python 3." + "12.\n", encoding="utf-8")
+    record.write_text(
+        "This snapshot used Python 3." + "12.\n", encoding="utf-8"
+    )
 
     assert checker._check_runtime_files() == []

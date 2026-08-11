@@ -156,7 +156,9 @@ def _check_tool_version(
     expected: object,
 ) -> None:
     if value is not None and value != expected:
-        errors.append(f"{relative}: {tool_name} is {value!r}; expected {expected!r}")
+        errors.append(
+            f"{relative}: {tool_name} is {value!r}; expected {expected!r}"
+        )
 
 
 def _check_pyprojects() -> list[str]:
