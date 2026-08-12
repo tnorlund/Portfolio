@@ -14,6 +14,12 @@ const baseConfig = {
   compress: true,
   poweredByHeader: false,
 
+  experimental: {
+    // TypeScript 6 is installed under an npm alias and exposes the compiler API,
+    // while Next 16.3 defaults to a CLI binary that the aliased package omits.
+    useTypeScriptCli: false,
+  },
+
   // Allow cross-origin requests from local network devices (e.g., iPhone testing)
   allowedDevOrigins: ["192.168.*.*"],
 

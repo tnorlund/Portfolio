@@ -53,3 +53,16 @@ updates:
     commit-message:
       prefix: "ci"
       include: "scope"
+
+  # Monitor the Swift OCR worker package graph.
+  - package-ecosystem: "swift"
+    directory: "/receipt_ocr_swift"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+      - "swift"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
