@@ -393,6 +393,9 @@ def _zone_bands(ocr_receipt: dict) -> list[dict]:
     OCR lines) that line-level decode measurably lost -- In-N-Out /
     The Stand / Smith's / Target names went to 0-25% on lines and their
     layouts never let name meet price in one parse_band call.
+
+    ``band_words`` also splits a glued two-row band (two right-column
+    prices at distinct y) so each product reaches ``parse_band`` alone.
     """
     from receipt_upload.line_items.geometry import band_words
 

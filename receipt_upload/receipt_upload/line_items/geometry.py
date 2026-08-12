@@ -476,6 +476,16 @@ TAX_FLAG_RE = re.compile(r"(?<=\d)\s*[TFNOAB]X?$")
 # Swift port is the same two operations in the same order.
 FLAGGED_AMOUNT_RE = re.compile(r"^(\$?-?\d[\d.,]*\d)\s*[TFNOAB]X?$")
 
+# Right-most amount-word x is the price column; "in column" = within this.
+# Same gate decode_band_blocks uses for META echo absorption.
+PRICE_COLUMN_X_TOL = 0.15
+# Two column prices are distinct visual rows when their y-gap is at least
+# this fraction of the shorter price-word's height. Tight enough that
+# same-row Price/You-Pay pairs (Vons, y-ratio ~0.04) stay one band; loose
+# enough that glued product rows (Sprouts clover/tomatoes ~0.26, Costco
+# warehouse pairs ~0.30) split.
+PRICE_COLUMN_Y_SEP = 0.25
+
 
 def strip_tax_flag(token: str) -> str:
     """Return ``token`` without a taxability flag fused onto its amount.
@@ -486,6 +496,24 @@ def strip_tax_flag(token: str) -> str:
     """
     match = FLAGGED_AMOUNT_RE.fullmatch((token or "").strip())
     return match.group(1) if match else (token or "")
+
+
+def is_line_price_word(word: dict) -> bool:
+    """Whether a word is a two-decimal line price (not a weight/SKU).
+
+    Shared by ``band_words`` (price-column split) and ``parse_band`` so the
+    column test and the parse cannot disagree on what an amount is.
+    """
+    text = word.get("text") or ""
+    if text.endswith(")") and "(" not in text:
+        return False
+    text = strip_tax_flag(text)
+    if not (
+        looks_like_receipt_amount(text)
+        and re.search(r"\d[.,]\d{2}(?!\d)", text)
+    ):
+        return False
+    return parse_receipt_amount(text) is not None
 
 
 DISCOUNT_WORDS = ("SAVED", "SAVING", "OFF", "COUPON", "DISCOUNT", "PROMO")
@@ -559,6 +587,11 @@ def band_words(words: list[dict]) -> list[list[dict]]:
     the receipt's width, and every item silently pairs with the price of its
     neighbour -- measured at 0% name accuracy on Trader Joe's receipts while
     recall stayed at 100%, because the items were all found, just mislabeled.
+
+    Tight row pitch can still glue two product rows into one band (two
+    left-side names + two right-column prices). Those are split after
+    clustering, using the price column -- never by inventing a missing
+    amount, and never by merchant vocabulary.
     """
     if not words:
         return []
@@ -586,7 +619,64 @@ def band_words(words: list[dict]) -> list[list[dict]]:
             bands.append([w])
     for band in bands:
         band.sort(key=lambda w: w["x"])
-    return bands
+    amt_xs = [w["x"] for w in words if is_line_price_word(w)]
+    zone_col_x = max(amt_xs) if amt_xs else None
+    return split_overmerged_price_bands(bands, zone_col_x)
+
+
+def split_overmerged_price_bands(
+    bands: list[list[dict]], zone_col_x: Optional[float]
+) -> list[list[dict]]:
+    """Split a band that carries 2+ y-separated right-column prices.
+
+    ``band_words`` joins name-left with price-right; on tight row pitch
+    that also glues two product rows into one band, and ``parse_band``
+    then emits a single item. Split only when each resulting row has its
+    own printed column price -- never mint an amount OCR did not see.
+    Same-row two-price layouts (Price / You Pay) stay one band.
+    """
+    if zone_col_x is None:
+        return bands
+    out: list[list[dict]] = []
+    for band in bands:
+        out.extend(_split_one_price_column_band(band, zone_col_x))
+    return out
+
+
+def _split_one_price_column_band(
+    band: list[dict], zone_col_x: float
+) -> list[list[dict]]:
+    col_prices = [
+        w
+        for w in band
+        if is_line_price_word(w)
+        and abs(w["x"] - zone_col_x) < PRICE_COLUMN_X_TOL
+    ]
+    if len(col_prices) < 2:
+        return [band]
+    col_prices = sorted(col_prices, key=lambda w: w["y_mid"])
+    clusters: list[list[dict]] = [[col_prices[0]]]
+    for price in col_prices[1:]:
+        prev = clusters[-1][-1]
+        min_h = min(price["h"] or 0.01, prev["h"] or 0.01)
+        if price["y_mid"] - prev["y_mid"] < min_h * PRICE_COLUMN_Y_SEP:
+            clusters[-1].append(price)
+        else:
+            clusters.append([price])
+    if len(clusters) < 2:
+        return [band]
+    anchors = [sum(w["y_mid"] for w in c) / len(c) for c in clusters]
+    groups: list[list[dict]] = [[] for _ in clusters]
+    for word in band:
+        nearest = min(
+            range(len(anchors)), key=lambda i: abs(anchors[i] - word["y_mid"])
+        )
+        groups[nearest].append(word)
+    parts = [g for g in groups if g]
+    for part in parts:
+        part.sort(key=lambda w: w["x"])
+    parts.sort(key=lambda p: sum(w["y_mid"] for w in p) / len(p))
+    return parts
 
 
 def _word_ref(w: dict) -> dict:
@@ -629,19 +719,17 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
     for i, t in enumerate(texts):
         # A close-paren with no opening paren is not an accounting negative
         # but an OCR carcass of a quantity annotation ("(2 @0.00)" reads as
-        # "(2" + "80.00)") — never a price.
-        if t.endswith(")") and "(" not in t:
+        # "(2" + "80.00)") — never a price. A fused taxability flag is
+        # stripped before the amount test, the same rule
+        # blocks._line_amounts applies when it decides band roles.
+        # Without this the two disagreed: a CVS band was scored PRICE on
+        # its "7.32N" and then parsed to None here, so the row produced
+        # no item at all.
+        if not is_line_price_word(band[i]):
             continue
-        # A fused taxability flag is stripped before the amount test, the
-        # same rule blocks._line_amounts applies when it decides band
-        # roles. Without this the two disagreed: a CVS band was scored
-        # PRICE on its "7.32N" and then parsed to None here, so the row
-        # produced no item at all.
-        t = strip_tax_flag(t)
-        if looks_like_receipt_amount(t) and re.search(r"\d[.,]\d{2}(?!\d)", t):
-            v = parse_receipt_amount(t)
-            if v is not None and abs(v) < 100000:
-                amounts.append((i, v))
+        v = parse_receipt_amount(strip_tax_flag(t))
+        if v is not None and abs(v) < 100000:
+            amounts.append((i, v))
 
     # Quantity forms, joined-text (they straddle word boundaries).
     # The M-FOR-X deal runs first: QTY_AT_RE cannot match its "@ 2 FOR"
@@ -1452,7 +1540,9 @@ def constrain_items_to_baseline(
         if not remaining:
             return
         after = reconcile_extracted_items(remaining, summary)
-        verified, _ = items_boundary_extension_guard(before, _recon_eval(after))
+        verified, _ = items_boundary_extension_guard(
+            before, _recon_eval(after)
+        )
         if not verified:
             return
         winners.append(
@@ -1460,7 +1550,8 @@ def constrain_items_to_baseline(
                 _BOUNDARY_RECON_RANK.get(after.status, 9),
                 (
                     abs(after.item_sum - after.baseline)
-                    if after.item_sum is not None and after.baseline is not None
+                    if after.item_sum is not None
+                    and after.baseline is not None
                     else 99.0
                 ),
                 len(drop),
@@ -1758,7 +1849,9 @@ def propose_items_boundary_extension(
                 for candidate in candidate_rows
                 for line_id in candidate["line_ids"]
             }
-            evaluation = evaluate_items_zone(words, summary, candidate_line_ids)
+            evaluation = evaluate_items_zone(
+                words, summary, candidate_line_ids
+            )
             if evaluation.get("delta") is not None and abs(
                 evaluation["delta"]
             ) < abs(current_evaluation["delta"]):
