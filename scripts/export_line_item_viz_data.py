@@ -678,7 +678,7 @@ def main() -> int:
         payload = json.loads(args.out.read_text())
         for receipt in payload["receipts"]:
             attach_structure(receipt)
-        args.out.write_text(json.dumps(payload, indent=2) + "\n")
+        args.out.write_text(json.dumps(payload, separators=(",", ":")) + "\n")
         print(f"Enriched {len(payload['receipts'])} receipts → {args.out}")
         return 0
 
