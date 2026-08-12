@@ -4878,6 +4878,18 @@ def _evaluate_items_zone(words: list[dict], summary: dict, line_ids) -> dict:
     return evaluate_items_zone(words, summary, set(line_ids))
 
 
+def _reconcile_stored_items(items: list[dict], summary: Optional[dict]):
+    """Discount-aware sum for stored rows; same helper as ingest.
+
+    Deferred import matches ``_evaluate_items_zone``: this module loads
+    in tests with a stub ``mcp`` package before upload extras are
+    guaranteed at import time.
+    """
+    from receipt_upload.line_items.geometry import reconcile_extracted_items
+
+    return reconcile_extracted_items(items, summary)
+
+
 async def get_receipt_line_items_impl(
     dynamo_client, image_id: str, receipt_id: int
 ) -> dict:
@@ -4925,18 +4937,29 @@ async def get_receipt_line_items_impl(
             }
             for li in line_items
         ]
-        # Discounts excluded from the sum, matching reconcile()'s callers
-        # (the stream stage and repair_item_sections.evaluate).
-        items_sum = round(
-            sum(float(li.price) for li in line_items if not li.is_discount),
-            2,
-        )
+        priced = [
+            {
+                "price": float(li.price),
+                "is_discount": bool(li.is_discount),
+            }
+            for li in line_items
+        ]
 
-        summary = None
+        figures = None
         baseline = None
+        summary = None
         if record is not None:
             figures, baseline = _summary_baseline(record)
             summary = {**figures, "merchant_name": record.merchant_name}
+        recon = _reconcile_stored_items(priced, figures)
+        items_sum = recon.item_sum
+        if items_sum is None:
+            items_sum = round(
+                sum(p["price"] for p in priced if not p["is_discount"]),
+                2,
+            )
+        if recon.baseline is not None:
+            baseline = recon.baseline
         delta = (
             round(items_sum - baseline, 2) if baseline is not None else None
         )
@@ -5235,13 +5258,17 @@ async def list_reconciliation_worklist_impl(
                     {
                         "merchant": None,
                         "items": 0,
-                        "items_sum": 0.0,
+                        "priced": [],
                         "statuses": set(),
                     },
                 )
                 bucket["items"] += 1
-                if not li.is_discount:
-                    bucket["items_sum"] += float(li.price)
+                bucket["priced"].append(
+                    {
+                        "price": float(li.price),
+                        "is_discount": bool(li.is_discount),
+                    }
+                )
                 if li.merchant_name and not bucket["merchant"]:
                     bucket["merchant"] = li.merchant_name
                 if li.reconciliation_status:
@@ -5271,23 +5298,36 @@ async def list_reconciliation_worklist_impl(
                     "receipt_id": rid,
                     "merchant": bucket["merchant"],
                     "items": bucket["items"],
-                    "items_sum": round(bucket["items_sum"], 2),
+                    "priced": bucket["priced"],
                 }
             )
 
         for i, cand in enumerate(candidates):
+            priced = cand.pop("priced")
+            excluded_sum = round(
+                sum(p["price"] for p in priced if not p["is_discount"]),
+                2,
+            )
+            figures = None
             baseline = None
             if i < max_summary_fetches:
                 try:
                     record = dynamo_client.get_receipt_summary(
                         cand["image_id"], cand["receipt_id"]
                     )
-                    _, baseline = _summary_baseline(record)
+                    figures, baseline = _summary_baseline(record)
                 except EntityNotFoundError:
-                    baseline = None
+                    figures, baseline = None, None
+            recon = _reconcile_stored_items(priced, figures)
+            items_sum = (
+                recon.item_sum if recon.item_sum is not None else excluded_sum
+            )
+            if recon.baseline is not None:
+                baseline = recon.baseline
+            cand["items_sum"] = items_sum
             cand["subtotal"] = baseline
             cand["delta"] = (
-                round(cand["items_sum"] - baseline, 2)
+                round(items_sum - baseline, 2)
                 if baseline is not None
                 else None
             )

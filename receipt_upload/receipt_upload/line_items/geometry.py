@@ -1373,10 +1373,12 @@ def is_proven(
 # either side has no comparable baseline.
 _BOUNDARY_RECON_RANK = {"match": 0, "near": 1, "mismatch": 2}
 _MAX_CONSTRAINT_DROPS = 3
-# Cap unnamed candidates, not just drop-count. Exhaustive 1..3-subsets of
-# an uncapped pool is O(d^3) reconciles per receipt; a long ITEMS zone of
-# numeric bands (or PR2 splitting one band into many) would blow the
-# Lambda budget. Later bands are preferred — totals sit below items.
+# Cap unnamed / discount candidates, not just drop-count. Exhaustive
+# 1..3-subsets of an uncapped pool is O(d^3) reconciles per receipt; a
+# long ITEMS zone of numeric bands (or PR2 splitting one band into many)
+# would blow the Lambda budget. ``decode_band_blocks`` emits bottom-of-
+# receipt first, so the search window is the *first* N candidates — the
+# foot, where totals and tender overage sit.
 _MAX_CONSTRAINT_CANDIDATES = 8
 
 
@@ -1401,6 +1403,50 @@ def _recon_eval(result: ReconcileResult) -> dict[str, Any]:
     return {"status": result.status, "delta": delta}
 
 
+def _constraint_guard(before: dict[str, Any], after: dict[str, Any]) -> bool:
+    """Accept a constraint candidate using the ITEMS-boundary guard.
+
+    ``no-baseline`` is omitted from ``_BOUNDARY_RECON_RANK`` because an
+    ITEMS *extension* cannot be verified without a comparable baseline.
+    This post-pass still has the printed summary: an item-sum that
+    tripped the 3x sanity check can become an exact match once discounts
+    count or a phantom band drops, and that match is accepted.
+    """
+
+    if before.get("status") == "no-baseline":
+        return (
+            after.get("status") == "match" and after.get("delta") is not None
+        )
+    verified, _ = items_boundary_extension_guard(before, after)
+    return verified
+
+
+def _is_unnamed_priced_band(item: dict) -> bool:
+    """True when the band has no alphabetic product name.
+
+    ``_name_is_real`` is a decoder quality heuristic (three letters), not
+    an absence-of-name test — ``7UP`` / ``WD-40`` must not be droppable.
+    Quantity-only bands like ``2`` have no letters and stay candidates.
+    """
+
+    name = str(item.get("name") or "").strip()
+    if not name:
+        return True
+    return re.search(r"[A-Za-z]", name) is None
+
+
+def _recon_sort_key(result: ReconcileResult, extra: tuple = ()) -> tuple:
+    return (
+        _BOUNDARY_RECON_RANK.get(result.status, 9),
+        (
+            abs(result.item_sum - result.baseline)
+            if result.item_sum is not None and result.baseline is not None
+            else 99.0
+        ),
+        *extra,
+    )
+
+
 def reconcile_extracted_items(
     items: list[dict], summary: Optional[dict]
 ) -> ReconcileResult:
@@ -1408,8 +1454,8 @@ def reconcile_extracted_items(
 
     The historical sum skipped ``is_discount`` rows, which over-counts
     BOGO / void lines that already sit in ITEMS (the discount is the
-    arithmetic). Including discounts is accepted only when it strictly
-    shrinks ``|delta|`` and improves status — the same guard as an
+    arithmetic). Discount subsets are accepted only when they strictly
+    shrink ``|delta|`` and improve status — the same guard as an
     ITEMS-boundary repair. A receipt that already matches without
     discounts is left alone.
     """
@@ -1417,13 +1463,34 @@ def reconcile_extracted_items(
     excluded = reconcile_detailed(_priced_for_reconcile(items, False), summary)
     if excluded.status == "match" or summary is None:
         return excluded
-    included = reconcile_detailed(_priced_for_reconcile(items, True), summary)
-    if included.item_sum == excluded.item_sum:
+
+    discount_idx = [
+        i for i, item in enumerate(items) if item.get("is_discount")
+    ]
+    if not discount_idx:
         return excluded
-    verified, _ = items_boundary_extension_guard(
-        _recon_eval(excluded), _recon_eval(included)
-    )
-    return included if verified else excluded
+    if len(discount_idx) > _MAX_CONSTRAINT_CANDIDATES:
+        discount_idx = discount_idx[:_MAX_CONSTRAINT_CANDIDATES]
+
+    before = _recon_eval(excluded)
+    best = excluded
+    best_key = _recon_sort_key(excluded, (0,))
+    for k in range(1, len(discount_idx) + 1):
+        for combo in combinations(discount_idx, k):
+            include = set(combo)
+            priced = [
+                item
+                for i, item in enumerate(items)
+                if not item.get("is_discount") or i in include
+            ]
+            candidate = reconcile_detailed(priced, summary)
+            if not _constraint_guard(before, _recon_eval(candidate)):
+                continue
+            key = _recon_sort_key(candidate, (k,))
+            if key < best_key:
+                best = candidate
+                best_key = key
+    return best
 
 
 def constrain_items_to_baseline(
@@ -1433,9 +1500,9 @@ def constrain_items_to_baseline(
 
     No merchant vocabulary: unnamed non-discount bands are candidates
     (a named product coincidentally priced at the gap must survive), and
-    a drop ships only when ``items_boundary_extension_guard`` accepts
-    it. Discounts are never dropped; ``reconcile_extracted_items``
-    decides whether they count. Already-matching receipts are untouched.
+    a drop ships only when ``_constraint_guard`` accepts it. Discounts
+    are never dropped; ``reconcile_extracted_items`` decides whether
+    they count. Already-matching receipts are untouched.
     """
 
     if not items or summary is None:
@@ -1452,35 +1519,26 @@ def constrain_items_to_baseline(
         if not remaining:
             return
         after = reconcile_extracted_items(remaining, summary)
-        verified, _ = items_boundary_extension_guard(before, _recon_eval(after))
-        if not verified:
+        if not _constraint_guard(before, _recon_eval(after)):
             return
         winners.append(
             (
-                _BOUNDARY_RECON_RANK.get(after.status, 9),
-                (
-                    abs(after.item_sum - after.baseline)
-                    if after.item_sum is not None and after.baseline is not None
-                    else 99.0
-                ),
-                len(drop),
+                *_recon_sort_key(after, (len(drop),)),
                 # Prefer later bands at every position, not just max(drop).
                 # Otherwise (0, 7) sorts before (6, 7) and an early real
                 # unnamed item can lose to a later phantom.
                 tuple(-i for i in sorted(drop, reverse=True)),
                 drop,
-                after,
             )
         )
 
     droppable = [
         i
         for i, item in enumerate(items)
-        if not item.get("is_discount")
-        and not _name_is_real(str(item.get("name") or ""))
+        if not item.get("is_discount") and _is_unnamed_priced_band(item)
     ]
     if len(droppable) > _MAX_CONSTRAINT_CANDIDATES:
-        droppable = droppable[-_MAX_CONSTRAINT_CANDIDATES:]
+        droppable = droppable[:_MAX_CONSTRAINT_CANDIDATES]
     max_k = min(_MAX_CONSTRAINT_DROPS, len(droppable))
     for k in range(1, max_k + 1):
         for combo in combinations(droppable, k):
@@ -1488,7 +1546,7 @@ def constrain_items_to_baseline(
     if not winners:
         return items
     winners.sort()
-    return [item for i, item in enumerate(items) if i not in winners[0][4]]
+    return [item for i, item in enumerate(items) if i not in winners[0][-1]]
 
 
 def evaluate_items_zone(
@@ -1758,7 +1816,9 @@ def propose_items_boundary_extension(
                 for candidate in candidate_rows
                 for line_id in candidate["line_ids"]
             }
-            evaluation = evaluate_items_zone(words, summary, candidate_line_ids)
+            evaluation = evaluate_items_zone(
+                words, summary, candidate_line_ids
+            )
             if evaluation.get("delta") is not None and abs(
                 evaluation["delta"]
             ) < abs(current_evaluation["delta"]):
