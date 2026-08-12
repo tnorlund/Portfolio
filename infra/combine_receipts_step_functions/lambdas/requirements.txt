@@ -5,9 +5,8 @@ receipt-upload
 receipt-agent
 
 # Image processing
-Pillow>=10.0.0
-numpy>=1.24.0
+Pillow>=12.3.0
+numpy>=2.5.2
 
 # Embeddings
-openai>=1.0.0
-
+openai>=2.53.0
