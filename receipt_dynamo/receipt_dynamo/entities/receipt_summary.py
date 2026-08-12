@@ -767,12 +767,16 @@ def _apply_printed_total_fallback(
                 grand_total_line_id is not None
                 and int(grand_total_line_id) in section_ids
             )
-            if not label_on_section and section_printed is not None and section_printed > 0:
+            if (
+                not label_on_section
+                and section_printed is not None
+                and section_printed > 0
+                and (
+                    totals.grand_total is None
+                    or section_printed > totals.grand_total
+                )
+            ):
                 totals.grand_total = section_printed
-    if totals.subtotal is None or totals.subtotal == 0:
-        printed_sub = find_printed_subtotal(words)
-        if printed_sub is not None:
-            totals.subtotal = printed_sub
     if totals.subtotal is None or totals.subtotal == 0:
         printed_sub = find_printed_subtotal(words)
         if printed_sub is not None:

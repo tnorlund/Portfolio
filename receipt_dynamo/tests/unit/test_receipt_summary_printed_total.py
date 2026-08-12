@@ -456,3 +456,25 @@ def test_total_line_override_uses_label_line_id_not_numeric_match():
         total_line_ids=[49, 55, 56],
     )
     assert summary.grand_total == pytest.approx(25.85)
+
+
+def test_smaller_total_line_does_not_clobber_a_larger_label():
+    # d076611b r2: stored GT 10.99 already matches items; TOTAL_LINE on
+    # this crop is a smaller card-slip figure. Do not replace.
+    words = [
+        _word(10, 1, "TOTAL", 0.50, x=0.10),
+        _word(11, 1, "10.99", 0.50, x=0.80),
+        _word(20, 1, "BALANCE", 0.30, x=0.10),
+        _word(20, 2, "DUE", 0.30, x=0.30),
+        _word(21, 1, "6.20", 0.30, x=0.80),
+    ]
+    labels = [_label(11, 1, "GRAND_TOTAL", ValidationStatus.VALID.value)]
+    summary = ReceiptSummary.from_word_labels_and_words(
+        image_id=IMAGE_ID,
+        receipt_id=2,
+        merchant_name=None,
+        word_labels=labels,
+        words=words,
+        total_line_ids=[20, 21],
+    )
+    assert summary.grand_total == pytest.approx(10.99)
