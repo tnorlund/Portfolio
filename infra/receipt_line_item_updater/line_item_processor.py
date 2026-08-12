@@ -153,7 +153,7 @@ from receipt_upload.line_items.geometry import (
     extract_items,
     items_boundary_extension_guard,
     propose_items_boundary_extension,
-    reconcile_detailed,
+    reconcile_extracted_items,
 )
 from receipt_upload.line_items.provenance import (
     is_worker_extractor_version,
@@ -272,9 +272,7 @@ def update_receipt_line_items(
         word_dicts, line_ids, summary=summary_dict
     )
 
-    recon = reconcile_detailed(
-        [x for x in items if not x.get("is_discount")], summary_dict
-    )
+    recon = reconcile_extracted_items(items, summary_dict)
     status = recon.status
 
     now = datetime.now(timezone.utc)
@@ -463,10 +461,7 @@ def _reconcile_with_worker_rows(
 
     worker_rows = sorted(worker_rows, key=lambda row: row.item_index)
     worker_items = [_row_to_item(row) for row in worker_rows]
-    worker_recon = reconcile_detailed(
-        [item for item in worker_items if not item["is_discount"]],
-        summary_dict,
-    )
+    worker_recon = reconcile_extracted_items(worker_items, summary_dict)
 
     before = {"status": recon.status, "delta": _delta(recon)}
     after = {"status": worker_recon.status, "delta": _delta(worker_recon)}

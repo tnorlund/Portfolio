@@ -351,7 +351,8 @@ def test_get_receipt_line_items_diagnostic_view(label):
 
     assert "error" not in result
     assert result["item_count"] == 3
-    # Discounts are excluded from the sum, matching reconcile()'s callers.
+    # Leftover coupon is not in the printed subtotal, so the helper
+    # keeps the discount-excluded sum.
     assert result["items_sum"] == 5.00
     assert result["summary"]["subtotal"] == 9.00
     assert result["summary"]["merchant_name"] == "Test Mart"
@@ -364,6 +365,29 @@ def test_get_receipt_line_items_diagnostic_view(label):
     assert first["price"] == 3.00
     assert first["extractor_version"] == "line-items-blocks-v2"
     assert first["name_quality"] == "ok"
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_get_receipt_line_items_counts_bogo_discount(label):
+    pytest.importorskip("receipt_dynamo")
+    module = _load_module(label, SERVER_FILES[label])
+    client = _StubDynamoClient(
+        sections=[_items_section(line_ids=(1, 2, 3))],
+        summary_record=_summary_record(
+            subtotal=5.98, tax=0.48, grand_total=6.46
+        ),
+        line_items=[
+            _line_item(0, "PENNE", "3.99"),
+            _line_item(1, "PENNE", "3.99"),
+            _line_item(2, "BOGO", "-2.00", is_discount=True),
+        ],
+    )
+    result = asyncio.run(
+        module.get_receipt_line_items_impl(client, VALID_IMAGE_ID, 1)
+    )
+    assert "error" not in result
+    assert result["items_sum"] == 5.98
+    assert result["delta"] == 0.00
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
