@@ -94,3 +94,14 @@ def test_named_item_at_the_overage_survives():
 def test_no_summary_is_a_no_op():
     items = [_item(1.00), _item(2.00)]
     assert constrain_items_to_baseline(items, None) is items
+
+
+def test_candidate_cap_skips_early_unnamed_outside_the_window():
+    # Eight later unnamed bands fill the search window; the real
+    # overage sits above them and is left alone. That is the bound
+    # Codex asked for — not a correctness claim about early phantoms.
+    items = [_item(17.98, "ORG CHICKEN SAUSAGE"), _item(8.99, "")]
+    items.extend(_item(0.50, "") for _ in range(8))
+    summary = {"subtotal": 21.98}
+    constrained = constrain_items_to_baseline(items, summary)
+    assert [i["price"] for i in constrained] == [17.98, 8.99] + [0.50] * 8

@@ -1373,6 +1373,11 @@ def is_proven(
 # either side has no comparable baseline.
 _BOUNDARY_RECON_RANK = {"match": 0, "near": 1, "mismatch": 2}
 _MAX_CONSTRAINT_DROPS = 3
+# Cap unnamed candidates, not just drop-count. Exhaustive 1..3-subsets of
+# an uncapped pool is O(d^3) reconciles per receipt; a long ITEMS zone of
+# numeric bands (or PR2 splitting one band into many) would blow the
+# Lambda budget. Later bands are preferred — totals sit below items.
+_MAX_CONSTRAINT_CANDIDATES = 8
 
 
 def _priced_for_reconcile(
@@ -1472,6 +1477,8 @@ def constrain_items_to_baseline(
         if not item.get("is_discount")
         and not _name_is_real(str(item.get("name") or ""))
     ]
+    if len(droppable) > _MAX_CONSTRAINT_CANDIDATES:
+        droppable = droppable[-_MAX_CONSTRAINT_CANDIDATES:]
     max_k = min(_MAX_CONSTRAINT_DROPS, len(droppable))
     for k in range(1, max_k + 1):
         for combo in combinations(droppable, k):
