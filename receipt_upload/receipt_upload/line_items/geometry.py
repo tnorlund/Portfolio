@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from itertools import combinations
 from typing import Any, Optional
 
 from receipt_dynamo.amounts import (
@@ -939,7 +940,7 @@ def extract_items(
         load_default_priors(),
         summary=summary,
     )
-    return items, False
+    return constrain_items_to_baseline(items, summary), False
 
 
 def _extract_items_banded(
@@ -1371,6 +1372,114 @@ def is_proven(
 # deliberately absent: an extension cannot be arithmetic-verified when
 # either side has no comparable baseline.
 _BOUNDARY_RECON_RANK = {"match": 0, "near": 1, "mismatch": 2}
+_MAX_CONSTRAINT_DROPS = 3
+
+
+def _priced_for_reconcile(
+    items: list[dict], include_discounts: bool
+) -> list[dict]:
+    """Items that participate in the printed-total sum."""
+
+    if include_discounts:
+        return list(items)
+    return [item for item in items if not item.get("is_discount")]
+
+
+def _recon_eval(result: ReconcileResult) -> dict[str, Any]:
+    """Shape ``items_boundary_extension_guard`` consumes."""
+
+    delta = (
+        round(result.item_sum - result.baseline, 2)
+        if result.item_sum is not None and result.baseline is not None
+        else None
+    )
+    return {"status": result.status, "delta": delta}
+
+
+def reconcile_extracted_items(
+    items: list[dict], summary: Optional[dict]
+) -> ReconcileResult:
+    """Reconcile decoded items against the printed baseline.
+
+    The historical sum skipped ``is_discount`` rows, which over-counts
+    BOGO / void lines that already sit in ITEMS (the discount is the
+    arithmetic). Including discounts is accepted only when it strictly
+    shrinks ``|delta|`` and improves status — the same guard as an
+    ITEMS-boundary repair. A receipt that already matches without
+    discounts is left alone.
+    """
+
+    excluded = reconcile_detailed(_priced_for_reconcile(items, False), summary)
+    if excluded.status == "match" or summary is None:
+        return excluded
+    included = reconcile_detailed(_priced_for_reconcile(items, True), summary)
+    if included.item_sum == excluded.item_sum:
+        return excluded
+    verified, _ = items_boundary_extension_guard(
+        _recon_eval(excluded), _recon_eval(included)
+    )
+    return included if verified else excluded
+
+
+def constrain_items_to_baseline(
+    items: list[dict], summary: Optional[dict]
+) -> list[dict]:
+    """Drop priced bands iff the printed total then reconciles better.
+
+    No merchant vocabulary: unnamed non-discount bands are candidates
+    (a named product coincidentally priced at the gap must survive), and
+    a drop ships only when ``items_boundary_extension_guard`` accepts
+    it. Discounts are never dropped; ``reconcile_extracted_items``
+    decides whether they count. Already-matching receipts are untouched.
+    """
+
+    if not items or summary is None:
+        return items
+    baseline = reconcile_extracted_items(items, summary)
+    if baseline.status == "match":
+        return items
+
+    before = _recon_eval(baseline)
+    winners: list[tuple] = []
+
+    def _consider(drop: tuple[int, ...]) -> None:
+        remaining = [item for i, item in enumerate(items) if i not in drop]
+        if not remaining:
+            return
+        after = reconcile_extracted_items(remaining, summary)
+        verified, _ = items_boundary_extension_guard(before, _recon_eval(after))
+        if not verified:
+            return
+        winners.append(
+            (
+                _BOUNDARY_RECON_RANK.get(after.status, 9),
+                (
+                    abs(after.item_sum - after.baseline)
+                    if after.item_sum is not None and after.baseline is not None
+                    else 99.0
+                ),
+                len(drop),
+                # Prefer dropping later bands (totals sit below items).
+                -max(drop) if drop else 0,
+                drop,
+                after,
+            )
+        )
+
+    droppable = [
+        i
+        for i, item in enumerate(items)
+        if not item.get("is_discount")
+        and not _name_is_real(str(item.get("name") or ""))
+    ]
+    max_k = min(_MAX_CONSTRAINT_DROPS, len(droppable))
+    for k in range(1, max_k + 1):
+        for combo in combinations(droppable, k):
+            _consider(combo)
+    if not winners:
+        return items
+    winners.sort()
+    return [item for i, item in enumerate(items) if i not in winners[0][4]]
 
 
 def evaluate_items_zone(
@@ -1379,14 +1488,13 @@ def evaluate_items_zone(
     """Decode and reconcile one proposed ITEMS zone.
 
     This is shared by the MCP repair tool and the automatic ingest repair so
-    the verifier cannot drift.  Discounts are excluded from the arithmetic,
-    matching every canonical line-item writer.
+    the verifier cannot drift.  The printed total is a constraint: discount
+    lines in ITEMS count when they close the delta, and extra priced bands
+    drop when dropping them improves reconciliation.
     """
 
     items, collapsed = extract_items(words, set(line_ids), summary=summary)
-    result = reconcile_detailed(
-        [item for item in items if not item.get("is_discount")], summary
-    )
+    result = reconcile_extracted_items(items, summary)
     delta = (
         round(result.item_sum - result.baseline, 2)
         if result.item_sum is not None and result.baseline is not None
@@ -1641,9 +1749,7 @@ def propose_items_boundary_extension(
                 for candidate in candidate_rows
                 for line_id in candidate["line_ids"]
             }
-            evaluation = evaluate_items_zone(
-                words, summary, candidate_line_ids
-            )
+            evaluation = evaluate_items_zone(words, summary, candidate_line_ids)
             if evaluation.get("delta") is not None and abs(
                 evaluation["delta"]
             ) < abs(current_evaluation["delta"]):
@@ -1705,6 +1811,7 @@ __all__ = [
     "accept_quantity_pair",
     "band_words",
     "estimate_skew",
+    "constrain_items_to_baseline",
     "evaluate_items_zone",
     "extract_items",
     "implied_unit_price",
@@ -1718,5 +1825,6 @@ __all__ = [
     "quantity_candidates",
     "reconcile",
     "reconcile_detailed",
+    "reconcile_extracted_items",
     "strip_tax_flag",
 ]

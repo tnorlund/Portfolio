@@ -153,7 +153,7 @@ from receipt_upload.line_items.geometry import (
     extract_items,
     items_boundary_extension_guard,
     propose_items_boundary_extension,
-    reconcile_detailed,
+    reconcile_extracted_items,
 )
 from receipt_upload.line_items.provenance import (
     is_worker_extractor_version,
@@ -268,22 +268,16 @@ def update_receipt_line_items(
 
     line_ids = {int(x) for x in (items_section.line_ids or [])}
 
-    items, collapsed = extract_items(
-        word_dicts, line_ids, summary=summary_dict
-    )
+    items, collapsed = extract_items(word_dicts, line_ids, summary=summary_dict)
 
-    recon = reconcile_detailed(
-        [x for x in items if not x.get("is_discount")], summary_dict
-    )
+    recon = reconcile_extracted_items(items, summary_dict)
     status = recon.status
 
     now = datetime.now(timezone.utc)
     entities = []
     for idx, it in enumerate(items):
         name = it.get("name") or ""
-        quality = (
-            "low" if it.get("name_quality") == "low" or not name else "ok"
-        )
+        quality = "low" if it.get("name_quality") == "low" or not name else "ok"
         entities.append(
             ReceiptLineItem(
                 receipt_id=receipt_id,
@@ -463,10 +457,7 @@ def _reconcile_with_worker_rows(
 
     worker_rows = sorted(worker_rows, key=lambda row: row.item_index)
     worker_items = [_row_to_item(row) for row in worker_rows]
-    worker_recon = reconcile_detailed(
-        [item for item in worker_items if not item["is_discount"]],
-        summary_dict,
-    )
+    worker_recon = reconcile_extracted_items(worker_items, summary_dict)
 
     before = {"status": recon.status, "delta": _delta(recon)}
     after = {"status": worker_recon.status, "delta": _delta(worker_recon)}
@@ -549,9 +540,7 @@ def _maybe_extend_items_section(
     """Persist a reconciliation-verified adjacent-row ITEMS extension."""
 
     try:
-        rows = dynamo_client.get_receipt_rows_from_receipt(
-            image_id, receipt_id
-        )
+        rows = dynamo_client.get_receipt_rows_from_receipt(image_id, receipt_id)
     except EntityNotFoundError:
         rows = []
     proposal = propose_items_boundary_extension(
@@ -884,8 +873,7 @@ def _maybe_trigger_line_item_refine(
         # receipt_dynamo's `assert_valid_uuid` (its regex accepts
         # version 4 or 5 with the RFC-4122 variant).
         figures = ":".join(
-            _claim_figure(refine_summary[key])
-            for key in REFINE_SUMMARY_FIGURES
+            _claim_figure(refine_summary[key]) for key in REFINE_SUMMARY_FIGURES
         )
         job_id = str(
             uuid.uuid5(

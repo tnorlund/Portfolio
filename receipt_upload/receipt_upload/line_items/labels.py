@@ -47,7 +47,7 @@ from receipt_upload.line_items.geometry import (
     extract_items,
     is_column_header_row,
     is_proven,
-    reconcile_detailed,
+    reconcile_extracted_items,
 )
 from receipt_upload.line_items.reconstructor import dedupe_grand_total
 
@@ -543,9 +543,7 @@ def _summary_labels(
         ]
         unique = {(int(w.line_id), int(w.word_id)): w for w in matches}
         if label == "GRAND_TOTAL":
-            word = _elect_grand_total_word(
-                receipt_words, list(unique.values())
-            )
+            word = _elect_grand_total_word(receipt_words, list(unique.values()))
             if word is None:
                 continue
             line_id, word_id = int(word.line_id), int(word.word_id)
@@ -713,8 +711,7 @@ def _phone_spans(words: Sequence[Any]) -> list[list[Any]]:
         (start, end)
         for start, end in spans
         if not any(
-            (s, e) != (start, end) and s <= start and end <= e
-            for s, e in spans
+            (s, e) != (start, end) and s <= start and end <= e for s, e in spans
         )
     ]
     return [list(words[start:end]) for start, end in maximal]
@@ -906,9 +903,7 @@ def derive_labels(
     texts = {(w["line_id"], w["word_id"]): w["text"] for w in words}
 
     items, collapsed = extract_items(words, line_ids, summary=summary)
-    recon = reconcile_detailed(
-        [item for item in items if not item.get("is_discount")], summary
-    )
+    recon = reconcile_extracted_items(items, summary)
     result = DerivationResult(
         gate=GATE_OK,
         reconciliation_status=recon.status,

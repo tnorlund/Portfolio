@@ -4870,8 +4870,8 @@ def _summary_baseline(record) -> tuple[dict, Optional[float]]:
 def _evaluate_items_zone(words: list[dict], summary: dict, line_ids) -> dict:
     """Run the real extractor over a line set and reconcile.
 
-    Discounts are excluded from the sum, matching the stream stage and
-    scripts/repair_item_sections.evaluate.
+    Uses ``evaluate_items_zone`` so discount-inclusion and unnamed-band
+    drops stay in lockstep with ingest.
     """
     from receipt_upload.line_items.geometry import evaluate_items_zone
 
