@@ -12,6 +12,8 @@ import {
  */
 
 export type DecoderStageKey =
+  | "rows"
+  | "sections"
   | "zone"
   | "bands"
   | "guards"
@@ -32,6 +34,8 @@ const STAGE_DEFS: Record<
   DecoderStageKey,
   { title: string; duration: number }
 > = {
+  rows: { title: "Group lines into embeddings", duration: 2400 },
+  sections: { title: "Assign receipt sections", duration: 2000 },
   zone: { title: "Locate the items zone", duration: 1500 },
   bands: { title: "Group words into rows", duration: 2000 },
   guards: { title: "Reject non-products", duration: 1800 },
@@ -67,12 +71,12 @@ export const displayItems = (
 ): LineItemDemoItem[] =>
   [...receipt.items].sort((a, b) => (b.y ?? 0) - (a.y ?? 0));
 
-/** Stages relevant to this receipt: zone/bands/pair/reconcile always;
- * guards and qty only when the receipt exercises them. */
+/** Stages relevant to this receipt: rows/sections/zone/bands/pair/reconcile
+ * always; guards and qty only when the receipt exercises them. */
 export function buildStagePlan(
   receipt: LineItemDemoReceipt
 ): DecoderStage[] {
-  const keys: DecoderStageKey[] = ["zone", "bands"];
+  const keys: DecoderStageKey[] = ["rows", "sections", "zone", "bands"];
   if (rejectedBands(receipt).length > 0) keys.push("guards");
   keys.push("pair");
   if (quantityItems(receipt).length > 0 || donorBands(receipt).length > 0)

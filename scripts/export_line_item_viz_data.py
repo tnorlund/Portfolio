@@ -3,12 +3,14 @@
 
 Builds ``portfolio/public/line-item-demo/receipts.json``: a static,
 self-contained payload the LineItemDecoderVisualization figure replays in
-the browser. Per receipt it carries the decoder's actual intermediate
-stages — visual bands, guard rejections (with which guard fired), role
-assignment, absorption, the decoded items with word-level provenance, the
-summary-figure filter's drops, and the reconciliation verdict — plus full
-word bounding boxes and CDN image keys so the stages can be drawn over the
-receipt photo.
+the browser. Per receipt it carries:
+
+* early structure — ReceiptLines, visual rows (embedding units), and coarse
+  STOREFRONT / ITEMS / SUMMARY sections
+* decoder intermediates — visual bands, guard rejections, role assignment,
+  absorption, decoded items with word-level provenance, summary-figure
+  drops, and the reconciliation verdict
+* full word bounding boxes and CDN image keys so stages draw over the photo
 
 Decoding runs over the committed golden OCR fixture
 (``receipt_upload/tests/fixtures/line_items_golden_ocr.json``) so the
@@ -22,6 +24,8 @@ Usage:
     python3 scripts/export_line_item_viz_data.py            # write JSON
     python3 scripts/export_line_item_viz_data.py --analyze  # survey only
     python3 scripts/export_line_item_viz_data.py --all      # export all
+    python3 scripts/export_line_item_viz_data.py --enrich-structure
+        # offline: add lines/visual_rows/sections to an existing export
 """
 
 from __future__ import annotations
@@ -38,16 +42,232 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "receipt_dynamo"))
 sys.path.insert(0, str(REPO_ROOT / "receipt_upload"))
 
-OCR_FIXTURE = (
-    REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden_ocr.json"
-)
-GOLDEN_FIXTURE = (
-    REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden.json"
-)
+OCR_FIXTURE = REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden_ocr.json"
+GOLDEN_FIXTURE = REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden.json"
 DEFAULT_OUTPUT = REPO_ROOT / "portfolio/public/line-item-demo/receipts.json"
 
 DEV_CDN = "https://dev.tylernorlund.com"
 PROD_CDN = "https://www.tylernorlund.com"
+
+# Section colors for the viz overlay (mirrored in the TS legend).
+SECTION_COLORS = {
+    "STOREFRONT": "var(--color-yellow)",
+    "ITEMS": "var(--color-orange)",
+    "SUMMARY": "var(--color-green)",
+}
+
+
+class _EmbedLine:
+    """Minimal LineLike for group_lines_into_visual_rows."""
+
+    __slots__ = ("image_id", "receipt_id", "line_id", "text", "bounding_box")
+
+    def __init__(
+        self,
+        image_id: str,
+        receipt_id: int,
+        line_id: int,
+        text: str,
+        bounding_box: dict[str, float],
+    ) -> None:
+        self.image_id = image_id
+        self.receipt_id = receipt_id
+        self.line_id = line_id
+        self.text = text
+        self.bounding_box = bounding_box
+
+    def calculate_centroid(self) -> tuple[float, float]:
+        bb = self.bounding_box
+        return (bb["x"] + bb["width"] / 2, bb["y"] + bb["height"] / 2)
+
+
+def _round_bbox(bbox: dict[str, float]) -> dict[str, float]:
+    return {
+        "x": round(bbox["x"], 5),
+        "y": round(bbox["y"], 5),
+        "width": round(bbox["width"], 5),
+        "height": round(bbox["height"], 5),
+    }
+
+
+def words_to_lines(
+    words: list[dict[str, Any]],
+    image_id: str = "",
+    receipt_id: int = 0,
+) -> list[_EmbedLine]:
+    """Collapse OCR words into ReceiptLine-shaped units (one per line_id)."""
+    from collections import defaultdict
+
+    by_line: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for w in words:
+        by_line[int(w["line_id"])].append(w)
+
+    lines: list[_EmbedLine] = []
+    for line_id, ws in sorted(by_line.items()):
+        ws_sorted = sorted(
+            ws, key=lambda w: float(w["bbox"]["x"]) if "bbox" in w else 0.0
+        )
+        xs: list[float] = []
+        ys: list[float] = []
+        texts: list[str] = []
+        for w in ws_sorted:
+            bb = w["bbox"]
+            xs.extend([bb["x"], bb["x"] + bb["width"]])
+            ys.extend([bb["y"], bb["y"] + bb["height"]])
+            texts.append(str(w["text"]))
+        x0, x1 = min(xs), max(xs)
+        y0, y1 = min(ys), max(ys)
+        lines.append(
+            _EmbedLine(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_id=line_id,
+                text=" ".join(texts),
+                bounding_box={
+                    "x": x0,
+                    "y": y0,
+                    "width": x1 - x0,
+                    "height": y1 - y0,
+                },
+            )
+        )
+    return lines
+
+
+def dump_lines(lines: list[_EmbedLine]) -> list[dict[str, Any]]:
+    return [
+        {
+            "line_id": ln.line_id,
+            "text": ln.text,
+            "bbox": _round_bbox(ln.bounding_box),
+        }
+        for ln in lines
+    ]
+
+
+def dump_visual_rows(lines: list[_EmbedLine]) -> list[dict[str, Any]]:
+    """Visual rows = embedding units (name+price OCR lines grouped by y)."""
+    from receipt_chroma.embedding.formatting.line_format import \
+        group_lines_into_visual_rows
+
+    rows_out: list[dict[str, Any]] = []
+    for row in group_lines_into_visual_rows(lines):
+        xs: list[float] = []
+        ys: list[float] = []
+        for ln in row:
+            bb = ln.bounding_box
+            xs.extend([bb["x"], bb["x"] + bb["width"]])
+            ys.extend([bb["y"], bb["y"] + bb["height"]])
+        x0, x1 = min(xs), max(xs)
+        y0, y1 = min(ys), max(ys)
+        # Primary id = leftmost line (matches ReceiptRow convention).
+        primary = min(row, key=lambda ln: ln.bounding_box["x"]).line_id
+        rows_out.append(
+            {
+                "row_id": primary,
+                "line_ids": [ln.line_id for ln in row],
+                "text": " ".join(ln.text for ln in row),
+                "bbox": _round_bbox(
+                    {"x": x0, "y": y0, "width": x1 - x0, "height": y1 - y0}
+                ),
+            }
+        )
+    return rows_out
+
+
+def synthesize_sections(
+    lines: list[_EmbedLine],
+    items_line_ids: list[int],
+    visual_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Coarse STOREFRONT / ITEMS / SUMMARY when live ReceiptSection is absent.
+
+    ITEMS comes from the decoder zone; lines above (larger y, bottom-left
+    origin) are STOREFRONT; lines below are SUMMARY. Enough for the viz to
+    show section grouping before the ITEMS-focused decoder stages.
+    """
+    zone = set(items_line_ids)
+    if not zone:
+        return []
+
+    zone_lines = [ln for ln in lines if ln.line_id in zone]
+    if not zone_lines:
+        return []
+
+    items_y_top = max(
+        ln.bounding_box["y"] + ln.bounding_box["height"] for ln in zone_lines
+    )
+    items_y_bot = min(ln.bounding_box["y"] for ln in zone_lines)
+
+    buckets: dict[str, list[int]] = {
+        "STOREFRONT": [],
+        "ITEMS": sorted(zone),
+        "SUMMARY": [],
+    }
+    for ln in lines:
+        if ln.line_id in zone:
+            continue
+        cy = ln.bounding_box["y"] + ln.bounding_box["height"] / 2
+        if cy > items_y_top:
+            buckets["STOREFRONT"].append(ln.line_id)
+        elif cy < items_y_bot:
+            buckets["SUMMARY"].append(ln.line_id)
+        # Overlapping the zone vertically but not in it: leave unclassified
+        # rather than invent a SECTION_HEADER / PAYMENT guess.
+
+    line_by_id = {ln.line_id: ln for ln in lines}
+    row_by_line: dict[int, int] = {}
+    for row in visual_rows:
+        for lid in row["line_ids"]:
+            row_by_line[lid] = row["row_id"]
+
+    sections: list[dict[str, Any]] = []
+    for section_type, line_ids in buckets.items():
+        if not line_ids:
+            continue
+        xs: list[float] = []
+        ys: list[float] = []
+        for lid in line_ids:
+            ln = line_by_id.get(lid)
+            if not ln:
+                continue
+            bb = ln.bounding_box
+            xs.extend([bb["x"], bb["x"] + bb["width"]])
+            ys.extend([bb["y"], bb["y"] + bb["height"]])
+        if not xs:
+            continue
+        x0, x1 = min(xs), max(xs)
+        y0, y1 = min(ys), max(ys)
+        row_ids = sorted({row_by_line[lid] for lid in line_ids if lid in row_by_line})
+        sections.append(
+            {
+                "section_type": section_type,
+                "line_ids": sorted(line_ids),
+                "row_ids": row_ids,
+                "color": SECTION_COLORS[section_type],
+                "bbox": _round_bbox(
+                    {"x": x0, "y": y0, "width": x1 - x0, "height": y1 - y0}
+                ),
+            }
+        )
+    return sections
+
+
+def attach_structure(receipt: dict[str, Any]) -> dict[str, Any]:
+    """Add lines / visual rows / sections used by the early viz stages."""
+    lines = words_to_lines(
+        receipt["words"],
+        image_id=receipt.get("image_id", ""),
+        receipt_id=int(receipt.get("receipt_id", 0)),
+    )
+    visual_rows = dump_visual_rows(lines)
+    receipt["lines"] = dump_lines(lines)
+    receipt["visual_rows"] = visual_rows
+    receipt["sections"] = synthesize_sections(
+        lines, receipt.get("items_line_ids") or [], visual_rows
+    )
+    return receipt
+
 
 # Curated showcase set: stage-story diversity over merchant diversity.
 # Each entry is (image_id_prefix, receipt_id, why it earns the slot).
@@ -94,13 +314,11 @@ def annotate_bands(ocr_receipt: dict, priors: dict) -> list[dict]:
     first guard to fire is the recorded reason.
     """
     from receipt_upload.line_items.blocks import _zone_bands
-    from receipt_upload.line_items.geometry import (
-        NON_PRODUCT_NOTE_RE,
-        SALE_PRICE_RE,
-        WAS_PRICE_RE,
-        is_settlement_row,
-        is_unit_rate_row,
-    )
+    from receipt_upload.line_items.geometry import (NON_PRODUCT_NOTE_RE,
+                                                    SALE_PRICE_RE,
+                                                    WAS_PRICE_RE,
+                                                    is_settlement_row,
+                                                    is_unit_rate_row)
 
     bands = _zone_bands(ocr_receipt)
     out = []
@@ -120,9 +338,7 @@ def annotate_bands(ocr_receipt: dict, priors: dict) -> list[dict]:
 
         prior = priors.get(b["template"])
         prior_used = (
-            prior is not None
-            and prior["purity"] >= 0.75
-            and prior["support"] >= 2
+            prior is not None and prior["purity"] >= 0.75 and prior["support"] >= 2
         )
         if guard:
             role = "OUTSIDE"
@@ -139,9 +355,7 @@ def annotate_bands(ocr_receipt: dict, priors: dict) -> list[dict]:
             {
                 "band_id": i,
                 "line_ids": b["line_ids"],
-                "word_refs": [
-                    [w["line_id"], w["word_id"]] for w in b["words"]
-                ],
+                "word_refs": [[w["line_id"], w["word_id"]] for w in b["words"]],
                 "text": b["text"],
                 "y": round(b["y"], 5),
                 "amounts": b["amounts"],
@@ -185,9 +399,7 @@ def dump_item(item: dict, y_lookup: dict) -> dict:
         "stacked": bool(item.get("stacked")),
         "name_quality": item.get("name_quality"),
         "line_ids": sorted(item.get("line_ids", [])),
-        "name_word_ids": [
-            _wref(w) for w in item.get("name_word_ids", []) if w
-        ],
+        "name_word_ids": [_wref(w) for w in item.get("name_word_ids", []) if w],
         "price_word_id": _wref(item.get("price_word_id")),
         "qty_word_ids": [_wref(w) for w in item.get("qty_word_ids", []) if w],
     }
@@ -206,9 +418,7 @@ def find_figure_words(
     compares against.
     """
     from receipt_dynamo.entities.receipt_summary import (
-        find_printed_grand_total_words,
-        find_printed_subtotal_words,
-    )
+        find_printed_grand_total_words, find_printed_subtotal_words)
 
     if value is None:
         return []
@@ -260,11 +470,7 @@ def check_cdn(key: str) -> bool:
             text=True,
         )
         parts = result.stdout.split(None, 1)
-        if (
-            len(parts) != 2
-            or parts[0] != "200"
-            or not parts[1].startswith("image/")
-        ):
+        if len(parts) != 2 or parts[0] != "200" or not parts[1].startswith("image/"):
             return False
     return True
 
@@ -276,10 +482,8 @@ def export_receipt(
     priors: dict,
 ) -> Optional[dict]:
     from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-    from receipt_upload.line_items.geometry import (
-        extract_items,
-        reconcile_detailed,
-    )
+    from receipt_upload.line_items.geometry import (extract_items,
+                                                    reconcile_detailed)
 
     image_id = fixture_receipt["image_id"]
     receipt_id = fixture_receipt["receipt_id"]
@@ -322,9 +526,7 @@ def export_receipt(
         return None
     # Ids can be reused after OCR reprocessing — require matching text so
     # boxes land on the same tokens the fixture decoder annotated.
-    mismatched = [
-        k for k in referenced if live_words[k].text != fixture_text.get(k)
-    ]
+    mismatched = [k for k in referenced if live_words[k].text != fixture_text.get(k)]
     if mismatched:
         print(
             f"  SKIP {merchant}: {len(mismatched)} zone words "
@@ -381,9 +583,7 @@ def export_receipt(
         outcome = None
         for idx, it in enumerate(item_by_idx):
             qty_refs = {tuple(r) for r in it["qty_word_ids"] if r}
-            if band_refs & qty_refs or set(b["line_ids"]) <= set(
-                it["line_ids"]
-            ):
+            if band_refs & qty_refs or set(b["line_ids"]) <= set(it["line_ids"]):
                 absorbed_into = idx
                 outcome = "absorbed"
                 break
@@ -404,10 +604,7 @@ def export_receipt(
                 # price, an integer multiple of the accepted unit price.
                 if unit > 0:
                     ratio = amount / unit
-                    return (
-                        1 <= round(ratio) <= 12
-                        and abs(ratio - round(ratio)) < 0.01
-                    )
+                    return 1 <= round(ratio) <= 12 and abs(ratio - round(ratio)) < 0.01
                 return False
 
             candidates = [
@@ -427,29 +624,30 @@ def export_receipt(
         for fig in ("subtotal", "grand_total")
     }
 
-    return {
-        "image_id": image_id,
-        "receipt_id": receipt_id,
-        "merchant": merchant,
-        "image": image,
-        "words": export_words,
-        "items_line_ids": sorted(zone),
-        "printed_word_refs": printed_word_refs,
-        "bands": bands,
-        "items": item_by_idx,
-        "dropped_items": [
-            {**dump_item(i, y_lookup), "reason": "summary_figure"}
-            for i in dropped
-        ],
-        "summary": summary,
-        "reconcile": {
-            "status": reconcile.status,
-            "item_sum": reconcile.item_sum,
-            "baseline": reconcile.baseline,
-            "baseline_source": reconcile.baseline_source,
-            "baseline_figures_agreeing": (reconcile.baseline_figures_agreeing),
-        },
-    }
+    return attach_structure(
+        {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "merchant": merchant,
+            "image": image,
+            "words": export_words,
+            "items_line_ids": sorted(zone),
+            "printed_word_refs": printed_word_refs,
+            "bands": bands,
+            "items": item_by_idx,
+            "dropped_items": [
+                {**dump_item(i, y_lookup), "reason": "summary_figure"} for i in dropped
+            ],
+            "summary": summary,
+            "reconcile": {
+                "status": reconcile.status,
+                "item_sum": reconcile.item_sum,
+                "baseline": reconcile.baseline,
+                "baseline_source": reconcile.baseline_source,
+                "baseline_figures_agreeing": (reconcile.baseline_figures_agreeing),
+            },
+        }
+    )
 
 
 def main() -> int:
@@ -466,7 +664,23 @@ def main() -> int:
         action="store_true",
         help="export every surviving receipt instead of the showcase set",
     )
+    parser.add_argument(
+        "--enrich-structure",
+        action="store_true",
+        help=(
+            "offline: add lines/visual_rows/sections to an existing export "
+            "(no AWS). Reads --out and rewrites it."
+        ),
+    )
     args = parser.parse_args()
+
+    if args.enrich_structure:
+        payload = json.loads(args.out.read_text())
+        for receipt in payload["receipts"]:
+            attach_structure(receipt)
+        args.out.write_text(json.dumps(payload, indent=2) + "\n")
+        print(f"Enriched {len(payload['receipts'])} receipts → {args.out}")
+        return 0
 
     from receipt_upload.line_items.blocks import load_default_priors
 
@@ -478,16 +692,12 @@ def main() -> int:
     priors = load_default_priors()
 
     if args.analyze:
-        from receipt_upload.line_items.geometry import (
-            extract_items,
-            reconcile_detailed,
-        )
+        from receipt_upload.line_items.geometry import (extract_items,
+                                                        reconcile_detailed)
 
         for r in fixture["receipts"]:
             zone = set(r["items_line_ids"])
-            summary = build_summary(
-                golden_by_key.get((r["image_id"], r["receipt_id"]))
-            )
+            summary = build_summary(golden_by_key.get((r["image_id"], r["receipt_id"])))
             bands = annotate_bands(
                 {"words": r["words"], "items_line_ids": sorted(zone)},
                 priors,
@@ -516,9 +726,7 @@ def main() -> int:
     client = DynamoClient(args.table)
 
     if args.all:
-        selection = [
-            (r["image_id"], r["receipt_id"]) for r in fixture["receipts"]
-        ]
+        selection = [(r["image_id"], r["receipt_id"]) for r in fixture["receipts"]]
     else:
         selection = []
         for prefix, rid, _why in SHOWCASE:
@@ -560,9 +768,7 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, separators=(",", ":")) + "\n")
     size_kb = args.out.stat().st_size / 1024
-    print(
-        f"\nwrote {args.out} ({size_kb:.0f} KB, {len(receipts_out)} receipts)"
-    )
+    print(f"\nwrote {args.out} ({size_kb:.0f} KB, {len(receipts_out)} receipts)")
     return 0
 
 

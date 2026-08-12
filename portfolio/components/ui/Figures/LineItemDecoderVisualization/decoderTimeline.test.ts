@@ -19,6 +19,41 @@ const makeReceipt = (
   merchant: "Test Mart",
   image: { width: 800, height: 2400, cdn_s3_key: "assets/test/1.jpg" },
   words: [],
+  lines: [
+    {
+      line_id: 1,
+      text: "MILK",
+      bbox: { x: 0.1, y: 0.75, width: 0.3, height: 0.04 },
+    },
+    {
+      line_id: 2,
+      text: "EGGS",
+      bbox: { x: 0.1, y: 0.65, width: 0.3, height: 0.04 },
+    },
+  ],
+  visual_rows: [
+    {
+      row_id: 1,
+      line_ids: [1],
+      text: "MILK",
+      bbox: { x: 0.1, y: 0.75, width: 0.3, height: 0.04 },
+    },
+    {
+      row_id: 2,
+      line_ids: [2],
+      text: "EGGS",
+      bbox: { x: 0.1, y: 0.65, width: 0.3, height: 0.04 },
+    },
+  ],
+  sections: [
+    {
+      section_type: "ITEMS",
+      line_ids: [1, 2],
+      row_ids: [1, 2],
+      color: "var(--color-orange)",
+      bbox: { x: 0.1, y: 0.65, width: 0.3, height: 0.14 },
+    },
+  ],
   items_line_ids: [1, 2],
   printed_word_refs: { subtotal: [], grand_total: [[10, 2]] },
   bands: [
@@ -90,9 +125,11 @@ const makeReceipt = (
 });
 
 describe("buildStagePlan", () => {
-  it("always includes zone, bands, pair, reconcile in order", () => {
+  it("always includes rows, sections, zone, bands, pair, reconcile in order", () => {
     const plan = buildStagePlan(makeReceipt());
     expect(plan.map((s) => s.key)).toEqual([
+      "rows",
+      "sections",
       "zone",
       "bands",
       "pair",
@@ -135,7 +172,7 @@ describe("computeFrame", () => {
   it("starts in the first stage with zero progress", () => {
     const frame = computeFrame(plan, 0);
     expect(frame.stageIndex).toBe(0);
-    expect(frame.stageKey).toBe("zone");
+    expect(frame.stageKey).toBe("rows");
     expect(frame.progress).toBe(0);
     expect(frame.phase).toBe("stages");
   });
@@ -143,7 +180,7 @@ describe("computeFrame", () => {
   it("advances through stages by cumulative duration", () => {
     const frame = computeFrame(plan, plan[0].duration + 1);
     expect(frame.stageIndex).toBe(1);
-    expect(frame.stageKey).toBe("bands");
+    expect(frame.stageKey).toBe("sections");
     expect(frame.progress).toBeGreaterThanOrEqual(0);
     expect(frame.progress).toBeLessThan(0.1);
   });
@@ -173,8 +210,10 @@ describe("revealCount", () => {
   });
 
   it("reveals progressively during the stage", () => {
+    const pairIdx = plan.findIndex((s) => s.key === "pair");
     const pairStart =
-      plan[0].duration + plan[1].duration + plan[2].duration / 2;
+      plan.slice(0, pairIdx).reduce((sum, s) => sum + s.duration, 0) +
+      plan[pairIdx].duration / 2;
     const during = computeFrame(plan, pairStart);
     expect(during.stageKey).toBe("pair");
     const revealed = revealCount(4, plan, during, "pair");
@@ -192,13 +231,16 @@ describe("stage predicates", () => {
   const plan = buildStagePlan(makeReceipt());
 
   it("stageStarted / stageDone bracket the running stage", () => {
+    const bandsIdx = plan.findIndex((s) => s.key === "bands");
     const midBands = computeFrame(
       plan,
-      plan[0].duration + plan[1].duration / 2
+      plan.slice(0, bandsIdx).reduce((sum, s) => sum + s.duration, 0) +
+        plan[bandsIdx].duration / 2
     );
     expect(stageStarted(plan, midBands, "bands")).toBe(true);
     expect(stageDone(plan, midBands, "bands")).toBe(false);
     expect(stageDone(plan, midBands, "zone")).toBe(true);
+    expect(stageDone(plan, midBands, "rows")).toBe(true);
     expect(stageStarted(plan, midBands, "pair")).toBe(false);
   });
 });

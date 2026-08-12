@@ -8,6 +8,7 @@ import React, {
 import { useInView } from "react-intersection-observer";
 import {
   LineItemDemoBand,
+  LineItemDemoLine,
   LineItemDemoReceipt,
   LineItemDemoResponse,
   LineItemDemoWord,
@@ -75,6 +76,16 @@ const STATUS_META: Record<
 // decoder passes each stage on the current receipt.
 const LEGEND_STAGES: { key: DecoderStageKey; label: string; color: string }[] =
   [
+    {
+      key: "rows",
+      label: "Group lines → embeddings",
+      color: "var(--color-cyan)",
+    },
+    {
+      key: "sections",
+      label: "Assign sections",
+      color: "var(--color-yellow)",
+    },
     { key: "zone", label: "Find the items zone", color: "var(--color-orange)" },
     {
       key: "bands",
@@ -255,6 +266,14 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
     return map;
   }, [receipt.words]);
 
+  const lineMap = useMemo(() => {
+    const map = new Map<number, LineItemDemoLine>();
+    for (const line of receipt.lines ?? []) {
+      map.set(line.line_id, line);
+    }
+    return map;
+  }, [receipt.lines]);
+
   const boxFor = useCallback(
     (ref: [number, number] | null): PxBox | null => {
       if (!ref) return null;
@@ -281,6 +300,19 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
       };
     },
     [boxFor]
+  );
+
+  const normBox = useCallback(
+    (bbox: { x: number; y: number; width: number; height: number }, pad = 2): PxBox => {
+      const box = toPx(bbox, w, h);
+      return {
+        x: Math.max(0, box.x - pad),
+        y: Math.max(0, box.y - pad),
+        width: Math.min(w, box.width + pad * 2),
+        height: Math.min(h, box.height + pad * 2),
+      };
+    },
+    [w, h]
   );
 
   // The items-zone extent, from the zone words.
@@ -310,7 +342,16 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
       ),
     [itemsTopFirst]
   );
+  const visualRows = receipt.visual_rows ?? [];
+  const sections = receipt.sections ?? [];
 
+  const rowsRevealed = revealCount(visualRows.length, plan, frame, "rows");
+  const sectionsRevealed = revealCount(
+    sections.length,
+    plan,
+    frame,
+    "sections"
+  );
   const zoneVisible = stageStarted(plan, frame, "zone");
   const bandsRevealed = revealCount(
     receipt.bands.length,
@@ -334,6 +375,14 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
         ? 1
         : 0;
 
+  // Early structure layers fade once the ITEMS-zone decoder takes over.
+  const rowsOpacity = stageStarted(plan, frame, "bands")
+    ? 0.12
+    : stageStarted(plan, frame, "sections")
+      ? 0.45
+      : 1;
+  const sectionsOpacity = stageStarted(plan, frame, "bands") ? 0.18 : 1;
+
   const rejectedIds = useMemo(
     () => new Set(rejected.slice(0, rejectsRevealed).map((b) => b.band_id)),
     [rejected, rejectsRevealed]
@@ -344,6 +393,8 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   const revealedItems = itemsTopFirst.slice(0, itemsRevealed);
   const revealedQty = qtyItems.slice(0, qtyRevealed);
   const revealedDonors = donors.slice(0, donorsRevealed);
+  const revealedRows = visualRows.slice(0, rowsRevealed);
+  const revealedSections = sections.slice(0, sectionsRevealed);
 
   if (!imageUrl) {
     return <div className={styles.receiptLoading}>Loading...</div>;
@@ -375,6 +426,32 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
             viewBox={`0 0 ${w} ${h}`}
             preserveAspectRatio="none"
           >
+            {/* Stage: sections — tint STOREFRONT / ITEMS / SUMMARY */}
+            <g
+              className={styles.stageLayer}
+              style={{ opacity: sectionsOpacity }}
+            >
+              {revealedSections.map((section) => {
+                const box = normBox(section.bbox, 4);
+                return (
+                  <g key={`section-${section.section_type}`}>
+                    <rect
+                      x={box.x}
+                      y={box.y}
+                      width={box.width}
+                      height={box.height}
+                      fill={section.color}
+                      fillOpacity={0.14}
+                      stroke={section.color}
+                      strokeWidth={2}
+                      strokeDasharray="6,4"
+                      opacity={0.9}
+                    />
+                  </g>
+                );
+              })}
+            </g>
+
             {/* Stage: zone — dim everything outside the ITEMS section */}
             {zoneBox && (
               <g
@@ -410,6 +487,51 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
                 />
               </g>
             )}
+
+            {/* Stage: rows — ReceiptLines grouped into embedding units.
+                Multi-line rows show dashed line boxes inside a solid row. */}
+            <g className={styles.stageLayer} style={{ opacity: rowsOpacity }}>
+              {revealedRows.map((row) => {
+                const outer = normBox(row.bbox, 3);
+                const multi = row.line_ids.length > 1;
+                return (
+                  <g key={`row-${row.row_id}`}>
+                    {multi &&
+                      row.line_ids.map((lineId) => {
+                        const line = lineMap.get(lineId);
+                        if (!line) return null;
+                        const box = normBox(line.bbox, 1);
+                        return (
+                          <rect
+                            key={`rowline-${row.row_id}-${lineId}`}
+                            x={box.x}
+                            y={box.y}
+                            width={box.width}
+                            height={box.height}
+                            fill="none"
+                            stroke="var(--color-cyan)"
+                            strokeWidth={1}
+                            strokeDasharray="3,2"
+                            opacity={0.7}
+                          />
+                        );
+                      })}
+                    <rect
+                      x={outer.x}
+                      y={outer.y}
+                      width={outer.width}
+                      height={outer.height}
+                      rx={2}
+                      fill="var(--color-cyan)"
+                      fillOpacity={multi ? 0.08 : 0.04}
+                      stroke="var(--color-cyan)"
+                      strokeWidth={multi ? 2 : 1.25}
+                      opacity={0.85}
+                    />
+                  </g>
+                );
+              })}
+            </g>
 
             {/* Stage: bands — one thin outline per visual row */}
             {receipt.bands.slice(0, bandsRevealed).map((band) => {
@@ -701,7 +823,7 @@ export default function LineItemDecoderVisualization() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [frame, setFrame] = useState<DecoderFrame>({
     stageIndex: 0,
-    stageKey: "zone",
+    stageKey: "rows",
     progress: 0,
     phase: "stages",
   });
@@ -816,7 +938,7 @@ export default function LineItemDecoderVisualization() {
         setIsTransitioning(false);
         setFrame({
           stageIndex: 0,
-          stageKey: currentPlans[receiptIndex]?.[0]?.key ?? "zone",
+          stageKey: currentPlans[receiptIndex]?.[0]?.key ?? "rows",
           progress: 0,
           phase: "stages",
         });
@@ -920,7 +1042,7 @@ export default function LineItemDecoderVisualization() {
   const nextPlan = plans[nextIndex];
   const initialFrame: DecoderFrame = {
     stageIndex: 0,
-    stageKey: nextPlan?.[0]?.key ?? "zone",
+    stageKey: nextPlan?.[0]?.key ?? "rows",
     progress: 0,
     phase: "stages",
   };

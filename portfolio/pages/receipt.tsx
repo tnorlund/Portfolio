@@ -546,14 +546,14 @@ M1LK 2%           1    $4.4g`}</code>
       <p>
         Labels tell me which words are prices. They don&apos;t tell me that
         &quot;ORGANIC BANANAS&quot; and &quot;$1.69&quot; are the{" "}
-        <em>same purchase</em>. For that I don&apos;t use AI at all — receipts
-        are printed by machines, so the layout itself is the answer. Words
-        cluster into visual rows. Rows that are really payment info, sale-price
-        notes, or &quot;was $3.59&quot; echoes get rejected by vocabulary, not
-        vibes. What&apos;s left pairs names with prices, and printed quantities
-        like &quot;6 @ $0.49&quot; are accepted only when the arithmetic works
-        out — even when OCR mangles &quot;@&quot; into &quot;g&quot;, 6 ×
-        $0.49 still equals $2.94.
+        <em>same purchase</em>. Before the decoder even runs, OCR lines that sit
+        on one printed row — name on the left, price on the right — get grouped
+        into the visual rows we embed, then those rows are assigned to
+        STOREFRONT / ITEMS / SUMMARY. Inside the ITEMS section the layout does
+        the rest: non-product rows get rejected by vocabulary, names pair with
+        prices, and printed quantities like &quot;6 @ $0.49&quot; are accepted
+        only when the arithmetic works out — even when OCR mangles &quot;@&quot;
+        into &quot;g&quot;, 6 × $0.49 still equals $2.94.
       </p>
 
       <p>

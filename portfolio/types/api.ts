@@ -527,6 +527,48 @@ export interface LineItemDemoWord {
   in_zone: boolean;
 }
 
+/** One Apple-Vision ReceiptLine (words sharing a line_id). */
+export interface LineItemDemoLine {
+  line_id: number;
+  text: string;
+  bbox: BoundingBox;
+}
+
+/**
+ * Visual row = embedding unit. OCR often splits a printed row into
+ * separate ReceiptLines (name left, price right); these get grouped
+ * before section assignment / decoding.
+ */
+export interface LineItemDemoVisualRow {
+  /** Primary line id (leftmost), matching ReceiptRow convention. */
+  row_id: number;
+  line_ids: number[];
+  text: string;
+  bbox: BoundingBox;
+}
+
+export type LineItemDemoSectionType =
+  | "STOREFRONT"
+  | "ITEMS"
+  | "SUMMARY"
+  | "ADDRESS"
+  | "PAYMENT"
+  | "FOOTER"
+  | "SECTION_HEADER"
+  | "TOTAL_LINE"
+  | "TRANSACTION_INFO"
+  | "SURVEY"
+  | "BARCODE";
+
+export interface LineItemDemoSection {
+  section_type: LineItemDemoSectionType;
+  line_ids: number[];
+  row_ids: number[];
+  /** CSS color token for the overlay / legend. */
+  color: string;
+  bbox: BoundingBox;
+}
+
 export type LineItemDemoGuard =
   | "settlement"
   | "was_price"
@@ -603,6 +645,12 @@ export interface LineItemDemoReceipt {
   merchant: string;
   image: LineItemDemoImage;
   words: LineItemDemoWord[];
+  /** ReceiptLines collapsed from words (embedding / section inputs). */
+  lines: LineItemDemoLine[];
+  /** Visual rows = the units that get embedded. */
+  visual_rows: LineItemDemoVisualRow[];
+  /** Coarse section grouping (STOREFRONT / ITEMS / SUMMARY, …). */
+  sections: LineItemDemoSection[];
   items_line_ids: number[];
   /** Word refs for the printed summary figures (empty when the figure
    * was not found as a single OCR word). */
