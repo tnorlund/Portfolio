@@ -551,7 +551,7 @@ M1LK 2%           1    $4.4g`}</code>
         cluster into visual rows. Rows that are really payment info, sale-price
         notes, or &quot;was $3.59&quot; echoes get rejected by vocabulary, not
         vibes. What&apos;s left pairs names with prices, and printed quantities
-        like &quot;2 @ $0.49&quot; are accepted only when the arithmetic works
+        like &quot;6 @ $0.49&quot; are accepted only when the arithmetic works
         out — even when OCR mangles &quot;@&quot; into &quot;g&quot;, 6 ×
         $0.49 still equals $2.94.
       </p>

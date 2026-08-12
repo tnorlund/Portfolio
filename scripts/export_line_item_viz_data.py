@@ -189,9 +189,7 @@ def dump_item(item: dict, y_lookup: dict) -> dict:
             _wref(w) for w in item.get("name_word_ids", []) if w
         ],
         "price_word_id": _wref(item.get("price_word_id")),
-        "qty_word_ids": [
-            _wref(w) for w in item.get("qty_word_ids", []) if w
-        ],
+        "qty_word_ids": [_wref(w) for w in item.get("qty_word_ids", []) if w],
     }
 
 
@@ -248,17 +246,24 @@ def check_cdn(key: str) -> bool:
     for base in (DEV_CDN, PROD_CDN):
         result = subprocess.run(
             [
-                "curl", "-s", "-o", "/dev/null",
-                "-w", "%{http_code} %{content_type}",
-                "--max-time", "15",
+                "curl",
+                "-s",
+                "-o",
+                "/dev/null",
+                "-w",
+                "%{http_code} %{content_type}",
+                "--max-time",
+                "15",
                 f"{base}/{key}",
             ],
             capture_output=True,
             text=True,
         )
         parts = result.stdout.split(None, 1)
-        if len(parts) != 2 or parts[0] != "200" or not parts[1].startswith(
-            "image/"
+        if (
+            len(parts) != 2
+            or parts[0] != "200"
+            or not parts[1].startswith("image/")
         ):
             return False
     return True
@@ -283,6 +288,10 @@ def export_receipt(
     zone = set(fixture_receipt["items_line_ids"])
     summary = build_summary(golden)
 
+    if not zone:
+        print(f"  SKIP {merchant}: empty items zone")
+        return None
+
     # ── decode (fixture words: byte-identical to the CI parity gate) ──
     ocr_receipt = {"words": words, "items_line_ids": sorted(zone)}
     bands = annotate_bands(ocr_receipt, priors)
@@ -302,6 +311,7 @@ def export_receipt(
         return None
     receipt = details.receipt
     live_words = {(w.line_id, w.word_id): w for w in details.words}
+    fixture_text = {(w["line_id"], w["word_id"]): w["text"] for w in words}
 
     referenced: set[tuple[int, int]] = set()
     for b in bands:
@@ -309,6 +319,17 @@ def export_receipt(
     missing = [k for k in referenced if k not in live_words]
     if missing:
         print(f"  SKIP {merchant}: {len(missing)} zone words lost live join")
+        return None
+    # Ids can be reused after OCR reprocessing — require matching text so
+    # boxes land on the same tokens the fixture decoder annotated.
+    mismatched = [
+        k for k in referenced if live_words[k].text != fixture_text.get(k)
+    ]
+    if mismatched:
+        print(
+            f"  SKIP {merchant}: {len(mismatched)} zone words "
+            "changed text since the fixture"
+        )
         return None
 
     receipt_dict = dict(receipt)
@@ -319,7 +340,11 @@ def export_receipt(
     }
     image["width"] = receipt.width
     image["height"] = receipt.height
-    if not check_cdn(image.get("cdn_webp_s3_key") or image["cdn_s3_key"]):
+    base_key = image.get("cdn_webp_s3_key") or image.get("cdn_s3_key")
+    if not base_key:
+        print(f"  SKIP {merchant}: no CDN image key on the receipt")
+        return None
+    if not check_cdn(base_key):
         print(f"  SKIP {merchant}: image missing from a CDN")
         return None
 
@@ -342,8 +367,7 @@ def export_receipt(
     # ── absorption/unclaimed detection for PRICE bands ──
     y_lookup = {(w["line_id"], w["word_id"]): w["y_mid"] for w in words}
     item_price_refs = {
-        tuple(dump_item(i, y_lookup)["price_word_id"] or ())
-        for i in items_raw
+        tuple(dump_item(i, y_lookup)["price_word_id"] or ()) for i in items_raw
     }
     item_by_idx = [dump_item(i, y_lookup) for i in items_filtered]
     for b in bands:
@@ -399,9 +423,7 @@ def export_receipt(
             b["absorbed_into"] = absorbed_into
 
     printed_word_refs = {
-        fig: find_figure_words(
-            details.words, (summary or {}).get(fig), fig
-        )
+        fig: find_figure_words(details.words, (summary or {}).get(fig), fig)
         for fig in ("subtotal", "grand_total")
     }
 
@@ -425,9 +447,7 @@ def export_receipt(
             "item_sum": reconcile.item_sum,
             "baseline": reconcile.baseline,
             "baseline_source": reconcile.baseline_source,
-            "baseline_figures_agreeing": (
-                reconcile.baseline_figures_agreeing
-            ),
+            "baseline_figures_agreeing": (reconcile.baseline_figures_agreeing),
         },
     }
 
@@ -448,7 +468,6 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    from receipt_dynamo import DynamoClient
     from receipt_upload.line_items.blocks import load_default_priors
 
     fixture = json.loads(OCR_FIXTURE.read_text())
@@ -457,7 +476,6 @@ def main() -> int:
         for g in json.loads(GOLDEN_FIXTURE.read_text())["receipts"]
     }
     priors = load_default_priors()
-    client = DynamoClient(args.table)
 
     if args.analyze:
         from receipt_upload.line_items.geometry import (
@@ -492,6 +510,11 @@ def main() -> int:
             )
         return 0
 
+    # Live geometry + CDN keys need Dynamo; analyze mode above is fixture-only.
+    from receipt_dynamo import DynamoClient
+
+    client = DynamoClient(args.table)
+
     if args.all:
         selection = [
             (r["image_id"], r["receipt_id"]) for r in fixture["receipts"]
@@ -502,8 +525,7 @@ def main() -> int:
             match = [
                 r
                 for r in fixture["receipts"]
-                if r["image_id"].startswith(prefix)
-                and r["receipt_id"] == rid
+                if r["image_id"].startswith(prefix) and r["receipt_id"] == rid
             ]
             if not match:
                 print(f"  showcase entry {prefix} r{rid} not in fixture")
@@ -536,11 +558,11 @@ def main() -> int:
         "receipts": receipts_out,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(
-        json.dumps(payload, separators=(",", ":")) + "\n"
-    )
+    args.out.write_text(json.dumps(payload, separators=(",", ":")) + "\n")
     size_kb = args.out.stat().st_size / 1024
-    print(f"\nwrote {args.out} ({size_kb:.0f} KB, {len(receipts_out)} receipts)")
+    print(
+        f"\nwrote {args.out} ({size_kb:.0f} KB, {len(receipts_out)} receipts)"
+    )
     return 0
 
 

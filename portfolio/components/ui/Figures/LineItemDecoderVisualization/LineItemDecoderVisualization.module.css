@@ -153,7 +153,7 @@
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--text-color);
-  font-family: "Monaco", "Menlo", "Consolas", monospace;
+  font-family: Monaco, Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
 }
 
@@ -219,5 +219,18 @@
 
   .receiptImage {
     max-height: 300px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .queuedReceipt,
+  .stageLayer,
+  .legendItem,
+  .verdictBlock {
+    transition: none;
+  }
+
+  .legendItem.revealed {
+    transform: none;
   }
 }

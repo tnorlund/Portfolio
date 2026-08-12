@@ -94,6 +94,21 @@ const LEGEND_STAGES: { key: DecoderStageKey; label: string; color: string }[] =
 const fmtMoney = (v: number | null | undefined): string =>
   v == null ? "—" : `$${Math.abs(v).toFixed(2)}`;
 
+const usePrefersReducedMotion = (): boolean => {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") {
+      return;
+    }
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setReduced(e.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+  return reduced;
+};
+
 const wordKey = (lineId: number, wordId: number) => `${lineId}_${wordId}`;
 
 interface PxBox {
@@ -595,24 +610,29 @@ const StageLegend: React.FC<StageLegendProps> = ({ receipt, plan, frame }) => {
     color: "var(--text-color)",
   };
   const itemCount = receipt.items.filter((i) => !i.is_discount).length;
+  const discountCount = receipt.items.length - itemCount;
   const itemSum =
     receipt.reconcile.item_sum ??
     receipt.items
       .filter((i) => !i.is_discount)
       .reduce((sum, i) => sum + (i.price ?? 0), 0);
   const printedValue =
-    receipt.reconcile.baseline ??
-    receipt.summary?.grand_total ??
-    receipt.summary?.subtotal ??
-    null;
+    receipt.reconcile.status === "no-baseline"
+      ? null
+      : (receipt.reconcile.baseline ??
+        receipt.summary?.grand_total ??
+        receipt.summary?.subtotal ??
+        null);
   const printedLabel =
-    receipt.reconcile.baseline_source === "subtotal"
-      ? "printed subtotal"
-      : receipt.reconcile.baseline_source === "grand_total_minus_tax"
-        ? receipt.summary?.tax != null
-          ? "total − tax"
-          : "printed total"
-        : "printed total";
+    receipt.reconcile.status === "no-baseline"
+      ? "no printed total"
+      : receipt.reconcile.baseline_source === "subtotal"
+        ? "printed subtotal"
+        : receipt.reconcile.baseline_source === "grand_total_minus_tax"
+          ? receipt.summary?.tax != null
+            ? "total − tax"
+            : "printed total"
+          : "printed total";
 
   return (
     <div className={styles.stageLegend}>
@@ -636,7 +656,10 @@ const StageLegend: React.FC<StageLegendProps> = ({ receipt, plan, frame }) => {
         style={{ opacity: showVerdict ? 1 : 0.2 }}
       >
         <div className={styles.verdictRow}>
-          <span className={styles.verdictLabel}>{itemCount} items</span>
+          <span className={styles.verdictLabel}>
+            {itemCount} product{itemCount === 1 ? "" : "s"}
+            {discountCount > 0 ? ` + ${discountCount} disc.` : ""}
+          </span>
           <span className={styles.verdictValue}>{fmtMoney(itemSum)}</span>
         </div>
         <div className={styles.verdictRow}>
@@ -684,11 +707,19 @@ export default function LineItemDecoderVisualization() {
   });
   const [isTransitioning, setIsTransitioning] = useState(false);
   const formatSupport = useImageFormatSupport();
+  const reducedMotion = usePrefersReducedMotion();
 
-  const imageFormats = useMemo(
-    () => receipts.map((r) => r.image),
-    [receipts]
-  );
+  // Preload the active receipt plus the next transition target — not the
+  // whole showcase set — so scrolling near the figure stays cheap.
+  const imageFormats = useMemo(() => {
+    if (receipts.length === 0) return [];
+    const nextIndex = (currentIndex + 1) % receipts.length;
+    const idxs =
+      nextIndex === currentIndex
+        ? [currentIndex]
+        : [currentIndex, nextIndex];
+    return idxs.map((i) => receipts[i].image);
+  }, [receipts, currentIndex]);
   usePreloadReceiptImages(imageFormats, formatSupport);
 
   const animationRef = useRef<number | null>(null);
@@ -730,9 +761,24 @@ export default function LineItemDecoderVisualization() {
   }, [nearViewport]);
 
   // Animation loop: stepped decoder stages instead of a single scan.
+  // Under prefers-reduced-motion, freeze on the fully-resolved last stage.
   const hasReceipts = receipts.length > 0;
   useEffect(() => {
-    if (!inView || !hasReceipts) return;
+    if (!hasReceipts || !reducedMotion) return;
+    const plan = plansRef.current[currentIndex];
+    if (!plan?.length) return;
+    const last = plan.length - 1;
+    setIsTransitioning(false);
+    setFrame({
+      stageIndex: last,
+      stageKey: plan[last].key,
+      progress: 1,
+      phase: "hold",
+    });
+  }, [hasReceipts, reducedMotion, currentIndex]);
+
+  useEffect(() => {
+    if (!inView || !hasReceipts || reducedMotion) return;
     if (isAnimatingRef.current) return;
     isAnimatingRef.current = true;
 
@@ -801,11 +847,14 @@ export default function LineItemDecoderVisualization() {
     return () => {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
       isAnimatingRef.current = false;
+      // Leaving mid-transition must not leave the shell stuck in the
+      // flying/next-legend presentation when the loop restarts.
+      setIsTransitioning(false);
     };
     // The loop owns receiptIndex after startup (same pattern as
     // LayoutLMBatchVisualization).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inView, hasReceipts]);
+  }, [inView, hasReceipts, reducedMotion]);
 
   const getNextReceipt = useCallback(
     (items: LineItemDemoReceipt[], idx: number) =>
