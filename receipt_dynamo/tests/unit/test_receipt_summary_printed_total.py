@@ -415,3 +415,44 @@ def test_void_balance_due_does_not_invent_a_positive_total():
         _word(15, 1, "6.00", 0.5029, x=0.760),
     ]
     assert find_printed_grand_total(words, total_line_ids=[12, 14]) is None
+
+
+def test_negative_label_survives_total_line_with_stray_positive():
+    # Codex HIGH: TOTAL_LINE extra anchors used to drop negatives, then
+    # overwrite a labeled -$6.00 with CHANGE $6.00.
+    words = [
+        _word(12, 1, "BALANCE", 0.5407, x=0.112),
+        _word(12, 2, "DUE", 0.5407, x=0.281),
+        _word(14, 1, "-", 0.5327, x=0.700),
+        _word(14, 2, "6.00", 0.5327, x=0.731),
+        _word(13, 1, "CHANGE", 0.5131, x=0.112),
+        _word(15, 1, "6.00", 0.5029, x=0.760),
+    ]
+    totals = MonetaryTotals(grand_total=-6.00)
+    _apply_printed_total_fallback(
+        totals, words, total_line_ids=[12, 14, 15]
+    )
+    assert totals.grand_total == pytest.approx(-6.00)
+
+
+def test_total_line_override_uses_label_line_id_not_numeric_match():
+    # Codex MEDIUM: tax 0.65 restated on TOTAL_LINE must not make an
+    # off-section GRAND_TOTAL label look section-backed.
+    words = [
+        _word(47, 1, "TAX", 0.5237, x=0.062),
+        _word(54, 1, "0.65", 0.5228, x=0.800),
+        _word(49, 1, "BALANCE", 0.5032, x=0.154),
+        _word(49, 2, "DUE", 0.5032, x=0.334),
+        _word(55, 1, "25.85", 0.5028, x=0.775),
+        _word(56, 1, "0.65", 0.5028, x=0.900),
+    ]
+    labels = [_label(54, 1, "GRAND_TOTAL", ValidationStatus.VALID.value)]
+    summary = ReceiptSummary.from_word_labels_and_words(
+        image_id=IMAGE_ID,
+        receipt_id=1,
+        merchant_name=None,
+        word_labels=labels,
+        words=words,
+        total_line_ids=[49, 55, 56],
+    )
+    assert summary.grand_total == pytest.approx(25.85)

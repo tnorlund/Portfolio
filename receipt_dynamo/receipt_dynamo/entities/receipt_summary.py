@@ -261,6 +261,7 @@ class _ExtractionState:
     """Mutable state for label extraction."""
 
     grand_total: float | None = None
+    grand_total_line_id: int | None = None
     subtotal: float | None = None
     tax: float | None = None
     tip: float | None = None
@@ -336,7 +337,7 @@ def _extract_summary_fields(
         word_text_lookup: Mapping from (line_id, word_id) to word text.
 
     Returns:
-        Tuple of (totals, date, item_count).
+        Tuple of (totals, date, item_count, grand_total_line_id).
     """
     state = _ExtractionState()
     date_words_by_line: dict[int, list[tuple[int, str]]] = {}
@@ -349,7 +350,14 @@ def _extract_summary_fields(
         handler = _LABEL_HANDLERS.get(label.label)
         if handler:
             text = word_text_lookup.get((label.line_id, label.word_id), "")
+            prev_grand_total = state.grand_total
             handler(text, state)
+            if (
+                label.label == "GRAND_TOTAL"
+                and state.grand_total is not None
+                and state.grand_total != prev_grand_total
+            ):
+                state.grand_total_line_id = int(label.line_id)
             if label.label == "DATE":
                 date_words_by_line.setdefault(label.line_id, []).append(
                     (label.word_id, text)
@@ -372,7 +380,7 @@ def _extract_summary_fields(
         tax=state.tax,
         tip=state.tip,
     )
-    return totals, state.date, state.item_count
+    return totals, state.date, state.item_count, state.grand_total_line_id
 
 
 # =============================================================================
@@ -405,20 +413,6 @@ def _word_height(word: "ReceiptWord") -> float:
     return box.get("height") or 0.0
 
 
-def _positive_amount(text: str) -> float | None:
-    """Parse text as a positive printed amount, else None.
-
-    Requires amount-like punctuation (decimals or a currency symbol) so
-    bare integers such as store numbers never qualify.
-    """
-    if not looks_like_receipt_amount(text):
-        return None
-    value = parse_receipt_amount(text)
-    if value is None or value <= 0:
-        return None
-    return value
-
-
 _CURRENCY_PREFIX_RE = re.compile(r"(?:[A-Za-z]{2,3})?\$+S?", re.I)
 _ISO_CURRENCY_PREFIX_RE = re.compile(r"(?:USD|EUR|GBP|CAD|AUD|JPY|MXN|CHF)S?", re.I)
 
@@ -434,14 +428,17 @@ def _is_currency_prefix_token(text: str) -> bool:
     )
 
 
-def _amount_words_on_line(
+_MINUS_TOKENS = frozenset({"-", "−", "–", "—"})
+
+
+def _signed_amount_words_on_line(
     line_words: list["ReceiptWord"],
 ) -> list[tuple[float, "ReceiptWord"]]:
-    """Positive amounts on a line, including split currency+number tokens.
+    """Signed amounts on a line, including split currency and minus tokens.
 
-    Vision OCR often emits ``USD$S`` and ``7.43`` as adjacent words.
-    The numeric word is the one returned so callers can point a label
-    at the printed figure.
+    Vision OCR often emits ``USD$S`` + ``7.43``, or ``-`` + ``6.00``, as
+    adjacent words. The numeric word is the one returned so callers can
+    point a label at the printed figure.
     """
     found: list[tuple[float, "ReceiptWord"]] = []
     texts = [str(getattr(w, "text", "") or "") for w in line_words]
@@ -449,25 +446,43 @@ def _amount_words_on_line(
     for i, word in enumerate(line_words):
         if i in seen:
             continue
-        amount = _positive_amount(texts[i])
-        if amount is not None:
-            found.append((amount, word))
-            seen.add(i)
-            continue
-        if i + 1 < len(line_words) and _is_currency_prefix_token(texts[i]):
-            joined = f"{texts[i]} {texts[i + 1]}"
-            amount = _positive_amount(joined)
-            if amount is not None:
-                found.append((amount, line_words[i + 1]))
+        if texts[i] in _MINUS_TOKENS and i + 1 < len(line_words):
+            value = parse_receipt_amount(f"-{texts[i + 1]}")
+            if value is not None:
+                found.append((value, line_words[i + 1]))
                 seen.add(i)
                 seen.add(i + 1)
+                continue
+        if i + 1 < len(line_words) and _is_currency_prefix_token(texts[i]):
+            value = parse_receipt_amount(f"{texts[i]} {texts[i + 1]}")
+            if value is not None:
+                found.append((value, line_words[i + 1]))
+                seen.add(i)
+                seen.add(i + 1)
+                continue
+        if looks_like_receipt_amount(texts[i]):
+            value = parse_receipt_amount(texts[i])
+            if value is not None:
+                found.append((value, word))
+                seen.add(i)
     return found
 
 
-def _positive_amounts_on_line_ids(
+def _amount_words_on_line(
+    line_words: list["ReceiptWord"],
+) -> list[tuple[float, "ReceiptWord"]]:
+    """Positive amounts on a line, including split currency+number tokens."""
+    return [
+        (amount, word)
+        for amount, word in _signed_amount_words_on_line(line_words)
+        if amount > 0
+    ]
+
+
+def _signed_amounts_on_line_ids(
     words: list["ReceiptWord"], line_ids: Collection[int]
 ) -> list[float]:
-    """Positive amounts printed on the given line ids (no y-band pairing)."""
+    """Signed amounts printed on the given line ids (no y-band pairing)."""
     wanted = {int(x) for x in line_ids}
     lines: dict[int, list["ReceiptWord"]] = {}
     for word in words:
@@ -478,7 +493,7 @@ def _positive_amounts_on_line_ids(
     amounts: list[float] = []
     for line_words in lines.values():
         line_words.sort(key=lambda w: getattr(w, "word_id", 0))
-        amounts.extend(amount for amount, _ in _amount_words_on_line(line_words))
+        amounts.extend(amount for amount, _ in _signed_amount_words_on_line(line_words))
     return amounts
 
 
@@ -718,29 +733,46 @@ def _apply_printed_total_fallback(
     totals: MonetaryTotals,
     words: list["ReceiptWord"],
     total_line_ids: Collection[int] | None = None,
+    grand_total_line_id: int | None = None,
 ) -> None:
     """Fill grand_total/subtotal from printed rows when labels gave none.
 
     A NEGATIVE label-derived total is a real figure, not a missing one:
     return receipts print trailing-minus amounts ("$16.25-") and
-    extract_amount now carries the sign through. The fallback only knows
-    positive printed amounts, so letting it run on negatives would
-    replace a refund's total with whatever stray positive figure sits in
-    the total row's y-band. Only None/zero totals fall back — except
-    when a TOTAL_LINE section is present and the label amount is not
-    printed on those lines (a VALID GRAND_TOTAL on the tax figure).
+    extract_amount now carries the sign through. The fallback only
+    overwrites with a positive TOTAL_LINE figure when the GRAND_TOTAL
+    label's line is not in that section (tax labeled as grand total).
     """
+    section_ids = {int(x) for x in total_line_ids} if total_line_ids else set()
+    section_printed: float | None = None
+    if section_ids:
+        section_amounts = _signed_amounts_on_line_ids(words, section_ids)
+        if section_amounts:
+            section_printed = max(section_amounts, key=lambda amount: (abs(amount), amount))
+
     printed = find_printed_grand_total(words, total_line_ids=total_line_ids)
-    if printed is not None:
+    fill = (
+        section_printed
+        if section_printed is not None and section_printed > 0
+        else printed
+    )
+
+    if totals.grand_total is not None and totals.grand_total < 0:
+        pass
+    elif fill is not None and fill > 0:
         if totals.grand_total is None or totals.grand_total == 0:
-            totals.grand_total = printed
-        elif total_line_ids:
-            on_section = _positive_amounts_on_line_ids(words, total_line_ids)
-            label_on_section = any(
-                abs(amount - totals.grand_total) < 0.005 for amount in on_section
+            totals.grand_total = fill
+        elif section_ids:
+            label_on_section = (
+                grand_total_line_id is not None
+                and int(grand_total_line_id) in section_ids
             )
-            if not label_on_section:
-                totals.grand_total = printed
+            if not label_on_section and section_printed is not None and section_printed > 0:
+                totals.grand_total = section_printed
+    if totals.subtotal is None or totals.subtotal == 0:
+        printed_sub = find_printed_subtotal(words)
+        if printed_sub is not None:
+            totals.subtotal = printed_sub
     if totals.subtotal is None or totals.subtotal == 0:
         printed_sub = find_printed_subtotal(words)
         if printed_sub is not None:
@@ -937,10 +969,15 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         }
 
         # Extract values from labels
-        totals, date, item_count = _extract_summary_fields(
+        totals, date, item_count, grand_total_line_id = _extract_summary_fields(
             word_labels, word_text_lookup
         )
-        _apply_printed_total_fallback(totals, words, total_line_ids=total_line_ids)
+        _apply_printed_total_fallback(
+            totals,
+            words,
+            total_line_ids=total_line_ids,
+            grand_total_line_id=grand_total_line_id,
+        )
 
         return cls(
             image_id=receipt.image_id,
@@ -1001,10 +1038,15 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         }
 
         # Extract values from labels
-        totals, date, item_count = _extract_summary_fields(
+        totals, date, item_count, grand_total_line_id = _extract_summary_fields(
             word_labels, word_text_lookup
         )
-        _apply_printed_total_fallback(totals, words, total_line_ids=total_line_ids)
+        _apply_printed_total_fallback(
+            totals,
+            words,
+            total_line_ids=total_line_ids,
+            grand_total_line_id=grand_total_line_id,
+        )
 
         return cls(
             image_id=image_id,
