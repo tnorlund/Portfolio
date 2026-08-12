@@ -18,9 +18,7 @@ _CURRENCY_SYMBOLS = r"$€£¥₹"
 # import them without forking the regexes.
 # ---------------------------------------------------------------------------
 
-TOTAL_KEYWORD_RE = re.compile(
-    r"\b(total|amount\s+due|balance|authorized)\b", re.I
-)
+TOTAL_KEYWORD_RE = re.compile(r"\b(total|amount\s+due|balance|authorized)\b", re.I)
 SUBTOTAL_KEYWORD_RE = re.compile(r"\bsub[-\s]?total\b", re.I)
 TAX_KEYWORD_RE = re.compile(r"\b(tax|vat)\b", re.I)
 NON_PAYMENT_SUMMARY_RE = re.compile(
@@ -83,9 +81,7 @@ def is_grand_total_line(line_text: str) -> bool:
         return False
     if NON_PAYMENT_SUMMARY_RE.search(line_text):
         return False
-    tokens = {
-        token for token in re.split(r"[^a-z]+", line_text.lower()) if token
-    }
+    tokens = {token for token in re.split(r"[^a-z]+", line_text.lower()) if token}
     return not (tokens & GRAND_TOTAL_DISQUALIFIER_TOKENS)
 
 
@@ -93,8 +89,10 @@ def parse_receipt_amount(text: Any) -> float | None:
     """Parse receipt currency/amount text without changing the OCR text.
 
     Handles US-style amounts (``1,234.56``), decimal-comma amounts
-    (``8,82``), European grouped amounts (``1.234,56``), and negative
-    accounting forms.
+    (``8,82``), European grouped amounts (``1.234,56``), negative
+    accounting forms, and OCR-mangled currency prefixes (``USD$S 7.43``,
+    ``USD$S7.43``). Letters and doubled ``$`` wrappers are stripped; the
+    figure itself must still be on the token.
     """
     if text is None:
         return None
@@ -133,17 +131,26 @@ def parse_receipt_amount(text: Any) -> float | None:
     return -value if is_negative else value
 
 
+_DECIMAL_AMOUNT_RE = re.compile(r"-?\(?\d+([.,]\d{2})\)?-?")
+_GROUPED_AMOUNT_RE = re.compile(r"-?\(?\d{1,3}(,\d{3})+(\.\d{2})?\)?-?")
+
+
 def looks_like_receipt_amount(text: Any) -> bool:
-    """Return whether text has receipt amount punctuation/symbol context."""
+    """Return whether text has receipt amount punctuation/symbol context.
+
+    Currency-only OCR junk (``USD$S``, ``USD$``) is not an amount: a
+    digit must be present. A ``$`` still glued to the figure
+    (``USD$S 7.43``) qualifies via the currency-symbol check.
+    """
     if text is None:
         return False
     raw = str(text).strip()
-    if not raw:
+    if not raw or not re.search(r"\d", raw):
         return False
     return bool(
         re.search(f"[{re.escape(_CURRENCY_SYMBOLS)}]", raw)
-        or re.fullmatch(r"-?\(?\d{1,3}(,\d{3})+(\.\d{2})?\)?-?", raw)
-        or re.fullmatch(r"-?\(?\d+([.,]\d{2})\)?-?", raw)
+        or _GROUPED_AMOUNT_RE.fullmatch(raw)
+        or _DECIMAL_AMOUNT_RE.fullmatch(raw)
     )
 
 

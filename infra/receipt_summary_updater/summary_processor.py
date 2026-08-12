@@ -26,6 +26,26 @@ TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "")
 dynamo_client = DynamoClient(TABLE_NAME) if TABLE_NAME else None
 
 
+def _total_line_ids(sections: list[Any] | None) -> list[int]:
+    """TOTAL_LINE section line ids from dict or entity section records."""
+    ids: list[int] = []
+    for section in sections or []:
+        if isinstance(section, dict):
+            section_type = section.get("section_type")
+            line_ids = section.get("line_ids") or []
+        else:
+            section_type = getattr(section, "section_type", None)
+            line_ids = getattr(section, "line_ids", None) or []
+        if section_type != "TOTAL_LINE":
+            continue
+        for line_id in line_ids:
+            try:
+                ids.append(int(line_id))
+            except (TypeError, ValueError):
+                continue
+    return ids
+
+
 def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     """Recompute and upsert ReceiptSummary for a receipt.
 
@@ -85,10 +105,8 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     word_labels = []
     last_key = None
     while True:
-        page_labels, last_key = (
-            dynamo_client.list_receipt_word_labels_for_receipt(
-                image_id, receipt_id, last_evaluated_key=last_key
-            )
+        page_labels, last_key = dynamo_client.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id, last_evaluated_key=last_key
         )
         word_labels.extend(page_labels)
         if last_key is None:
@@ -98,10 +116,9 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
 
     # Lines + sections feed the tender classifier's payment zone
     lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
-    sections = dynamo_client.get_receipt_sections_from_receipt(
-        image_id, receipt_id
-    )
+    sections = dynamo_client.get_receipt_sections_from_receipt(image_id, receipt_id)
     tender = classify_tender_for_receipt(lines, sections, word_labels, words)
+    total_line_ids = _total_line_ids(sections)
 
     # Bank-match fields are computed OFFLINE (scripts/
     # backfill_tender_bank.py); carry them over from the stored summary
@@ -144,9 +161,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     # unbounded recompute loop.
     try:
         line_item_count = len(
-            dynamo_client.get_receipt_line_items_from_receipt(
-                image_id, receipt_id
-            )
+            dynamo_client.get_receipt_line_items_from_receipt(image_id, receipt_id)
         )
     except EntityNotFoundError:
         line_item_count = 0
@@ -165,6 +180,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         bank_amount=bank_amount,
         bank_match_confidence=bank_match_confidence,
         line_item_count=line_item_count,
+        total_line_ids=total_line_ids,
     )
 
     # Convert to record and upsert

@@ -50,9 +50,7 @@ def _word(
     )
 
 
-def _label(
-    line_id: int, word_id: int, label: str, status: str
-) -> ReceiptWordLabel:
+def _label(line_id: int, word_id: int, label: str, status: str) -> ReceiptWordLabel:
     return ReceiptWordLabel(
         image_id=IMAGE_ID,
         receipt_id=1,
@@ -323,3 +321,97 @@ def test_moody_fallback_fills_grand_total_and_subtotal():
     # the $20 bowl reconciles against baseline 20.00.
     assert totals.grand_total == 21.45
     assert totals.subtotal == 20.00
+
+
+# ---------------------------------------------------------------------------
+# OCR-mangled currency tokens + TOTAL_LINE extra anchors.
+# 383a90d8 r2 prints "Total:" / "USD$S 7.43" (Vision doubled the $ into
+# a trailing S). 37c9f558 r1 has a VALID GRAND_TOTAL on the tax figure
+# 0.65 while TOTAL_LINE carries 25.85. Bottle-return voids print a
+# negative BALANCE DUE and must not invent a positive total.
+# ---------------------------------------------------------------------------
+
+
+def _sprouts_383a90d8_words() -> list[SimpleNamespace]:
+    """Card-slip + TOTAL_LINE of dev receipt 383a90d8:2 (grand total 7.43)."""
+    return [
+        _word(29, 1, "Total:", 0.7950, x=0.020),
+        _word(30, 1, "USD$S", 0.7923, x=0.763),
+        _word(30, 2, "7.43", 0.7923, x=0.881),
+        _word(47, 1, "BALANCE", 0.5075, x=0.125),
+        _word(47, 2, "DUE", 0.5078, x=0.314),
+        _word(57, 1, "7.43", 0.5065, x=0.787),
+        _word(58, 1, "$7.43", 0.4940, x=0.770),
+        _word(51, 1, "CHANGE", 0.4580, x=0.125),
+        _word(60, 1, "0.00", 0.4564, x=0.796),
+    ]
+
+
+def test_split_usds_prefix_pairs_with_amount_on_same_line():
+    assert find_printed_grand_total(_sprouts_383a90d8_words()) == 7.43
+
+
+def test_glued_usds_token_parses_as_printed_total():
+    words = [
+        _word(1, 1, "Total:", 0.7950, x=0.020),
+        _word(2, 1, "USD$S 7.43", 0.7923, x=0.763),
+    ]
+    assert find_printed_grand_total(words) == 7.43
+
+
+def test_total_line_ids_anchor_without_total_keyword():
+    # Keyword OCR dropped "Total:"; the section finder still tagged the
+    # amount row as TOTAL_LINE. Extra anchors recover the figure.
+    words = [
+        _word(30, 1, "USD$S", 0.7923, x=0.763),
+        _word(30, 2, "7.43", 0.7923, x=0.881),
+        _word(43, 1, "CANADIAN", 0.5689, x=0.100),
+        _word(44, 1, "$17.99/", 0.5671, x=0.363),
+    ]
+    assert find_printed_grand_total(words) is None
+    assert find_printed_grand_total(words, total_line_ids=[30]) == 7.43
+
+
+def test_total_line_overrides_grand_total_label_off_section():
+    # 37c9f558: VALID GRAND_TOTAL on tax 0.65; TOTAL_LINE is 25.85.
+    words = [
+        _word(47, 1, "TAX", 0.5237, x=0.062),
+        _word(54, 1, "0.65", 0.5228, x=0.800),
+        _word(49, 1, "BALANCE", 0.5032, x=0.154),
+        _word(49, 2, "DUE", 0.5032, x=0.334),
+        _word(55, 1, "25.85", 0.5028, x=0.775),
+        _word(56, 1, "$25.85", 0.4921, x=0.754),
+    ]
+    labels = [_label(54, 1, "GRAND_TOTAL", ValidationStatus.VALID.value)]
+
+    without_section = ReceiptSummary.from_word_labels_and_words(
+        image_id=IMAGE_ID,
+        receipt_id=1,
+        merchant_name=None,
+        word_labels=labels,
+        words=words,
+    )
+    assert without_section.grand_total == 0.65
+
+    with_section = ReceiptSummary.from_word_labels_and_words(
+        image_id=IMAGE_ID,
+        receipt_id=1,
+        merchant_name=None,
+        word_labels=labels,
+        words=words,
+        total_line_ids=[49, 55],
+    )
+    assert with_section.grand_total == 25.85
+
+
+def test_void_balance_due_does_not_invent_a_positive_total():
+    # 8e6faa9a / bd770f76: bottle-return BALANCE DUE is negative; CHANGE
+    # restates the cash given back. Do not mint a positive grand total.
+    words = [
+        _word(12, 1, "BALANCE", 0.5407, x=0.112),
+        _word(12, 2, "DUE", 0.5407, x=0.281),
+        _word(14, 1, "-6.00", 0.5327, x=0.731),
+        _word(13, 1, "CHANGE", 0.5131, x=0.112),
+        _word(15, 1, "6.00", 0.5029, x=0.760),
+    ]
+    assert find_printed_grand_total(words, total_line_ids=[12, 14]) is None
