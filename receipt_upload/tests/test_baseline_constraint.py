@@ -96,6 +96,22 @@ def test_no_summary_is_a_no_op():
     assert constrain_items_to_baseline(items, None) is items
 
 
+def test_prefers_later_unnamed_when_drop_sets_share_max_index():
+    # Three identical unnamed $1 bands; dropping any two matches.
+    # Names shorter than _name_is_real stay droppable. Later-band
+    # preference must keep the earliest ("A"), not the middle ("B"):
+    # without a full descending-index key, (A,C) sorts before (B,C).
+    items = [
+        _item(1.00, "A"),
+        _item(1.00, "B"),
+        _item(1.00, "C"),
+        _item(5.00, "MILK"),
+    ]
+    summary = {"subtotal": 6.00}
+    constrained = constrain_items_to_baseline(items, summary)
+    assert [i["name"] for i in constrained] == ["A", "MILK"]
+
+
 def test_candidate_cap_skips_early_unnamed_outside_the_window():
     # Eight later unnamed bands fill the search window; the real
     # overage sits above them and is left alone. That is the bound

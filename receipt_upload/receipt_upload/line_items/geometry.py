@@ -1464,8 +1464,10 @@ def constrain_items_to_baseline(
                     else 99.0
                 ),
                 len(drop),
-                # Prefer dropping later bands (totals sit below items).
-                -max(drop) if drop else 0,
+                # Prefer later bands at every position, not just max(drop).
+                # Otherwise (0, 7) sorts before (6, 7) and an early real
+                # unnamed item can lose to a later phantom.
+                tuple(-i for i in sorted(drop, reverse=True)),
                 drop,
                 after,
             )
