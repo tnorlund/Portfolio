@@ -404,7 +404,7 @@ func bandWords(_ words: [ZoneWord]) -> [[ZoneWord]] {
     let xSorted = bands.map { $0.stableSorted { $0.x < $1.x } }
     let amtXs = words.filter { isLinePriceWord($0) }.map(\.x)
     let zoneColX = amtXs.max()
-    return splitOvermergedPriceBands(xSorted, zoneColX: zoneColX)
+    return splitOvermergedPriceBands(xSorted, zoneColX: zoneColX, yFlat: yFlat)
 }
 
 /// Same gate as `decode_band_blocks` ("in column" = within 0.15).
@@ -421,23 +421,31 @@ func isLinePriceWord(_ word: ZoneWord) -> Bool {
 
 /// Port of `geometry.split_overmerged_price_bands`.
 func splitOvermergedPriceBands(
-    _ bands: [[ZoneWord]], zoneColX: Double?
+    _ bands: [[ZoneWord]],
+    zoneColX: Double?,
+    yFlat: (ZoneWord) -> Double
 ) -> [[ZoneWord]] {
     guard let colX = zoneColX else { return bands }
     var out: [[ZoneWord]] = []
     for band in bands {
-        out.append(contentsOf: splitOnePriceColumnBand(band, zoneColX: colX))
+        out.append(
+            contentsOf: splitOnePriceColumnBand(
+                band, zoneColX: colX, yFlat: yFlat
+            )
+        )
     }
     return out
 }
 
 /// Port of `geometry._split_one_price_column_band`.
 func splitOnePriceColumnBand(
-    _ band: [ZoneWord], zoneColX: Double
+    _ band: [ZoneWord],
+    zoneColX: Double,
+    yFlat: (ZoneWord) -> Double
 ) -> [[ZoneWord]] {
     let colPrices = band.filter {
         isLinePriceWord($0) && abs($0.x - zoneColX) < priceColumnXTol
-    }.stableSorted { $0.yMid < $1.yMid }
+    }.stableSorted { yFlat($0) < yFlat($1) }
     if colPrices.count < 2 { return [band] }
 
     var clusters: [[ZoneWord]] = [[colPrices[0]]]
@@ -447,7 +455,7 @@ func splitOnePriceColumnBand(
             price.h == 0 ? 0.01 : price.h,
             prev.h == 0 ? 0.01 : prev.h
         )
-        if price.yMid - prev.yMid < minH * priceColumnYSep {
+        if yFlat(price) - yFlat(prev) < minH * priceColumnYSep {
             clusters[clusters.count - 1].append(price)
         } else {
             clusters.append([price])
@@ -456,14 +464,14 @@ func splitOnePriceColumnBand(
     if clusters.count < 2 { return [band] }
 
     let anchors = clusters.map { c in
-        c.reduce(0.0) { $0 + $1.yMid } / Double(c.count)
+        c.reduce(0.0) { $0 + yFlat($1) } / Double(c.count)
     }
     var groups: [[ZoneWord]] = Array(repeating: [], count: clusters.count)
     for word in band {
         var nearest = 0
-        var best = abs(anchors[0] - word.yMid)
+        var best = abs(anchors[0] - yFlat(word))
         for i in 1..<anchors.count {
-            let d = abs(anchors[i] - word.yMid)
+            let d = abs(anchors[i] - yFlat(word))
             if d < best {
                 best = d
                 nearest = i
@@ -475,8 +483,8 @@ func splitOnePriceColumnBand(
         $0.stableSorted { $0.x < $1.x }
     }
     parts = parts.stableSorted { a, b in
-        let ya = a.reduce(0.0) { $0 + $1.yMid } / Double(a.count)
-        let yb = b.reduce(0.0) { $0 + $1.yMid } / Double(b.count)
+        let ya = a.reduce(0.0) { $0 + yFlat($1) } / Double(a.count)
+        let yb = b.reduce(0.0) { $0 + yFlat($1) } / Double(b.count)
         return ya < yb
     }
     return parts

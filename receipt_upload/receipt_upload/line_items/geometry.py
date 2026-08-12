@@ -621,11 +621,13 @@ def band_words(words: list[dict]) -> list[list[dict]]:
         band.sort(key=lambda w: w["x"])
     amt_xs = [w["x"] for w in words if is_line_price_word(w)]
     zone_col_x = max(amt_xs) if amt_xs else None
-    return split_overmerged_price_bands(bands, zone_col_x)
+    return split_overmerged_price_bands(bands, zone_col_x, y_flat)
 
 
 def split_overmerged_price_bands(
-    bands: list[list[dict]], zone_col_x: Optional[float]
+    bands: list[list[dict]],
+    zone_col_x: Optional[float],
+    y_of,
 ) -> list[list[dict]]:
     """Split a band that carries 2+ y-separated right-column prices.
 
@@ -634,17 +636,21 @@ def split_overmerged_price_bands(
     then emits a single item. Split only when each resulting row has its
     own printed column price -- never mint an amount OCR did not see.
     Same-row two-price layouts (Price / You Pay) stay one band.
+
+    ``y_of`` must be the same deskewed y ``band_words`` used to form the
+    band. Clustering on raw ``y_mid`` would split a skewed Price/You-Pay
+    row whose two amounts sit at different x.
     """
     if zone_col_x is None:
         return bands
     out: list[list[dict]] = []
     for band in bands:
-        out.extend(_split_one_price_column_band(band, zone_col_x))
+        out.extend(_split_one_price_column_band(band, zone_col_x, y_of))
     return out
 
 
 def _split_one_price_column_band(
-    band: list[dict], zone_col_x: float
+    band: list[dict], zone_col_x: float, y_of
 ) -> list[list[dict]]:
     col_prices = [
         w
@@ -654,28 +660,28 @@ def _split_one_price_column_band(
     ]
     if len(col_prices) < 2:
         return [band]
-    col_prices = sorted(col_prices, key=lambda w: w["y_mid"])
+    col_prices = sorted(col_prices, key=y_of)
     clusters: list[list[dict]] = [[col_prices[0]]]
     for price in col_prices[1:]:
         prev = clusters[-1][-1]
         min_h = min(price["h"] or 0.01, prev["h"] or 0.01)
-        if price["y_mid"] - prev["y_mid"] < min_h * PRICE_COLUMN_Y_SEP:
+        if y_of(price) - y_of(prev) < min_h * PRICE_COLUMN_Y_SEP:
             clusters[-1].append(price)
         else:
             clusters.append([price])
     if len(clusters) < 2:
         return [band]
-    anchors = [sum(w["y_mid"] for w in c) / len(c) for c in clusters]
+    anchors = [sum(y_of(w) for w in c) / len(c) for c in clusters]
     groups: list[list[dict]] = [[] for _ in clusters]
     for word in band:
         nearest = min(
-            range(len(anchors)), key=lambda i: abs(anchors[i] - word["y_mid"])
+            range(len(anchors)), key=lambda i: abs(anchors[i] - y_of(word))
         )
         groups[nearest].append(word)
     parts = [g for g in groups if g]
     for part in parts:
         part.sort(key=lambda w: w["x"])
-    parts.sort(key=lambda p: sum(w["y_mid"] for w in p) / len(p))
+    parts.sort(key=lambda p: sum(y_of(w) for w in p) / len(p))
     return parts
 
 

@@ -81,14 +81,35 @@ def test_qty_unit_and_line_total_on_one_row_stay_one_item():
 
 
 def test_same_row_price_and_you_pay_stay_one_band():
-    # Vons-style Price / You Pay: two column amounts, y-gap ~0.0005, well
-    # under 0.25 * height. parse_band keeps the last amount.
+    # Vons-style Price / You Pay: both amounts in the right-most column
+    # (x within 0.15 of 0.85), y-gap well under 0.25 * height.
     words = [
         W(1, 1, "GLAD", 0.05, 0.75, 0.012),
         W(1, 2, "WRAP", 0.20, 0.75, 0.012),
-        W(1, 3, "5.99", 0.70, 0.7515, 0.012),
+        W(1, 3, "5.99", 0.72, 0.7515, 0.012),
         W(1, 4, "6.99", 0.85, 0.7520, 0.012),
     ]
+    bands = band_words(words)
+    assert len(bands) == 1
+    parsed = parse_band(bands[0])
+    assert parsed["price"] == 6.99
+    assert parsed["name"] == "GLAD WRAP"
+
+
+def test_skewed_same_row_prices_stay_one_band():
+    # Residual slope ~0.023 (the ~1.3° case band_words deskews). Raw
+    # y_mid of the two column amounts differs by more than 0.25*h, so a
+    # raw-y split would cut Price/You-Pay in two; deskewed y must not.
+    y0 = 0.50
+    slope = 0.04
+    words = [
+        W(1, 1, "GLAD", 0.05, y0 + slope * 0.05, 0.012),
+        W(1, 2, "WRAP", 0.20, y0 + slope * 0.20, 0.012),
+        W(1, 3, "5.99", 0.72, y0 + slope * 0.72, 0.012),
+        W(1, 4, "6.99", 0.85, y0 + slope * 0.85, 0.012),
+    ]
+    raw_gap = words[3]["y_mid"] - words[2]["y_mid"]
+    assert raw_gap >= 0.25 * 0.012
     bands = band_words(words)
     assert len(bands) == 1
     parsed = parse_band(bands[0])
