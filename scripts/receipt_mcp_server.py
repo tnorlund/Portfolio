@@ -4155,6 +4155,12 @@ async def set_receipt_place_impl(
         from receipt_dynamo.entities.receipt_place import ReceiptPlace
 
         def _write():
+            # Refuse writes for nonexistent receipts: a typo'd id would
+            # otherwise create a durable orphan PLACE row (nothing cleans
+            # those up - the summary tombstone guard only covers
+            # summaries).
+            dynamo_client.get_receipt(image_id, receipt_id)
+
             before = None
             try:
                 place = dynamo_client.get_receipt_place(image_id, receipt_id)
@@ -4162,6 +4168,33 @@ async def set_receipt_place_impl(
                     "merchant_name": place.merchant_name,
                     "place_id": place.place_id,
                 }
+                if place_id is not None and place_id != place.place_id:
+                    # The business itself changed: clear place-derived
+                    # metadata so stale category/coords/hours from the
+                    # wrong business don't survive the correction.
+                    place.merchant_category = ""
+                    place.merchant_types = []
+                    place.formatted_address = ""
+                    place.short_address = ""
+                    place.address_components = {}
+                    place.latitude = None
+                    place.longitude = None
+                    place.viewport_ne_lat = None
+                    place.viewport_ne_lng = None
+                    place.viewport_sw_lat = None
+                    place.viewport_sw_lng = None
+                    place.plus_code = ""
+                    place.phone_number = ""
+                    place.phone_intl = ""
+                    place.website = ""
+                    place.maps_url = ""
+                    place.business_status = ""
+                    place.open_now = None
+                    place.hours_summary = []
+                    place.hours_data = {}
+                    place.photo_references = []
+                    place.matched_fields = []
+                    place.confidence = 0.0
                 place.merchant_name = merchant_name
                 if place_id is not None:
                     place.place_id = place_id
@@ -4216,7 +4249,15 @@ async def set_receipt_place_impl(
                 summary_updated = False
             return before, summary_updated
 
-        before, summary_updated = await asyncio.to_thread(_write)
+        try:
+            before, summary_updated = await asyncio.to_thread(_write)
+        except EntityNotFoundError:
+            return {
+                "error": (
+                    f"Receipt {receipt_id} on image {image_id} does not "
+                    "exist; refusing to create an orphan place row"
+                )
+            }
         return {
             "success": True,
             "image_id": image_id,
