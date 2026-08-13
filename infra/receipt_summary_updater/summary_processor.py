@@ -9,8 +9,6 @@ import logging
 import os
 from typing import Any
 
-from receipt_upload.tender import classify_tender_for_receipt
-
 # receipt_dynamo ships in the Lambda layer; receipt_upload.tender is
 # bundled into this Lambda's archive as a FileAsset referencing the
 # canonical source (stdlib-only module, same pattern as the line-item
@@ -19,6 +17,7 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_summary import ReceiptSummary
 from receipt_dynamo.entities.receipt_summary_record import ReceiptSummaryRecord
+from receipt_upload.tender import classify_tender_for_receipt
 
 logger = logging.getLogger(__name__)
 
