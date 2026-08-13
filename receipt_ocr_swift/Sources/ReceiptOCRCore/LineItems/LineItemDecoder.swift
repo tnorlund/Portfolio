@@ -200,6 +200,12 @@ enum LineItemRegex {
         "\\bPER\\s+(?:OZ|LB|LBS|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\\b",
         ci: true
     )
+    /// `_PER_UNIT_AMOUNT_RE`: "$2.99 per lb" (rate amount before PER)
+    static let perUnitAmount = Rx(
+        "\\$?\\d+\\.\\d{2}\\s+"
+            + "\\bPER\\s+(?:OZ|LB|LBS|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\\b",
+        ci: true
+    )
     /// `_SLASH_UNIT_WORD` shared by slash-rate / leftover stripping.
     static let slashUnitWord = Rx(
         "\\b(?:OZ|LB|LBS|1B|IB|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\\b",
@@ -331,8 +337,8 @@ public func isTenderRow(_ bare: String) -> Bool {
 
 /// UNIT_WORDS: tokens that don't count as product-name content
 let unitWords: Set<String> = [
-    "EA", "LB", "LBS", "KG", "OZ", "CT", "PK", "X", "C", "F", "T", "N", "O",
-    "A", "B", "TX", "FS", "QTY", "EACH",
+    "EA", "LB", "LBS", "1B", "IB", "KG", "OZ", "CT", "PK", "X", "C", "F",
+    "T", "N", "O", "A", "B", "TX", "FS", "QTY", "EACH",
 ]
 
 // MARK: - Small helpers
@@ -404,8 +410,8 @@ private func nsSlice(_ s: String, before start: Int, after end: Int) -> String
 func isUnitRateRow(_ text: String, nAmounts: Int) -> Bool {
     let t = pyStrip(text)
     if t.isEmpty { return false }
-    if LineItemRegex.perUnitRate.search(t) != nil {
-        return nAmounts <= 1
+    if LineItemRegex.perUnitRate.search(t) != nil, nAmounts <= 1 {
+        return true
     }
     let qtyM = LineItemRegex.qtyAt.search(t) ?? LineItemRegex.qtyAtOcr.search(t)
     if let qtyM {
@@ -415,13 +421,16 @@ func isUnitRateRow(_ text: String, nAmounts: Int) -> Bool {
         }
     }
     let hasRate =
-        LineItemRegex.slashUnitRate.search(t) != nil
+        LineItemRegex.perUnitRate.search(t) != nil
+        || LineItemRegex.slashUnitRate.search(t) != nil
         || LineItemRegex.unitAfterSlash.search(t) != nil
         || qtyM != nil
         || LineItemRegex.ocrAt.search(t) != nil
     if !hasRate { return false }
     var remainder = LineItemRegex.qtyAt.sub(t, with: " ")
     remainder = LineItemRegex.qtyAtOcr.sub(remainder, with: " ")
+    remainder = LineItemRegex.perUnitAmount.sub(remainder, with: " ")
+    remainder = LineItemRegex.perUnitRate.sub(remainder, with: " ")
     remainder = LineItemRegex.slashUnitRate.sub(remainder, with: " ")
     remainder = LineItemRegex.unitAfterSlash.sub(remainder, with: " ")
     remainder = LineItemRegex.ocrAt.sub(remainder, with: " ")
