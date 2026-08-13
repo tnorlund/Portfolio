@@ -380,7 +380,8 @@ func estimateSkew(_ words: [ZoneWord]) -> Double {
 }
 
 /// Port of `geometry.band_words`: cluster words into visual bands by
-/// deskewed y-center gaps; each band is x-sorted.
+/// deskewed y-center gaps; each band is x-sorted. Over-merged two-row
+/// bands (two right-column prices at distinct y) are then split.
 func bandWords(_ words: [ZoneWord]) -> [[ZoneWord]] {
     if words.isEmpty { return [] }
     let hs = words.map(\.h).sorted()
@@ -400,7 +401,93 @@ func bandWords(_ words: [ZoneWord]) -> [[ZoneWord]] {
             bands.append([w])
         }
     }
-    return bands.map { $0.stableSorted { $0.x < $1.x } }
+    let xSorted = bands.map { $0.stableSorted { $0.x < $1.x } }
+    let amtXs = words.filter { isLinePriceWord($0) }.map(\.x)
+    let zoneColX = amtXs.max()
+    return splitOvermergedPriceBands(xSorted, zoneColX: zoneColX, yFlat: yFlat)
+}
+
+/// Same gate as `decode_band_blocks` ("in column" = within 0.15).
+let priceColumnXTol = 0.15
+/// Two column prices are distinct visual rows when their y-gap is at
+/// least this fraction of the shorter price-word's height. See Python
+/// `PRICE_COLUMN_Y_SEP`.
+let priceColumnYSep = 0.25
+
+/// Port of `geometry.is_line_price_word`.
+func isLinePriceWord(_ word: ZoneWord) -> Bool {
+    !lineAmounts([word]).isEmpty
+}
+
+/// Port of `geometry.split_overmerged_price_bands`.
+func splitOvermergedPriceBands(
+    _ bands: [[ZoneWord]],
+    zoneColX: Double?,
+    yFlat: (ZoneWord) -> Double
+) -> [[ZoneWord]] {
+    guard let colX = zoneColX else { return bands }
+    var out: [[ZoneWord]] = []
+    for band in bands {
+        out.append(
+            contentsOf: splitOnePriceColumnBand(
+                band, zoneColX: colX, yFlat: yFlat
+            )
+        )
+    }
+    return out
+}
+
+/// Port of `geometry._split_one_price_column_band`.
+func splitOnePriceColumnBand(
+    _ band: [ZoneWord],
+    zoneColX: Double,
+    yFlat: (ZoneWord) -> Double
+) -> [[ZoneWord]] {
+    let colPrices = band.filter {
+        isLinePriceWord($0) && abs($0.x - zoneColX) < priceColumnXTol
+    }.stableSorted { yFlat($0) < yFlat($1) }
+    if colPrices.count < 2 { return [band] }
+
+    var clusters: [[ZoneWord]] = [[colPrices[0]]]
+    for price in colPrices.dropFirst() {
+        let prev = clusters[clusters.count - 1].last!
+        let minH = min(
+            price.h == 0 ? 0.01 : price.h,
+            prev.h == 0 ? 0.01 : prev.h
+        )
+        if yFlat(price) - yFlat(prev) < minH * priceColumnYSep {
+            clusters[clusters.count - 1].append(price)
+        } else {
+            clusters.append([price])
+        }
+    }
+    if clusters.count < 2 { return [band] }
+
+    let anchors = clusters.map { c in
+        c.reduce(0.0) { $0 + yFlat($1) } / Double(c.count)
+    }
+    var groups: [[ZoneWord]] = Array(repeating: [], count: clusters.count)
+    for word in band {
+        var nearest = 0
+        var best = abs(anchors[0] - yFlat(word))
+        for i in 1..<anchors.count {
+            let d = abs(anchors[i] - yFlat(word))
+            if d < best {
+                best = d
+                nearest = i
+            }
+        }
+        groups[nearest].append(word)
+    }
+    var parts = groups.filter { !$0.isEmpty }.map {
+        $0.stableSorted { $0.x < $1.x }
+    }
+    parts = parts.stableSorted { a, b in
+        let ya = a.reduce(0.0) { $0 + yFlat($1) } / Double(a.count)
+        let yb = b.reduce(0.0) { $0 + yFlat($1) } / Double(b.count)
+        return ya < yb
+    }
+    return parts
 }
 
 // MARK: - Amount extraction per line/band (blocks._line_amounts)
@@ -727,6 +814,8 @@ struct ZoneBand {
 
 /// Port of `blocks._zone_bands`: deskewed visual bands over the zone,
 /// sorted into reading order (descending y; larger y_mid is higher).
+/// `bandWords` already splits glued two-row bands so each product
+/// reaches `parseBand` alone.
 func zoneBands(words: [ZoneWord], zoneLineIds: Set<Int>) -> [ZoneBand] {
     let zoneWords = words.filter { zoneLineIds.contains($0.lineId) }
     var out: [ZoneBand] = []
