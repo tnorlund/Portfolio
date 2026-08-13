@@ -113,8 +113,31 @@ def test_slash_unit_rate_is_meta():
     assert is_unit_rate_row("$2.99 /", 1)
     assert is_unit_rate_row("$2.99 / lb", 1)
     assert is_unit_rate_row("lb $2.99 / lb", 1)
-    assert not is_unit_rate_row("1.23 lb @ $4.99/lb", 1)
+    # Unnamed qty-at + slash-rate is the annotation, not a SKU. Pairing
+    # dropped these; a QTY_AT_RE veto used to keep them as items.
+    assert is_unit_rate_row("1.23 lb @ $4.99/lb", 1)
+    assert is_unit_rate_row("0.31 Ib @ $5.49 / 1b", 1)
+    assert is_unit_rate_row("Ib @ / 1b $5.49", 1)
+    assert is_unit_rate_row("1.94 1b $0.89 / lb", 1)
+    assert is_unit_rate_row("lb a / 1b $2.49", 1)
+    assert is_unit_rate_row("ib @ 1b $18.99", 1)
+    assert is_unit_rate_row("2 (a) 2.49", 1)
+    assert is_unit_rate_row("i $17.99/", 1)
+    # Weight OCR parses as a second amount; leftover is still unnamed.
+    assert is_unit_rate_row("0.32 lb $2.99 / lb", 2)
+    assert is_unit_rate_row("1.94 1b $0.89 / lb", 2)
+    assert is_unit_rate_row("1.19 lb a $2.49 /", 2)
+    assert is_unit_rate_row("0.05 lb i $17.99/", 2)
+    # Named qty-at keeps the product; n_amounts>=2 keeps the deli total.
+    # Glued ``N@unit total`` is the extended price, not a rate annotation.
+    assert not is_unit_rate_row("SHALLOTS 0.57 lb @ $1.69", 1)
     assert not is_unit_rate_row("GROUND BEEF $4.99 per lb 7.48", 2)
+    assert not is_unit_rate_row("3@15.28 45.84", 1)
+    assert not is_unit_rate_row("5@0.05 0.25N", 1)
+    # Home Depot fraction sizes share `/` with a later ``LB``; that is
+    # a SKU, not a unit-rate annotation.
+    assert not is_unit_rate_row('1-5/8" FINE DRYWALL SCREW 1 LB 5.97', 1)
+    assert not is_unit_rate_row("ORG A2/A2 6% FAT MLK 7.99", 1)
 
 
 def test_slash_unit_rate_does_not_emit_lb_slash_lb():
@@ -140,6 +163,54 @@ def test_slash_unit_rate_does_not_emit_lb_slash_lb():
     assert not any(
         "lb / lb" in n or n.strip() in {"lb", "/ lb"} for n in names
     )
+
+
+def test_weight_plus_slash_rate_same_band_is_meta():
+    """795 / bananas: ``0.32 lb`` parses as a second amount on the rate band."""
+    words = [
+        w(1, 1, "SHALLOTS", 0.05, 0.50),
+        w(2, 1, "0.96", 0.80, 0.50),
+        w(3, 1, "0.32", 0.05, 0.42),
+        w(3, 2, "lb", 0.18, 0.42),
+        w(3, 3, "$2.99", 0.40, 0.42),
+        w(3, 4, "/", 0.56, 0.42),
+        w(3, 5, "lb", 0.64, 0.42),
+    ]
+    items, _ = extract_items(words, {1, 2, 3}, summary={"subtotal": 0.96})
+    prices = [i["price"] for i in items]
+    assert 2.99 not in prices
+    assert prices == [0.96]
+
+
+def test_glued_qty_at_slash_rate_does_not_reemit_the_unit_price():
+    """1b441d33 / banana $0.89 /: qty-at glued to ``$N.NN /`` is META.
+
+    Line total already sits on the named SKU. Re-emitting the rate used
+    to mismatch by exactly that rate.
+    """
+    words = [
+        w(1, 1, "SOUR", 0.05, 0.50),
+        w(1, 2, "GUMMI", 0.18, 0.50),
+        w(1, 3, "WORMS", 0.32, 0.50),
+        w(1, 4, "1.70", 0.80, 0.50),
+        w(2, 1, "0.31", 0.05, 0.42),
+        w(2, 2, "Ib", 0.18, 0.42),
+        w(2, 3, "@", 0.28, 0.42),
+        w(2, 4, "$5.49", 0.40, 0.42),
+        w(2, 5, "/", 0.58, 0.42),
+        w(2, 6, "1b", 0.66, 0.42),
+        w(3, 1, "2", 0.05, 0.34),
+        w(3, 2, "(a)", 0.14, 0.34),
+        w(3, 3, "2.49", 0.80, 0.34),
+        w(4, 1, "CREAM", 0.05, 0.26),
+        w(4, 2, "CHEESE", 0.22, 0.26),
+        w(4, 3, "4.98", 0.80, 0.26),
+    ]
+    items, _ = extract_items(words, {1, 2, 3, 4}, summary={"subtotal": 6.68})
+    prices = [i["price"] for i in items]
+    assert 5.49 not in prices
+    assert 2.49 not in prices
+    assert sorted(prices) == [1.70, 4.98]
 
 
 def test_deli_rate_plus_total_still_emits_the_extended_price():
