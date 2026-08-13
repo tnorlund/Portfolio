@@ -454,12 +454,22 @@ def is_unit_rate_row(text: str, n_amounts: int) -> bool:
     )
     if not has_rate:
         return False
-    leftover = QTY_AT_RE.sub(" ", t)
-    leftover = QTY_AT_OCR_RE.sub(" ", leftover)
-    leftover = SLASH_UNIT_RATE_RE.sub(" ", leftover)
-    leftover = _UNIT_AFTER_SLASH_RE.sub(" ", leftover)
-    leftover = _OCR_AT_RE.sub(" ", leftover)
-    leftover = re.sub(rf"\b{_SLASH_UNIT_WORD}\b", " ", leftover, flags=re.I)
+    remainder = QTY_AT_RE.sub(" ", t)
+    remainder = QTY_AT_OCR_RE.sub(" ", remainder)
+    remainder = SLASH_UNIT_RATE_RE.sub(" ", remainder)
+    remainder = _UNIT_AFTER_SLASH_RE.sub(" ", remainder)
+    remainder = _OCR_AT_RE.sub(" ", remainder)
+    remainder = re.sub(
+        rf"\d+(?:\.\d+)?\s*(?:{_SLASH_UNIT_WORD})\b",
+        " ",
+        remainder,
+        flags=re.I,
+    )
+    if re.search(r"\$?\d+\.\d{2}", remainder):
+        n_money = len(re.findall(r"\$?\d+\.\d{2}", t))
+        if n_money >= 2:
+            return False
+    leftover = re.sub(rf"\b{_SLASH_UNIT_WORD}\b", " ", remainder, flags=re.I)
     leftover = re.sub(r"\$?\d+(?:\.\d+)?", " ", leftover)
     leftover = re.sub(r"[^\w\s]+", " ", leftover)
     leftover = re.sub(r"\s+", " ", leftover).strip()
@@ -575,7 +585,8 @@ def is_line_price_word(word: dict) -> bool:
         and re.search(r"\d[.,]\d{2}(?!\d)", text)
     ):
         return False
-    return parse_receipt_amount(text) is not None
+    value = parse_receipt_amount(text)
+    return value is not None and abs(value) < 100000
 
 
 DISCOUNT_WORDS = ("SAVED", "SAVING", "OFF", "COUPON", "DISCOUNT", "PROMO")
@@ -808,16 +819,18 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
     m = QTY_FOR_RE.search(joined)
     if m:
         deal_n = float(m.group(2))
-        qty = float(m.group(1)) if m.group(1) else deal_n
-        unit_price = round(float(m.group(3)) / deal_n, 2)
-        qty_word_idxs = words_in_span(m.start(), m.end())
+        if deal_n:
+            qty = float(m.group(1)) if m.group(1) else deal_n
+            unit_price = round(float(m.group(3)) / deal_n, 2)
+            qty_word_idxs = words_in_span(m.start(), m.end())
     if qty is None:
         m = QTY_FOR_AMOUNT_FIRST_RE.search(joined)
         if m:
             deal_n = float(m.group(2))
-            qty = deal_n
-            unit_price = round(float(m.group(1)) / deal_n, 2)
-            qty_word_idxs = words_in_span(m.start(), m.end())
+            if deal_n:
+                qty = deal_n
+                unit_price = round(float(m.group(1)) / deal_n, 2)
+                qty_word_idxs = words_in_span(m.start(), m.end())
     if qty is None:
         m = QTY_AT_RE.search(joined) or QTY_AT_OCR_RE.search(joined)
         if m:
@@ -1181,9 +1194,18 @@ def extract_items(
     )
     merged_constrained = constrain_items_to_baseline(merged_items, summary)
     after = reconcile_extracted_items(merged_constrained, summary)
+    # ``match`` is tolerant (max $0.02 or 1% of baseline). Costco
+    # ``5,``+``90`` → 5.90 can land inside that window on a ≥$9 total.
+    # Keep the merge only on a cent-exact printed-total hit.
+    exact = (
+        after.item_sum is not None
+        and after.baseline is not None
+        and abs(after.item_sum - after.baseline) < 0.005
+    )
     if (
         _constraint_guard(_recon_eval(before), _recon_eval(after))
         and after.status == "match"
+        and exact
     ):
         return merged_constrained, False
     return constrained, False

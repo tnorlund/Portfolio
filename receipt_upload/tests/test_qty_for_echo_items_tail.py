@@ -23,6 +23,7 @@ from receipt_upload.line_items.geometry import (
     extract_items,
     is_for_deal_annotation,
     is_unit_rate_row,
+    parse_band,
     propose_items_boundary_extension,
 )
 
@@ -63,6 +64,31 @@ def test_amount_first_for_deal_is_an_annotation_not_a_sku():
     assert is_for_deal_annotation("4 FOR 1.00")
     assert not is_for_deal_annotation("ORGANIC LIMES 2.00 FOR 3")
     assert not is_for_deal_annotation("CHICKEN THIGH 8.98")
+
+
+def test_zero_count_for_deal_does_not_crash_parse_band():
+    parsed = parse_band(
+        [
+            w(1, 1, "2.00", 0.10, 0.50),
+            w(1, 2, "FOR", 0.22, 0.50),
+            w(1, 3, "0", 0.32, 0.50),
+        ]
+    )
+    assert parsed is None or parsed.get("quantity") != 0
+
+
+def test_slash_rate_plus_extended_total_stays_an_item():
+    words = [
+        w(1, 1, "SHALLOTS", 0.05, 0.50),
+        w(2, 1, "0.32", 0.05, 0.42),
+        w(2, 2, "lb", 0.18, 0.42),
+        w(2, 3, "$2.99", 0.40, 0.42),
+        w(2, 4, "/", 0.56, 0.42),
+        w(2, 5, "lb", 0.64, 0.42),
+        w(2, 6, "0.96", 0.80, 0.42),
+    ]
+    items, _ = extract_items(words, {1, 2}, summary={"subtotal": 0.96})
+    assert [i["price"] for i in items] == [0.96]
 
 
 def test_for_deal_echo_absorbs_into_named_limes():
@@ -128,6 +154,8 @@ def test_slash_unit_rate_is_meta():
     assert is_unit_rate_row("1.94 1b $0.89 / lb", 2)
     assert is_unit_rate_row("1.19 lb a $2.49 /", 2)
     assert is_unit_rate_row("0.05 lb i $17.99/", 2)
+    # Extended total still on the band is the SKU price, not META.
+    assert not is_unit_rate_row("0.32 lb $2.99 / lb 0.96", 2)
     # Named qty-at keeps the product; n_amounts>=2 keeps the deli total.
     # Glued ``N@unit total`` is the extended price, not a rate annotation.
     assert not is_unit_rate_row("SHALLOTS 0.57 lb @ $1.69", 1)
