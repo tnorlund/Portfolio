@@ -4723,8 +4723,8 @@
         "item_index": 0,
         "name": "SHALLOTS",
         "price": 0.84,
-        "quantity": 0.21,
-        "unit_price": 3.99,
+        "quantity": null,
+        "unit_price": null,
         "is_discount": false,
         "name_quality": "ok",
         "line_ids": [
@@ -4770,8 +4770,8 @@
         "item_index": 3,
         "name": "POTATO-RUSSET",
         "price": 9.74,
-        "quantity": 3.91,
-        "unit_price": 2.49,
+        "quantity": null,
+        "unit_price": null,
         "is_discount": false,
         "name_quality": "ok",
         "line_ids": [
