@@ -326,17 +326,38 @@ def decode_blocks(ocr_receipt: dict, priors: dict) -> list[dict]:
     return items
 
 
+def _join_price_fragment_pair(left: str, right: str) -> str | None:
+    """Join two OCR tokens into a two-decimal amount, or None.
+
+    Shapes: ``5.``+``79`` / ``5,``+``90`` (digits plus a separator, then
+    two cents digits) and ``5``+``.99`` (bare dollars then a leading-dot
+    cents token). ``)`` is not a decimal; ``5``+``1.``+``99`` is not a
+    special case -- ``1.``+``99`` may join to 1.99, and the receipt-level
+    gate in ``extract_items`` must reject that unless the printed total
+    then matches exactly.
+    """
+    if re.fullmatch(r"\$?\d{1,4}[.,]", left) and re.fullmatch(r"\d{2}", right):
+        return left.replace(",", ".") + right
+    if re.fullmatch(r"\$?\d{1,4}", left) and re.fullmatch(r"\.\d{2}", right):
+        return left + right
+    return None
+
+
 def merge_price_fragments(words: list[dict]) -> list[dict]:
     """Concatenate OCR-shattered price fragments within a band.
 
     Vision splits some prices into adjacent tokens -- "1." + "99" for 1.99
-    (Costco), "5," + "90" (comma for period). Textract read the same
-    pixels whole, which is a large part of its 90% vs our 85% recall.
-    Merge an x-adjacent pair when the left token is digits ending in a
-    separator and the right is exactly two digits, yielding a valid
-    amount. Digit MISREADS (4.89 read as 1.89) are left alone: no
-    geometry can recover a digit OCR never produced -- that class is the
-    re-OCR trigger's job.
+    (Costco), "5," + "90" (comma for period), "5" + ".99" (bare dollars
+    then a cents token). Textract read the same pixels whole, which is a
+    large part of its 90% vs our 85% recall. Merge an x-adjacent pair
+    when the tokens form one of those shapes and the gap is under 0.08,
+    yielding a valid amount. Digit MISREADS (4.89 read as 1.89) are left
+    alone: no geometry can recover a digit OCR never produced -- that
+    class is the re-OCR trigger's job.
+
+    Ungated use in ``_zone_bands`` is forbidden: Costco ``5,``+``90``
+    becomes a plausible 5.90 against truth 5.99. ``extract_items`` trials
+    this merge and keeps it only on an exact printed-total match.
     """
     if len(words) < 2:
         return words
@@ -348,13 +369,14 @@ def merge_price_fragments(words: list[dict]) -> list[dict]:
         if i + 1 < len(ws):
             nxt = ws[i + 1]
             gap = nxt["x"] - w["x"]
-            if (
-                re.fullmatch(r"\$?\d{1,4}[.,]", w["text"])
-                and re.fullmatch(r"\d{2}", nxt["text"])
-                and 0 <= gap < 0.08
-            ):
+            joined = (
+                _join_price_fragment_pair(w["text"], nxt["text"])
+                if 0 <= gap < 0.08
+                else None
+            )
+            if joined is not None:
                 merged = dict(w)
-                merged["text"] = w["text"].replace(",", ".") + nxt["text"]
+                merged["text"] = joined
                 out.append(merged)
                 i += 2
                 continue
@@ -406,8 +428,8 @@ def _zone_bands(ocr_receipt: dict) -> list[dict]:
         # merge_price_fragments is deliberately NOT applied here: run
         # unconditionally it manufactured a plausible-but-wrong 5.90 from
         # "5,"+"90" (truth 5.99 -- shattered AND digit-misread) and failed
-        # Costco's precision floor. Fragment reconstruction is a REPAIR
-        # action for the reconciliation-triggered path, alongside re-OCR.
+        # Costco's precision floor. extract_items trials the merge after
+        # constrain and keeps it only when the printed total then matches.
         text = " ".join(w["text"] for w in band)
         out.append(
             {

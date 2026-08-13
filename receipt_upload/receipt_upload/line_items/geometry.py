@@ -1005,6 +1005,36 @@ def _name_is_real(name: str) -> bool:
     return len("".join(real)) >= 3
 
 
+def _words_with_merged_priceless_bands(
+    words: list[dict], line_ids: set[int]
+) -> Optional[list[dict]]:
+    """Join shattered prices in bands that have no two-decimal amount.
+
+    Local import: ``blocks`` pulls ``band_words`` from this module.
+    Returns None when no band changed so the caller can skip a retry.
+    """
+    from receipt_upload.line_items.blocks import merge_price_fragments
+
+    zone = set(line_ids)
+    section = [w for w in words if w["line_id"] in zone]
+    if not section:
+        return None
+    rebuilt_zone: list[dict] = []
+    changed = False
+    for band in band_words(section):
+        if any(is_line_price_word(w) for w in band):
+            rebuilt_zone.extend(band)
+            continue
+        merged = merge_price_fragments(band)
+        if len(merged) != len(band):
+            changed = True
+        rebuilt_zone.extend(merged)
+    if not changed:
+        return None
+    outside = [w for w in words if w["line_id"] not in zone]
+    return outside + rebuilt_zone
+
+
 def extract_items(
     words: list[dict],
     line_ids: set[int],
@@ -1022,19 +1052,48 @@ def extract_items(
     non-product band filter: bands whose price merely restates a printed
     summary figure are dropped (see blocks.filter_summary_figure_items
     for the guards). Default None preserves the unfiltered decode for
-    callers that have no summary.
+    callers that have no summary (golden / Mac first pass).
+
+    When a summary is present and the constrained decode is not already
+    a match, shattered column prices (``5.``+``79``, ``5``+``.99``) are
+    trial-merged in priceless bands. The merged decode ships only if
+    reconciliation status is an exact ``match`` -- stricter than
+    ``items_boundary_extension_guard``, which would accept Costco's
+    near-0.09 from an ungated ``5,``+``90`` → 5.90.
     """
     from receipt_upload.line_items.blocks import (
         decode_band_blocks,
         load_default_priors,
     )
 
-    items = decode_band_blocks(
-        {"words": list(words), "items_line_ids": sorted(line_ids)},
-        load_default_priors(),
+    priors = load_default_priors()
+    ocr = {"words": list(words), "items_line_ids": sorted(line_ids)}
+    items = decode_band_blocks(ocr, priors, summary=summary)
+    constrained = constrain_items_to_baseline(items, summary)
+    if summary is None:
+        return constrained, False
+
+    before = reconcile_extracted_items(constrained, summary)
+    if before.status == "match":
+        return constrained, False
+
+    merged_words = _words_with_merged_priceless_bands(words, line_ids)
+    if merged_words is None:
+        return constrained, False
+
+    merged_items = decode_band_blocks(
+        {"words": merged_words, "items_line_ids": sorted(line_ids)},
+        priors,
         summary=summary,
     )
-    return constrain_items_to_baseline(items, summary), False
+    merged_constrained = constrain_items_to_baseline(merged_items, summary)
+    after = reconcile_extracted_items(merged_constrained, summary)
+    if (
+        _constraint_guard(_recon_eval(before), _recon_eval(after))
+        and after.status == "match"
+    ):
+        return merged_constrained, False
+    return constrained, False
 
 
 def _extract_items_banded(
