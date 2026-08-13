@@ -1858,7 +1858,7 @@ def _is_skippable_annotation_row(row_words: list[dict]) -> bool:
     Sale Price or BOGO annotation between garlic and You-Pay stopped the
     ITEMS-tail walk. Skip those annotations (do not append, do not break)
     so the next priced product can be reached. Settlement still breaks.
-    Claimed HEADER skip is a later stacked PR -- not here.
+    Unpriced claimed department headers are skipped separately.
     """
 
     saw_sale_was = False
@@ -1904,11 +1904,13 @@ def propose_items_boundary_extension(
     Only whole, unclaimed, priced ReceiptRows in gaps inside the ITEMS span or
     adjacent to either edge are candidates.  Edge candidates are contiguous
     prefixes of the unclaimed zone (neutral barcode/SKU rows may separate
-    printed product rows); claimed or settlement rows terminate the scan.
-    Unpriced SALE_PRICE / BOGO / WAS annotation rows are skipped (not
-    appended, not a terminator) so the scan can reach the next priced
-    product.  Among verified proposals, prefer the best status, then the
-    smallest absolute delta, then the smallest boundary change.
+    printed product rows).  Claimed priced rows (SUMMARY / TOTAL_LINE
+    amounts) and settlement rows terminate the scan.  Unpriced claimed
+    department headers are skipped (not appended, not a terminator), as
+    are unpriced SALE_PRICE / BOGO / WAS annotation rows, so the scan can
+    reach the next priced product.  Among verified proposals, prefer the
+    best status, then the smallest absolute delta, then the smallest
+    boundary change.
     """
 
     current = {int(line_id) for line_id in current_line_ids}
@@ -1970,12 +1972,21 @@ def propose_items_boundary_extension(
         chain = []
         for index in indexes:
             row = visual_rows[index]
-            if row["line_ids"] & (current | other_claimed):
+            if row["line_ids"] & current:
                 break
             if _is_skippable_annotation_row(row["words"]):
                 continue
             if _is_non_product_row(row["words"]):
                 break
+            if row["line_ids"] & other_claimed:
+                # Priced claimed rows are other-section amounts (SUMMARY /
+                # TOTAL_LINE). Unpriced claimed rows are department
+                # headers; skip them so the scan can reach the next
+                # unclaimed product. Generic: unpriced + claimed, not a
+                # name list.
+                if _is_priced_product_row(row["words"]):
+                    break
+                continue
             if _is_priced_product_row(row["words"]):
                 chain.append(row)
         return chain
