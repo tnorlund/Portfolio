@@ -1149,6 +1149,7 @@
         "name_quality": "ok",
         "line_ids": [
           10,
+          11,
           21
         ],
         "reconciliation_status": "no-baseline",
@@ -3833,6 +3834,8 @@
         "name_quality": "ok",
         "line_ids": [
           52,
+          53,
+          54,
           71
         ],
         "reconciliation_status": "no-baseline",
@@ -4210,6 +4213,7 @@
         "name_quality": "ok",
         "line_ids": [
           19,
+          20,
           36
         ],
         "reconciliation_status": "match",
@@ -4225,6 +4229,7 @@
         "name_quality": "ok",
         "line_ids": [
           17,
+          18,
           35
         ],
         "reconciliation_status": "match",
@@ -4255,6 +4260,7 @@
         "name_quality": "ok",
         "line_ids": [
           14,
+          15,
           33
         ],
         "reconciliation_status": "match",
@@ -4729,8 +4735,11 @@
         "name_quality": "ok",
         "line_ids": [
           63,
+          64,
+          65,
           71,
-          72
+          72,
+          73
         ],
         "reconciliation_status": "no-baseline",
         "raw_text": "SHALLOTS 0.84 F"
@@ -4745,7 +4754,9 @@
         "name_quality": "ok",
         "line_ids": [
           60,
-          69
+          61,
+          69,
+          70
         ],
         "reconciliation_status": "no-baseline",
         "raw_text": "GARLIC-BULK 2.24 F"
@@ -4776,6 +4787,7 @@
         "name_quality": "ok",
         "line_ids": [
           54,
+          55,
           66
         ],
         "reconciliation_status": "no-baseline",
