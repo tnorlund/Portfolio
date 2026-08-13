@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from dataclasses import dataclass, field
 from datetime import datetime
 from math import isfinite
@@ -265,6 +265,7 @@ class _ExtractionState:
     """Mutable state for label extraction."""
 
     grand_total: float | None = None
+    grand_total_line_id: int | None = None
     subtotal: float | None = None
     tax: float | None = None
     tip: float | None = None
@@ -332,7 +333,7 @@ _LABEL_HANDLERS: dict[str, _HandlerFunc] = {
 def _extract_summary_fields(
     word_labels: list["ReceiptWordLabel"],
     word_text_lookup: dict[tuple[int, int], str],
-) -> tuple[MonetaryTotals, datetime | None, int]:
+) -> tuple[MonetaryTotals, datetime | None, int, int | None]:
     """Extract summary fields from word labels using dispatch pattern.
 
     Args:
@@ -340,7 +341,7 @@ def _extract_summary_fields(
         word_text_lookup: Mapping from (line_id, word_id) to word text.
 
     Returns:
-        Tuple of (totals, date, item_count).
+        Tuple of (totals, date, item_count, grand_total_line_id).
     """
     state = _ExtractionState()
     date_words_by_line: dict[int, list[tuple[int, str]]] = {}
@@ -353,7 +354,14 @@ def _extract_summary_fields(
         handler = _LABEL_HANDLERS.get(label.label)
         if handler:
             text = word_text_lookup.get((label.line_id, label.word_id), "")
+            prev_grand_total = state.grand_total
             handler(text, state)
+            if (
+                label.label == "GRAND_TOTAL"
+                and state.grand_total is not None
+                and state.grand_total != prev_grand_total
+            ):
+                state.grand_total_line_id = int(label.line_id)
             if label.label == "DATE":
                 date_words_by_line.setdefault(label.line_id, []).append(
                     (label.word_id, text)
@@ -376,7 +384,7 @@ def _extract_summary_fields(
         tax=state.tax,
         tip=state.tip,
     )
-    return totals, state.date, state.item_count
+    return totals, state.date, state.item_count, state.grand_total_line_id
 
 
 # =============================================================================
@@ -409,18 +417,92 @@ def _word_height(word: "ReceiptWord") -> float:
     return box.get("height") or 0.0
 
 
-def _positive_amount(text: str) -> float | None:
-    """Parse text as a positive printed amount, else None.
+_CURRENCY_PREFIX_RE = re.compile(r"(?:[A-Za-z]{2,3})?\$+S?", re.I)
+_ISO_CURRENCY_PREFIX_RE = re.compile(
+    r"(?:USD|EUR|GBP|CAD|AUD|JPY|MXN|CHF)S?", re.I
+)
 
-    Requires amount-like punctuation (decimals or a currency symbol) so
-    bare integers such as store numbers never qualify.
+
+def _is_currency_prefix_token(text: str) -> bool:
+    """OCR currency wrapper with no digits (``USD$``, ``USD$S``, ``US$``)."""
+    compact = re.sub(r"[\s:]", "", str(text).strip())
+    if not compact or re.search(r"\d", compact):
+        return False
+    return bool(
+        _CURRENCY_PREFIX_RE.fullmatch(compact)
+        or _ISO_CURRENCY_PREFIX_RE.fullmatch(compact)
+    )
+
+
+_MINUS_TOKENS = frozenset({"-", "−", "–", "—"})
+
+
+def _signed_amount_words_on_line(
+    line_words: list["ReceiptWord"],
+) -> list[tuple[float, "ReceiptWord"]]:
+    """Signed amounts on a line, including split currency and minus tokens.
+
+    Vision OCR often emits ``USD$S`` + ``7.43``, or ``-`` + ``6.00``, as
+    adjacent words. The numeric word is the one returned so callers can
+    point a label at the printed figure.
     """
-    if not looks_like_receipt_amount(text):
-        return None
-    value = parse_receipt_amount(text)
-    if value is None or value <= 0:
-        return None
-    return value
+    found: list[tuple[float, "ReceiptWord"]] = []
+    texts = [str(getattr(w, "text", "") or "") for w in line_words]
+    seen: set[int] = set()
+    for i, word in enumerate(line_words):
+        if i in seen:
+            continue
+        if texts[i] in _MINUS_TOKENS and i + 1 < len(line_words):
+            value = parse_receipt_amount(f"-{texts[i + 1]}")
+            if value is not None:
+                found.append((value, line_words[i + 1]))
+                seen.add(i)
+                seen.add(i + 1)
+                continue
+        if i + 1 < len(line_words) and _is_currency_prefix_token(texts[i]):
+            value = parse_receipt_amount(f"{texts[i]} {texts[i + 1]}")
+            if value is not None:
+                found.append((value, line_words[i + 1]))
+                seen.add(i)
+                seen.add(i + 1)
+                continue
+        if looks_like_receipt_amount(texts[i]):
+            value = parse_receipt_amount(texts[i])
+            if value is not None:
+                found.append((value, word))
+                seen.add(i)
+    return found
+
+
+def _amount_words_on_line(
+    line_words: list["ReceiptWord"],
+) -> list[tuple[float, "ReceiptWord"]]:
+    """Positive amounts on a line, including split currency+number tokens."""
+    return [
+        (amount, word)
+        for amount, word in _signed_amount_words_on_line(line_words)
+        if amount > 0
+    ]
+
+
+def _signed_amounts_on_line_ids(
+    words: list["ReceiptWord"], line_ids: Collection[int]
+) -> list[float]:
+    """Signed amounts printed on the given line ids (no y-band pairing)."""
+    wanted = {int(x) for x in line_ids}
+    lines: dict[int, list["ReceiptWord"]] = {}
+    for word in words:
+        line_id = getattr(word, "line_id", None)
+        if line_id is None or int(line_id) not in wanted:
+            continue
+        lines.setdefault(int(line_id), []).append(word)
+    amounts: list[float] = []
+    for line_words in lines.values():
+        line_words.sort(key=lambda w: getattr(w, "word_id", 0))
+        amounts.extend(
+            amount for amount, _ in _signed_amount_words_on_line(line_words)
+        )
+    return amounts
 
 
 def _is_summary_noise_line(line_text: str) -> bool:
@@ -488,7 +570,11 @@ def _is_tax_noise_line(line_text: str) -> bool:
     )
 
 
-def find_printed_grand_total(words: list["ReceiptWord"]) -> float | None:
+def find_printed_grand_total(
+    words: list["ReceiptWord"],
+    *,
+    total_line_ids: Collection[int] | None = None,
+) -> float | None:
     """Find the printed grand total from receipt words, without labels.
 
     Deterministic fallback for receipts whose GRAND_TOTAL labels are
@@ -502,20 +588,29 @@ def find_printed_grand_total(words: list["ReceiptWord"]) -> float | None:
     1. Find anchor lines whose joined text reads as a grand-total row
        (shared ``is_grand_total_line`` keywords) and is not a
        tender/settlement row (``_is_grand_total_anchor``).
-    2. Take amounts printed on the anchor line itself; otherwise pair the
-       anchor with amount words on other lines whose y-center falls in
-       the anchor's row band (skipping subtotal/tax/tender/savings rows).
-    3. Return the largest anchored amount, mirroring the GRAND_TOTAL
+    2. When the caller has already assigned a TOTAL_LINE section, those
+       line ids are extra anchors (post-join, not a new section finder).
+       A TOTAL_LINE row that is only ``USD$S 7.43`` still counts even
+       when the "Total:" keyword OCR-failed.
+    3. Take amounts printed on the anchor line itself, including split
+       currency-prefix + figure tokens; otherwise pair the anchor with
+       amount words on other lines whose y-center falls in the anchor's
+       row band (skipping subtotal/tax/tender/savings rows).
+    4. Return the largest anchored amount, mirroring the GRAND_TOTAL
        label handler's largest-value semantics.
 
     Args:
         words: ReceiptWord records (text + normalized bounding boxes).
+        total_line_ids: Optional TOTAL_LINE section line ids.
 
     Returns:
         The printed grand total, or None when no anchored amount exists.
     """
     return _find_anchored_amount(
-        words, _is_grand_total_anchor, _is_summary_noise_line
+        words,
+        _is_grand_total_anchor,
+        _is_summary_noise_line,
+        extra_anchor_ids=total_line_ids,
     )
 
 
@@ -545,6 +640,8 @@ def find_printed_tax_words(
 
 def find_printed_grand_total_words(
     words: list["ReceiptWord"],
+    *,
+    total_line_ids: Collection[int] | None = None,
 ) -> list[tuple[float, "ReceiptWord"]]:
     """Amount words anchored to a printed grand-total row.
 
@@ -553,7 +650,10 @@ def find_printed_grand_total_words(
     the printed figure need the word it was printed on.
     """
     return _anchored_amount_words(
-        words, _is_grand_total_anchor, _is_summary_noise_line
+        words,
+        _is_grand_total_anchor,
+        _is_summary_noise_line,
+        extra_anchor_ids=total_line_ids,
     )
 
 
@@ -570,9 +670,12 @@ def _find_anchored_amount(
     words: list["ReceiptWord"],
     is_anchor: Callable[[str], bool],
     is_noise: Callable[[str], bool],
+    extra_anchor_ids: Collection[int] | None = None,
 ) -> float | None:
     """Largest amount printed on (or row-banded with) an anchor line."""
-    anchored = _anchored_amount_words(words, is_anchor, is_noise)
+    anchored = _anchored_amount_words(
+        words, is_anchor, is_noise, extra_anchor_ids=extra_anchor_ids
+    )
     return max(amount for amount, _ in anchored) if anchored else None
 
 
@@ -580,6 +683,7 @@ def _anchored_amount_words(
     words: list["ReceiptWord"],
     is_anchor: Callable[[str], bool],
     is_noise: Callable[[str], bool],
+    extra_anchor_ids: Collection[int] | None = None,
 ) -> list[tuple[float, "ReceiptWord"]]:
     """Amounts printed on (or row-banded with) an anchor line, with words."""
     lines: dict[int, list["ReceiptWord"]] = {}
@@ -598,6 +702,13 @@ def _anchored_amount_words(
     anchor_ids = [
         line_id for line_id, text in line_texts.items() if is_anchor(text)
     ]
+    extra = {int(x) for x in (extra_anchor_ids or [])}
+    for line_id in extra:
+        if line_id not in lines or line_id in anchor_ids:
+            continue
+        if is_noise(line_texts[line_id]):
+            continue
+        anchor_ids.append(line_id)
     if not anchor_ids:
         return []
 
@@ -606,12 +717,7 @@ def _anchored_amount_words(
         anchor_words = lines[anchor_id]
 
         # Amounts printed on the anchor line itself win outright.
-        same_line = [
-            (amount, w)
-            for w in anchor_words
-            if (amount := _positive_amount(str(getattr(w, "text", ""))))
-            is not None
-        ]
+        same_line = _amount_words_on_line(anchor_words)
         if same_line:
             anchored.extend(same_line)
             continue
@@ -631,37 +737,69 @@ def _anchored_amount_words(
                 continue
             if is_noise(line_texts[line_id]):
                 continue
-            for w in line_words:
+            for amount, w in _amount_words_on_line(line_words):
                 center = _word_y_center(w)
                 if center is None or abs(center - anchor_y) > band:
                     continue
-                amount = _positive_amount(str(getattr(w, "text", "")))
-                if amount is not None:
-                    anchored.append((amount, w))
+                anchored.append((amount, w))
 
     return anchored
 
 
 def _apply_printed_total_fallback(
-    totals: MonetaryTotals, words: list["ReceiptWord"]
+    totals: MonetaryTotals,
+    words: list["ReceiptWord"],
+    total_line_ids: Collection[int] | None = None,
+    grand_total_line_id: int | None = None,
 ) -> None:
     """Fill grand_total/subtotal from printed rows when labels gave none.
 
     A NEGATIVE label-derived total is a real figure, not a missing one:
     return receipts print trailing-minus amounts ("$16.25-") and
-    extract_amount now carries the sign through. The fallback only knows
-    positive printed amounts, so letting it run on negatives would
-    replace a refund's total with whatever stray positive figure sits in
-    the total row's y-band. Only None/zero totals fall back.
+    extract_amount now carries the sign through. The fallback only
+    overwrites with a positive TOTAL_LINE figure when the GRAND_TOTAL
+    label's line is not in that section (tax labeled as grand total).
     """
-    if totals.grand_total is None or totals.grand_total == 0:
-        printed = find_printed_grand_total(words)
-        if printed is not None:
-            totals.grand_total = printed
+    section_ids = {int(x) for x in total_line_ids} if total_line_ids else set()
+    section_printed: float | None = None
+    if section_ids:
+        section_amounts = _signed_amounts_on_line_ids(words, section_ids)
+        if section_amounts:
+            section_printed = max(
+                section_amounts, key=lambda amount: (abs(amount), amount)
+            )
+
+    printed = find_printed_grand_total(words, total_line_ids=total_line_ids)
+    fill = (
+        section_printed
+        if section_printed is not None and section_printed > 0
+        else printed
+    )
+
+    if totals.grand_total is not None and totals.grand_total < 0:
+        pass
+    elif fill is not None and fill > 0:
+        if totals.grand_total is None or totals.grand_total == 0:
+            totals.grand_total = fill
+        elif section_ids:
+            label_on_section = (
+                grand_total_line_id is not None
+                and int(grand_total_line_id) in section_ids
+            )
+            if (
+                not label_on_section
+                and section_printed is not None
+                and section_printed > 0
+                and (
+                    totals.grand_total is None
+                    or section_printed > totals.grand_total
+                )
+            ):
+                totals.grand_total = section_printed
     if totals.subtotal is None or totals.subtotal == 0:
-        printed = find_printed_subtotal(words)
-        if printed is not None:
-            totals.subtotal = printed
+        printed_sub = find_printed_subtotal(words)
+        if printed_sub is not None:
+            totals.subtotal = printed_sub
 
 
 # =============================================================================
@@ -844,6 +982,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         words: list["ReceiptWord"],
         *,
         line_item_count: int | None = None,
+        total_line_ids: Collection[int] | None = None,
     ) -> "ReceiptSummary":
         """Compute a summary from receipt data.
 
@@ -855,6 +994,8 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             line_item_count: Number of ``ReceiptLineItem`` rows the
                 receipt currently holds. Preferred over the LINE_TOTAL
                 label count when non-zero (see :func:`resolve_item_count`).
+            total_line_ids: Optional TOTAL_LINE section line ids used as
+                extra printed-total anchors.
 
         Returns:
             A ReceiptSummary with computed fields.
@@ -865,10 +1006,15 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         }
 
         # Extract values from labels
-        totals, date, item_count = _extract_summary_fields(
-            word_labels, word_text_lookup
+        totals, date, item_count, grand_total_line_id = (
+            _extract_summary_fields(word_labels, word_text_lookup)
         )
-        _apply_printed_total_fallback(totals, words)
+        _apply_printed_total_fallback(
+            totals,
+            words,
+            total_line_ids=total_line_ids,
+            grand_total_line_id=grand_total_line_id,
+        )
 
         return cls(
             image_id=receipt.image_id,
@@ -895,6 +1041,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         bank_amount: float | None = None,
         bank_match_confidence: float | None = None,
         line_item_count: int | None = None,
+        total_line_ids: Collection[int] | None = None,
     ) -> "ReceiptSummary":
         """Compute a summary from word labels and words directly.
 
@@ -916,6 +1063,8 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             line_item_count: Number of ``ReceiptLineItem`` rows the
                 receipt currently holds. Preferred over the LINE_TOTAL
                 label count when non-zero (see :func:`resolve_item_count`).
+            total_line_ids: Optional TOTAL_LINE section line ids used as
+                extra printed-total anchors.
 
         Returns:
             A ReceiptSummary with computed fields.
@@ -926,10 +1075,15 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         }
 
         # Extract values from labels
-        totals, date, item_count = _extract_summary_fields(
-            word_labels, word_text_lookup
+        totals, date, item_count, grand_total_line_id = (
+            _extract_summary_fields(word_labels, word_text_lookup)
         )
-        _apply_printed_total_fallback(totals, words)
+        _apply_printed_total_fallback(
+            totals,
+            words,
+            total_line_ids=total_line_ids,
+            grand_total_line_id=grand_total_line_id,
+        )
 
         return cls(
             image_id=image_id,

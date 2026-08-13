@@ -26,6 +26,26 @@ TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "")
 dynamo_client = DynamoClient(TABLE_NAME) if TABLE_NAME else None
 
 
+def _total_line_ids(sections: list[Any] | None) -> list[int]:
+    """TOTAL_LINE section line ids from dict or entity section records."""
+    ids: list[int] = []
+    for section in sections or []:
+        if isinstance(section, dict):
+            section_type = section.get("section_type")
+            line_ids = section.get("line_ids") or []
+        else:
+            section_type = getattr(section, "section_type", None)
+            line_ids = getattr(section, "line_ids", None) or []
+        if section_type != "TOTAL_LINE":
+            continue
+        for line_id in line_ids:
+            try:
+                ids.append(int(line_id))
+            except (TypeError, ValueError):
+                continue
+    return ids
+
+
 def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     """Recompute and upsert ReceiptSummary for a receipt.
 
@@ -102,6 +122,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         image_id, receipt_id
     )
     tender = classify_tender_for_receipt(lines, sections, word_labels, words)
+    total_line_ids = _total_line_ids(sections)
 
     # Bank-match fields are computed OFFLINE (scripts/
     # backfill_tender_bank.py); carry them over from the stored summary
@@ -165,6 +186,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         bank_amount=bank_amount,
         bank_match_confidence=bank_match_confidence,
         line_item_count=line_item_count,
+        total_line_ids=total_line_ids,
     )
 
     # Convert to record and upsert
