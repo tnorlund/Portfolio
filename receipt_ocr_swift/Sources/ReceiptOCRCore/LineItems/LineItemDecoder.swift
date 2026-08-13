@@ -1224,7 +1224,8 @@ func decodeBandBlocks(
         donorIdxs.formUnion(unclaimed.filter { abs($0 - p) == 1 })
         donorsFor[items.count] = donorIdxs.sorted().map { bands[$0].words }
         if parsed.quantity == nil {
-            for i in blocks[p]! {
+            let donorIdxs = blocks[p]! + unclaimed.filter { abs($0 - p) == 1 }
+            for i in donorIdxs {
                 if let mp = parseBand(bands[i].words),
                     let q = mp.quantity, let u = mp.unitPrice,
                     abs(q * u - parsed.price) <= 0.02

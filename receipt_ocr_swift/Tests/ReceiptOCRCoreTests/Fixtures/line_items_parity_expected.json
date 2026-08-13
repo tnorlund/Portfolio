@@ -9592,8 +9592,8 @@
    {
     "name": "HOT BAR",
     "price": 10.55,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 0.88,
+    "unit_price": 11.99,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -9623,8 +9623,8 @@
    {
     "name": "HOT BAR",
     "price": 10.55,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 0.88,
+    "unit_price": 11.99,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -12208,8 +12208,8 @@
    {
     "name": "SHALLOTS",
     "price": 0.84,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 0.21,
+    "unit_price": 3.99,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -12221,8 +12221,8 @@
    {
     "name": "GARLIC-BULK",
     "price": 2.24,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 0.28,
+    "unit_price": 7.99,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -12246,8 +12246,8 @@
    {
     "name": "POTATO-RUSSET",
     "price": 9.74,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 3.91,
+    "unit_price": 2.49,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -12316,8 +12316,8 @@
    {
     "name": "SHALLOTS",
     "price": 0.84,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 0.21,
+    "unit_price": 3.99,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -12329,8 +12329,8 @@
    {
     "name": "GARLIC-BULK",
     "price": 2.24,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 0.28,
+    "unit_price": 7.99,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -12354,8 +12354,8 @@
    {
     "name": "POTATO-RUSSET",
     "price": 9.74,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 3.91,
+    "unit_price": 2.49,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [

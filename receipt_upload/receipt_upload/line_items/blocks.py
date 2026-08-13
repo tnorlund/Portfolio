@@ -885,7 +885,13 @@ def decode_band_blocks(
             )
         ]
         if parsed.get("quantity") is None:
-            for i in blocks[p]:
+            # OUTSIDE unit-rate neighbours (`0.21 lb @ 3.99`) are not
+            # MEMBER bands, so they never land in `blocks[p]`. They still
+            # carry the printed qty that multiplies out to this item.
+            donor_idxs = list(blocks[p]) + [
+                u for u in unclaimed if abs(u - p) == 1
+            ]
+            for i in donor_idxs:
                 mp = parse_band(list(bands[i]["words"]))
                 if (
                     mp
