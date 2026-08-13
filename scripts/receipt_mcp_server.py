@@ -30,6 +30,7 @@ import base64
 import json
 import logging
 import os
+import re
 import sys
 import urllib.request
 from collections import defaultdict
@@ -1265,6 +1266,15 @@ WARNING: This WRITES to DynamoDB.""",
                         "type": "string",
                         "description": "Why this place is correct (audit trail)",
                     },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Match confidence 0.0-1.0 (default 1.0)",
+                    },
+                    "validation_status": {
+                        "type": "string",
+                        "enum": ["MATCHED", "UNSURE", "NO_MATCH"],
+                        "description": "Match quality status (default MATCHED)",
+                    },
                 },
                 "required": ["image_id", "receipt_id", "merchant_name"],
             },
@@ -2337,6 +2347,10 @@ async def call_tool(
                 formatted_address=arguments.get("formatted_address"),
                 phone_number=arguments.get("phone_number"),
                 reasoning=arguments.get("reasoning"),
+                confidence=arguments.get("confidence", 1.0),
+                validation_status=arguments.get(
+                    "validation_status", "MATCHED"
+                ),
             )
         elif name == "fix_place":
             result = await fix_place_impl(
@@ -4144,6 +4158,9 @@ async def set_receipt_place_impl(
     phone_number: str | None = None,
     reasoning: str | None = None,
     validated_by: str = "INFERENCE",
+    confidence: float = 1.0,
+    validation_status: str = "MATCHED",
+    matched_fields: list[str] | None = None,
 ) -> dict:
     """Write the ReceiptPlace (and denormalized summary merchant) directly.
 
@@ -4203,6 +4220,9 @@ async def set_receipt_place_impl(
                 if phone_number is not None:
                     place.phone_number = phone_number
                 place.validated_by = validated_by
+                place.confidence = confidence
+                place.validation_status = validation_status
+                place.matched_fields = list(matched_fields or [])
                 if reasoning:
                     place.reasoning = reasoning
                 dynamo_client.update_receipt_place(place)
@@ -4216,6 +4236,9 @@ async def set_receipt_place_impl(
                     phone_number=phone_number or "",
                     validated_by=validated_by,
                     reasoning=reasoning or "",
+                    confidence=confidence,
+                    validation_status=validation_status,
+                    matched_fields=list(matched_fields or []),
                 )
                 dynamo_client.add_receipt_place(place)
 
