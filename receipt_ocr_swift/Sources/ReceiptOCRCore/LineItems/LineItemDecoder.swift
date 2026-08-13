@@ -77,14 +77,20 @@ enum LineItemRegex {
     /// PRICE_RE (kept for stray-line detection parity; unused by decode)
     static let price = Rx("\\$?(\\d{1,4}(?:,\\d{3})?\\.\\d{2})(-?)")
     /// QTY_AT_RE: "2 @ 3.99", "1.23 lb @ 4.99/lb", "18.871 @ $5.299/Gal"
+    /// `ib` is Vision's `lb`.
     static let qtyAt = Rx(
-        "(\\d+(?:\\.\\d+)?)\\s*(?:lb|1b|kg|oz|gal)?\\s*@\\s*"
+        "(\\d+(?:\\.\\d+)?)\\s*(?:lb|1b|ib|kg|oz|gal)?\\s*@\\s*"
             + "\\$?(\\d+(?:\\.\\d{2,3}))(?:\\s*/\\s*\\w+)?",
         ci: true
     )
     /// QTY_FOR_RE: "4 FOR 1.00", "2 @ 2 FOR 3.00"
     static let qtyFor = Rx(
         "(?:(\\d{1,2})\\s*@\\s*)?(\\d{1,2})\\s+FOR\\s+\\$?(\\d+\\.\\d{2})",
+        ci: true
+    )
+    /// QTY_FOR_AMOUNT_FIRST_RE: "$2.00 FOR 3", "2.00 FOR 3 @ 3"
+    static let qtyForAmountFirst = Rx(
+        "\\$?(\\d+\\.\\d{2})\\s+FOR\\s+(\\d{1,2})(?:\\s*@\\s*\\d{1,2})?",
         ci: true
     )
     /// QTY_AT_OCR_RE: OCR reads "@" as "g" in "4 @ $1.79"
@@ -186,6 +192,51 @@ enum LineItemRegex {
     /// merge_price_fragments: left token "1." / "5," / "$12."
     static let fragmentLeft = Rx("\\$?\\d{1,4}[.,]")
     static let fragmentRight = Rx("\\d{2}")
+    /// merge_price_fragments: "5" + ".99"
+    static let fragmentBareLeft = Rx("\\$?\\d{1,4}")
+    static let fragmentDotCents = Rx("\\.\\d{2}")
+    /// PER_UNIT_RATE_RE
+    static let perUnitRate = Rx(
+        "\\bPER\\s+(?:OZ|LB|LBS|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\\b",
+        ci: true
+    )
+    /// `_PER_UNIT_AMOUNT_RE`: "$2.99 per lb" (rate amount before PER)
+    static let perUnitAmount = Rx(
+        "\\$?\\d+\\.\\d{2}\\s+"
+            + "\\bPER\\s+(?:OZ|LB|LBS|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\\b",
+        ci: true
+    )
+    /// `_SLASH_UNIT_WORD` shared by slash-rate / leftover stripping.
+    static let slashUnitWord = Rx(
+        "\\b(?:OZ|LB|LBS|1B|IB|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\\b",
+        ci: true
+    )
+    /// SLASH_UNIT_RATE_RE: "$2.99 /", "$2.99 / lb"
+    static let slashUnitRate = Rx(
+        "\\$?\\d+\\.\\d{2}\\s*/\\s*"
+            + "(?:OZ|LB|LBS|1B|IB|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)?",
+        ci: true
+    )
+    /// `_UNIT_AFTER_SLASH_RE`: `/ lb` with the amount elsewhere.
+    static let unitAfterSlash = Rx(
+        "/\\s*(?:OZ|LB|LBS|1B|IB|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\\b",
+        ci: true
+    )
+    /// `_OCR_AT_RE`
+    static let ocrAt = Rx("@|\\(\\s*a\\s*\\)", ci: true)
+    /// Weight qty plus unit, no @ (`0.32 lb`).
+    static let qtyUnitMeasure = Rx(
+        "\\d+(?:\\.\\d+)?\\s*"
+            + "(?:OZ|LB|LBS|1B|IB|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\\b",
+        ci: true
+    )
+    /// Two-decimal money token used by leftover-total detection.
+    static let twoDecimalMoney = Rx("\\$?\\d+\\.\\d{2}")
+    /// Loose number for leftover stripping.
+    static let looseNumber = Rx("\\$?\\d+(?:\\.\\d+)?")
+    static let nonWordSpace = Rx("[^\\w\\s]+")
+    /// FOR-deal leftover strip: `[@$]|\d+(?:\.\d+)?`
+    static let atDollarNumber = Rx("[@$]|\\d+(?:\\.\\d+)?")
 }
 
 /// DISCOUNT_WORDS (kept for reference; matching goes through
@@ -286,8 +337,8 @@ public func isTenderRow(_ bare: String) -> Bool {
 
 /// UNIT_WORDS: tokens that don't count as product-name content
 let unitWords: Set<String> = [
-    "EA", "LB", "KG", "OZ", "CT", "PK", "X", "C", "F", "T", "N", "O", "A",
-    "B", "TX", "FS", "QTY", "EACH",
+    "EA", "LB", "LBS", "1B", "IB", "KG", "OZ", "CT", "PK", "X", "C", "F",
+    "T", "N", "O", "A", "B", "TX", "FS", "QTY", "EACH",
 ]
 
 // MARK: - Small helpers
@@ -348,6 +399,69 @@ func nameIsReal(_ name: String) -> Bool {
     return real.reduce(0) { $0 + $1.utf16.count } >= 3
 }
 
+/// UTF-16 slice matching Python `s[:a] + " " + s[b:]`.
+private func nsSlice(_ s: String, before start: Int, after end: Int) -> String
+{
+    let ns = s as NSString
+    return pyStrip(ns.substring(to: start) + " " + ns.substring(from: end))
+}
+
+/// Port of `geometry.is_unit_rate_row`.
+func isUnitRateRow(_ text: String, nAmounts: Int) -> Bool {
+    let t = pyStrip(text)
+    if t.isEmpty { return false }
+    if LineItemRegex.perUnitRate.search(t) != nil, nAmounts <= 1 {
+        return true
+    }
+    let qtyM = LineItemRegex.qtyAt.search(t) ?? LineItemRegex.qtyAtOcr.search(t)
+    if let qtyM {
+        let afterQty = nsSlice(t, before: qtyM.start, after: qtyM.end)
+        if LineItemRegex.twoDecimalMoney.search(afterQty) != nil {
+            return false
+        }
+    }
+    let hasRate =
+        LineItemRegex.perUnitRate.search(t) != nil
+        || LineItemRegex.slashUnitRate.search(t) != nil
+        || LineItemRegex.unitAfterSlash.search(t) != nil
+        || qtyM != nil
+        || LineItemRegex.ocrAt.search(t) != nil
+    if !hasRate { return false }
+    var remainder = LineItemRegex.qtyAt.sub(t, with: " ")
+    remainder = LineItemRegex.qtyAtOcr.sub(remainder, with: " ")
+    remainder = LineItemRegex.perUnitAmount.sub(remainder, with: " ")
+    remainder = LineItemRegex.perUnitRate.sub(remainder, with: " ")
+    remainder = LineItemRegex.slashUnitRate.sub(remainder, with: " ")
+    remainder = LineItemRegex.unitAfterSlash.sub(remainder, with: " ")
+    remainder = LineItemRegex.ocrAt.sub(remainder, with: " ")
+    remainder = LineItemRegex.qtyUnitMeasure.sub(remainder, with: " ")
+    if LineItemRegex.twoDecimalMoney.search(remainder) != nil {
+        let nMoney = LineItemRegex.twoDecimalMoney.findAll(t).count
+        if nMoney >= 2 { return false }
+    }
+    var leftover = LineItemRegex.slashUnitWord.sub(remainder, with: " ")
+    leftover = LineItemRegex.looseNumber.sub(leftover, with: " ")
+    leftover = LineItemRegex.nonWordSpace.sub(leftover, with: " ")
+    leftover = LineItemRegex.whitespaceRun.sub(leftover, with: " ")
+    leftover = pyStrip(leftover)
+    return !nameIsReal(leftover)
+}
+
+/// Port of `geometry.is_for_deal_annotation`.
+func isForDealAnnotation(_ text: String) -> Bool {
+    let t = pyStrip(LineItemRegex.whitespaceRun.sub(text, with: " "))
+    if t.isEmpty { return false }
+    guard
+        let m = LineItemRegex.qtyFor.search(t)
+            ?? LineItemRegex.qtyForAmountFirst.search(t)
+    else { return false }
+    var leftover = nsSlice(t, before: m.start, after: m.end)
+    leftover = LineItemRegex.atDollarNumber.sub(leftover, with: " ")
+    leftover = LineItemRegex.whitespaceRun.sub(leftover, with: " ")
+    leftover = pyStrip(leftover)
+    return !nameIsReal(leftover)
+}
+
 /// Port of `blocks._sku_dominated` (decode_band_blocks variant).
 func skuDominated(_ name: String) -> Bool {
     let stripped = LineItemRegex.digits4Plus.sub(name, with: " ")
@@ -380,7 +494,8 @@ func estimateSkew(_ words: [ZoneWord]) -> Double {
 }
 
 /// Port of `geometry.band_words`: cluster words into visual bands by
-/// deskewed y-center gaps; each band is x-sorted.
+/// deskewed y-center gaps; each band is x-sorted. Over-merged two-row
+/// bands (two right-column prices at distinct y) are then split.
 func bandWords(_ words: [ZoneWord]) -> [[ZoneWord]] {
     if words.isEmpty { return [] }
     let hs = words.map(\.h).sorted()
@@ -400,7 +515,96 @@ func bandWords(_ words: [ZoneWord]) -> [[ZoneWord]] {
             bands.append([w])
         }
     }
-    return bands.map { $0.stableSorted { $0.x < $1.x } }
+    let xSorted = bands.map { $0.stableSorted { $0.x < $1.x } }
+    let amtXs = words.filter { isLinePriceWord($0) }.map(\.x)
+    let zoneColX = amtXs.max()
+    return splitOvermergedPriceBands(xSorted, zoneColX: zoneColX, yFlat: yFlat)
+}
+
+/// Same gate as `decode_band_blocks` ("in column" = within 0.15).
+let priceColumnXTol = 0.15
+/// Two column prices are distinct visual rows when their y-gap is at
+/// least this fraction of the shorter price-word's height. See Python
+/// `PRICE_COLUMN_Y_SEP`.
+let priceColumnYSep = 0.25
+
+/// Port of `geometry.is_line_price_word`.
+func isLinePriceWord(_ word: ZoneWord) -> Bool {
+    if lineAmounts([word]).isEmpty { return false }
+    let text = stripTaxFlag(word.text)
+    guard let value = Amounts.parseReceiptAmount(text) else { return false }
+    return abs(value) < 100000
+}
+
+/// Port of `geometry.split_overmerged_price_bands`.
+func splitOvermergedPriceBands(
+    _ bands: [[ZoneWord]],
+    zoneColX: Double?,
+    yFlat: (ZoneWord) -> Double
+) -> [[ZoneWord]] {
+    guard let colX = zoneColX else { return bands }
+    var out: [[ZoneWord]] = []
+    for band in bands {
+        out.append(
+            contentsOf: splitOnePriceColumnBand(
+                band, zoneColX: colX, yFlat: yFlat
+            )
+        )
+    }
+    return out
+}
+
+/// Port of `geometry._split_one_price_column_band`.
+func splitOnePriceColumnBand(
+    _ band: [ZoneWord],
+    zoneColX: Double,
+    yFlat: (ZoneWord) -> Double
+) -> [[ZoneWord]] {
+    let colPrices = band.filter {
+        isLinePriceWord($0) && abs($0.x - zoneColX) < priceColumnXTol
+    }.stableSorted { yFlat($0) < yFlat($1) }
+    if colPrices.count < 2 { return [band] }
+
+    var clusters: [[ZoneWord]] = [[colPrices[0]]]
+    for price in colPrices.dropFirst() {
+        let prev = clusters[clusters.count - 1].last!
+        let minH = min(
+            price.h == 0 ? 0.01 : price.h,
+            prev.h == 0 ? 0.01 : prev.h
+        )
+        if yFlat(price) - yFlat(prev) < minH * priceColumnYSep {
+            clusters[clusters.count - 1].append(price)
+        } else {
+            clusters.append([price])
+        }
+    }
+    if clusters.count < 2 { return [band] }
+
+    let anchors = clusters.map { c in
+        c.reduce(0.0) { $0 + yFlat($1) } / Double(c.count)
+    }
+    var groups: [[ZoneWord]] = Array(repeating: [], count: clusters.count)
+    for word in band {
+        var nearest = 0
+        var best = abs(anchors[0] - yFlat(word))
+        for i in 1..<anchors.count {
+            let d = abs(anchors[i] - yFlat(word))
+            if d < best {
+                best = d
+                nearest = i
+            }
+        }
+        groups[nearest].append(word)
+    }
+    var parts = groups.filter { !$0.isEmpty }.map {
+        $0.stableSorted { $0.x < $1.x }
+    }
+    parts = parts.stableSorted { a, b in
+        let ya = a.reduce(0.0) { $0 + yFlat($1) } / Double(a.count)
+        let yb = b.reduce(0.0) { $0 + yFlat($1) } / Double(b.count)
+        return ya < yb
+    }
+    return parts
 }
 
 // MARK: - Amount extraction per line/band (blocks._line_amounts)
@@ -609,9 +813,21 @@ func parseBand(_ band: [ZoneWord]) -> ParsedBand? {
     var qtyWordIdxs: Set<Int> = []
     if let m = LineItemRegex.qtyFor.search(joined) {
         let dealN = Double(m.group(2)!)!
-        qty = m.group(1).flatMap(Double.init) ?? dealN
-        unitPrice = pythonRound2(Double(m.group(3)!)! / dealN)
-        qtyWordIdxs = wordsInSpan(m.start, m.end)
+        if dealN != 0 {
+            qty = m.group(1).flatMap(Double.init) ?? dealN
+            unitPrice = pythonRound2(Double(m.group(3)!)! / dealN)
+            qtyWordIdxs = wordsInSpan(m.start, m.end)
+        }
+    }
+    if qty == nil {
+        if let m = LineItemRegex.qtyForAmountFirst.search(joined) {
+            let dealN = Double(m.group(2)!)!
+            if dealN != 0 {
+                qty = dealN
+                unitPrice = pythonRound2(Double(m.group(1)!)! / dealN)
+                qtyWordIdxs = wordsInSpan(m.start, m.end)
+            }
+        }
     }
     if qty == nil {
         if let m = LineItemRegex.qtyAt.search(joined)
@@ -727,6 +943,8 @@ struct ZoneBand {
 
 /// Port of `blocks._zone_bands`: deskewed visual bands over the zone,
 /// sorted into reading order (descending y; larger y_mid is higher).
+/// `bandWords` already splits glued two-row bands so each product
+/// reaches `parseBand` alone.
 func zoneBands(words: [ZoneWord], zoneLineIds: Set<Int>) -> [ZoneBand] {
     let zoneWords = words.filter { zoneLineIds.contains($0.lineId) }
     var out: [ZoneBand] = []
@@ -875,6 +1093,7 @@ func decodeBandBlocks(
             || LineItemRegex.wasPrice.hasMatch(text)
             || LineItemRegex.salePrice.hasMatch(text)
             || LineItemRegex.nonProductNote.hasMatch(text)
+            || isUnitRateRow(text, nAmounts: bands[idx].amounts.count)
         {
             bands[idx].role = "OUTSIDE"
             continue
@@ -910,9 +1129,13 @@ func decodeBandBlocks(
         if let parsed = parseBand(bands[p].words) { parsedCache[p] = parsed }
     }
     var absorbed: Set<Int> = []
+    var absorbedInto: [Int: [Int]] = [:]
     for (pos, p) in priceIdxAll.enumerated() {
         guard let mp = parsedCache[p] else { continue }
-        if nameIsReal(mp.name) { continue }
+        let forDeal = isForDealAnnotation(
+            mp.rawText.isEmpty ? bands[p].text : mp.rawText
+        )
+        if nameIsReal(mp.name) && !forDeal { continue }
         let qty = mp.quantity
         let unit = mp.unitPrice
         for npos in [pos - 1, pos + 1] {
@@ -929,18 +1152,21 @@ func decodeBandBlocks(
                     nb.unitPrice = uv
                 }
                 absorbed.insert(p)
+                absorbedInto[q, default: []].append(p)
                 break
             }
             // Rule 2: echo absorption ONLY into a real-named neighbor
             if nameIsReal(nb.name),
                 abs(mp.price) == abs(nb.price),
                 LineItemRegex.skuLike.hasMatch(mp.rawText) || qty != nil
+                    || forDeal
             {
                 if qty != nil && nb.quantity == nil {
                     nb.quantity = qty
                     nb.unitPrice = unit
                 }
                 absorbed.insert(p)
+                absorbedInto[q, default: []].append(p)
                 break
             }
             // Rule 3: unit-price echo with the qty prefix lost to OCR.
@@ -964,6 +1190,7 @@ func decodeBandBlocks(
                         nb.unitPrice = mp.price
                     }
                     absorbed.insert(p)
+                    absorbedInto[q, default: []].append(p)
                     break
                 }
             }
@@ -1009,14 +1236,17 @@ func decodeBandBlocks(
         var donorIdxs = Set(blocks[p]!)
         donorIdxs.formUnion(unclaimed.filter { abs($0 - p) == 1 })
         donorsFor[items.count] = donorIdxs.sorted().map { bands[$0].words }
+        var qtyDonorI: Int?
         if parsed.quantity == nil {
-            for i in blocks[p]! {
+            let donorIdxs = blocks[p]! + unclaimed.filter { abs($0 - p) == 1 }
+            for i in donorIdxs {
                 if let mp = parseBand(bands[i].words),
                     let q = mp.quantity, let u = mp.unitPrice,
                     abs(q * u - parsed.price) <= 0.02
                 {
                     parsed.quantity = q
                     parsed.unitPrice = u
+                    qtyDonorI = i
                     break
                 }
             }
@@ -1049,6 +1279,12 @@ func decodeBandBlocks(
         }
         var lids = Set(bands[p].lineIds)
         for i in blocks[p]! { lids.formUnion(bands[i].lineIds) }
+        if let donor = qtyDonorI {
+            lids.formUnion(bands[donor].lineIds)
+        }
+        for i in absorbedInto[p] ?? [] {
+            lids.formUnion(bands[i].lineIds)
+        }
         parsed.lineIds = lids.sorted()
         items.append(parsed)
     }
@@ -1153,22 +1389,35 @@ public func mergePriceFragments(_ words: [ZoneWord]) -> [ZoneWord] {
         if i + 1 < ws.count {
             let nxt = ws[i + 1]
             let gap = nxt.x - w.x
-            if LineItemRegex.fragmentLeft.fullMatch(w.text) != nil,
-                LineItemRegex.fragmentRight.fullMatch(nxt.text) != nil,
-                gap >= 0, gap < 0.08
-            {
-                let merged = ZoneWord(
-                    lineId: w.lineId,
-                    wordId: w.wordId,
-                    text: w.text.replacingOccurrences(of: ",", with: ".")
-                        + nxt.text,
-                    x: w.x,
-                    yMid: w.yMid,
-                    h: w.h
-                )
-                out.append(merged)
-                i += 2
-                continue
+            if gap >= 0, gap < 0.08 {
+                let joined: String?
+                if LineItemRegex.fragmentLeft.fullMatch(w.text) != nil,
+                    LineItemRegex.fragmentRight.fullMatch(nxt.text) != nil
+                {
+                    joined =
+                        w.text.replacingOccurrences(of: ",", with: ".")
+                        + nxt.text
+                } else if LineItemRegex.fragmentBareLeft.fullMatch(w.text)
+                    != nil,
+                    LineItemRegex.fragmentDotCents.fullMatch(nxt.text) != nil
+                {
+                    joined = w.text + nxt.text
+                } else {
+                    joined = nil
+                }
+                if let joined {
+                    let merged = ZoneWord(
+                        lineId: w.lineId,
+                        wordId: w.wordId,
+                        text: joined,
+                        x: w.x,
+                        yMid: w.yMid,
+                        h: w.h
+                    )
+                    out.append(merged)
+                    i += 2
+                    continue
+                }
             }
         }
         out.append(w)

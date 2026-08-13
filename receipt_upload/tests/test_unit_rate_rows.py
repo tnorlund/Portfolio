@@ -73,6 +73,13 @@ RATE_ROWS = [
 RATE_PLUS_TOTAL_ROWS = [
     ("GROUND BEEF $4.99 per lb 7.48", 2),
     ("BANANAS 0.59 per lb 1.77", 2),
+    ("0.32 lb $2.99 per lb 0.96", 2),
+]
+
+
+# Weight OCR parses as a second amount; leftover is still the rate.
+WEIGHT_PLUS_RATE_ROWS = [
+    ("0.32 lb $2.99 per lb", 2),
 ]
 
 # "PER" inside a longer word. The corpus sells "PEPPER BELL GREEN EACH",
@@ -97,6 +104,13 @@ def test_a_rate_printed_beside_a_total_stays_an_item(
     text: str, n_amounts: int
 ) -> None:
     assert not is_unit_rate_row(text, n_amounts), text
+
+
+@pytest.mark.parametrize("text,n_amounts", WEIGHT_PLUS_RATE_ROWS)
+def test_a_weight_plus_per_unit_rate_is_an_annotation(
+    text: str, n_amounts: int
+) -> None:
+    assert is_unit_rate_row(text, n_amounts), text
 
 
 @pytest.mark.parametrize("text", SUBSTRING_TRAPS)
