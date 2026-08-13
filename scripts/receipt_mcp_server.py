@@ -4168,8 +4168,24 @@ async def set_receipt_place_impl(
     ADDRESS_LOOKUP, NEARBY_LOOKUP, TEXT_SEARCH, INFERENCE); agent/manual
     decisions record as INFERENCE."""
     try:
+        from datetime import datetime, timezone
+
         from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
         from receipt_dynamo.entities.receipt_place import ReceiptPlace
+
+        # Friendly input validation (the entity revalidates at
+        # serialization time via to_item/__post_init__, but these produce
+        # clear errors instead of stack traces).
+        if not (merchant_name or "").strip():
+            return {"error": "merchant_name cannot be empty"}
+        if not 0.0 <= float(confidence) <= 1.0:
+            return {"error": "confidence must be between 0.0 and 1.0"}
+        if validation_status not in ("MATCHED", "UNSURE", "NO_MATCH"):
+            return {
+                "error": (
+                    "validation_status must be MATCHED, UNSURE, or NO_MATCH"
+                )
+            }
 
         def _write():
             # Refuse writes for nonexistent receipts: a typo'd id would
@@ -4185,7 +4201,14 @@ async def set_receipt_place_impl(
                     "merchant_name": place.merchant_name,
                     "place_id": place.place_id,
                 }
-                if place_id is not None and place_id != place.place_id:
+                merchant_changed = (
+                    merchant_name.strip().lower()
+                    != (place.merchant_name or "").strip().lower()
+                )
+                identity_changed = (
+                    place_id is not None and place_id != place.place_id
+                ) or (place_id is None and merchant_changed)
+                if identity_changed:
                     # The business itself changed: clear place-derived
                     # metadata so stale category/coords/hours from the
                     # wrong business don't survive the correction.
@@ -4212,6 +4235,11 @@ async def set_receipt_place_impl(
                     place.photo_references = []
                     place.matched_fields = []
                     place.confidence = 0.0
+                    if place_id is None:
+                        # merchant replaced with no new Google identity:
+                        # drop the stale place_id rather than keep the
+                        # wrong business's ID attached
+                        place.place_id = ""
                 place.merchant_name = merchant_name
                 if place_id is not None:
                     place.place_id = place_id
@@ -4225,6 +4253,10 @@ async def set_receipt_place_impl(
                 place.matched_fields = list(matched_fields or [])
                 if reasoning:
                     place.reasoning = reasoning
+                # get_best_receipt_place breaks ties by recency when
+                # combining fragments; a correction must win over older
+                # wrong records.
+                place.timestamp = datetime.now(timezone.utc)
                 dynamo_client.update_receipt_place(place)
             except EntityNotFoundError:
                 place = ReceiptPlace(
