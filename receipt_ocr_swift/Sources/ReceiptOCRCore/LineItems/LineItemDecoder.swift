@@ -1232,6 +1232,7 @@ func decodeBandBlocks(
         var donorIdxs = Set(blocks[p]!)
         donorIdxs.formUnion(unclaimed.filter { abs($0 - p) == 1 })
         donorsFor[items.count] = donorIdxs.sorted().map { bands[$0].words }
+        var qtyDonorI: Int?
         if parsed.quantity == nil {
             let donorIdxs = blocks[p]! + unclaimed.filter { abs($0 - p) == 1 }
             for i in donorIdxs {
@@ -1241,6 +1242,7 @@ func decodeBandBlocks(
                 {
                     parsed.quantity = q
                     parsed.unitPrice = u
+                    qtyDonorI = i
                     break
                 }
             }
@@ -1273,6 +1275,9 @@ func decodeBandBlocks(
         }
         var lids = Set(bands[p].lineIds)
         for i in blocks[p]! { lids.formUnion(bands[i].lineIds) }
+        if let donor = qtyDonorI {
+            lids.formUnion(bands[donor].lineIds)
+        }
         parsed.lineIds = lids.sorted()
         items.append(parsed)
     }
