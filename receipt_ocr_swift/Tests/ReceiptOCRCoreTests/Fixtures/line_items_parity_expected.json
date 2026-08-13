@@ -5601,17 +5601,6 @@
     ]
    },
    {
-    "name": "IF",
-    "price": 8.502,
-    "quantity": null,
-    "unit_price": null,
-    "is_discount": false,
-    "name_quality": "low",
-    "line_ids": [
-     121
-    ]
-   },
-   {
     "name": "OUTY 5 GALLON BUCKET GRID",
     "price": 8.76,
     "quantity": null,
@@ -6061,17 +6050,6 @@
     ]
    },
    {
-    "name": "IF",
-    "price": 8.502,
-    "quantity": null,
-    "unit_price": null,
-    "is_discount": false,
-    "name_quality": "low",
-    "line_ids": [
-     121
-    ]
-   },
-   {
     "name": "OUTY 5 GALLON BUCKET GRID",
     "price": 8.76,
     "quantity": null,
@@ -6493,7 +6471,7 @@
   ],
   "reconcile": {
    "status": "mismatch",
-   "item_sum": 1195.46,
+   "item_sum": 1186.96,
    "baseline": 1023.48,
    "baseline_source": "subtotal",
    "baseline_figures_agreeing": null
@@ -9614,8 +9592,8 @@
    {
     "name": "HOT BAR",
     "price": 10.55,
-    "quantity": 0.88,
-    "unit_price": 11.99,
+    "quantity": null,
+    "unit_price": null,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -9645,8 +9623,8 @@
    {
     "name": "HOT BAR",
     "price": 10.55,
-    "quantity": 0.88,
-    "unit_price": 11.99,
+    "quantity": null,
+    "unit_price": null,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -12230,8 +12208,8 @@
    {
     "name": "SHALLOTS",
     "price": 0.84,
-    "quantity": 0.21,
-    "unit_price": 3.99,
+    "quantity": null,
+    "unit_price": null,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -12268,8 +12246,8 @@
    {
     "name": "POTATO-RUSSET",
     "price": 9.74,
-    "quantity": 3.91,
-    "unit_price": 2.49,
+    "quantity": null,
+    "unit_price": null,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -12338,8 +12316,8 @@
    {
     "name": "SHALLOTS",
     "price": 0.84,
-    "quantity": 0.21,
-    "unit_price": 3.99,
+    "quantity": null,
+    "unit_price": null,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
@@ -12376,8 +12354,8 @@
    {
     "name": "POTATO-RUSSET",
     "price": 9.74,
-    "quantity": 3.91,
-    "unit_price": 2.49,
+    "quantity": null,
+    "unit_price": null,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
