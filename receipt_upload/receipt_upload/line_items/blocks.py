@@ -891,6 +891,7 @@ def decode_band_blocks(
             donor_idxs = list(blocks[p]) + [
                 u for u in unclaimed if abs(u - p) == 1
             ]
+            qty_donor_i = None
             for i in donor_idxs:
                 mp = parse_band(list(bands[i]["words"]))
                 if (
@@ -905,7 +906,10 @@ def decode_band_blocks(
                     parsed["quantity"] = mp["quantity"]
                     parsed["unit_price"] = mp["unit_price"]
                     parsed["qty_word_ids"] = list(mp.get("qty_word_ids") or [])
+                    qty_donor_i = i
                     break
+        else:
+            qty_donor_i = None
         if _sku_dominated(parsed.get("name") or ""):
             # Donor criterion is _name_is_real (>=3 alpha chars), NOT the
             # two-token SKU test: single-word product names ("BREAD",
@@ -933,13 +937,12 @@ def decode_band_blocks(
             # No name anywhere: keep the price, flag the quality --
             # identical semantics to the banded path.
             parsed["name_quality"] = "low"
-        parsed["line_ids"] = sorted(
-            set(bands[p]["line_ids"]).union(
-                *(bands[i]["line_ids"] for i in blocks[p])
-            )
-            if blocks[p]
-            else set(bands[p]["line_ids"])
-        )
+        lids = set(bands[p]["line_ids"])
+        if blocks[p]:
+            lids.update(*(bands[i]["line_ids"] for i in blocks[p]))
+        if qty_donor_i is not None:
+            lids.update(bands[qty_donor_i]["line_ids"])
+        parsed["line_ids"] = sorted(lids)
         items.append(parsed)
     # Quantity attachment runs before the summary-figure filter purely so
     # donor indices line up with `items`; the filter reads only price,

@@ -370,3 +370,4 @@ def test_outside_unit_rate_donor_copies_qty_word_ids():
     ids = {(q["line_id"], q["word_id"]) for q in items[0]["qty_word_ids"]}
     assert (2, 1) in ids
     assert (2, 4) in ids
+    assert 2 in items[0]["line_ids"]
