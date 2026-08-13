@@ -4723,8 +4723,8 @@
         "item_index": 0,
         "name": "SHALLOTS",
         "price": 0.84,
-        "quantity": null,
-        "unit_price": null,
+        "quantity": 0.21,
+        "unit_price": 3.99,
         "is_discount": false,
         "name_quality": "ok",
         "line_ids": [
@@ -4739,8 +4739,8 @@
         "item_index": 1,
         "name": "GARLIC-BULK",
         "price": 2.24,
-        "quantity": null,
-        "unit_price": null,
+        "quantity": 0.28,
+        "unit_price": 7.99,
         "is_discount": false,
         "name_quality": "ok",
         "line_ids": [
@@ -4770,8 +4770,8 @@
         "item_index": 3,
         "name": "POTATO-RUSSET",
         "price": 9.74,
-        "quantity": null,
-        "unit_price": null,
+        "quantity": 3.91,
+        "unit_price": 2.49,
         "is_discount": false,
         "name_quality": "ok",
         "line_ids": [
