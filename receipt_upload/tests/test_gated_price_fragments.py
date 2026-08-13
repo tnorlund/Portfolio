@@ -133,6 +133,22 @@ def test_costco_comma_fragment_near_miss_keeps_unmerged():
     assert zone["delta"] == -5.99
 
 
+def test_costco_comma_fragment_inside_match_tolerance_still_rejected():
+    """5.90 vs 9.99 is a ``match`` under 1% tolerance; the gate must not keep it."""
+    words = [
+        W(1, 1, "KIRKLAND", 0.05, 0.55),
+        W(1, 2, "WATER", 0.28, 0.55),
+        W(2, 1, "5,", 0.81, 0.55),
+        W(2, 2, "90", 0.86, 0.55),
+        W(3, 1, "CHICKEN", 0.05, 0.40),
+        W(4, 1, "4.00", 0.80, 0.40),
+    ]
+    items, zone = _decode(words, {"subtotal": 9.99})
+    prices = [i["price"] for i in items]
+    assert 5.90 not in prices
+    assert zone["status"] != "match"
+
+
 def test_three_token_5_1_dot_99_does_not_ship_as_1_99():
     # 57cb7f2c: do not specially join 5 + 1. + 99. If 1.+99 merges to
     # 1.99, the receipt-level gate rejects it (not an exact match).
