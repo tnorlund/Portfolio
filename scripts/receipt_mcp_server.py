@@ -1203,6 +1203,71 @@ Optionally filter to a single line_id to reduce output.""",
             },
         ),
         Tool(
+            name="find_places",
+            description="""Search Google Places directly and return candidates.
+
+Runs phone, address, and free-text searches (each returns its best match)
+and returns the deduplicated candidates. Use this to identify the correct
+business for a receipt, then write it with set_receipt_place.
+
+Read-only: does NOT modify DynamoDB.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Free-text search, e.g. 'Trader Joe\'s 2716 N Green Valley Pkwy Henderson NV'",
+                    },
+                    "phone": {
+                        "type": "string",
+                        "description": "Phone number from the receipt (any format, 10+ digits)",
+                    },
+                    "address": {
+                        "type": "string",
+                        "description": "Street address from the receipt",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="set_receipt_place",
+            description="""Set a receipt's merchant/place directly (no Lambda, no inner LLM).
+
+Updates the ReceiptPlace record (creating it if missing) and keeps the
+denormalized ReceiptSummary merchant_name in sync. Use after verifying the
+correct business via get_receipt + find_places.
+
+WARNING: This WRITES to DynamoDB.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {"type": "string", "description": "Image ID"},
+                    "receipt_id": {"type": "integer", "description": "Receipt ID"},
+                    "merchant_name": {
+                        "type": "string",
+                        "description": "Correct business name (matches corpus casing, e.g. 'Trader Joe\'s')",
+                    },
+                    "place_id": {
+                        "type": "string",
+                        "description": "Google place_id (from find_places), if known",
+                    },
+                    "formatted_address": {
+                        "type": "string",
+                        "description": "Formatted address, if known",
+                    },
+                    "phone_number": {
+                        "type": "string",
+                        "description": "Phone number, if known",
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "Why this place is correct (audit trail)",
+                    },
+                },
+                "required": ["image_id", "receipt_id", "merchant_name"],
+            },
+        ),
+        Tool(
             name="fix_place",
             description="""Fix an incorrect merchant/place assignment on a receipt.
 
@@ -2253,6 +2318,23 @@ async def call_tool(
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments.get("line_id"),
+            )
+        elif name == "find_places":
+            result = await find_places_impl(
+                query=arguments.get("query"),
+                phone=arguments.get("phone"),
+                address=arguments.get("address"),
+            )
+        elif name == "set_receipt_place":
+            result = await set_receipt_place_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                merchant_name=arguments["merchant_name"],
+                place_id=arguments.get("place_id"),
+                formatted_address=arguments.get("formatted_address"),
+                phone_number=arguments.get("phone_number"),
+                reasoning=arguments.get("reasoning"),
             )
         elif name == "fix_place":
             result = await fix_place_impl(
@@ -3946,6 +4028,183 @@ async def _invoke_lambda(function_name: str, payload: dict) -> dict:
         }
 
     return response_payload
+
+
+# ---------------------------------------------------------------------------
+# Local place fixing (no Lambda). The old fix-place Lambda wrapped its own
+# LLM agent; since the MCP caller is already an LLM with the receipt in
+# context, these tools just supply data (Places search) and a write
+# primitive, and hand ambiguous decisions back to the caller.
+# ---------------------------------------------------------------------------
+
+_places_client = None
+
+
+def _get_places_client():
+    """Lazily construct a Google Places client from the environment."""
+    global _places_client
+    if _places_client is None:
+        api_key = os.environ.get("GOOGLE_PLACES_API_KEY") or _load_config().get(
+            "google_places_api_key"
+        )
+        if not api_key:
+            raise RuntimeError(
+                "GOOGLE_PLACES_API_KEY is not set in the MCP server "
+                "environment. Add it to the receipt-tools entry in "
+                "~/.claude.json (value: "
+                "`pulumi config get portfolio:GOOGLE_PLACES_API_KEY`)."
+            )
+        from receipt_places import PlacesClient, PlacesConfig
+
+        # Point the Places cache at the same receipts table this server
+        # uses (PlacesConfig defaults to a nonexistent "receipts" table).
+        config = _load_config()
+        _places_client = PlacesClient(
+            config=PlacesConfig(
+                api_key=api_key,
+                table_name=config["dynamodb_table_name"],
+            )
+        )
+    return _places_client
+
+
+def _digits(value: str | None) -> str:
+    return "".join(c for c in (value or "") if c.isdigit())
+
+
+def _place_to_candidate(place, source: str) -> dict:
+    return {
+        "source": source,
+        "place_id": place.place_id,
+        "name": place.name,
+        "formatted_address": place.formatted_address,
+        "phone_number": place.formatted_phone_number,
+        "types": (place.types or [])[:5],
+        "business_status": place.business_status,
+    }
+
+
+def _search_place_candidates(
+    query: str | None = None,
+    phone: str | None = None,
+    address: str | None = None,
+) -> list[dict]:
+    """Run the available Places searches and return deduplicated candidates."""
+    places = _get_places_client()
+    candidates: list[dict] = []
+    seen: set[str] = set()
+
+    searches = []
+    if phone and len(_digits(phone)) >= 10:
+        searches.append(("phone", lambda: places.search_by_phone(phone)))
+    if address:
+        searches.append(("address", lambda: places.search_by_address(address)))
+    if query:
+        searches.append(("text", lambda: places.search_by_text(query)))
+
+    for source, run in searches:
+        try:
+            place = run()
+        except Exception:
+            logger.exception("Places %s search failed", source)
+            continue
+        if place and place.place_id and place.place_id not in seen:
+            seen.add(place.place_id)
+            candidates.append(_place_to_candidate(place, source))
+    return candidates
+
+
+async def find_places_impl(
+    query: str | None = None,
+    phone: str | None = None,
+    address: str | None = None,
+) -> dict:
+    """Search Google Places directly and return candidates."""
+    try:
+        if not any([query, phone, address]):
+            return {"error": "Provide at least one of query, phone, address"}
+        candidates = await asyncio.to_thread(
+            _search_place_candidates, query, phone, address
+        )
+        return {"candidates": candidates, "count": len(candidates)}
+    except Exception as e:
+        logger.exception("Error searching places")
+        return {"error": str(e)}
+
+
+async def set_receipt_place_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    merchant_name: str,
+    place_id: str | None = None,
+    formatted_address: str | None = None,
+    phone_number: str | None = None,
+    reasoning: str | None = None,
+) -> dict:
+    """Write the ReceiptPlace (and denormalized summary merchant) directly."""
+    try:
+        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+        from receipt_dynamo.entities.receipt_place import ReceiptPlace
+
+        def _write():
+            before = None
+            try:
+                place = dynamo_client.get_receipt_place(image_id, receipt_id)
+                before = {
+                    "merchant_name": place.merchant_name,
+                    "place_id": place.place_id,
+                }
+                place.merchant_name = merchant_name
+                if place_id is not None:
+                    place.place_id = place_id
+                if formatted_address is not None:
+                    place.formatted_address = formatted_address
+                if phone_number is not None:
+                    place.phone_number = phone_number
+                place.validated_by = "MANUAL"
+                if reasoning:
+                    place.reasoning = reasoning
+                dynamo_client.update_receipt_place(place)
+            except EntityNotFoundError:
+                place = ReceiptPlace(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    place_id=place_id or "",
+                    merchant_name=merchant_name,
+                    formatted_address=formatted_address,
+                    phone_number=phone_number,
+                    validated_by="MANUAL",
+                    reasoning=reasoning,
+                )
+                dynamo_client.add_receipt_place(place)
+
+            # Keep the denormalized summary merchant in sync (the milk
+            # table and other summary-driven views read it). Missing
+            # summary rows are fine - the stream recomputes them.
+            try:
+                summary = dynamo_client.get_receipt_summary(
+                    image_id, receipt_id
+                )
+                summary.merchant_name = merchant_name
+                dynamo_client.update_receipt_summary(summary)
+                summary_updated = True
+            except EntityNotFoundError:
+                summary_updated = False
+            return before, summary_updated
+
+        before, summary_updated = await asyncio.to_thread(_write)
+        return {
+            "success": True,
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "before": before,
+            "after": {"merchant_name": merchant_name, "place_id": place_id},
+            "summary_updated": summary_updated,
+        }
+    except Exception as e:
+        logger.exception("Error setting receipt place")
+        return {"error": str(e)}
 
 
 async def fix_place_impl(
