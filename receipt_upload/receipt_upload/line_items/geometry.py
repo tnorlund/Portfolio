@@ -31,7 +31,7 @@ from receipt_dynamo.amounts import (
 PRICE_RE = re.compile(r"\$?(\d{1,4}(?:,\d{3})?\.\d{2})(-?)")
 # "2 @ 3.99", "1.23 lb @ 4.99/lb", "18.871 @ $5.299/Gal"
 QTY_AT_RE = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(?:lb|1b|kg|oz|gal)?\s*@\s*\$?(\d+(?:\.\d{2,3}))"
+    r"(\d+(?:\.\d+)?)\s*(?:lb|1b|ib|kg|oz|gal)?\s*@\s*\$?(\d+(?:\.\d{2,3}))"
     r"(?:\s*/\s*\w+)?",
     re.IGNORECASE,
 )
@@ -398,15 +398,22 @@ PER_UNIT_RATE_RE = re.compile(
     re.IGNORECASE,
 )
 # Slash unit-rate annotation: "$2.99 /", "$2.99 / lb", "lb $2.99 / lb".
-# Whole-text only -- a qty line "1.23 lb @ $4.99/lb" contains the same
-# "$N.NN/" glyph but QTY_AT_RE already attaches it to the extended total.
-_SLASH_UNIT_WORD = r"(?:OZ|LB|LBS|1B|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)"
+# ``Ib`` / ``1b`` are Vision's ``lb``. A qty-at prefix ("0.31 Ib @") may
+# glue onto the same band; leftover after stripping qty/units/at must not
+# be a product name or this is a real SKU line ("SHALLOTS 0.57 lb @ …").
+_SLASH_UNIT_WORD = r"(?:OZ|LB|LBS|1B|IB|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)"
 SLASH_UNIT_RATE_RE = re.compile(
-    rf"^(?:{_SLASH_UNIT_WORD}\s+)*"
-    rf"\$?\d+\.\d{{2}}\s*/\s*"
-    rf"(?:{_SLASH_UNIT_WORD}\s*)*$",
+    rf"\$?\d+\.\d{{2}}\s*/\s*(?:{_SLASH_UNIT_WORD})?",
     re.IGNORECASE,
 )
+# ``/ lb`` with the amount elsewhere in the band. Digit-slash-digit
+# fractions (Home Depot ``1-5/8"``) do not have a unit word after the
+# slash, so they stay SKUs even when the same row also prints ``1 LB``.
+_UNIT_AFTER_SLASH_RE = re.compile(
+    rf"/\s*{_SLASH_UNIT_WORD}\b",
+    re.IGNORECASE,
+)
+_OCR_AT_RE = re.compile(r"@|\(\s*a\s*\)", re.IGNORECASE)
 
 
 def is_unit_rate_row(text: str, n_amounts: int) -> bool:
@@ -418,21 +425,45 @@ def is_unit_rate_row(text: str, n_amounts: int) -> bool:
     amount IS the rate is an annotation, which is what makes this safe
     without a merchant list.
 
-    ``$N.NN /`` (optional unit word) is the same annotation in slash
-    form. Qty-at lines that happen to contain ``$4.99/lb`` stay items:
-    QTY_AT_RE already owns that shape, and ``n_amounts >= 2`` keeps the
-    deli total.
+    ``$N.NN /`` glued to weight OCR (``0.31 Ib @ $5.49 / 1b``) is still
+    that annotation: after stripping qty-at, slash-rate, units, and
+    ``@``/``(a)``, nothing named remains. A named qty-at line
+    (``SHALLOTS 0.57 lb @ $1.69``) keeps the product letters and stays
+    an item.     ``n_amounts >= 2`` keeps a deli ``per lb`` total, but a weight
+    token (``0.32 lb $2.99 / lb``) also parses as a second amount.
+    Slash-rate / qty-at rows therefore use leftover letters, not the
+    amount count: empty leftover is still the annotation. Glued
+    ``3@15.28 45.84`` (Home Depot) has the extended total after the
+    qty-at token and must stay an item.
     """
-    if n_amounts > 1:
-        return False
     t = (text or "").strip()
     if not t:
         return False
     if PER_UNIT_RATE_RE.search(t):
-        return True
-    if QTY_AT_RE.search(t):
+        return n_amounts <= 1
+    qty_m = QTY_AT_RE.search(t) or QTY_AT_OCR_RE.search(t)
+    if qty_m:
+        after_qty = (t[: qty_m.start()] + " " + t[qty_m.end() :]).strip()
+        if re.search(r"\$?\d+\.\d{2}", after_qty):
+            return False
+    has_rate = bool(
+        SLASH_UNIT_RATE_RE.search(t)
+        or _UNIT_AFTER_SLASH_RE.search(t)
+        or qty_m
+        or _OCR_AT_RE.search(t)
+    )
+    if not has_rate:
         return False
-    return bool(SLASH_UNIT_RATE_RE.fullmatch(t))
+    leftover = QTY_AT_RE.sub(" ", t)
+    leftover = QTY_AT_OCR_RE.sub(" ", leftover)
+    leftover = SLASH_UNIT_RATE_RE.sub(" ", leftover)
+    leftover = _UNIT_AFTER_SLASH_RE.sub(" ", leftover)
+    leftover = _OCR_AT_RE.sub(" ", leftover)
+    leftover = re.sub(rf"\b{_SLASH_UNIT_WORD}\b", " ", leftover, flags=re.I)
+    leftover = re.sub(r"\$?\d+(?:\.\d+)?", " ", leftover)
+    leftover = re.sub(r"[^\w\s]+", " ", leftover)
+    leftover = re.sub(r"\s+", " ", leftover).strip()
+    return not _name_is_real(leftover)
 
 
 # Non-product annotations that carry an amount but are never items:
@@ -1018,6 +1049,9 @@ def implied_unit_price(quantity: Any, price: Any) -> Optional[float]:
 UNIT_WORDS = {
     "EA",
     "LB",
+    "LBS",
+    "1B",
+    "IB",
     "KG",
     "OZ",
     "CT",
