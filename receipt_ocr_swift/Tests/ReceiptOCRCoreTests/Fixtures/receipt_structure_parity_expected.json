@@ -1119,6 +1119,7 @@
         "is_discount": false,
         "name_quality": "low",
         "line_ids": [
+          14,
           23
         ],
         "reconciliation_status": "no-baseline",
@@ -1149,6 +1150,7 @@
         "name_quality": "ok",
         "line_ids": [
           10,
+          11,
           21
         ],
         "reconciliation_status": "no-baseline",
@@ -3833,6 +3835,8 @@
         "name_quality": "ok",
         "line_ids": [
           52,
+          53,
+          54,
           71
         ],
         "reconciliation_status": "no-baseline",
@@ -3848,6 +3852,7 @@
         "name_quality": "ok",
         "line_ids": [
           50,
+          51,
           70,
           95
         ],
@@ -3880,6 +3885,7 @@
         "name_quality": "ok",
         "line_ids": [
           44,
+          45,
           68,
           93
         ],
@@ -3960,6 +3966,7 @@
         "name_quality": "ok",
         "line_ids": [
           37,
+          38,
           63,
           88
         ],
@@ -4090,6 +4097,7 @@
         "name_quality": "ok",
         "line_ids": [
           37,
+          38,
           53
         ],
         "reconciliation_status": "match",
@@ -4210,6 +4218,7 @@
         "name_quality": "ok",
         "line_ids": [
           19,
+          20,
           36
         ],
         "reconciliation_status": "match",
@@ -4225,6 +4234,7 @@
         "name_quality": "ok",
         "line_ids": [
           17,
+          18,
           35
         ],
         "reconciliation_status": "match",
@@ -4255,6 +4265,7 @@
         "name_quality": "ok",
         "line_ids": [
           14,
+          15,
           33
         ],
         "reconciliation_status": "match",
@@ -4729,8 +4740,11 @@
         "name_quality": "ok",
         "line_ids": [
           63,
+          64,
+          65,
           71,
-          72
+          72,
+          73
         ],
         "reconciliation_status": "no-baseline",
         "raw_text": "SHALLOTS 0.84 F"
@@ -4739,13 +4753,15 @@
         "item_index": 1,
         "name": "GARLIC-BULK",
         "price": 2.24,
-        "quantity": null,
-        "unit_price": null,
+        "quantity": 0.28,
+        "unit_price": 7.99,
         "is_discount": false,
         "name_quality": "ok",
         "line_ids": [
           60,
-          69
+          61,
+          69,
+          70
         ],
         "reconciliation_status": "no-baseline",
         "raw_text": "GARLIC-BULK 2.24 F"
@@ -4760,6 +4776,7 @@
         "name_quality": "ok",
         "line_ids": [
           57,
+          58,
           67,
           68
         ],
@@ -4776,6 +4793,7 @@
         "name_quality": "ok",
         "line_ids": [
           54,
+          55,
           66
         ],
         "reconciliation_status": "no-baseline",
@@ -4837,6 +4855,7 @@
         "name_quality": "ok",
         "line_ids": [
           36,
+          37,
           40,
           41
         ],

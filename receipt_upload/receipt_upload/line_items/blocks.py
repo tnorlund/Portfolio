@@ -738,7 +738,11 @@ def decode_band_blocks(
     # an ADJACENT price band when its qty*unit explains that neighbor's
     # price, or when it merely echoes the neighbor's price with SKU/qty
     # signature. Absorbed bands transplant quantity and stop being items.
-    from receipt_upload.line_items.geometry import SKU_LIKE_RE, _name_is_real
+    from receipt_upload.line_items.geometry import (
+        SKU_LIKE_RE,
+        _name_is_real,
+        is_for_deal_annotation,
+    )
 
     # zone price column (same convention as decode_blocks: right-most
     # amount-word x; "in column" = within 0.15)
@@ -751,9 +755,19 @@ def decode_band_blocks(
         p: parse_band(list(bands[p]["words"])) for p in price_idx
     }
     absorbed: set[int] = set()
+    absorbed_into: dict[int, list[int]] = {}
     for pos, p in enumerate(price_idx):
         mp = parsed_cache[p]
-        if mp is None or _name_is_real(mp.get("name") or ""):
+        if mp is None:
+            continue
+        for_deal = is_for_deal_annotation(
+            mp.get("raw_text") or bands[p]["text"]
+        )
+        # FOR-deal annotations ("2.00 FOR 3 @ 3") carry letters, so
+        # _name_is_real is true and the unnamed-echo path never runs.
+        # A named SKU that is not a FOR-deal still skips absorption
+        # (Wild Fork two items at 8.98).
+        if _name_is_real(mp.get("name") or "") and not for_deal:
             continue
         qty, unit = mp.get("quantity"), mp.get("unit_price")
         for npos in (pos - 1, pos + 1):
@@ -772,7 +786,9 @@ def decode_band_blocks(
             ):
                 if nb.get("quantity") is None:
                     nb["quantity"], nb["unit_price"] = qty, unit
+                    nb["qty_word_ids"] = list(mp.get("qty_word_ids") or [])
                 absorbed.add(p)
+                absorbed_into.setdefault(q, []).append(p)
                 break
             # Echo absorption ONLY into a real-named neighbor -- the same
             # constraint extract_items enforces via kind==ITEM. Without it,
@@ -785,11 +801,14 @@ def decode_band_blocks(
                 and (
                     SKU_LIKE_RE.search(mp.get("raw_text") or "")
                     or qty is not None
+                    or for_deal
                 )
             ):
                 if qty is not None and nb.get("quantity") is None:
                     nb["quantity"], nb["unit_price"] = qty, unit
+                    nb["qty_word_ids"] = list(mp.get("qty_word_ids") or [])
                 absorbed.add(p)
+                absorbed_into.setdefault(q, []).append(p)
                 break
             # Unit-price echo with the qty prefix lost to OCR ("2 @ 3.49"
             # reads as bare "3.49" under a 6.98 item): a bare-amount band
@@ -824,6 +843,7 @@ def decode_band_blocks(
                         nb["quantity"] = float(k)
                         nb["unit_price"] = mp["price"]
                     absorbed.add(p)
+                    absorbed_into.setdefault(q, []).append(p)
                     break
     price_idx = [p for p in price_idx if p not in absorbed]
     blocks: dict[int, list[int]] = {p: [] for p in price_idx}
@@ -871,7 +891,14 @@ def decode_band_blocks(
             )
         ]
         if parsed.get("quantity") is None:
-            for i in blocks[p]:
+            # OUTSIDE unit-rate neighbours (`0.21 lb @ 3.99`) are not
+            # MEMBER bands, so they never land in `blocks[p]`. They still
+            # carry the printed qty that multiplies out to this item.
+            donor_idxs = list(blocks[p]) + [
+                u for u in unclaimed if abs(u - p) == 1
+            ]
+            qty_donor_i = None
+            for i in donor_idxs:
                 mp = parse_band(list(bands[i]["words"]))
                 if (
                     mp
@@ -884,7 +911,11 @@ def decode_band_blocks(
                 ):
                     parsed["quantity"] = mp["quantity"]
                     parsed["unit_price"] = mp["unit_price"]
+                    parsed["qty_word_ids"] = list(mp.get("qty_word_ids") or [])
+                    qty_donor_i = i
                     break
+        else:
+            qty_donor_i = None
         if _sku_dominated(parsed.get("name") or ""):
             # Donor criterion is _name_is_real (>=3 alpha chars), NOT the
             # two-token SKU test: single-word product names ("BREAD",
@@ -912,13 +943,14 @@ def decode_band_blocks(
             # No name anywhere: keep the price, flag the quality --
             # identical semantics to the banded path.
             parsed["name_quality"] = "low"
-        parsed["line_ids"] = sorted(
-            set(bands[p]["line_ids"]).union(
-                *(bands[i]["line_ids"] for i in blocks[p])
-            )
-            if blocks[p]
-            else set(bands[p]["line_ids"])
-        )
+        lids = set(bands[p]["line_ids"])
+        if blocks[p]:
+            lids.update(*(bands[i]["line_ids"] for i in blocks[p]))
+        if qty_donor_i is not None:
+            lids.update(bands[qty_donor_i]["line_ids"])
+        for i in absorbed_into.get(p, []):
+            lids.update(bands[i]["line_ids"])
+        parsed["line_ids"] = sorted(lids)
         items.append(parsed)
     # Quantity attachment runs before the summary-figure filter purely so
     # donor indices line up with `items`; the filter reads only price,

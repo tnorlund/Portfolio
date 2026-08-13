@@ -2579,6 +2579,7 @@
     "name_quality": null,
     "line_ids": [
      13,
+     14,
      23
     ]
    },
@@ -2603,6 +2604,7 @@
     "name_quality": null,
     "line_ids": [
      10,
+     11,
      21
     ]
    },
@@ -2694,6 +2696,7 @@
     "name_quality": null,
     "line_ids": [
      13,
+     14,
      23
     ]
    },
@@ -2718,6 +2721,7 @@
     "name_quality": null,
     "line_ids": [
      10,
+     11,
      21
     ]
    },
@@ -5601,17 +5605,6 @@
     ]
    },
    {
-    "name": "IF",
-    "price": 8.502,
-    "quantity": null,
-    "unit_price": null,
-    "is_discount": false,
-    "name_quality": "low",
-    "line_ids": [
-     121
-    ]
-   },
-   {
     "name": "OUTY 5 GALLON BUCKET GRID",
     "price": 8.76,
     "quantity": null,
@@ -6061,17 +6054,6 @@
     ]
    },
    {
-    "name": "IF",
-    "price": 8.502,
-    "quantity": null,
-    "unit_price": null,
-    "is_discount": false,
-    "name_quality": "low",
-    "line_ids": [
-     121
-    ]
-   },
-   {
     "name": "OUTY 5 GALLON BUCKET GRID",
     "price": 8.76,
     "quantity": null,
@@ -6493,7 +6475,7 @@
   ],
   "reconcile": {
    "status": "mismatch",
-   "item_sum": 1195.46,
+   "item_sum": 1186.96,
    "baseline": 1023.48,
    "baseline_source": "subtotal",
    "baseline_figures_agreeing": null
@@ -9621,7 +9603,8 @@
     "line_ids": [
      5,
      6,
-     7
+     7,
+     8
     ]
    }
   ],
@@ -9652,7 +9635,8 @@
     "line_ids": [
      5,
      6,
-     7
+     7,
+     8
     ]
    }
   ],
@@ -9834,6 +9818,8 @@
     "name_quality": null,
     "line_ids": [
      52,
+     53,
+     54,
      71
     ]
    },
@@ -9846,6 +9832,7 @@
     "name_quality": null,
     "line_ids": [
      50,
+     51,
      70,
      95
     ]
@@ -9872,6 +9859,7 @@
     "name_quality": null,
     "line_ids": [
      44,
+     45,
      68,
      93
     ]
@@ -9898,6 +9886,7 @@
     "name_quality": null,
     "line_ids": [
      41,
+     42,
      66,
      91
     ]
@@ -9937,6 +9926,7 @@
     "name_quality": null,
     "line_ids": [
      37,
+     38,
      63,
      88
     ]
@@ -10022,6 +10012,8 @@
     "name_quality": null,
     "line_ids": [
      52,
+     53,
+     54,
      71
     ]
    },
@@ -10034,6 +10026,7 @@
     "name_quality": null,
     "line_ids": [
      50,
+     51,
      70,
      95
     ]
@@ -10060,6 +10053,7 @@
     "name_quality": null,
     "line_ids": [
      44,
+     45,
      68,
      93
     ]
@@ -10086,6 +10080,7 @@
     "name_quality": null,
     "line_ids": [
      41,
+     42,
      66,
      91
     ]
@@ -10125,6 +10120,7 @@
     "name_quality": null,
     "line_ids": [
      37,
+     38,
      63,
      88
     ]
@@ -10592,6 +10588,7 @@
     "name_quality": null,
     "line_ids": [
      37,
+     38,
      53
     ]
    },
@@ -10683,6 +10680,7 @@
     "name_quality": null,
     "line_ids": [
      37,
+     38,
      53
     ]
    },
@@ -10917,6 +10915,7 @@
     "name_quality": null,
     "line_ids": [
      21,
+     22,
      37
     ]
    },
@@ -10929,6 +10928,7 @@
     "name_quality": null,
     "line_ids": [
      19,
+     20,
      36
     ]
    },
@@ -10941,6 +10941,7 @@
     "name_quality": null,
     "line_ids": [
      17,
+     18,
      35
     ]
    },
@@ -10965,6 +10966,7 @@
     "name_quality": null,
     "line_ids": [
      14,
+     15,
      33
     ]
    },
@@ -11045,6 +11047,7 @@
     "name_quality": null,
     "line_ids": [
      21,
+     22,
      37
     ]
    },
@@ -11057,6 +11060,7 @@
     "name_quality": null,
     "line_ids": [
      19,
+     20,
      36
     ]
    },
@@ -11069,6 +11073,7 @@
     "name_quality": null,
     "line_ids": [
      17,
+     18,
      35
     ]
    },
@@ -11093,6 +11098,7 @@
     "name_quality": null,
     "line_ids": [
      14,
+     15,
      33
     ]
    },
@@ -11807,6 +11813,7 @@
     "name_quality": null,
     "line_ids": [
      45,
+     46,
      55,
      73
     ]
@@ -11914,6 +11921,7 @@
     "name_quality": null,
     "line_ids": [
      45,
+     46,
      55,
      73
     ]
@@ -12236,20 +12244,25 @@
     "name_quality": null,
     "line_ids": [
      63,
+     64,
+     65,
      71,
-     72
+     72,
+     73
     ]
    },
    {
     "name": "GARLIC-BULK",
     "price": 2.24,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 0.28,
+    "unit_price": 7.99,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
      60,
-     69
+     61,
+     69,
+     70
     ]
    },
    {
@@ -12261,6 +12274,7 @@
     "name_quality": null,
     "line_ids": [
      57,
+     58,
      67,
      68
     ]
@@ -12274,6 +12288,7 @@
     "name_quality": null,
     "line_ids": [
      54,
+     55,
      66
     ]
    },
@@ -12324,6 +12339,7 @@
     "name_quality": null,
     "line_ids": [
      36,
+     37,
      40,
      41
     ]
@@ -12344,20 +12360,25 @@
     "name_quality": null,
     "line_ids": [
      63,
+     64,
+     65,
      71,
-     72
+     72,
+     73
     ]
    },
    {
     "name": "GARLIC-BULK",
     "price": 2.24,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 0.28,
+    "unit_price": 7.99,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
      60,
-     69
+     61,
+     69,
+     70
     ]
    },
    {
@@ -12369,6 +12390,7 @@
     "name_quality": null,
     "line_ids": [
      57,
+     58,
      67,
      68
     ]
@@ -12382,6 +12404,7 @@
     "name_quality": null,
     "line_ids": [
      54,
+     55,
      66
     ]
    },
@@ -12432,6 +12455,7 @@
     "name_quality": null,
     "line_ids": [
      36,
+     37,
      40,
      41
     ]

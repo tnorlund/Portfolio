@@ -31,7 +31,7 @@ from receipt_dynamo.amounts import (
 PRICE_RE = re.compile(r"\$?(\d{1,4}(?:,\d{3})?\.\d{2})(-?)")
 # "2 @ 3.99", "1.23 lb @ 4.99/lb", "18.871 @ $5.299/Gal"
 QTY_AT_RE = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(?:lb|1b|kg|oz|gal)?\s*@\s*\$?(\d+(?:\.\d{2,3}))"
+    r"(\d+(?:\.\d+)?)\s*(?:lb|1b|ib|kg|oz|gal)?\s*@\s*\$?(\d+(?:\.\d{2,3}))"
     r"(?:\s*/\s*\w+)?",
     re.IGNORECASE,
 )
@@ -39,6 +39,13 @@ QTY_AT_RE = re.compile(
 # optional; deal is M-for-X so unit = X/M, qty = leading qty else M)
 QTY_FOR_RE = re.compile(
     r"(?:(\d{1,2})\s*@\s*)?(\d{1,2})\s+FOR\s+\$?(\d+\.\d{2})",
+    re.IGNORECASE,
+)
+# Amount-first deal annotation: "$2.00 FOR 3", "2.00 FOR 3 @ 3". Sprouts
+# prints this under the named SKU as a restatement of the same price;
+# QTY_FOR_RE cannot see it because the integer is after FOR, not before.
+QTY_FOR_AMOUNT_FIRST_RE = re.compile(
+    r"\$?(\d+\.\d{2})\s+FOR\s+(\d{1,2})(?:\s*@\s*\d{1,2})?",
     re.IGNORECASE,
 )
 # OCR reads "@" as "g" in "4 @ $1.79"; the explicit $ keeps this from
@@ -390,6 +397,31 @@ PER_UNIT_RATE_RE = re.compile(
     r"\bPER\s+(?:OZ|LB|LBS|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\b",
     re.IGNORECASE,
 )
+# Operand strip for leftover: the rate amount sits before PER, unlike
+# ``$2.99 / lb`` which SLASH_UNIT_RATE_RE already consumes. Do not eat a
+# trailing two-decimal — that is the extended total (``… per lb 0.96``).
+_PER_UNIT_AMOUNT_RE = re.compile(
+    r"\$?\d+\.\d{2}\s+"
+    r"\bPER\s+(?:OZ|LB|LBS|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\b",
+    re.IGNORECASE,
+)
+# Slash unit-rate annotation: "$2.99 /", "$2.99 / lb", "lb $2.99 / lb".
+# ``Ib`` / ``1b`` are Vision's ``lb``. A qty-at prefix ("0.31 Ib @") may
+# glue onto the same band; leftover after stripping qty/units/at must not
+# be a product name or this is a real SKU line ("SHALLOTS 0.57 lb @ …").
+_SLASH_UNIT_WORD = r"(?:OZ|LB|LBS|1B|IB|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)"
+SLASH_UNIT_RATE_RE = re.compile(
+    rf"\$?\d+\.\d{{2}}\s*/\s*(?:{_SLASH_UNIT_WORD})?",
+    re.IGNORECASE,
+)
+# ``/ lb`` with the amount elsewhere in the band. Digit-slash-digit
+# fractions (Home Depot ``1-5/8"``) do not have a unit word after the
+# slash, so they stay SKUs even when the same row also prints ``1 LB``.
+_UNIT_AFTER_SLASH_RE = re.compile(
+    rf"/\s*{_SLASH_UNIT_WORD}\b",
+    re.IGNORECASE,
+)
+_OCR_AT_RE = re.compile(r"@|\(\s*a\s*\)", re.IGNORECASE)
 
 
 def is_unit_rate_row(text: str, n_amounts: int) -> bool:
@@ -400,8 +432,65 @@ def is_unit_rate_row(text: str, n_amounts: int) -> bool:
     is a genuine line total that must survive. Only a row whose single
     amount IS the rate is an annotation, which is what makes this safe
     without a merchant list.
+
+    ``$N.NN /`` glued to weight OCR (``0.31 Ib @ $5.49 / 1b``) is still
+    that annotation: after stripping qty-at, slash-rate, units, and
+    ``@``/``(a)``, nothing named remains. A named qty-at line
+    (``SHALLOTS 0.57 lb @ $1.69``) keeps the product letters and stays
+    an item. ``n_amounts >= 2`` used to keep every spelled-out ``per lb``
+    row as an item, but a weight token (``0.32 lb $2.99 per lb``) also
+    parses as a second amount. Slash-rate / qty-at / PER rows therefore
+    use leftover letters, not the amount count, once more than one amount
+    is present: empty leftover is still the annotation. A single-amount
+    PER row (Yogurtland ``Weight: … per oz``) still returns true before
+    leftover, because ``Weight`` would otherwise look like a product.
+    Glued ``3@15.28 45.84`` (Home Depot) has the extended total after the
+    qty-at token and must stay an item.
     """
-    return n_amounts <= 1 and bool(PER_UNIT_RATE_RE.search(text or ""))
+    t = (text or "").strip()
+    if not t:
+        return False
+    if PER_UNIT_RATE_RE.search(t) and n_amounts <= 1:
+        # Yogurtland "Weight: 21.5 oz … $0.67 per oz": leftover letters
+        # include "Weight", so the operand path would keep it as an item.
+        # A single amount that IS the rate is still the annotation.
+        return True
+    qty_m = QTY_AT_RE.search(t) or QTY_AT_OCR_RE.search(t)
+    if qty_m:
+        after_qty = (t[: qty_m.start()] + " " + t[qty_m.end() :]).strip()
+        if re.search(r"\$?\d+\.\d{2}", after_qty):
+            return False
+    has_rate = bool(
+        PER_UNIT_RATE_RE.search(t)
+        or SLASH_UNIT_RATE_RE.search(t)
+        or _UNIT_AFTER_SLASH_RE.search(t)
+        or qty_m
+        or _OCR_AT_RE.search(t)
+    )
+    if not has_rate:
+        return False
+    remainder = QTY_AT_RE.sub(" ", t)
+    remainder = QTY_AT_OCR_RE.sub(" ", remainder)
+    remainder = _PER_UNIT_AMOUNT_RE.sub(" ", remainder)
+    remainder = PER_UNIT_RATE_RE.sub(" ", remainder)
+    remainder = SLASH_UNIT_RATE_RE.sub(" ", remainder)
+    remainder = _UNIT_AFTER_SLASH_RE.sub(" ", remainder)
+    remainder = _OCR_AT_RE.sub(" ", remainder)
+    remainder = re.sub(
+        rf"\d+(?:\.\d+)?\s*(?:{_SLASH_UNIT_WORD})\b",
+        " ",
+        remainder,
+        flags=re.I,
+    )
+    if re.search(r"\$?\d+\.\d{2}", remainder):
+        n_money = len(re.findall(r"\$?\d+\.\d{2}", t))
+        if n_money >= 2:
+            return False
+    leftover = re.sub(rf"\b{_SLASH_UNIT_WORD}\b", " ", remainder, flags=re.I)
+    leftover = re.sub(r"\$?\d+(?:\.\d+)?", " ", leftover)
+    leftover = re.sub(r"[^\w\s]+", " ", leftover)
+    leftover = re.sub(r"\s+", " ", leftover).strip()
+    return not _name_is_real(leftover)
 
 
 # Non-product annotations that carry an amount but are never items:
@@ -513,7 +602,8 @@ def is_line_price_word(word: dict) -> bool:
         and re.search(r"\d[.,]\d{2}(?!\d)", text)
     ):
         return False
-    return parse_receipt_amount(text) is not None
+    value = parse_receipt_amount(text)
+    return value is not None and abs(value) < 100000
 
 
 DISCOUNT_WORDS = ("SAVED", "SAVING", "OFF", "COUPON", "DISCOUNT", "PROMO")
@@ -746,9 +836,18 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
     m = QTY_FOR_RE.search(joined)
     if m:
         deal_n = float(m.group(2))
-        qty = float(m.group(1)) if m.group(1) else deal_n
-        unit_price = round(float(m.group(3)) / deal_n, 2)
-        qty_word_idxs = words_in_span(m.start(), m.end())
+        if deal_n:
+            qty = float(m.group(1)) if m.group(1) else deal_n
+            unit_price = round(float(m.group(3)) / deal_n, 2)
+            qty_word_idxs = words_in_span(m.start(), m.end())
+    if qty is None:
+        m = QTY_FOR_AMOUNT_FIRST_RE.search(joined)
+        if m:
+            deal_n = float(m.group(2))
+            if deal_n:
+                qty = deal_n
+                unit_price = round(float(m.group(1)) / deal_n, 2)
+                qty_word_idxs = words_in_span(m.start(), m.end())
     if qty is None:
         m = QTY_AT_RE.search(joined) or QTY_AT_OCR_RE.search(joined)
         if m:
@@ -980,6 +1079,9 @@ def implied_unit_price(quantity: Any, price: Any) -> Optional[float]:
 UNIT_WORDS = {
     "EA",
     "LB",
+    "LBS",
+    "1B",
+    "IB",
     "KG",
     "OZ",
     "CT",
@@ -1003,6 +1105,27 @@ def _name_is_real(name: str) -> bool:
     tokens = re.findall(r"[A-Za-z]{2,}", name or "")
     real = [t for t in tokens if t.upper() not in UNIT_WORDS]
     return len("".join(real)) >= 3
+
+
+def is_for_deal_annotation(text: str) -> bool:
+    """Whether band text is a grocery N-FOR-X / X-FOR-N deal, not a SKU.
+
+    ``2.00 FOR 3 @ 3`` has letters (``FOR``), so ``_name_is_real`` treats
+    it as a named item and META absorption would refuse it. After removing
+    the deal expression, leftover letters must not form a real product
+    name -- two named SKUs that share a price (Wild Fork 8.98) stay
+    distinct.
+    """
+    t = re.sub(r"\s+", " ", (text or "").strip())
+    if not t:
+        return False
+    m = QTY_FOR_RE.search(t) or QTY_FOR_AMOUNT_FIRST_RE.search(t)
+    if not m:
+        return False
+    leftover = (t[: m.start()] + " " + t[m.end() :]).strip()
+    leftover = re.sub(r"[@$]|\d+(?:\.\d+)?", " ", leftover)
+    leftover = re.sub(r"\s+", " ", leftover).strip()
+    return not _name_is_real(leftover)
 
 
 def _words_with_merged_priceless_bands(
@@ -1055,11 +1178,13 @@ def extract_items(
     callers that have no summary (golden / Mac first pass).
 
     When a summary is present and the constrained decode is not already
-    a match, shattered column prices (``5.``+``79``, ``5``+``.99``) are
-    trial-merged in priceless bands. The merged decode ships only if
-    reconciliation status is an exact ``match`` -- stricter than
-    ``items_boundary_extension_guard``, which would accept Costco's
-    near-0.09 from an ungated ``5,``+``90`` → 5.90.
+    cent-exact against the printed total, shattered column prices
+    (``5.``+``79``, ``5``+``.99``) are trial-merged in priceless bands.
+    A tolerant ``match`` (1% of baseline) is not enough to skip the
+    retry: a missing ``$0.99`` beside a ``$100`` item is still a
+    ``match``. The merged decode ships only on a cent-exact hit --
+    Costco's ``5,``+``90`` → 5.90 can sit inside the 1% window on a
+    ≥$9 total.
     """
     from receipt_upload.line_items.blocks import (
         decode_band_blocks,
@@ -1074,7 +1199,12 @@ def extract_items(
         return constrained, False
 
     before = reconcile_extracted_items(constrained, summary)
-    if before.status == "match":
+    before_exact = (
+        before.item_sum is not None
+        and before.baseline is not None
+        and abs(before.item_sum - before.baseline) < 0.005
+    )
+    if before_exact:
         return constrained, False
 
     merged_words = _words_with_merged_priceless_bands(words, line_ids)
@@ -1088,10 +1218,18 @@ def extract_items(
     )
     merged_constrained = constrain_items_to_baseline(merged_items, summary)
     after = reconcile_extracted_items(merged_constrained, summary)
-    if (
-        _constraint_guard(_recon_eval(before), _recon_eval(after))
-        and after.status == "match"
-    ):
+    # ``match`` is tolerant (max $0.02 or 1% of baseline). Costco
+    # ``5,``+``90`` → 5.90 can land inside that window on a ≥$9 total.
+    # Keep the merge only on a cent-exact printed-total hit. Do not
+    # require ``_constraint_guard`` status improvement: a tolerant
+    # ``match`` that is not cent-exact (missing $0.99 on a $100 ticket)
+    # must still be replaceable by the exact merged decode.
+    exact = (
+        after.item_sum is not None
+        and after.baseline is not None
+        and abs(after.item_sum - after.baseline) < 0.005
+    )
+    if exact:
         return merged_constrained, False
     return constrained, False
 
@@ -1792,6 +1930,41 @@ def _is_non_product_row(row_words: list[dict]) -> bool:
     return False
 
 
+def _is_skippable_annotation_row(row_words: list[dict]) -> bool:
+    """SALE_PRICE / WAS / unpriced BOGO rows that must not end a scan.
+
+    ``adjacent_chain`` used to break on ``_is_non_product_row``, so a
+    Sale Price or BOGO annotation between garlic and You-Pay stopped the
+    ITEMS-tail walk. Skip those annotations (do not append, do not break)
+    so the next priced product can be reached. Settlement still breaks.
+    Claimed HEADER skip is a later stacked PR -- not here.
+    """
+
+    saw_sale_was = False
+    saw_unpriced_bogo = False
+    for band in band_words(row_words):
+        text = " ".join(str(word.get("text") or "") for word in band)
+        if WAS_PRICE_RE.search(text) or SALE_PRICE_RE.search(text):
+            saw_sale_was = True
+        if re.search(r"\bBOGO\b", text or "", re.IGNORECASE):
+            parsed = parse_band(band)
+            priced = parsed is not None and parsed.get("price") not in (
+                None,
+                0,
+            )
+            leftover = re.sub(r"\bBOGO\b", " ", text or "", flags=re.I)
+            leftover = re.sub(r"\d+\s*%", " ", leftover)
+            leftover = re.sub(r"\bOFF\b", " ", leftover, flags=re.I)
+            leftover = re.sub(r"[@$]|\d+(?:\.\d+)?", " ", leftover)
+            leftover = re.sub(r"\s+", " ", leftover).strip()
+            promo = bool(re.search(r"\d+\s*%|\bOFF\b", text or "", re.I))
+            # Promo remnants ("BOGO 50% OFF GROC") skip. A real name
+            # that merely contains BOGO ("DW Backwall BOGO") does not.
+            if not priced and (promo or not _name_is_real(leftover)):
+                saw_unpriced_bogo = True
+    return saw_sale_was or saw_unpriced_bogo
+
+
 def _is_priced_product_row(row_words: list[dict]) -> bool:
     """Whether one visual row is safe to consider as a boundary item."""
 
@@ -1819,8 +1992,10 @@ def propose_items_boundary_extension(
     adjacent to either edge are candidates.  Edge candidates are contiguous
     prefixes of the unclaimed zone (neutral barcode/SKU rows may separate
     printed product rows); claimed or settlement rows terminate the scan.
-    Among verified proposals, prefer the best status, then the smallest
-    absolute delta, then the smallest boundary change.
+    Unpriced SALE_PRICE / BOGO / WAS annotation rows are skipped (not
+    appended, not a terminator) so the scan can reach the next priced
+    product.  Among verified proposals, prefer the best status, then the
+    smallest absolute delta, then the smallest boundary change.
     """
 
     current = {int(line_id) for line_id in current_line_ids}
@@ -1884,6 +2059,8 @@ def propose_items_boundary_extension(
             row = visual_rows[index]
             if row["line_ids"] & (current | other_claimed):
                 break
+            if _is_skippable_annotation_row(row["words"]):
+                continue
             if _is_non_product_row(row["words"]):
                 break
             if _is_priced_product_row(row["words"]):
@@ -2019,6 +2196,9 @@ __all__ = [
     "NOISY_MONEY_RE",
     "NON_ITEM_SECTIONS",
     "PER_UNIT_RATE_RE",
+    "QTY_FOR_AMOUNT_FIRST_RE",
+    "QTY_FOR_RE",
+    "SLASH_UNIT_RATE_RE",
     "PRICE_RE",
     "PROVEN_CENT_TOLERANCE",
     "QTY_AT_RE",
@@ -2038,6 +2218,7 @@ __all__ = [
     "extract_items",
     "implied_unit_price",
     "is_column_header_row",
+    "is_for_deal_annotation",
     "is_proven",
     "is_settlement_row",
     "is_unit_rate_row",
