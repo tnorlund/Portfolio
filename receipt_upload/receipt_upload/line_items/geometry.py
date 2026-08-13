@@ -41,6 +41,13 @@ QTY_FOR_RE = re.compile(
     r"(?:(\d{1,2})\s*@\s*)?(\d{1,2})\s+FOR\s+\$?(\d+\.\d{2})",
     re.IGNORECASE,
 )
+# Amount-first deal annotation: "$2.00 FOR 3", "2.00 FOR 3 @ 3". Sprouts
+# prints this under the named SKU as a restatement of the same price;
+# QTY_FOR_RE cannot see it because the integer is after FOR, not before.
+QTY_FOR_AMOUNT_FIRST_RE = re.compile(
+    r"\$?(\d+\.\d{2})\s+FOR\s+(\d{1,2})(?:\s*@\s*\d{1,2})?",
+    re.IGNORECASE,
+)
 # OCR reads "@" as "g" in "4 @ $1.79"; the explicit $ keeps this from
 # matching real gram weights
 QTY_AT_OCR_RE = re.compile(r"(\d+(?:\.\d+)?)\s*g\s*\$(\d+\.\d{2,3})")
@@ -390,6 +397,16 @@ PER_UNIT_RATE_RE = re.compile(
     r"\bPER\s+(?:OZ|LB|LBS|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\b",
     re.IGNORECASE,
 )
+# Slash unit-rate annotation: "$2.99 /", "$2.99 / lb", "lb $2.99 / lb".
+# Whole-text only -- a qty line "1.23 lb @ $4.99/lb" contains the same
+# "$N.NN/" glyph but QTY_AT_RE already attaches it to the extended total.
+_SLASH_UNIT_WORD = r"(?:OZ|LB|LBS|1B|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)"
+SLASH_UNIT_RATE_RE = re.compile(
+    rf"^(?:{_SLASH_UNIT_WORD}\s+)*"
+    rf"\$?\d+\.\d{{2}}\s*/\s*"
+    rf"(?:{_SLASH_UNIT_WORD}\s*)*$",
+    re.IGNORECASE,
+)
 
 
 def is_unit_rate_row(text: str, n_amounts: int) -> bool:
@@ -400,8 +417,22 @@ def is_unit_rate_row(text: str, n_amounts: int) -> bool:
     is a genuine line total that must survive. Only a row whose single
     amount IS the rate is an annotation, which is what makes this safe
     without a merchant list.
+
+    ``$N.NN /`` (optional unit word) is the same annotation in slash
+    form. Qty-at lines that happen to contain ``$4.99/lb`` stay items:
+    QTY_AT_RE already owns that shape, and ``n_amounts >= 2`` keeps the
+    deli total.
     """
-    return n_amounts <= 1 and bool(PER_UNIT_RATE_RE.search(text or ""))
+    if n_amounts > 1:
+        return False
+    t = (text or "").strip()
+    if not t:
+        return False
+    if PER_UNIT_RATE_RE.search(t):
+        return True
+    if QTY_AT_RE.search(t):
+        return False
+    return bool(SLASH_UNIT_RATE_RE.fullmatch(t))
 
 
 # Non-product annotations that carry an amount but are never items:
@@ -750,6 +781,13 @@ def parse_band(band: list[dict]) -> Optional[dict[str, Any]]:
         unit_price = round(float(m.group(3)) / deal_n, 2)
         qty_word_idxs = words_in_span(m.start(), m.end())
     if qty is None:
+        m = QTY_FOR_AMOUNT_FIRST_RE.search(joined)
+        if m:
+            deal_n = float(m.group(2))
+            qty = deal_n
+            unit_price = round(float(m.group(1)) / deal_n, 2)
+            qty_word_idxs = words_in_span(m.start(), m.end())
+    if qty is None:
         m = QTY_AT_RE.search(joined) or QTY_AT_OCR_RE.search(joined)
         if m:
             qty = float(m.group(1))
@@ -1003,6 +1041,27 @@ def _name_is_real(name: str) -> bool:
     tokens = re.findall(r"[A-Za-z]{2,}", name or "")
     real = [t for t in tokens if t.upper() not in UNIT_WORDS]
     return len("".join(real)) >= 3
+
+
+def is_for_deal_annotation(text: str) -> bool:
+    """Whether band text is a grocery N-FOR-X / X-FOR-N deal, not a SKU.
+
+    ``2.00 FOR 3 @ 3`` has letters (``FOR``), so ``_name_is_real`` treats
+    it as a named item and META absorption would refuse it. After removing
+    the deal expression, leftover letters must not form a real product
+    name -- two named SKUs that share a price (Wild Fork 8.98) stay
+    distinct.
+    """
+    t = re.sub(r"\s+", " ", (text or "").strip())
+    if not t:
+        return False
+    m = QTY_FOR_RE.search(t) or QTY_FOR_AMOUNT_FIRST_RE.search(t)
+    if not m:
+        return False
+    leftover = (t[: m.start()] + " " + t[m.end() :]).strip()
+    leftover = re.sub(r"[@$]|\d+(?:\.\d+)?", " ", leftover)
+    leftover = re.sub(r"\s+", " ", leftover).strip()
+    return not _name_is_real(leftover)
 
 
 def _words_with_merged_priceless_bands(
@@ -1792,6 +1851,33 @@ def _is_non_product_row(row_words: list[dict]) -> bool:
     return False
 
 
+def _is_skippable_annotation_row(row_words: list[dict]) -> bool:
+    """SALE_PRICE / WAS / unpriced BOGO rows that must not end a scan.
+
+    ``adjacent_chain`` used to break on ``_is_non_product_row``, so a
+    Sale Price or BOGO annotation between garlic and You-Pay stopped the
+    ITEMS-tail walk. Skip those annotations (do not append, do not break)
+    so the next priced product can be reached. Settlement still breaks.
+    Claimed HEADER skip is a later stacked PR -- not here.
+    """
+
+    saw_sale_was = False
+    saw_unpriced_bogo = False
+    for band in band_words(row_words):
+        text = " ".join(str(word.get("text") or "") for word in band)
+        if WAS_PRICE_RE.search(text) or SALE_PRICE_RE.search(text):
+            saw_sale_was = True
+        if re.search(r"\bBOGO\b", text or "", re.IGNORECASE):
+            parsed = parse_band(band)
+            priced = parsed is not None and parsed.get("price") not in (
+                None,
+                0,
+            )
+            if not priced:
+                saw_unpriced_bogo = True
+    return saw_sale_was or saw_unpriced_bogo
+
+
 def _is_priced_product_row(row_words: list[dict]) -> bool:
     """Whether one visual row is safe to consider as a boundary item."""
 
@@ -1819,8 +1905,10 @@ def propose_items_boundary_extension(
     adjacent to either edge are candidates.  Edge candidates are contiguous
     prefixes of the unclaimed zone (neutral barcode/SKU rows may separate
     printed product rows); claimed or settlement rows terminate the scan.
-    Among verified proposals, prefer the best status, then the smallest
-    absolute delta, then the smallest boundary change.
+    Unpriced SALE_PRICE / BOGO / WAS annotation rows are skipped (not
+    appended, not a terminator) so the scan can reach the next priced
+    product.  Among verified proposals, prefer the best status, then the
+    smallest absolute delta, then the smallest boundary change.
     """
 
     current = {int(line_id) for line_id in current_line_ids}
@@ -1884,6 +1972,8 @@ def propose_items_boundary_extension(
             row = visual_rows[index]
             if row["line_ids"] & (current | other_claimed):
                 break
+            if _is_skippable_annotation_row(row["words"]):
+                continue
             if _is_non_product_row(row["words"]):
                 break
             if _is_priced_product_row(row["words"]):
@@ -2019,6 +2109,9 @@ __all__ = [
     "NOISY_MONEY_RE",
     "NON_ITEM_SECTIONS",
     "PER_UNIT_RATE_RE",
+    "QTY_FOR_AMOUNT_FIRST_RE",
+    "QTY_FOR_RE",
+    "SLASH_UNIT_RATE_RE",
     "PRICE_RE",
     "PROVEN_CENT_TOLERANCE",
     "QTY_AT_RE",
@@ -2038,6 +2131,7 @@ __all__ = [
     "extract_items",
     "implied_unit_price",
     "is_column_header_row",
+    "is_for_deal_annotation",
     "is_proven",
     "is_settlement_row",
     "is_unit_rate_row",
