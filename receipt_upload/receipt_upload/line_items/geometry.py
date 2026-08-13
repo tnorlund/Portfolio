@@ -1178,11 +1178,13 @@ def extract_items(
     callers that have no summary (golden / Mac first pass).
 
     When a summary is present and the constrained decode is not already
-    a match, shattered column prices (``5.``+``79``, ``5``+``.99``) are
-    trial-merged in priceless bands. The merged decode ships only if
-    reconciliation status is an exact ``match`` -- stricter than
-    ``items_boundary_extension_guard``, which would accept Costco's
-    near-0.09 from an ungated ``5,``+``90`` → 5.90.
+    cent-exact against the printed total, shattered column prices
+    (``5.``+``79``, ``5``+``.99``) are trial-merged in priceless bands.
+    A tolerant ``match`` (1% of baseline) is not enough to skip the
+    retry: a missing ``$0.99`` beside a ``$100`` item is still a
+    ``match``. The merged decode ships only on a cent-exact hit --
+    Costco's ``5,``+``90`` → 5.90 can sit inside the 1% window on a
+    ≥$9 total.
     """
     from receipt_upload.line_items.blocks import (
         decode_band_blocks,
@@ -1197,7 +1199,12 @@ def extract_items(
         return constrained, False
 
     before = reconcile_extracted_items(constrained, summary)
-    if before.status == "match":
+    before_exact = (
+        before.item_sum is not None
+        and before.baseline is not None
+        and abs(before.item_sum - before.baseline) < 0.005
+    )
+    if before_exact:
         return constrained, False
 
     merged_words = _words_with_merged_priceless_bands(words, line_ids)
@@ -1213,17 +1220,16 @@ def extract_items(
     after = reconcile_extracted_items(merged_constrained, summary)
     # ``match`` is tolerant (max $0.02 or 1% of baseline). Costco
     # ``5,``+``90`` → 5.90 can land inside that window on a ≥$9 total.
-    # Keep the merge only on a cent-exact printed-total hit.
+    # Keep the merge only on a cent-exact printed-total hit. Do not
+    # require ``_constraint_guard`` status improvement: a tolerant
+    # ``match`` that is not cent-exact (missing $0.99 on a $100 ticket)
+    # must still be replaceable by the exact merged decode.
     exact = (
         after.item_sum is not None
         and after.baseline is not None
         and abs(after.item_sum - after.baseline) < 0.005
     )
-    if (
-        _constraint_guard(_recon_eval(before), _recon_eval(after))
-        and after.status == "match"
-        and exact
-    ):
+    if exact:
         return merged_constrained, False
     return constrained, False
 
