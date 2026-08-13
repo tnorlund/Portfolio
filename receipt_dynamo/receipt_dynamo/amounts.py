@@ -18,7 +18,9 @@ _CURRENCY_SYMBOLS = r"$€£¥₹"
 # import them without forking the regexes.
 # ---------------------------------------------------------------------------
 
-TOTAL_KEYWORD_RE = re.compile(r"\b(total|amount\s+due|balance|authorized)\b", re.I)
+TOTAL_KEYWORD_RE = re.compile(
+    r"\b(total|amount\s+due|balance|authorized)\b", re.I
+)
 SUBTOTAL_KEYWORD_RE = re.compile(r"\bsub[-\s]?total\b", re.I)
 TAX_KEYWORD_RE = re.compile(r"\b(tax|vat)\b", re.I)
 NON_PAYMENT_SUMMARY_RE = re.compile(
@@ -81,7 +83,9 @@ def is_grand_total_line(line_text: str) -> bool:
         return False
     if NON_PAYMENT_SUMMARY_RE.search(line_text):
         return False
-    tokens = {token for token in re.split(r"[^a-z]+", line_text.lower()) if token}
+    tokens = {
+        token for token in re.split(r"[^a-z]+", line_text.lower()) if token
+    }
     return not (tokens & GRAND_TOTAL_DISQUALIFIER_TOKENS)
 
 

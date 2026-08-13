@@ -9,6 +9,8 @@ import logging
 import os
 from typing import Any
 
+from receipt_upload.tender import classify_tender_for_receipt
+
 # receipt_dynamo ships in the Lambda layer; receipt_upload.tender is
 # bundled into this Lambda's archive as a FileAsset referencing the
 # canonical source (stdlib-only module, same pattern as the line-item
@@ -17,7 +19,6 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 from receipt_dynamo.entities.receipt_summary import ReceiptSummary
 from receipt_dynamo.entities.receipt_summary_record import ReceiptSummaryRecord
-from receipt_upload.tender import classify_tender_for_receipt
 
 logger = logging.getLogger(__name__)
 
@@ -105,8 +106,10 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     word_labels = []
     last_key = None
     while True:
-        page_labels, last_key = dynamo_client.list_receipt_word_labels_for_receipt(
-            image_id, receipt_id, last_evaluated_key=last_key
+        page_labels, last_key = (
+            dynamo_client.list_receipt_word_labels_for_receipt(
+                image_id, receipt_id, last_evaluated_key=last_key
+            )
         )
         word_labels.extend(page_labels)
         if last_key is None:
@@ -116,7 +119,9 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
 
     # Lines + sections feed the tender classifier's payment zone
     lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
-    sections = dynamo_client.get_receipt_sections_from_receipt(image_id, receipt_id)
+    sections = dynamo_client.get_receipt_sections_from_receipt(
+        image_id, receipt_id
+    )
     tender = classify_tender_for_receipt(lines, sections, word_labels, words)
     total_line_ids = _total_line_ids(sections)
 
@@ -161,7 +166,9 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     # unbounded recompute loop.
     try:
         line_item_count = len(
-            dynamo_client.get_receipt_line_items_from_receipt(image_id, receipt_id)
+            dynamo_client.get_receipt_line_items_from_receipt(
+                image_id, receipt_id
+            )
         )
     except EntityNotFoundError:
         line_item_count = 0

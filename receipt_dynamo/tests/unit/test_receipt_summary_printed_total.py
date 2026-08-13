@@ -50,7 +50,9 @@ def _word(
     )
 
 
-def _label(line_id: int, word_id: int, label: str, status: str) -> ReceiptWordLabel:
+def _label(
+    line_id: int, word_id: int, label: str, status: str
+) -> ReceiptWordLabel:
     return ReceiptWordLabel(
         image_id=IMAGE_ID,
         receipt_id=1,
@@ -429,9 +431,7 @@ def test_negative_label_survives_total_line_with_stray_positive():
         _word(15, 1, "6.00", 0.5029, x=0.760),
     ]
     totals = MonetaryTotals(grand_total=-6.00)
-    _apply_printed_total_fallback(
-        totals, words, total_line_ids=[12, 14, 15]
-    )
+    _apply_printed_total_fallback(totals, words, total_line_ids=[12, 14, 15])
     assert totals.grand_total == pytest.approx(-6.00)
 
 

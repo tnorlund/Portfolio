@@ -72,9 +72,13 @@ class MonetaryTotals:
             if value is None:
                 continue
             if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise ValueError(f"{field_name} must be a finite number or None")
+                raise ValueError(
+                    f"{field_name} must be a finite number or None"
+                )
             if not isfinite(value):
-                raise ValueError(f"{field_name} must be a finite number or None")
+                raise ValueError(
+                    f"{field_name} must be a finite number or None"
+                )
             setattr(self, field_name, float(value))
 
     def to_dict(self) -> dict:
@@ -329,7 +333,7 @@ _LABEL_HANDLERS: dict[str, _HandlerFunc] = {
 def _extract_summary_fields(
     word_labels: list["ReceiptWordLabel"],
     word_text_lookup: dict[tuple[int, int], str],
-) -> tuple[MonetaryTotals, datetime | None, int]:
+) -> tuple[MonetaryTotals, datetime | None, int, int | None]:
     """Extract summary fields from word labels using dispatch pattern.
 
     Args:
@@ -414,7 +418,9 @@ def _word_height(word: "ReceiptWord") -> float:
 
 
 _CURRENCY_PREFIX_RE = re.compile(r"(?:[A-Za-z]{2,3})?\$+S?", re.I)
-_ISO_CURRENCY_PREFIX_RE = re.compile(r"(?:USD|EUR|GBP|CAD|AUD|JPY|MXN|CHF)S?", re.I)
+_ISO_CURRENCY_PREFIX_RE = re.compile(
+    r"(?:USD|EUR|GBP|CAD|AUD|JPY|MXN|CHF)S?", re.I
+)
 
 
 def _is_currency_prefix_token(text: str) -> bool:
@@ -493,7 +499,9 @@ def _signed_amounts_on_line_ids(
     amounts: list[float] = []
     for line_words in lines.values():
         line_words.sort(key=lambda w: getattr(w, "word_id", 0))
-        amounts.extend(amount for amount, _ in _signed_amount_words_on_line(line_words))
+        amounts.extend(
+            amount for amount, _ in _signed_amount_words_on_line(line_words)
+        )
     return amounts
 
 
@@ -517,7 +525,8 @@ def _is_grand_total_anchor(line_text: str) -> bool:
     (total + tips); anchoring on the tender row broke reconciliation.
     """
     return bool(
-        is_grand_total_line(line_text) and not TENDER_KEYWORD_RE.search(line_text)
+        is_grand_total_line(line_text)
+        and not TENDER_KEYWORD_RE.search(line_text)
     )
 
 
@@ -612,7 +621,9 @@ def find_printed_subtotal(words: list["ReceiptWord"]) -> float | None:
     anchored on subtotal rows and skipping total/tax/tender/savings
     rows when pairing across the y-band.
     """
-    return _find_anchored_amount(words, _is_subtotal_anchor, _is_subtotal_noise_line)
+    return _find_anchored_amount(
+        words, _is_subtotal_anchor, _is_subtotal_noise_line
+    )
 
 
 def find_printed_tax_words(
@@ -650,7 +661,9 @@ def find_printed_subtotal_words(
     words: list["ReceiptWord"],
 ) -> list[tuple[float, "ReceiptWord"]]:
     """Amount words anchored to a printed subtotal row."""
-    return _anchored_amount_words(words, _is_subtotal_anchor, _is_subtotal_noise_line)
+    return _anchored_amount_words(
+        words, _is_subtotal_anchor, _is_subtotal_noise_line
+    )
 
 
 def _find_anchored_amount(
@@ -686,7 +699,9 @@ def _anchored_amount_words(
         for line_id, line_words in lines.items()
     }
 
-    anchor_ids = [line_id for line_id, text in line_texts.items() if is_anchor(text)]
+    anchor_ids = [
+        line_id for line_id, text in line_texts.items() if is_anchor(text)
+    ]
     extra = {int(x) for x in (extra_anchor_ids or [])}
     for line_id in extra:
         if line_id not in lines or line_id in anchor_ids:
@@ -708,7 +723,9 @@ def _anchored_amount_words(
             continue
 
         # Pair with amount words in the anchor's y-band on other lines.
-        centers = [c for w in anchor_words if (c := _word_y_center(w)) is not None]
+        centers = [
+            c for w in anchor_words if (c := _word_y_center(w)) is not None
+        ]
         if not centers:
             continue
         anchor_y = sum(centers) / len(centers)
@@ -748,7 +765,9 @@ def _apply_printed_total_fallback(
     if section_ids:
         section_amounts = _signed_amounts_on_line_ids(words, section_ids)
         if section_amounts:
-            section_printed = max(section_amounts, key=lambda amount: (abs(amount), amount))
+            section_printed = max(
+                section_amounts, key=lambda amount: (abs(amount), amount)
+            )
 
     printed = find_printed_grand_total(words, total_line_ids=total_line_ids)
     fill = (
@@ -874,7 +893,9 @@ class ReceiptSummary(ReceiptIdentifierMixin):
     def __post_init__(self) -> None:
         """Validate identifiers and computed summary fields."""
         self._validate_receipt_identifiers()
-        if self.merchant_name is not None and not isinstance(self.merchant_name, str):
+        if self.merchant_name is not None and not isinstance(
+            self.merchant_name, str
+        ):
             raise ValueError("merchant_name must be a string or None")
         if self.date is not None and not isinstance(self.date, datetime):
             raise ValueError("date must be a datetime or None")
@@ -890,29 +911,41 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             and self.tender_class not in VALID_TENDER_CLASSES
         ):
             raise ValueError(
-                "tender_class must be one of " f"{sorted(VALID_TENDER_CLASSES)} or None"
+                "tender_class must be one of "
+                f"{sorted(VALID_TENDER_CLASSES)} or None"
             )
-        if self.card_network is not None and not isinstance(self.card_network, str):
+        if self.card_network is not None and not isinstance(
+            self.card_network, str
+        ):
             raise ValueError("card_network must be a string or None")
         if self.card_last4 is not None and (
-            not isinstance(self.card_last4, str) or not _LAST4_RE.match(self.card_last4)
+            not isinstance(self.card_last4, str)
+            or not _LAST4_RE.match(self.card_last4)
         ):
             raise ValueError("card_last4 must be a 4-digit string or None")
         if self.ledger is not None and self.ledger not in VALID_LEDGERS:
-            raise ValueError(f"ledger must be one of {sorted(VALID_LEDGERS)} or None")
+            raise ValueError(
+                f"ledger must be one of {sorted(VALID_LEDGERS)} or None"
+            )
         for field_name in ("bank_amount", "bank_match_confidence"):
             value = getattr(self, field_name)
             if value is None:
                 continue
             if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise ValueError(f"{field_name} must be a finite number or None")
+                raise ValueError(
+                    f"{field_name} must be a finite number or None"
+                )
             if not isfinite(value):
-                raise ValueError(f"{field_name} must be a finite number or None")
+                raise ValueError(
+                    f"{field_name} must be a finite number or None"
+                )
             setattr(self, field_name, float(value))
         if self.bank_match_confidence is not None and not (
             0.0 <= self.bank_match_confidence <= 1.0
         ):
-            raise ValueError("bank_match_confidence must be within [0, 1] or None")
+            raise ValueError(
+                "bank_match_confidence must be within [0, 1] or None"
+            )
 
     # Convenience properties for backwards compatibility
     @property
@@ -973,8 +1006,8 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         }
 
         # Extract values from labels
-        totals, date, item_count, grand_total_line_id = _extract_summary_fields(
-            word_labels, word_text_lookup
+        totals, date, item_count, grand_total_line_id = (
+            _extract_summary_fields(word_labels, word_text_lookup)
         )
         _apply_printed_total_fallback(
             totals,
@@ -1042,8 +1075,8 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         }
 
         # Extract values from labels
-        totals, date, item_count, grand_total_line_id = _extract_summary_fields(
-            word_labels, word_text_lookup
+        totals, date, item_count, grand_total_line_id = (
+            _extract_summary_fields(word_labels, word_text_lookup)
         )
         _apply_printed_total_fallback(
             totals,
