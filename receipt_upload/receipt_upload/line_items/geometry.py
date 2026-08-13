@@ -397,6 +397,14 @@ PER_UNIT_RATE_RE = re.compile(
     r"\bPER\s+(?:OZ|LB|LBS|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\b",
     re.IGNORECASE,
 )
+# Operand strip for leftover: the rate amount sits before PER, unlike
+# ``$2.99 / lb`` which SLASH_UNIT_RATE_RE already consumes. Do not eat a
+# trailing two-decimal — that is the extended total (``… per lb 0.96``).
+_PER_UNIT_AMOUNT_RE = re.compile(
+    r"\$?\d+\.\d{2}\s+"
+    r"\bPER\s+(?:OZ|LB|LBS|KG|G|GAL|EA|EACH|CT|PK|ITEM|UNIT)\b",
+    re.IGNORECASE,
+)
 # Slash unit-rate annotation: "$2.99 /", "$2.99 / lb", "lb $2.99 / lb".
 # ``Ib`` / ``1b`` are Vision's ``lb``. A qty-at prefix ("0.31 Ib @") may
 # glue onto the same band; leftover after stripping qty/units/at must not
@@ -429,25 +437,32 @@ def is_unit_rate_row(text: str, n_amounts: int) -> bool:
     that annotation: after stripping qty-at, slash-rate, units, and
     ``@``/``(a)``, nothing named remains. A named qty-at line
     (``SHALLOTS 0.57 lb @ $1.69``) keeps the product letters and stays
-    an item.     ``n_amounts >= 2`` keeps a deli ``per lb`` total, but a weight
-    token (``0.32 lb $2.99 / lb``) also parses as a second amount.
-    Slash-rate / qty-at rows therefore use leftover letters, not the
-    amount count: empty leftover is still the annotation. Glued
-    ``3@15.28 45.84`` (Home Depot) has the extended total after the
+    an item. ``n_amounts >= 2`` used to keep every spelled-out ``per lb``
+    row as an item, but a weight token (``0.32 lb $2.99 per lb``) also
+    parses as a second amount. Slash-rate / qty-at / PER rows therefore
+    use leftover letters, not the amount count, once more than one amount
+    is present: empty leftover is still the annotation. A single-amount
+    PER row (Yogurtland ``Weight: … per oz``) still returns true before
+    leftover, because ``Weight`` would otherwise look like a product.
+    Glued ``3@15.28 45.84`` (Home Depot) has the extended total after the
     qty-at token and must stay an item.
     """
     t = (text or "").strip()
     if not t:
         return False
-    if PER_UNIT_RATE_RE.search(t):
-        return n_amounts <= 1
+    if PER_UNIT_RATE_RE.search(t) and n_amounts <= 1:
+        # Yogurtland "Weight: 21.5 oz … $0.67 per oz": leftover letters
+        # include "Weight", so the operand path would keep it as an item.
+        # A single amount that IS the rate is still the annotation.
+        return True
     qty_m = QTY_AT_RE.search(t) or QTY_AT_OCR_RE.search(t)
     if qty_m:
         after_qty = (t[: qty_m.start()] + " " + t[qty_m.end() :]).strip()
         if re.search(r"\$?\d+\.\d{2}", after_qty):
             return False
     has_rate = bool(
-        SLASH_UNIT_RATE_RE.search(t)
+        PER_UNIT_RATE_RE.search(t)
+        or SLASH_UNIT_RATE_RE.search(t)
         or _UNIT_AFTER_SLASH_RE.search(t)
         or qty_m
         or _OCR_AT_RE.search(t)
@@ -456,6 +471,8 @@ def is_unit_rate_row(text: str, n_amounts: int) -> bool:
         return False
     remainder = QTY_AT_RE.sub(" ", t)
     remainder = QTY_AT_OCR_RE.sub(" ", remainder)
+    remainder = _PER_UNIT_AMOUNT_RE.sub(" ", remainder)
+    remainder = PER_UNIT_RATE_RE.sub(" ", remainder)
     remainder = SLASH_UNIT_RATE_RE.sub(" ", remainder)
     remainder = _UNIT_AFTER_SLASH_RE.sub(" ", remainder)
     remainder = _OCR_AT_RE.sub(" ", remainder)
@@ -1929,7 +1946,15 @@ def _is_skippable_annotation_row(row_words: list[dict]) -> bool:
                 None,
                 0,
             )
-            if not priced:
+            leftover = re.sub(r"\bBOGO\b", " ", text or "", flags=re.I)
+            leftover = re.sub(r"\d+\s*%", " ", leftover)
+            leftover = re.sub(r"\bOFF\b", " ", leftover, flags=re.I)
+            leftover = re.sub(r"[@$]|\d+(?:\.\d+)?", " ", leftover)
+            leftover = re.sub(r"\s+", " ", leftover).strip()
+            promo = bool(re.search(r"\d+\s*%|\bOFF\b", text or "", re.I))
+            # Promo remnants ("BOGO 50% OFF GROC") skip. A real name
+            # that merely contains BOGO ("DW Backwall BOGO") does not.
+            if not priced and (promo or not _name_is_real(leftover)):
                 saw_unpriced_bogo = True
     return saw_sale_was or saw_unpriced_bogo
 

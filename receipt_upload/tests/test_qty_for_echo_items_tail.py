@@ -19,6 +19,7 @@ from types import SimpleNamespace
 from receipt_dynamo.entities.receipt_section import ReceiptSection
 
 from receipt_upload.line_items.geometry import (
+    _is_skippable_annotation_row,
     evaluate_items_zone,
     extract_items,
     is_for_deal_annotation,
@@ -154,8 +155,11 @@ def test_slash_unit_rate_is_meta():
     assert is_unit_rate_row("1.94 1b $0.89 / lb", 2)
     assert is_unit_rate_row("1.19 lb a $2.49 /", 2)
     assert is_unit_rate_row("0.05 lb i $17.99/", 2)
+    # Spelled-out PER with a two-decimal weight is the same annotation.
+    assert is_unit_rate_row("0.32 lb $2.99 per lb", 2)
     # Extended total still on the band is the SKU price, not META.
     assert not is_unit_rate_row("0.32 lb $2.99 / lb 0.96", 2)
+    assert not is_unit_rate_row("0.32 lb $2.99 per lb 0.96", 2)
     # Named qty-at keeps the product; n_amounts>=2 keeps the deli total.
     # Glued ``N@unit total`` is the extended price, not a rate annotation.
     assert not is_unit_rate_row("SHALLOTS 0.57 lb @ $1.69", 1)
@@ -330,3 +334,39 @@ def test_items_tail_skips_bogo_and_sale_price_to_match():
     assert -2.00 not in prices
     assert 2.99 in prices
     assert 0.10 in prices
+
+
+def test_product_name_containing_bogo_is_not_a_skippable_annotation():
+    """Golden ``DW Backwall BOGO`` is a name-only SKU, not a promo row."""
+    product = [
+        w(1, 1, "DW", 0.05, 0.50),
+        w(1, 2, "Backwall", 0.18, 0.50),
+        w(1, 3, "BOGO", 0.40, 0.50),
+    ]
+    promo = [
+        w(1, 1, "BOGO", 0.05, 0.50),
+        w(1, 2, "50%", 0.18, 0.50),
+        w(1, 3, "OFF", 0.32, 0.50),
+        w(1, 4, "GROC", 0.46, 0.50),
+    ]
+    assert not _is_skippable_annotation_row(product)
+    assert _is_skippable_annotation_row(promo)
+
+
+def test_outside_unit_rate_donor_copies_qty_word_ids():
+    """OUTSIDE ``0.28 lb @ 7.99`` donates qty provenance, not just values."""
+    words = [
+        w(1, 1, "GARLIC", 0.05, 0.50),
+        w(1, 2, "2.24", 0.80, 0.50),
+        w(2, 1, "0.28", 0.05, 0.42),
+        w(2, 2, "lb", 0.18, 0.42),
+        w(2, 3, "@", 0.28, 0.42),
+        w(2, 4, "7.99", 0.50, 0.42),
+    ]
+    items, _ = extract_items(words, {1, 2}, summary={"subtotal": 2.24})
+    assert len(items) == 1
+    assert items[0]["quantity"] == 0.28
+    assert items[0]["unit_price"] == 7.99
+    ids = {(q["line_id"], q["word_id"]) for q in items[0]["qty_word_ids"]}
+    assert (2, 1) in ids
+    assert (2, 4) in ids

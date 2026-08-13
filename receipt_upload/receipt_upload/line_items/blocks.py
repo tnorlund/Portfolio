@@ -904,6 +904,7 @@ def decode_band_blocks(
                 ):
                     parsed["quantity"] = mp["quantity"]
                     parsed["unit_price"] = mp["unit_price"]
+                    parsed["qty_word_ids"] = list(mp.get("qty_word_ids") or [])
                     break
         if _sku_dominated(parsed.get("name") or ""):
             # Donor criterion is _name_is_real (>=3 alpha chars), NOT the
