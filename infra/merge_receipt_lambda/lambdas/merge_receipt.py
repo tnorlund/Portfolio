@@ -33,11 +33,13 @@ Environment Variables:
 """
 
 import io
+import json
 import logging
 import os
 from typing import Any
 
 import boto3
+from boto3.dynamodb.conditions import Key as DynamoKey
 from PIL import Image as PIL_Image
 
 logger = logging.getLogger()
@@ -459,6 +461,38 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # ============================================================
         # Step 13: Delete original receipts (highest ID first)
         # ============================================================
+        # Capture the source receipts' S3 asset keys before the entities
+        # are deleted — afterwards there is no record of them.
+        _CDN_KEY_ATTRS = (
+            "cdn_s3_key",
+            "cdn_webp_s3_key",
+            "cdn_avif_s3_key",
+            "cdn_thumbnail_s3_key",
+            "cdn_thumbnail_webp_s3_key",
+            "cdn_thumbnail_avif_s3_key",
+            "cdn_small_s3_key",
+            "cdn_small_webp_s3_key",
+            "cdn_small_avif_s3_key",
+            "cdn_medium_s3_key",
+            "cdn_medium_webp_s3_key",
+            "cdn_medium_avif_s3_key",
+        )
+        stale_assets: dict[str, list[str]] = {raw_bucket: [], site_bucket: []}
+        for rid in receipt_ids:
+            try:
+                src = client.get_receipt(image_id, rid)
+            except Exception:
+                logger.warning(
+                    "Could not load receipt %d to collect stale assets", rid
+                )
+                continue
+            if getattr(src, "raw_s3_key", None):
+                stale_assets[raw_bucket].append(src.raw_s3_key)
+            for attr in _CDN_KEY_ATTRS:
+                key = getattr(src, attr, None)
+                if key:
+                    stale_assets[site_bucket].append(key)
+
         deleted_receipts = []
         for rid in sorted(receipt_ids, reverse=True):
             logger.info("Deleting original receipt %d...", rid)
@@ -474,6 +508,104 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 )
 
         # ============================================================
+        # Step 13b: Purge the source receipts' child rows
+        # ============================================================
+        # delete_receipt removes only the parent Receipt row; historically
+        # the "enhanced compactor" deleted the children (lines, words,
+        # letters, labels, sections, summaries, ...) via the tombstone it
+        # left behind. That compactor was retired with the v2 ECS
+        # compaction worker, so without this step every merge strands
+        # 1,000+ orphan rows per source receipt (observed on three merges
+        # on 2026-08-13).
+        purged_rows = 0
+        table = boto3.resource("dynamodb").Table(table_name)
+        for rid in deleted_receipts:
+            prefix = f"RECEIPT#{rid:05d}"
+            last_key = None
+            while True:
+                query_kwargs = {
+                    "KeyConditionExpression": (
+                        DynamoKey("PK").eq(f"IMAGE#{image_id}")
+                        & DynamoKey("SK").begins_with(prefix)
+                    ),
+                    "ProjectionExpression": "PK, SK",
+                }
+                if last_key:
+                    query_kwargs["ExclusiveStartKey"] = last_key
+                page = table.query(**query_kwargs)
+                items = page.get("Items", [])
+                if items:
+                    with table.batch_writer() as batch:
+                        for item in items:
+                            batch.delete_item(
+                                Key={"PK": item["PK"], "SK": item["SK"]}
+                            )
+                    purged_rows += len(items)
+                last_key = page.get("LastEvaluatedKey")
+                if not last_key:
+                    break
+        logger.info("Purged %d orphaned child rows", purged_rows)
+
+        # ============================================================
+        # Step 13c: Delete the source receipts' stale S3 assets
+        # ============================================================
+        deleted_objects = 0
+        for bucket, keys in stale_assets.items():
+            unique_keys = sorted(set(keys))
+            for start in range(0, len(unique_keys), 1000):
+                chunk = unique_keys[start : start + 1000]
+                if not chunk:
+                    continue
+                try:
+                    s3_client.delete_objects(
+                        Bucket=bucket,
+                        Delete={"Objects": [{"Key": k} for k in chunk]},
+                    )
+                    deleted_objects += len(chunk)
+                except Exception:
+                    logger.warning(
+                        "Failed to delete %d stale objects from %s",
+                        len(chunk),
+                        bucket,
+                        exc_info=True,
+                    )
+        logger.info("Deleted %d stale S3 objects", deleted_objects)
+
+        # ============================================================
+        # Step 13d: Enqueue derived-row recompute for the merged receipt
+        # ============================================================
+        # The summary and line-item updaters consume SQS messages shaped
+        # {"entity_data": {"image_id", "receipt_id"}}. The merge writes
+        # its entities via batch puts whose stream events do not reach
+        # those queues, so without an explicit message the merged receipt
+        # never gets a RECEIPT#N#SUMMARY row (or ROW/LINE_ITEM rows) and
+        # is invisible to summary-driven features like the milk table.
+        recompute_enqueued = []
+        sqs_client = boto3.client("sqs")
+        recompute_message = json.dumps(
+            {
+                "entity_data": {
+                    "image_id": image_id,
+                    "receipt_id": new_receipt_id,
+                }
+            }
+        )
+        for env_var in ("SUMMARY_QUEUE_URL", "LINE_ITEM_QUEUE_URL"):
+            queue_url = os.environ.get(env_var)
+            if not queue_url:
+                logger.warning("%s not set; skipping recompute enqueue", env_var)
+                continue
+            try:
+                sqs_client.send_message(
+                    QueueUrl=queue_url, MessageBody=recompute_message
+                )
+                recompute_enqueued.append(env_var)
+            except Exception:
+                logger.warning(
+                    "Failed to enqueue recompute on %s", env_var, exc_info=True
+                )
+
+        # ============================================================
         # Step 14: Update Image entity receipt count
         # ============================================================
         remaining_receipts = client.get_receipts_from_image(image_id)
@@ -484,6 +616,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         result["status"] = "success"
         result["compaction_run_id"] = compaction_run_id
         result["deleted_receipts"] = deleted_receipts
+        result["purged_child_rows"] = purged_rows
+        result["deleted_stale_assets"] = deleted_objects
+        result["recompute_enqueued"] = recompute_enqueued
         logger.info("Merge complete: %s", result)
         return result
 

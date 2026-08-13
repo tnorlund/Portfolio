@@ -15,7 +15,8 @@ The Lambda can be invoked directly with:
 Architecture:
 - Container Lambda with all receipt_* packages
 - Reuses geometry and record-building utilities from combine_receipts
-- Uses enhanced compactor for cleanup of deleted receipts
+- Cleans up the source receipts itself (child rows + stale S3 assets);
+  the legacy enhanced compactor no longer exists
 """
 
 import json
@@ -50,7 +51,10 @@ class MergeReceiptLambda(ComponentResource):
     6. Creates new Receipt/Line/Word/Letter entities in warped space
     7. Migrates ReceiptWordLabels and ReceiptPlace
     8. Creates embeddings and waits for compaction
-    9. Deletes original receipts (compactor cleans up children)
+    9. Deletes original receipts, purges their orphaned child rows and
+       stale S3 assets, and enqueues summary/line-item recompute for the
+       merged receipt (the legacy enhanced compactor that used to clean
+       up children was retired with the v2 ECS compaction worker)
 
     Exports:
     - lambda_function: The Lambda function resource
@@ -68,6 +72,10 @@ class MergeReceiptLambda(ComponentResource):
         image_bucket_name: pulumi.Input[str],
         chromadb_bucket_name: pulumi.Input[str],
         chromadb_bucket_arn: pulumi.Input[str],
+        summary_queue_url: pulumi.Input[str],
+        summary_queue_arn: pulumi.Input[str],
+        line_item_queue_url: pulumi.Input[str],
+        line_item_queue_arn: pulumi.Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
@@ -201,6 +209,33 @@ class MergeReceiptLambda(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
+        # SQS send policy: after a merge the Lambda enqueues summary and
+        # line-item recompute messages for the merged receipt (the batch
+        # puts it performs do not produce the stream events those
+        # updaters are wired to).
+        sqs_policy = RolePolicy(
+            f"{name}-lambda-sqs-policy",
+            role=lambda_role.id,
+            policy=Output.all(
+                Output.from_input(summary_queue_arn),
+                Output.from_input(line_item_queue_arn),
+            ).apply(
+                lambda args: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["sqs:SendMessage"],
+                                "Resource": [args[0], args[1]],
+                            }
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=lambda_role),
+        )
+
         # ============================================================
         # Container Lambda
         # ============================================================
@@ -216,6 +251,8 @@ class MergeReceiptLambda(ComponentResource):
                 "SITE_BUCKET": site_bucket_name,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "OPENAI_API_KEY": openai_api_key,
+                "SUMMARY_QUEUE_URL": summary_queue_url,
+                "LINE_ITEM_QUEUE_URL": line_item_queue_url,
             },
         }
 
@@ -234,7 +271,8 @@ class MergeReceiptLambda(ComponentResource):
             lambda_config=lambda_config,
             platform="linux/arm64",
             opts=ResourceOptions(
-                parent=self, depends_on=[lambda_role, dynamodb_policy, s3_policy]
+                parent=self,
+                depends_on=[lambda_role, dynamodb_policy, s3_policy, sqs_policy],
             ),
         )
 
@@ -259,6 +297,10 @@ def create_merge_receipt_lambda(
     image_bucket_name: pulumi.Input[str],
     chromadb_bucket_name: pulumi.Input[str],
     chromadb_bucket_arn: pulumi.Input[str],
+    summary_queue_url: pulumi.Input[str],
+    summary_queue_arn: pulumi.Input[str],
+    line_item_queue_url: pulumi.Input[str],
+    line_item_queue_arn: pulumi.Input[str],
 ) -> MergeReceiptLambda:
     """
     Factory function to create the Merge Receipt Lambda.
@@ -271,6 +313,10 @@ def create_merge_receipt_lambda(
         image_bucket_name: Name of the upload-images bucket (original photos)
         chromadb_bucket_name: Name of the ChromaDB S3 bucket
         chromadb_bucket_arn: ARN of the ChromaDB S3 bucket
+        summary_queue_url: URL of the receipt-summary recompute queue
+        summary_queue_arn: ARN of the receipt-summary recompute queue
+        line_item_queue_url: URL of the line-item recompute queue
+        line_item_queue_arn: ARN of the line-item recompute queue
 
     Returns:
         MergeReceiptLambda component with lambda_arn output
@@ -284,4 +330,8 @@ def create_merge_receipt_lambda(
         image_bucket_name=image_bucket_name,
         chromadb_bucket_name=chromadb_bucket_name,
         chromadb_bucket_arn=chromadb_bucket_arn,
+        summary_queue_url=summary_queue_url,
+        summary_queue_arn=summary_queue_arn,
+        line_item_queue_url=line_item_queue_url,
+        line_item_queue_arn=line_item_queue_arn,
     )

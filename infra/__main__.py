@@ -1263,6 +1263,10 @@ merge_receipt_lambda = create_merge_receipt_lambda(
     image_bucket_name=upload_images.image_bucket.bucket,
     chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
     chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    summary_queue_url=chromadb_infrastructure.chromadb_queues.summary_queue_url,
+    summary_queue_arn=chromadb_infrastructure.chromadb_queues.summary_queue_arn,
+    line_item_queue_url=chromadb_infrastructure.chromadb_queues.line_item_queue_url,
+    line_item_queue_arn=chromadb_infrastructure.chromadb_queues.line_item_queue_arn,
 )
 pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
 pulumi.export(
