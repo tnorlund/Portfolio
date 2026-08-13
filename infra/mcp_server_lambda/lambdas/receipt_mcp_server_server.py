@@ -30,6 +30,7 @@ import base64
 import json
 import logging
 import os
+import re
 import sys
 import urllib.request
 from collections import defaultdict
@@ -1225,22 +1226,99 @@ Optionally filter to a single line_id to reduce output.""",
             },
         ),
         Tool(
+            name="find_places",
+            description="""Search Google Places directly and return candidates.
+
+Runs phone, address, and free-text searches (each returns its best match)
+and returns the deduplicated candidates. Use this to identify the correct
+business for a receipt, then write it with set_receipt_place.
+
+Never modifies receipt data. Note: Places lookups are cached as
+PlacesCache rows in the receipts table (cache writes on miss, hit
+counters on hit) - the same cache the rest of the pipeline uses.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Free-text search, e.g. 'Trader Joe's 2716 N Green Valley Pkwy Henderson NV'",
+                    },
+                    "phone": {
+                        "type": "string",
+                        "description": "Phone number from the receipt (any format, 10+ digits)",
+                    },
+                    "address": {
+                        "type": "string",
+                        "description": "Street address from the receipt",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="set_receipt_place",
+            description="""Set a receipt's merchant/place directly (no Lambda, no inner LLM).
+
+Updates the ReceiptPlace record (creating it if missing) and keeps the
+denormalized ReceiptSummary merchant_name in sync. Use after verifying the
+correct business via get_receipt + find_places.
+
+WARNING: This WRITES to DynamoDB.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {"type": "string", "description": "Image ID"},
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "merchant_name": {
+                        "type": "string",
+                        "description": "Correct business name (matches corpus casing, e.g. 'Trader Joe's')",
+                    },
+                    "place_id": {
+                        "type": "string",
+                        "description": "Google place_id (from find_places), if known",
+                    },
+                    "formatted_address": {
+                        "type": "string",
+                        "description": "Formatted address, if known",
+                    },
+                    "phone_number": {
+                        "type": "string",
+                        "description": "Phone number, if known",
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "Why this place is correct (audit trail)",
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Match confidence 0.0-1.0 (default 1.0)",
+                    },
+                    "validation_status": {
+                        "type": "string",
+                        "enum": ["MATCHED", "UNSURE", "NO_MATCH"],
+                        "description": "Match quality status (default MATCHED)",
+                    },
+                },
+                "required": ["image_id", "receipt_id", "merchant_name"],
+            },
+        ),
+        Tool(
             name="fix_place",
-            description="""Fix an incorrect merchant/place assignment on a receipt.
+            description="""Fix an incorrect merchant/place assignment on a receipt (runs locally).
 
-Invokes the fix-place Lambda which uses an LLM agent to:
-1. Read the receipt content (lines, words, labels)
-2. Extract merchant hints (name, address, phone) from the receipt text
-3. Search Google Places for the correct match
-4. Update the ReceiptPlace record in DynamoDB
+Extracts merchant/address/phone hints from the receipt's labeled words,
+searches Google Places directly, and:
+- applies the match immediately when it is unambiguous (phone digits or
+  street number confirm exactly one candidate), returning status "fixed";
+- otherwise returns status "needs_decision" with the hints and candidates
+  so YOU decide, then call set_receipt_place with the right values.
 
-Use this when a receipt's merchant name is wrong (e.g., "Mouthful Eatery"
-when the receipt clearly says "WHOLE FOODS MARKET").
+No Lambda, no inner LLM: you are the deciding agent.
 
-Returns the old and new merchant names, the new place_id, and confidence.
-
-WARNING: This WRITES to DynamoDB. Verify the receipt is misidentified first
-using get_receipt to read its content.""",
+WARNING: This can WRITE to DynamoDB (the unambiguous case). Verify the
+receipt is misidentified first using get_receipt.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -2276,8 +2354,30 @@ async def call_tool(
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments.get("line_id"),
             )
+        elif name == "find_places":
+            result = await find_places_impl(
+                query=arguments.get("query"),
+                phone=arguments.get("phone"),
+                address=arguments.get("address"),
+            )
+        elif name == "set_receipt_place":
+            result = await set_receipt_place_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                merchant_name=arguments["merchant_name"],
+                place_id=arguments.get("place_id"),
+                formatted_address=arguments.get("formatted_address"),
+                phone_number=arguments.get("phone_number"),
+                reasoning=arguments.get("reasoning"),
+                confidence=arguments.get("confidence", 1.0),
+                validation_status=arguments.get(
+                    "validation_status", "MATCHED"
+                ),
+            )
         elif name == "fix_place":
             result = await fix_place_impl(
+                dynamo_client,
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 reason=arguments["reason"],
@@ -3970,20 +4070,616 @@ async def _invoke_lambda(function_name: str, payload: dict) -> dict:
     return response_payload
 
 
+# ---------------------------------------------------------------------------
+# Local place fixing (no Lambda). The old fix-place Lambda wrapped its own
+# LLM agent; since the MCP caller is already an LLM with the receipt in
+# context, these tools just supply data (Places search) and a write
+# primitive, and hand ambiguous decisions back to the caller.
+# ---------------------------------------------------------------------------
+
+_places_client = None
+
+
+def _get_places_client():
+    """Lazily construct a Google Places client from the environment."""
+    global _places_client
+    if _places_client is None:
+        api_key = os.environ.get(
+            "GOOGLE_PLACES_API_KEY"
+        ) or _load_config().get("google_places_api_key")
+        if not api_key:
+            raise RuntimeError(
+                "GOOGLE_PLACES_API_KEY is not set in the MCP server "
+                "environment. Add it to the receipt-tools entry in "
+                "~/.claude.json (value: "
+                "`pulumi config get portfolio:GOOGLE_PLACES_API_KEY`)."
+            )
+        from receipt_places import PlacesClient, PlacesConfig
+
+        # Point the Places cache at the same receipts table this server
+        # uses (PlacesConfig defaults to a nonexistent "receipts" table).
+        config = _load_config()
+        _places_client = PlacesClient(
+            config=PlacesConfig(
+                api_key=api_key,
+                table_name=config["dynamodb_table_name"],
+            )
+        )
+    return _places_client
+
+
+def _digits(value: str | None) -> str:
+    return "".join(c for c in (value or "") if c.isdigit())
+
+
+def _place_to_candidate(place, source: str) -> dict:
+    return {
+        "source": source,
+        "place_id": place.place_id,
+        "name": place.name,
+        "formatted_address": place.formatted_address,
+        "phone_number": place.formatted_phone_number,
+        "types": (place.types or [])[:5],
+        "business_status": place.business_status,
+    }
+
+
+def _search_place_candidates(
+    query: str | None = None,
+    phone: str | None = None,
+    address: str | None = None,
+) -> list[dict]:
+    """Run the available Places searches and return deduplicated candidates."""
+    places = _get_places_client()
+    candidates: list[dict] = []
+    seen: set[str] = set()
+
+    searches = []
+    if phone and len(_digits(phone)) >= 10:
+        searches.append(("phone", lambda: places.search_by_phone(phone)))
+    if address:
+        searches.append(("address", lambda: places.search_by_address(address)))
+    if query:
+        searches.append(("text", lambda: places.search_by_text(query)))
+
+    for source, run in searches:
+        try:
+            place = run()
+        except Exception:
+            logger.exception("Places %s search failed", source)
+            continue
+        if place and place.place_id and place.place_id not in seen:
+            seen.add(place.place_id)
+            candidates.append(_place_to_candidate(place, source))
+    return candidates
+
+
+def _collect_receipt_hints(
+    dynamo_client, image_id: str, receipt_id: int
+) -> dict:
+    """Pull merchant/address/phone hints from the receipt's labeled words."""
+    words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
+    text_by_key = {(w.line_id, w.word_id): w.text for w in words}
+
+    labels = []
+    last_key = None
+    while True:
+        page, last_key = dynamo_client.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id, last_evaluated_key=last_key
+        )
+        labels.extend(page)
+        if last_key is None:
+            break
+
+    hints: dict[str, list[tuple[tuple[int, int], str]]] = {
+        "MERCHANT_NAME": [],
+        "ADDRESS_LINE": [],
+        "PHONE_NUMBER": [],
+    }
+    for label in labels:
+        if label.label in hints and label.validation_status != "INVALID":
+            key = (label.line_id, label.word_id)
+            text = text_by_key.get(key)
+            if text:
+                hints[label.label].append((key, text))
+
+    def joined(name: str) -> str:
+        return " ".join(t for _, t in sorted(hints[name]))
+
+    # Phones: group per line and keep only plausible numbers (10-11 digits,
+    # not a run of a single repeated digit - LayoutLM sometimes labels EMV
+    # fields like "TVR: 0000000000" as PHONE_NUMBER).
+    phone_by_line: dict[int, list[tuple[tuple[int, int], str]]] = {}
+    for key, text in hints["PHONE_NUMBER"]:
+        phone_by_line.setdefault(key[0], []).append((key, text))
+    phones = []
+    for line_id in sorted(phone_by_line):
+        candidate = " ".join(t for _, t in sorted(phone_by_line[line_id]))
+        digits = _digits(candidate)
+        if 10 <= len(digits) <= 11 and len(set(digits)) > 2:
+            phones.append(candidate)
+
+    # Fragments for matching: labeled phone text often misses the area
+    # code ("433-6773"), which still suffix-matches a candidate's number.
+    fragments = []
+    for line_id in sorted(phone_by_line):
+        digits = _digits(
+            " ".join(t for _, t in sorted(phone_by_line[line_id]))
+        )
+        if len(digits) >= 7 and len(set(digits)) > 2:
+            fragments.append(digits[-10:])
+
+    return {
+        "merchant": joined("MERCHANT_NAME"),
+        "address": joined("ADDRESS_LINE"),
+        "phone": phones[0] if phones else "",
+        "phones": phones,
+        "phone_fragments": fragments,
+    }
+
+
+async def find_places_impl(
+    query: str | None = None,
+    phone: str | None = None,
+    address: str | None = None,
+) -> dict:
+    """Search Google Places directly and return candidates."""
+    try:
+        if not any([query, phone, address]):
+            return {"error": "Provide at least one of query, phone, address"}
+        candidates = await asyncio.to_thread(
+            _search_place_candidates, query, phone, address
+        )
+        return {"candidates": candidates, "count": len(candidates)}
+    except Exception as e:
+        logger.exception("Error searching places")
+        return {"error": str(e)}
+
+
+async def set_receipt_place_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    merchant_name: str,
+    place_id: str | None = None,
+    formatted_address: str | None = None,
+    phone_number: str | None = None,
+    reasoning: str | None = None,
+    validated_by: str = "INFERENCE",
+    confidence: float = 1.0,
+    validation_status: str = "MATCHED",
+    matched_fields: list[str] | None = None,
+) -> dict:
+    """Write the ReceiptPlace (and denormalized summary merchant) directly.
+
+    validated_by must be a ValidationMethod value (PHONE_LOOKUP,
+    ADDRESS_LOOKUP, NEARBY_LOOKUP, TEXT_SEARCH, INFERENCE); agent/manual
+    decisions record as INFERENCE."""
+    try:
+        from datetime import datetime, timezone
+
+        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+        from receipt_dynamo.entities.receipt_place import ReceiptPlace
+
+        # Friendly input validation (the entity revalidates at
+        # serialization time via to_item/__post_init__, but these produce
+        # clear errors instead of stack traces).
+        if not (merchant_name or "").strip():
+            return {"error": "merchant_name cannot be empty"}
+        if not 0.0 <= float(confidence) <= 1.0:
+            return {"error": "confidence must be between 0.0 and 1.0"}
+        if validation_status not in ("MATCHED", "UNSURE", "NO_MATCH"):
+            return {
+                "error": (
+                    "validation_status must be MATCHED, UNSURE, or NO_MATCH"
+                )
+            }
+
+        def _write():
+            # Refuse writes for nonexistent receipts: a typo'd id would
+            # otherwise create a durable orphan PLACE row (nothing cleans
+            # those up - the summary tombstone guard only covers
+            # summaries).
+            dynamo_client.get_receipt(image_id, receipt_id)
+
+            before = None
+            try:
+                place = dynamo_client.get_receipt_place(image_id, receipt_id)
+                before = {
+                    "merchant_name": place.merchant_name,
+                    "place_id": place.place_id,
+                }
+                merchant_changed = (
+                    merchant_name.strip().lower()
+                    != (place.merchant_name or "").strip().lower()
+                )
+                identity_changed = (
+                    place_id is not None and place_id != place.place_id
+                ) or (place_id is None and merchant_changed)
+                if identity_changed:
+                    # The business itself changed: clear place-derived
+                    # metadata so stale category/coords/hours from the
+                    # wrong business don't survive the correction.
+                    place.merchant_category = ""
+                    place.merchant_types = []
+                    place.formatted_address = ""
+                    place.short_address = ""
+                    place.address_components = {}
+                    place.latitude = None
+                    place.longitude = None
+                    place.viewport_ne_lat = None
+                    place.viewport_ne_lng = None
+                    place.viewport_sw_lat = None
+                    place.viewport_sw_lng = None
+                    place.plus_code = ""
+                    place.phone_number = ""
+                    place.phone_intl = ""
+                    place.website = ""
+                    place.maps_url = ""
+                    place.business_status = ""
+                    place.open_now = None
+                    place.hours_summary = []
+                    place.hours_data = {}
+                    place.photo_references = []
+                    place.matched_fields = []
+                    place.confidence = 0.0
+                    if place_id is None:
+                        # merchant replaced with no new Google identity:
+                        # drop the stale place_id rather than keep the
+                        # wrong business's ID attached
+                        place.place_id = ""
+                place.merchant_name = merchant_name
+                if place_id is not None:
+                    place.place_id = place_id
+                if formatted_address is not None:
+                    place.formatted_address = formatted_address
+                if phone_number is not None:
+                    place.phone_number = phone_number
+                place.validated_by = validated_by
+                place.confidence = confidence
+                place.validation_status = validation_status
+                place.matched_fields = list(matched_fields or [])
+                if reasoning:
+                    place.reasoning = reasoning
+                # get_best_receipt_place breaks ties by recency when
+                # combining fragments; a correction must win over older
+                # wrong records.
+                place.timestamp = datetime.now(timezone.utc)
+                dynamo_client.update_receipt_place(place)
+            except EntityNotFoundError:
+                place = ReceiptPlace(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    place_id=place_id or "",
+                    merchant_name=merchant_name,
+                    formatted_address=formatted_address or "",
+                    phone_number=phone_number or "",
+                    validated_by=validated_by,
+                    reasoning=reasoning or "",
+                    confidence=confidence,
+                    validation_status=validation_status,
+                    matched_fields=list(matched_fields or []),
+                )
+                dynamo_client.add_receipt_place(place)
+
+            # Keep the denormalized summary merchant in sync (the milk
+            # table and other summary-driven views read it). The summary
+            # entity is read-only, so patch the row directly; a missing
+            # row is fine - the stream recomputes it from the place.
+            import boto3
+            import botocore.exceptions
+
+            table = boto3.resource("dynamodb").Table(dynamo_client.table_name)
+            try:
+                table.update_item(
+                    Key={
+                        "PK": f"IMAGE#{image_id}",
+                        "SK": f"RECEIPT#{receipt_id:05d}#SUMMARY",
+                    },
+                    UpdateExpression="SET merchant_name = :m",
+                    ConditionExpression="attribute_exists(PK)",
+                    ExpressionAttributeValues={":m": merchant_name},
+                )
+                summary_updated = True
+            except botocore.exceptions.ClientError as ce:
+                if (
+                    ce.response["Error"]["Code"]
+                    != "ConditionalCheckFailedException"
+                ):
+                    raise
+                summary_updated = False
+            return before, summary_updated
+
+        try:
+            before, summary_updated = await asyncio.to_thread(_write)
+        except EntityNotFoundError:
+            return {
+                "error": (
+                    f"Receipt {receipt_id} on image {image_id} does not "
+                    "exist; refusing to create an orphan place row"
+                )
+            }
+        return {
+            "success": True,
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "before": before,
+            "after": {"merchant_name": merchant_name, "place_id": place_id},
+            "summary_updated": summary_updated,
+        }
+    except Exception as e:
+        logger.exception("Error setting receipt place")
+        return {"error": str(e)}
+
+
 async def fix_place_impl(
+    dynamo_client,
     image_id: str,
     receipt_id: int,
     reason: str,
 ) -> dict:
-    """Invoke the fix-place Lambda to correct a receipt's merchant/place."""
+    """Fix a receipt's place locally: extract hints, search Places, and
+    either apply an unambiguous match or return candidates for the
+    calling agent to decide (then call set_receipt_place)."""
     try:
-        env = os.environ.get("PORTFOLIO_ENV", "dev")
-        return await _invoke_lambda(
-            f"fix-place-{env}-fix-place",
-            {"image_id": image_id, "receipt_id": receipt_id, "reason": reason},
+        hints = await asyncio.to_thread(
+            _collect_receipt_hints, dynamo_client, image_id, receipt_id
         )
+        current = None
+        try:
+            place = await asyncio.to_thread(
+                dynamo_client.get_receipt_place, image_id, receipt_id
+            )
+            current = {
+                "merchant_name": place.merchant_name,
+                "place_id": place.place_id,
+                "formatted_address": place.formatted_address,
+                "phone_number": place.phone_number,
+            }
+        except Exception:
+            pass
+
+        query = " ".join(v for v in (hints["merchant"], hints["address"]) if v)
+        candidates = await asyncio.to_thread(
+            _search_place_candidates,
+            query or None,
+            hints["phone"] or None,
+            hints["address"] or None,
+        )
+
+        # Text-search results omit phone numbers (field mask); enrich
+        # candidates from place details so phone matching can work.
+        def _enrich(cands):
+            places = _get_places_client()
+            for c in cands:
+                if c.get("phone_number") or not c.get("place_id"):
+                    continue
+                try:
+                    details = places.get_place_details(c["place_id"])
+                except Exception:
+                    continue
+                if details:
+                    c["phone_number"] = details.formatted_phone_number
+                    c["formatted_address"] = (
+                        c.get("formatted_address") or details.formatted_address
+                    )
+            return cands
+
+        candidates = await asyncio.to_thread(_enrich, candidates)
+
+        # An unambiguous match: the receipt's phone digits equal the
+        # candidate's, or the receipt's street number appears in the
+        # candidate address. Apply it directly.
+        def _usable(c):
+            # Mirrors receipt_agent place_finder tiered._place_is_usable:
+            # reject "places" that are really just addresses - the class
+            # of Places result that caused address-as-merchant records.
+            if not c.get("place_id") or not c.get("name"):
+                return False
+            types = {str(t).lower() for t in (c.get("types") or [])}
+            address_types = {"premise", "street_address", "subpremise"}
+            business_types = {"establishment", "point_of_interest"}
+            return not (types & address_types and not types & business_types)
+
+        def _tokens(value):
+            return {
+                t
+                for t in re.sub(
+                    r"[^a-z0-9 ]", " ", (value or "").lower()
+                ).split()
+                if len(t) >= 3
+            }
+
+        merchant_tokens = _tokens(hints["merchant"])
+
+        def _names_agree(candidate_name):
+            # Meaningful agreement, not a single shared token: the overlap
+            # must cover most of the shorter name ("Trader Joe's" vs
+            # "Joe's Seafood" shares only "joe" and must NOT pass).
+            cand_tokens = _tokens(candidate_name)
+            if not merchant_tokens or not cand_tokens:
+                return False
+            overlap = len(merchant_tokens & cand_tokens)
+            shorter = min(len(merchant_tokens), len(cand_tokens))
+            if overlap / shorter < 0.6:
+                return False
+            # A single generic token ("Market") is not agreement: with a
+            # one-token hint, require the candidate name to be that
+            # token exactly.
+            if len(merchant_tokens) == 1:
+                return cand_tokens == merchant_tokens
+            return True
+
+        def _street_number(address):
+            # First plausible house number anywhere in the hint: stray
+            # city/header words can precede the street line in
+            # ADDRESS_LINE labels.
+            for token in (address or "").split():
+                t = token.strip(".,#")
+                if t.isdigit() and 1 <= len(t) <= 6:
+                    return t
+            return ""
+
+        _US_STATES = {
+            "AL",
+            "AK",
+            "AZ",
+            "AR",
+            "CA",
+            "CO",
+            "CT",
+            "DE",
+            "FL",
+            "GA",
+            "HI",
+            "ID",
+            "IL",
+            "IN",
+            "IA",
+            "KS",
+            "KY",
+            "LA",
+            "ME",
+            "MD",
+            "MA",
+            "MI",
+            "MN",
+            "MS",
+            "MO",
+            "MT",
+            "NE",
+            "NV",
+            "NH",
+            "NJ",
+            "NM",
+            "NY",
+            "NC",
+            "ND",
+            "OH",
+            "OK",
+            "OR",
+            "PA",
+            "RI",
+            "SC",
+            "SD",
+            "TN",
+            "TX",
+            "UT",
+            "VT",
+            "VA",
+            "WA",
+            "WV",
+            "WI",
+            "WY",
+            "DC",
+        }
+
+        def _state(address):
+            tokens = re.sub(
+                r"[^A-Za-z ]", " ", (address or "").upper()
+            ).split()
+            for t in reversed(tokens):
+                if t in _US_STATES:
+                    return t
+            return ""
+
+        fragments = hints.get("phone_fragments", [])
+        receipt_street = _street_number(hints["address"])
+        receipt_state = _state(hints["address"])
+        strong = []
+        for c in candidates:
+            # Auto-apply is deliberately strict (mirrors the tiered
+            # resolver's invariants): usable business listing, meaningful
+            # merchant-name agreement, at least one exact corroboration
+            # (phone or street number), and NO active clue conflict -
+            # a chain's corporate phone can match while the address
+            # identifies a different location.
+            if not _usable(c):
+                continue
+            if not _names_agree(c.get("name")):
+                continue
+            cand_phone = _digits(c.get("phone_number"))[-10:]
+            phone_match = bool(cand_phone) and any(
+                cand_phone.endswith(f) or f.endswith(cand_phone)
+                for f in fragments
+            )
+            phone_conflict = (
+                bool(cand_phone) and bool(fragments) and not phone_match
+            )
+            cand_street = _street_number(c.get("formatted_address"))
+            addr_match = (
+                bool(receipt_street)
+                and bool(cand_street)
+                and receipt_street == cand_street
+            )
+            addr_conflict = (
+                bool(receipt_street)
+                and bool(cand_street)
+                and receipt_street != cand_street
+            )
+            cand_state = _state(c.get("formatted_address"))
+            state_conflict = (
+                bool(receipt_state)
+                and bool(cand_state)
+                and receipt_state != cand_state
+            )
+            if phone_conflict or addr_conflict or state_conflict:
+                continue
+            if phone_match or addr_match:
+                strong.append((c, phone_match, addr_match))
+
+        if len(strong) == 1:
+            c, phone_match, addr_match = strong[0]
+            result = await set_receipt_place_impl(
+                dynamo_client,
+                image_id,
+                receipt_id,
+                merchant_name=c["name"],
+                place_id=c["place_id"],
+                formatted_address=c["formatted_address"],
+                phone_number=c["phone_number"],
+                reasoning=(
+                    f"{reason} | matched via "
+                    f"{'phone' if phone_match else 'street number'}"
+                ),
+                validated_by=(
+                    "PHONE_LOOKUP" if phone_match else "ADDRESS_LOOKUP"
+                ),
+                confidence=0.9 if phone_match else 0.85,
+                validation_status="MATCHED",
+                matched_fields=(["phone"] if phone_match else ["address"])
+                + ["merchant_name"],
+            )
+            if result.get("success"):
+                result["status"] = "fixed"
+                result["candidate"] = c
+                result["hints"] = hints
+                return result
+            return {
+                "status": "needs_decision",
+                "hints": hints,
+                "current": current,
+                "candidates": candidates,
+                "write_error": result.get("error"),
+                "next_step": (
+                    "Automatic apply failed; review candidates and call "
+                    "set_receipt_place directly."
+                ),
+            }
+
+        return {
+            "status": "needs_decision",
+            "hints": hints,
+            "current": current,
+            "candidates": candidates,
+            "next_step": (
+                "Review the candidates against the receipt content and call "
+                "set_receipt_place with the correct merchant_name/place_id "
+                "(or with receipt-derived values if none match)."
+            ),
+        }
     except Exception as e:
-        logger.exception("Error invoking fix-place Lambda")
+        logger.exception("Error fixing place locally")
         return {"error": str(e)}
 
 
