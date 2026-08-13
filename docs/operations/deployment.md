@@ -4,7 +4,7 @@
 
 - AWS CLI configured with appropriate credentials
 - Pulumi CLI installed and authenticated
-- Node.js 18+ and Python 3.13+ installed
+- Node.js 20.9+ (Node.js 22 recommended) and Python 3.13+ installed
 - Access to production AWS account
 
 ## Deployment Environments

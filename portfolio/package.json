@@ -2,6 +2,9 @@
   "name": "portfolio",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "dependencies": {
     "@react-spring/web": "^10.0.3",
     "@tanstack/react-query": "^5.101.4",
@@ -51,7 +54,6 @@
   "overrides": {
     "tmp": "0.2.4",
     "tar-fs": ">=3.1.1",
-    "playwright": ">=1.55.1",
     "lodash": ">=4.17.23",
     "lodash-es": ">=4.17.23"
   },
@@ -61,7 +63,7 @@
     "@lhci/cli": "^0.15.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@next/bundle-analyzer": "16.1.6",
-    "@playwright/test": "^1.61.0",
+    "@playwright/test": "^1.62.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
