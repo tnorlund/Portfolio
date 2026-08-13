@@ -738,7 +738,11 @@ def decode_band_blocks(
     # an ADJACENT price band when its qty*unit explains that neighbor's
     # price, or when it merely echoes the neighbor's price with SKU/qty
     # signature. Absorbed bands transplant quantity and stop being items.
-    from receipt_upload.line_items.geometry import SKU_LIKE_RE, _name_is_real
+    from receipt_upload.line_items.geometry import (
+        SKU_LIKE_RE,
+        _name_is_real,
+        is_for_deal_annotation,
+    )
 
     # zone price column (same convention as decode_blocks: right-most
     # amount-word x; "in column" = within 0.15)
@@ -753,7 +757,16 @@ def decode_band_blocks(
     absorbed: set[int] = set()
     for pos, p in enumerate(price_idx):
         mp = parsed_cache[p]
-        if mp is None or _name_is_real(mp.get("name") or ""):
+        if mp is None:
+            continue
+        for_deal = is_for_deal_annotation(
+            mp.get("raw_text") or bands[p]["text"]
+        )
+        # FOR-deal annotations ("2.00 FOR 3 @ 3") carry letters, so
+        # _name_is_real is true and the unnamed-echo path never runs.
+        # A named SKU that is not a FOR-deal still skips absorption
+        # (Wild Fork two items at 8.98).
+        if _name_is_real(mp.get("name") or "") and not for_deal:
             continue
         qty, unit = mp.get("quantity"), mp.get("unit_price")
         for npos in (pos - 1, pos + 1):
@@ -785,6 +798,7 @@ def decode_band_blocks(
                 and (
                     SKU_LIKE_RE.search(mp.get("raw_text") or "")
                     or qty is not None
+                    or for_deal
                 )
             ):
                 if qty is not None and nb.get("quantity") is None:
