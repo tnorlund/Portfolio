@@ -755,6 +755,7 @@ def decode_band_blocks(
         p: parse_band(list(bands[p]["words"])) for p in price_idx
     }
     absorbed: set[int] = set()
+    absorbed_into: dict[int, list[int]] = {}
     for pos, p in enumerate(price_idx):
         mp = parsed_cache[p]
         if mp is None:
@@ -785,7 +786,9 @@ def decode_band_blocks(
             ):
                 if nb.get("quantity") is None:
                     nb["quantity"], nb["unit_price"] = qty, unit
+                    nb["qty_word_ids"] = list(mp.get("qty_word_ids") or [])
                 absorbed.add(p)
+                absorbed_into.setdefault(q, []).append(p)
                 break
             # Echo absorption ONLY into a real-named neighbor -- the same
             # constraint extract_items enforces via kind==ITEM. Without it,
@@ -803,7 +806,9 @@ def decode_band_blocks(
             ):
                 if qty is not None and nb.get("quantity") is None:
                     nb["quantity"], nb["unit_price"] = qty, unit
+                    nb["qty_word_ids"] = list(mp.get("qty_word_ids") or [])
                 absorbed.add(p)
+                absorbed_into.setdefault(q, []).append(p)
                 break
             # Unit-price echo with the qty prefix lost to OCR ("2 @ 3.49"
             # reads as bare "3.49" under a 6.98 item): a bare-amount band
@@ -838,6 +843,7 @@ def decode_band_blocks(
                         nb["quantity"] = float(k)
                         nb["unit_price"] = mp["price"]
                     absorbed.add(p)
+                    absorbed_into.setdefault(q, []).append(p)
                     break
     price_idx = [p for p in price_idx if p not in absorbed]
     blocks: dict[int, list[int]] = {p: [] for p in price_idx}
@@ -942,6 +948,8 @@ def decode_band_blocks(
             lids.update(*(bands[i]["line_ids"] for i in blocks[p]))
         if qty_donor_i is not None:
             lids.update(bands[qty_donor_i]["line_ids"])
+        for i in absorbed_into.get(p, []):
+            lids.update(bands[i]["line_ids"])
         parsed["line_ids"] = sorted(lids)
         items.append(parsed)
     # Quantity attachment runs before the summary-figure filter purely so

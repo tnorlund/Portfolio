@@ -1129,6 +1129,7 @@ func decodeBandBlocks(
         if let parsed = parseBand(bands[p].words) { parsedCache[p] = parsed }
     }
     var absorbed: Set<Int> = []
+    var absorbedInto: [Int: [Int]] = [:]
     for (pos, p) in priceIdxAll.enumerated() {
         guard let mp = parsedCache[p] else { continue }
         let forDeal = isForDealAnnotation(
@@ -1151,6 +1152,7 @@ func decodeBandBlocks(
                     nb.unitPrice = uv
                 }
                 absorbed.insert(p)
+                absorbedInto[q, default: []].append(p)
                 break
             }
             // Rule 2: echo absorption ONLY into a real-named neighbor
@@ -1164,6 +1166,7 @@ func decodeBandBlocks(
                     nb.unitPrice = unit
                 }
                 absorbed.insert(p)
+                absorbedInto[q, default: []].append(p)
                 break
             }
             // Rule 3: unit-price echo with the qty prefix lost to OCR.
@@ -1187,6 +1190,7 @@ func decodeBandBlocks(
                         nb.unitPrice = mp.price
                     }
                     absorbed.insert(p)
+                    absorbedInto[q, default: []].append(p)
                     break
                 }
             }
@@ -1277,6 +1281,9 @@ func decodeBandBlocks(
         for i in blocks[p]! { lids.formUnion(bands[i].lineIds) }
         if let donor = qtyDonorI {
             lids.formUnion(bands[donor].lineIds)
+        }
+        for i in absorbedInto[p] ?? [] {
+            lids.formUnion(bands[i].lineIds)
         }
         parsed.lineIds = lids.sorted()
         items.append(parsed)

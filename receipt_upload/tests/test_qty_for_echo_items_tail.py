@@ -114,6 +114,10 @@ def test_for_deal_echo_absorbs_into_named_limes():
     by_price = {i["price"]: i["name"] for i in items}
     assert "LIMES" in by_price[2.00]
     assert by_price[3.99] == "MILK"
+    limes = next(i for i in items if i["price"] == 2.00)
+    assert 3 in limes["line_ids"]
+    qty_ids = {(q["line_id"], q["word_id"]) for q in limes["qty_word_ids"]}
+    assert (3, 3) in qty_ids
     zone = evaluate_items_zone(words, {"subtotal": 5.99}, {1, 2, 3, 4, 5})
     assert zone["status"] == "match"
     assert zone["items_sum"] == 5.99
