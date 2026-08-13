@@ -1210,7 +1210,9 @@ Runs phone, address, and free-text searches (each returns its best match)
 and returns the deduplicated candidates. Use this to identify the correct
 business for a receipt, then write it with set_receipt_place.
 
-Read-only: does NOT modify DynamoDB.""",
+Never modifies receipt data. Note: Places lookups are cached as
+PlacesCache rows in the receipts table (cache writes on miss, hit
+counters on hit) - the same cache the rest of the pipeline uses.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -4141,8 +4143,13 @@ async def set_receipt_place_impl(
     formatted_address: str | None = None,
     phone_number: str | None = None,
     reasoning: str | None = None,
+    validated_by: str = "INFERENCE",
 ) -> dict:
-    """Write the ReceiptPlace (and denormalized summary merchant) directly."""
+    """Write the ReceiptPlace (and denormalized summary merchant) directly.
+
+    validated_by must be a ValidationMethod value (PHONE_LOOKUP,
+    ADDRESS_LOOKUP, NEARBY_LOOKUP, TEXT_SEARCH, INFERENCE); agent/manual
+    decisions record as INFERENCE."""
     try:
         from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
         from receipt_dynamo.entities.receipt_place import ReceiptPlace
@@ -4162,7 +4169,7 @@ async def set_receipt_place_impl(
                     place.formatted_address = formatted_address
                 if phone_number is not None:
                     place.phone_number = phone_number
-                place.validated_by = "MANUAL"
+                place.validated_by = validated_by
                 if reasoning:
                     place.reasoning = reasoning
                 dynamo_client.update_receipt_place(place)
@@ -4172,24 +4179,40 @@ async def set_receipt_place_impl(
                     receipt_id=receipt_id,
                     place_id=place_id or "",
                     merchant_name=merchant_name,
-                    formatted_address=formatted_address,
-                    phone_number=phone_number,
-                    validated_by="MANUAL",
-                    reasoning=reasoning,
+                    formatted_address=formatted_address or "",
+                    phone_number=phone_number or "",
+                    validated_by=validated_by,
+                    reasoning=reasoning or "",
                 )
                 dynamo_client.add_receipt_place(place)
 
             # Keep the denormalized summary merchant in sync (the milk
-            # table and other summary-driven views read it). Missing
-            # summary rows are fine - the stream recomputes them.
+            # table and other summary-driven views read it). The summary
+            # entity is read-only, so patch the row directly; a missing
+            # row is fine - the stream recomputes it from the place.
+            import boto3
+            import botocore.exceptions
+
+            table = boto3.resource("dynamodb").Table(
+                dynamo_client.table_name
+            )
             try:
-                summary = dynamo_client.get_receipt_summary(
-                    image_id, receipt_id
+                table.update_item(
+                    Key={
+                        "PK": f"IMAGE#{image_id}",
+                        "SK": f"RECEIPT#{receipt_id:05d}#SUMMARY",
+                    },
+                    UpdateExpression="SET merchant_name = :m",
+                    ConditionExpression="attribute_exists(PK)",
+                    ExpressionAttributeValues={":m": merchant_name},
                 )
-                summary.merchant_name = merchant_name
-                dynamo_client.update_receipt_summary(summary)
                 summary_updated = True
-            except EntityNotFoundError:
+            except botocore.exceptions.ClientError as ce:
+                if (
+                    ce.response["Error"]["Code"]
+                    != "ConditionalCheckFailedException"
+                ):
+                    raise
                 summary_updated = False
             return before, summary_updated
 
