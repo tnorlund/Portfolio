@@ -30,3 +30,10 @@ this file only covers environment mechanics.
 - Do not run `pulumi` commands; deploys are CI-driven (and a local `pulumi up` can lock the
   account-wide stack).
 - Don't commit screenshots, logs, or `dev.*` scratch scripts you didn't author.
+
+## Line-item decode stack
+
+Sprouts match is stacked geometry PRs (constraint → pairing → fragment join →
+qty-echo / ITEMS tail → zone-gap), then remaining-error EDA plus other-merchant
+uplift. Follow `.cursor/skills/sprouts-line-item-stack/SKILL.md`. Do not chase
+187/187; bottle-return refunds stay no-baseline.
