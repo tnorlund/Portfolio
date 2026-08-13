@@ -543,7 +543,9 @@ def _summary_labels(
         ]
         unique = {(int(w.line_id), int(w.word_id)): w for w in matches}
         if label == "GRAND_TOTAL":
-            word = _elect_grand_total_word(receipt_words, list(unique.values()))
+            word = _elect_grand_total_word(
+                receipt_words, list(unique.values())
+            )
             if word is None:
                 continue
             line_id, word_id = int(word.line_id), int(word.word_id)
@@ -711,7 +713,8 @@ def _phone_spans(words: Sequence[Any]) -> list[list[Any]]:
         (start, end)
         for start, end in spans
         if not any(
-            (s, e) != (start, end) and s <= start and end <= e for s, e in spans
+            (s, e) != (start, end) and s <= start and end <= e
+            for s, e in spans
         )
     ]
     return [list(words[start:end]) for start, end in maximal]

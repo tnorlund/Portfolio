@@ -268,7 +268,9 @@ def update_receipt_line_items(
 
     line_ids = {int(x) for x in (items_section.line_ids or [])}
 
-    items, collapsed = extract_items(word_dicts, line_ids, summary=summary_dict)
+    items, collapsed = extract_items(
+        word_dicts, line_ids, summary=summary_dict
+    )
 
     recon = reconcile_extracted_items(items, summary_dict)
     status = recon.status
@@ -277,7 +279,9 @@ def update_receipt_line_items(
     entities = []
     for idx, it in enumerate(items):
         name = it.get("name") or ""
-        quality = "low" if it.get("name_quality") == "low" or not name else "ok"
+        quality = (
+            "low" if it.get("name_quality") == "low" or not name else "ok"
+        )
         entities.append(
             ReceiptLineItem(
                 receipt_id=receipt_id,
@@ -540,7 +544,9 @@ def _maybe_extend_items_section(
     """Persist a reconciliation-verified adjacent-row ITEMS extension."""
 
     try:
-        rows = dynamo_client.get_receipt_rows_from_receipt(image_id, receipt_id)
+        rows = dynamo_client.get_receipt_rows_from_receipt(
+            image_id, receipt_id
+        )
     except EntityNotFoundError:
         rows = []
     proposal = propose_items_boundary_extension(
@@ -873,7 +879,8 @@ def _maybe_trigger_line_item_refine(
         # receipt_dynamo's `assert_valid_uuid` (its regex accepts
         # version 4 or 5 with the RFC-4122 variant).
         figures = ":".join(
-            _claim_figure(refine_summary[key]) for key in REFINE_SUMMARY_FIGURES
+            _claim_figure(refine_summary[key])
+            for key in REFINE_SUMMARY_FIGURES
         )
         job_id = str(
             uuid.uuid5(
