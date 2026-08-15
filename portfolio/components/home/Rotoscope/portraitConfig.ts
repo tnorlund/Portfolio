@@ -33,6 +33,7 @@ export const PORTRAIT_ROTOSCOPE_OPTIONS: Partial<RotoscopeOptions> = {
 };
 
 export const PORTRAIT_SOURCES = {
+  basins: "/rotoscope-basins.webp",
   avif: "/rotoscope-portrait.avif",
   webp: "/rotoscope-portrait.webp",
   fallback: "/rotoscope-portrait.jpg",

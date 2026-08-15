@@ -56,11 +56,11 @@ export default function RotoscopePortrait() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const clientRef = useRef<RotoscopeWorkerClient | null>(null);
   const scheduledRef = useRef<{ type: "idle" | "timeout"; id: number } | null>(null);
-  const revealFrameRef = useRef<number | null>(null);
+  const fillFrameRef = useRef<number | null>(null);
   const mountedRef = useRef(true);
   const [renderState, setRenderState] = useState<RenderState>("idle");
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
-  const [reveal, setReveal] = useState(0);
+  const [filled, setFilled] = useState(false);
 
   const renderPortrait = useCallback(async () => {
     const image = imageRef.current;
@@ -73,7 +73,7 @@ export default function RotoscopePortrait() {
       return;
     }
     setRenderState("processing");
-    setReveal(0);
+    setFilled(false);
     try {
       const result = await client.render({
         image,
@@ -90,11 +90,11 @@ export default function RotoscopePortrait() {
       const reducedMotion = window.matchMedia(
         "(prefers-reduced-motion: reduce)",
       ).matches;
-      if (reducedMotion) setReveal(58);
+      if (reducedMotion) setFilled(true);
       else {
-        revealFrameRef.current = window.requestAnimationFrame(() => {
-          revealFrameRef.current = null;
-          setReveal(58);
+        fillFrameRef.current = window.requestAnimationFrame(() => {
+          fillFrameRef.current = null;
+          setFilled(true);
         });
       }
     } catch {
@@ -133,8 +133,8 @@ export default function RotoscopePortrait() {
       } else if (scheduled) {
         window.clearTimeout(scheduled.id);
       }
-      if (revealFrameRef.current !== null) {
-        window.cancelAnimationFrame(revealFrameRef.current);
+      if (fillFrameRef.current !== null) {
+        window.cancelAnimationFrame(fillFrameRef.current);
       }
       clientRef.current?.dispose();
     };
@@ -146,20 +146,35 @@ export default function RotoscopePortrait() {
     if (imageRef.current?.complete) scheduleRender();
   }, [scheduleRender]);
 
-  const frameStyle = { "--reveal": `${reveal}%` } as CSSProperties;
+  const frameStyle = {
+    "--fill-radius": filled ? "90%" : "0%",
+  } as CSSProperties;
   const ready = renderState === "ready";
 
   return (
     <figure className={styles.figure}>
       <div className={styles.frame} style={frameStyle} data-state={renderState}>
+        {/* This pre-generated static asset avoids the next/image client wrapper. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          className={`${styles.mediaLayer} ${styles.basinMap}`}
+          src={PORTRAIT_SOURCES.basins}
+          alt="Catchment basins outlining Tyler Norlund's portrait"
+          width={480}
+          height={360}
+          loading="eager"
+          decoding="async"
+          fetchPriority="high"
+        />
         <picture>
           <source srcSet={PORTRAIT_SOURCES.avif} type="image/avif" />
           <source srcSet={PORTRAIT_SOURCES.webp} type="image/webp" />
           <img
             ref={imageRef}
-            className={styles.portrait}
+            className={`${styles.mediaLayer} ${styles.sourcePortrait}`}
             src={PORTRAIT_SOURCES.fallback}
-            alt="Tyler Norlund smiling outside"
+            alt=""
+            aria-hidden="true"
             width={960}
             height={720}
             loading="eager"
@@ -169,29 +184,9 @@ export default function RotoscopePortrait() {
         </picture>
         <canvas
           ref={canvasRef}
-          className={styles.rotoscoped}
+          className={`${styles.mediaLayer} ${styles.rotoscoped}`}
           aria-hidden="true"
         />
-        {ready ? (
-          <>
-            <span className={`${styles.label} ${styles.originalLabel}`}>
-              Original
-            </span>
-            <span className={`${styles.label} ${styles.rotoscopeLabel}`}>
-              Rotoscoped
-            </span>
-            <span className={styles.divider} aria-hidden="true" />
-            <input
-              className={styles.revealControl}
-              type="range"
-              min="0"
-              max="100"
-              value={reveal}
-              aria-label="Compare original and rotoscoped portrait"
-              onChange={(event) => setReveal(Number(event.currentTarget.value))}
-            />
-          </>
-        ) : null}
       </div>
       <figcaption className={styles.caption} aria-live="polite">
         <span>
@@ -199,7 +194,7 @@ export default function RotoscopePortrait() {
           {ready && elapsedMs !== null
             ? `Single-image · ${Math.round(elapsedMs)} ms.`
             : renderState === "processing"
-              ? "Rendering here in your browser…"
+              ? "Filling catchment basins…"
               : "From my 2017 paper."}
         </span>
         <span className={styles.links}>

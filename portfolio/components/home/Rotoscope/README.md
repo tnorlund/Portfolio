@@ -20,6 +20,13 @@ optimized WebAssembly kernel. The authored normalized focus geometry belongs to
 the image configuration rather than the numerical stages, keeping the engine
 reusable for future portraits.
 
+`public/rotoscope-basins.webp` is the immediate first-paint projection of that
+same 480x360 result: region boundaries are dark and interiors are neutral. The
+worker-produced color result expands radially from the centered face over this
+map, so the page starts with the catchment basins instead of flashing the source
+photo. Regenerate the projection whenever the portrait, processing size, or
+marker configuration changes.
+
 The paper's stage structure remains canonical. Two numerical kernels are
 intentional display-resolution optimizations and are covered by exact fixtures:
 the browser uses an integer 3x3 Sobel instead of the MATLAB Gaussian derivative

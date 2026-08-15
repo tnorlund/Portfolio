@@ -12,8 +12,8 @@ export default function Home() {
         <link
           rel="preload"
           as="image"
-          href="/rotoscope-portrait.avif"
-          type="image/avif"
+          href="/rotoscope-basins.webp"
+          type="image/webp"
         />
       </Head>
       <main className={styles.main}>
