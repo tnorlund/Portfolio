@@ -143,13 +143,26 @@ export const validateRgba = (
   return count;
 };
 
-const normalizedOptions = (
+export const normalizeRotoscopeOptions = (
   options: Partial<RotoscopeOptions>,
   pixelCount: number,
 ): RotoscopeOptions => {
   const quotas = options.quotas ?? DEFAULT_ROTOSCOPE_OPTIONS.quotas;
   const spacing = options.spacing ?? DEFAULT_ROTOSCOPE_OPTIONS.spacing;
-  const focus = options.focus ?? DEFAULT_ROTOSCOPE_OPTIONS.focus;
+  const suppliedFocus = options.focus ?? DEFAULT_ROTOSCOPE_OPTIONS.focus;
+  const defaultFace = DEFAULT_ROTOSCOPE_OPTIONS.focus.face;
+  const focus: FocusGeometry = {
+    face: {
+      centerX: clamp(finiteOr(suppliedFocus.face?.centerX, defaultFace.centerX), -4, 4),
+      centerY: clamp(finiteOr(suppliedFocus.face?.centerY, defaultFace.centerY), -4, 4),
+      radiusX: clamp(finiteOr(suppliedFocus.face?.radiusX, defaultFace.radiusX), 0.0001, 4),
+      radiusY: clamp(finiteOr(suppliedFocus.face?.radiusY, defaultFace.radiusY), 0.0001, 4),
+    },
+    body: suppliedFocus.body.slice(0, 64).map(([x, y]) => [
+      clamp(finiteOr(x, 0), -4, 4),
+      clamp(finiteOr(y, 0), -4, 4),
+    ]),
+  };
   let faceQuota = Math.max(0, finiteOr(quotas.face, 0));
   let bodyQuota = Math.max(0, finiteOr(quotas.body, 0));
   let backgroundQuota = Math.max(0, finiteOr(quotas.background, 0));
@@ -381,6 +394,27 @@ export const classifyFocusTier = (
   return "background";
 };
 
+/**
+ * Builds the authored priority map once so optimized kernels do not repeat the
+ * face ellipse and body polygon test while scanning marker candidates.
+ * 0 = face, 1 = body, 2 = background.
+ */
+export const createFocusTierMap = (
+  width: number,
+  height: number,
+  focus: FocusGeometry,
+): Uint8Array => {
+  const count = checkedPixelCount(width, height);
+  const tiers = new Uint8Array(count);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const tier = classifyFocusTier(x, y, width, height, focus);
+      tiers[y * width + x] = tier === "face" ? 0 : tier === "body" ? 1 : 2;
+    }
+  }
+  return tiers;
+};
+
 const tierQuota = (
   budget: number,
   quotas: TierValues,
@@ -443,11 +477,11 @@ const blockDiamond = (
 };
 
 const candidatesForTier = (
-  tier: FocusTierName,
+  tierValue: number,
   scores: Float32Array,
   width: number,
   height: number,
-  focus: FocusGeometry,
+  focusTiers: Uint8Array,
   spacing: number,
 ): number[] => {
   const count = width * height;
@@ -460,7 +494,7 @@ const candidatesForTier = (
       const index = y * width + x;
       if (
         scores[index] > 0 &&
-        classifyFocusTier(x, y, width, height, focus) === tier &&
+        focusTiers[index] === tierValue &&
         isLocalMaximum(scores, index, width)
       ) {
         candidates.push(index);
@@ -480,8 +514,8 @@ const candidatesForTier = (
       const xEnd = Math.min(width, tileX + cell);
       for (let y = tileY; y < yEnd; y += 1) {
         for (let x = tileX; x < xEnd; x += 1) {
-          if (classifyFocusTier(x, y, width, height, focus) !== tier) continue;
           const index = y * width + x;
+          if (focusTiers[index] !== tierValue) continue;
           const score = scores[index];
           if (score > bestScore || (score === bestScore && index < bestIndex)) {
             bestIndex = index;
@@ -508,8 +542,9 @@ export const selectMarkers = (
 ): SelectedMarkers => {
   const count = checkedPixelCount(width, height);
   if (scores.length !== count) throw new RangeError("score length mismatch");
-  const normalized = normalizedOptions(options, count);
+  const normalized = normalizeRotoscopeOptions(options, count);
   const quotas = tierQuota(normalized.markerBudget, normalized.quotas);
+  const focusTiers = createFocusTierMap(width, height, normalized.focus);
   const blocked = new Uint8Array(count);
   const markers: number[] = [];
   const tierCounts: Record<FocusTierName, number> = {
@@ -518,15 +553,20 @@ export const selectMarkers = (
     background: 0,
   };
   const tiers: readonly FocusTierName[] = ["face", "body", "background"];
+  const tierValues: Record<FocusTierName, number> = {
+    face: 0,
+    body: 1,
+    background: 2,
+  };
 
   for (const tier of tiers) {
     const spacing = normalized.spacing[tier];
     const candidates = candidatesForTier(
-      tier,
+      tierValues[tier],
       scores,
       width,
       height,
-      normalized.focus,
+      focusTiers,
       spacing,
     );
     for (const index of candidates) {
@@ -685,7 +725,7 @@ export const runRotoscope = (
   options: Partial<RotoscopeOptions> = {},
 ): RotoscopeResult => {
   const count = validateRgba(source, width, height);
-  const normalized = normalizedOptions(options, count);
+  const normalized = normalizeRotoscopeOptions(options, count);
   const difference = grayscaleAndDifference(
     source,
     width,

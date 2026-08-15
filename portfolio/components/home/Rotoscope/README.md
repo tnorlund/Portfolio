@@ -27,6 +27,38 @@ map, so the page starts with the catchment basins instead of flashing the source
 photo. Regenerate the projection whenever the portrait, processing size, or
 marker configuration changes.
 
+Production keeps all computation off the main thread. The versioned worker
+decodes and resizes the source once, caches the authored focus map, and runs the
+allocation-free scalar Wasm kernel in one reusable arena. If Wasm fetch,
+compilation, export validation, allocation, or execution fails, the same worker
+falls back to the TypeScript oracle. The basin projection stays visible during
+idle initialization and remains the no-JavaScript experience.
+
+The worker currently routes Firefox directly to that scalar oracle. Production
+browser medians showed its JavaScript JIT completing this workload much faster
+than its scalar Wasm backend; Chromium and WebKit retain the faster Wasm path.
+The checked-in benchmark makes that routing decision repeatable instead of
+assuming one backend wins everywhere.
+
+Build the committed Wasm and worker artifacts with Node 22:
+
+```sh
+npm run build:rotoscope-wasm
+npm run build:rotoscope-worker
+```
+
+After a production export is being served, measure normal and forced-fallback
+paths across the installed browser engines with at least five warmups and 20
+recorded runs:
+
+```sh
+npm run benchmark:rotoscope -- http://127.0.0.1:3202
+```
+
+There is intentionally no separate SIMD artifact yet. The scalar Wasm module is
+small, broadly compatible, and remains the only optimized path until a verified
+SIMD build wins browser medians enough to justify another download.
+
 The paper's stage structure remains canonical. Two numerical kernels are
 intentional display-resolution optimizations and are covered by exact fixtures:
 the browser uses an integer 3x3 Sobel instead of the MATLAB Gaussian derivative

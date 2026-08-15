@@ -8,6 +8,7 @@ import {
 import styles from "./RotoscopePortrait.module.css";
 import { RotoscopeWorkerClient } from "./workerClient";
 import type { RotoscopeRenderSuccess } from "./workerProtocol";
+import type { RotoscopeTimings } from "./workerProtocol";
 
 type RenderState = "idle" | "processing" | "ready" | "unavailable";
 
@@ -60,6 +61,10 @@ export default function RotoscopePortrait() {
   const mountedRef = useRef(true);
   const [renderState, setRenderState] = useState<RenderState>("idle");
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
+  const [renderPath, setRenderPath] = useState<RotoscopeRenderSuccess["path"] | null>(
+    null,
+  );
+  const [timings, setTimings] = useState<RotoscopeTimings | null>(null);
   const [filled, setFilled] = useState(false);
 
   const renderPortrait = useCallback(async () => {
@@ -74,6 +79,7 @@ export default function RotoscopePortrait() {
     }
     setRenderState("processing");
     setFilled(false);
+    const requestedAt = performance.now();
     try {
       const result = await client.render({
         image,
@@ -85,7 +91,9 @@ export default function RotoscopePortrait() {
         return;
       }
       paintWorkerResult(canvas, result);
-      setElapsedMs(result.timings.totalMs);
+      setElapsedMs(performance.now() - requestedAt);
+      setRenderPath(result.path);
+      setTimings(result.timings);
       setRenderState("ready");
       const reducedMotion = window.matchMedia(
         "(prefers-reduced-motion: reduce)",
@@ -153,7 +161,18 @@ export default function RotoscopePortrait() {
 
   return (
     <figure className={styles.figure}>
-      <div className={styles.frame} style={frameStyle} data-state={renderState}>
+      <div
+        className={styles.frame}
+        style={frameStyle}
+        data-state={renderState}
+        data-render-path={renderPath ?? undefined}
+        data-render-ms={elapsedMs === null ? undefined : elapsedMs.toFixed(2)}
+        data-pipeline-ms={timings?.pipelineMs.toFixed(2)}
+        data-wasm-load-ms={timings?.wasmLoadMs.toFixed(2)}
+        data-focus-map-ms={timings?.focusMapMs.toFixed(2)}
+        data-decode-ms={timings?.decodeAndResizeMs.toFixed(2)}
+        data-paint-ms={timings?.paintMs.toFixed(2)}
+      >
         {/* This pre-generated static asset avoids the next/image client wrapper. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

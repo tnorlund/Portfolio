@@ -1,9 +1,11 @@
 import {
   classifyFocusTier,
   colorizeRegions,
+  createFocusTierMap,
   DEFAULT_ROTOSCOPE_OPTIONS,
   grayscaleAndDifference,
   minimumEigenvalue,
+  normalizeRotoscopeOptions,
   runRotoscope,
   selectMarkers,
   shiTomasiScores,
@@ -106,6 +108,50 @@ test("focus geometry classifies face before body and leaves a background tier", 
   expect(classifyFocusTier(39, 55, 100, 100, focus)).toBe("face");
   expect(classifyFocusTier(35, 85, 100, 100, focus)).toBe("body");
   expect(classifyFocusTier(95, 10, 100, 100, focus)).toBe("background");
+});
+
+test("focus map freezes the pixel-center, face-first tier contract", () => {
+  const focus = {
+    face: { centerX: 0.5, centerY: 0.5, radiusX: 0.26, radiusY: 0.26 },
+    body: [[0, 0], [1, 0], [1, 1], [0, 1]] as const,
+  };
+  expect(Array.from(createFocusTierMap(2, 2, focus))).toEqual([1, 1, 1, 1]);
+  expect(Array.from(createFocusTierMap(3, 3, focus))).toEqual([
+    1, 1, 1,
+    1, 0, 1,
+    1, 1, 1,
+  ]);
+});
+
+test("normalization bounds every host-provided numerical option", () => {
+  const normalized = normalizeRotoscopeOptions(
+    {
+      blurRadius: Number.NaN,
+      markerBudget: Number.POSITIVE_INFINITY,
+      quotas: { face: -1, body: Number.NaN, background: 0 },
+      spacing: { face: Number.NaN, body: -10, background: 1_000 },
+      focus: {
+        face: {
+          centerX: Number.NaN,
+          centerY: Number.POSITIVE_INFINITY,
+          radiusX: -2,
+          radiusY: 100,
+        },
+        body: [[Number.NaN, Number.POSITIVE_INFINITY]],
+      },
+    },
+    25,
+  );
+  expect(normalized.blurRadius).toBe(9);
+  expect(normalized.markerBudget).toBe(25);
+  expect(normalized.spacing).toEqual({ face: 3, body: 1, background: 64 });
+  expect(normalized.focus.face).toEqual({
+    centerX: 0.4,
+    centerY: 0.56,
+    radiusX: 0.0001,
+    radiusY: 4,
+  });
+  expect(normalized.focus.body).toEqual([[0, 0]]);
 });
 
 test("marker selection honors explicit tier budgets when geometry has capacity", () => {

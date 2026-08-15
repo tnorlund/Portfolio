@@ -12,6 +12,7 @@ import {
   type RotoscopeTimings,
   type RotoscopeWorkerResponse,
 } from "./workerProtocol";
+import { runRotoscopeWasm } from "./wasm";
 
 type WorkerTransfer = ArrayBuffer | ImageBitmap;
 
@@ -21,6 +22,13 @@ interface RotoscopeWorkerScope {
 }
 
 const workerScope = self as unknown as RotoscopeWorkerScope;
+
+// Production medians on the same 480x360 pixels show Firefox's scalar Wasm
+// backend is materially slower than its optimized JavaScript worker. Keep the
+// faster oracle there; Chromium and WebKit use Wasm. Revisit with the browser
+// benchmark when Firefox's backend changes.
+const shouldAttemptWasm = (): boolean =>
+  typeof navigator === "undefined" || !/\bFirefox\//.test(navigator.userAgent);
 
 interface CachedSource {
   key: string;
@@ -143,14 +151,36 @@ const render = async (request: RotoscopeRenderRequest): Promise<void> => {
     throw error;
   }
 
-  const pipelineStartedAt = performance.now();
-  const result = runRotoscope(
-    decoded.pixels,
-    request.width,
-    request.height,
-    request.options,
-  );
-  const pipelineMs = performance.now() - pipelineStartedAt;
+  const accelerated = shouldAttemptWasm()
+    ? await runRotoscopeWasm(
+        decoded.pixels,
+        request.width,
+        request.height,
+        request.options,
+      )
+    : null;
+  let result;
+  let path: RotoscopeRenderSuccess["path"];
+  let pipelineMs: number;
+  let wasmLoadMs = 0;
+  let focusMapMs = 0;
+  if (accelerated) {
+    result = accelerated.result;
+    path = accelerated.path;
+    pipelineMs = accelerated.pipelineMs;
+    wasmLoadMs = accelerated.loadMs;
+    focusMapMs = accelerated.focusMapMs;
+  } else {
+    const pipelineStartedAt = performance.now();
+    result = runRotoscope(
+      decoded.pixels,
+      request.width,
+      request.height,
+      request.options,
+    );
+    pipelineMs = performance.now() - pipelineStartedAt;
+    path = "scalar-worker";
+  }
   const paintStartedAt = performance.now();
   const painted = paintResult(result.pixels, request.width, request.height);
   const paintMs = performance.now() - paintStartedAt;
@@ -163,6 +193,8 @@ const render = async (request: RotoscopeRenderRequest): Promise<void> => {
 
   const timings: RotoscopeTimings = {
     decodeAndResizeMs: decoded.elapsedMs,
+    wasmLoadMs,
+    focusMapMs,
     pipelineMs,
     paintMs,
     totalMs: performance.now() - totalStartedAt,
@@ -175,7 +207,7 @@ const render = async (request: RotoscopeRenderRequest): Promise<void> => {
     height: request.height,
     markerCount: result.markerCount,
     tierCounts: result.tierCounts,
-    path: "scalar-worker",
+    path,
     timings,
     ...painted,
   };

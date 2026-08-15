@@ -37,6 +37,7 @@
   "exclude": [
     "node_modules",
     "out",
-    "wasm/synthesis-pipeline/assembly"
+    "wasm/synthesis-pipeline/assembly",
+    "wasm/rotoscope/assembly"
   ]
 }
