@@ -16,8 +16,8 @@
     "remark-gfm": "^4.0.1"
   },
   "scripts": {
-    "dev": "npm run build:rotoscope-worker && next dev --turbopack",
-    "build": "npm run build:rotoscope-worker && next build",
+    "dev": "npm run build:rotoscope-workers && next dev --turbopack",
+    "build": "npm run build:rotoscope-workers && next build",
     "start": "next start",
     "lint": "eslint .",
     "test": "jest",
@@ -32,6 +32,8 @@
     "build:synthesis-wasm": "asc --config wasm/synthesis-pipeline/asconfig.json --target release",
     "build:rotoscope-wasm": "asc --config wasm/rotoscope/asconfig.json --target release",
     "build:rotoscope-worker": "esbuild components/home/Rotoscope/worker.ts --bundle --format=iife --platform=browser --target=chrome91,firefox90,safari15,edge91 --minify --outfile=public/rotoscope/worker-v2.js",
+    "build:rotoscope-lab-worker": "esbuild components/rotoscope-lab/worker.ts --bundle --format=iife --platform=browser --target=chrome91,firefox90,safari15,edge91 --minify --outfile=public/rotoscope/lab-worker-v1.js",
+    "build:rotoscope-workers": "npm run build:rotoscope-worker && npm run build:rotoscope-lab-worker",
     "benchmark:rotoscope": "node scripts/benchmark-rotoscope.mjs",
     "monitor": "node monitor-project.js",
     "monitor:watch": "node monitor-project.js --watch",
