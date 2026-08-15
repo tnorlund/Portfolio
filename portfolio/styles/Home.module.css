@@ -1,0 +1,20 @@
+.main {
+  padding: 0 0 2rem;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 0.5rem;
+}
+
+.actions button {
+  margin: 0.5rem;
+}
+
+@media (max-width: 480px) {
+  .main {
+    justify-content: flex-start;
+  }
+}
