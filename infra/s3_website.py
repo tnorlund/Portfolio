@@ -236,7 +236,7 @@ function handler(event) {
 
     // Handle static pages and SPA fallback
     if (!uri.includes('.') && uri !== '/' && !uri.startsWith('/assets/')) {
-        var staticPages = ['/receipt', '/resume', '/rotoscope'];
+        var staticPages = ['/receipt', '/resume', '/rotoscope', '/rotoscope-lab'];
         if (staticPages.indexOf(uri) > -1) {
             request.uri = uri + '.html';
         } else {
