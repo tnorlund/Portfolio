@@ -108,9 +108,7 @@ def _load_config():
 
         # Merge secrets
         for key, value in secrets.items():
-            normalized_key = (
-                key.replace("portfolio:", "").lower().replace("-", "_")
-            )
+            normalized_key = key.replace("portfolio:", "").lower().replace("-", "_")
             config[normalized_key] = value
 
         # Environment variables override Pulumi config for the Chroma keys,
@@ -127,9 +125,7 @@ def _load_config():
 
         # Set up API keys
         if config.get("openai_api_key"):
-            os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config[
-                "openai_api_key"
-            ]
+            os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config["openai_api_key"]
 
         _config = config
 
@@ -138,9 +134,7 @@ def _load_config():
 
 def chroma_is_configured(config) -> bool:
     """True when Chroma Cloud is enabled and an API key is present."""
-    enabled = (
-        str(config.get("chroma_cloud_enabled", "false")).lower() == "true"
-    )
+    enabled = str(config.get("chroma_cloud_enabled", "false")).lower() == "true"
     return enabled and bool(config.get("chroma_cloud_api_key"))
 
 
@@ -152,9 +146,7 @@ def get_dynamo_client():
         from receipt_agent.clients.factory import create_dynamo_client
 
         config = _load_config()
-        _dynamo_client = create_dynamo_client(
-            table_name=config["dynamodb_table_name"]
-        )
+        _dynamo_client = create_dynamo_client(table_name=config["dynamodb_table_name"])
         logger.info("DynamoDB client initialized")
 
     return _dynamo_client
@@ -1119,9 +1111,7 @@ sheet artifacts while the previous revision remains reviewable.""",
                         "type": "array",
                         "minItems": 1,
                         "maxItems": 23,
-                        "items": _resegment_segment_schema(
-                            legacy_selectors=False
-                        ),
+                        "items": _resegment_segment_schema(legacy_selectors=False),
                     },
                     "assignments": _resegment_assignments_schema(),
                     "visualization": _resegment_visualization_schema(),
@@ -1219,7 +1209,7 @@ counters on hit) - the same cache the rest of the pipeline uses.""",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Free-text search, e.g. 'Trader Joe\'s 2716 N Green Valley Pkwy Henderson NV'",
+                        "description": "Free-text search, e.g. 'Trader Joe's 2716 N Green Valley Pkwy Henderson NV'",
                     },
                     "phone": {
                         "type": "string",
@@ -1248,7 +1238,7 @@ WARNING: This WRITES to DynamoDB.""",
                     "receipt_id": {"type": "integer", "description": "Receipt ID"},
                     "merchant_name": {
                         "type": "string",
-                        "description": "Correct business name (matches corpus casing, e.g. 'Trader Joe\'s')",
+                        "description": "Correct business name (matches corpus casing, e.g. 'Trader Joe's')",
                     },
                     "place_id": {
                         "type": "string",
@@ -2121,9 +2111,7 @@ summary rewrite) and triggers async line-item regeneration.""",
                         "type": "array",
                         "items": {"type": "integer"},
                         "minItems": 1,
-                        "description": (
-                            "Line IDs to add to the ITEMS section"
-                        ),
+                        "description": ("Line IDs to add to the ITEMS section"),
                     },
                     "dry_run": {
                         "type": "boolean",
@@ -2158,8 +2146,7 @@ receipt to diagnose, and extend_items_section to fix zone-gap cases.""",
                     "merchant_name": {
                         "type": "string",
                         "description": (
-                            "Optional case-insensitive merchant substring "
-                            "filter"
+                            "Optional case-insensitive merchant substring " "filter"
                         ),
                     },
                     "status": {
@@ -2171,9 +2158,7 @@ receipt to diagnose, and extend_items_section to fix zone-gap cases.""",
                             "no-baseline",
                         ],
                         "default": "mismatch",
-                        "description": (
-                            "Receipt-level reconciliation status to list"
-                        ),
+                        "description": ("Receipt-level reconciliation status to list"),
                     },
                     "limit": {
                         "type": "integer",
@@ -2207,9 +2192,7 @@ def _fetch_mcp_preview(url: str) -> bytes:
 
 
 @server.call_tool()
-async def call_tool(
-    name: str, arguments: dict
-) -> list[TextContent | ImageContent]:
+async def call_tool(name: str, arguments: dict) -> list[TextContent | ImageContent]:
     """Handle tool calls."""
     try:
         dynamo_client = get_dynamo_client()
@@ -2297,9 +2280,7 @@ async def call_tool(
                 dynamo_client,
                 updates=arguments["updates"],
                 label_proposed_by=arguments["label_proposed_by"],
-                expected_old_status=arguments.get(
-                    "expected_old_status", "VALID"
-                ),
+                expected_old_status=arguments.get("expected_old_status", "VALID"),
                 dry_run=arguments.get("dry_run", True),
             )
         elif name == "merge_receipts":
@@ -2348,9 +2329,7 @@ async def call_tool(
                 phone_number=arguments.get("phone_number"),
                 reasoning=arguments.get("reasoning"),
                 confidence=arguments.get("confidence", 1.0),
-                validation_status=arguments.get(
-                    "validation_status", "MATCHED"
-                ),
+                validation_status=arguments.get("validation_status", "MATCHED"),
             )
         elif name == "fix_place":
             result = await fix_place_impl(
@@ -2433,9 +2412,7 @@ async def call_tool(
                 section_type=arguments["section_type"],
                 line_ids=arguments["line_ids"],
                 validation_status=arguments.get("validation_status", "VALID"),
-                model_source=arguments.get(
-                    "model_source", "mcp-claude-review"
-                ),
+                model_source=arguments.get("model_source", "mcp-claude-review"),
             )
         elif name == "delete_receipt_section":
             result = await delete_receipt_section_impl(
@@ -2639,9 +2616,7 @@ async def search_receipts_impl(
                 ):
                     key = (meta.get("image_id"), meta.get("receipt_id"))
                     distance = (
-                        results["distances"][0][idx]
-                        if results["distances"]
-                        else 1.0
+                        results["distances"][0][idx] if results["distances"] else 1.0
                     )
                     similarity = max(0.0, 1.0 - distance)
 
@@ -2695,9 +2670,7 @@ async def search_receipts_impl(
         return {"error": str(e)}
 
 
-async def get_receipt_impl(
-    dynamo_client, image_id: str, receipt_id: int
-) -> dict:
+async def get_receipt_impl(dynamo_client, image_id: str, receipt_id: int) -> dict:
     """Get full receipt details."""
     import statistics
 
@@ -2719,9 +2692,7 @@ async def get_receipt_impl(
             history = labels_by_word.get((line_id, word_id), [])
             valid = [lb for lb in history if lb.validation_status == "VALID"]
             if valid:
-                valid.sort(
-                    key=lambda lb: str(lb.timestamp_added), reverse=True
-                )
+                valid.sort(key=lambda lb: str(lb.timestamp_added), reverse=True)
                 return valid[0].label
             return None
 
@@ -2758,9 +2729,7 @@ async def get_receipt_impl(
             for w in sorted_words
             if w["word"].bounding_box.get("height")
         ]
-        y_tolerance = (
-            max(0.01, statistics.median(heights) * 0.75) if heights else 0.015
-        )
+        y_tolerance = max(0.01, statistics.median(heights) * 0.75) if heights else 0.015
 
         visual_lines = []
         current_line = [sorted_words[0]]
@@ -2769,9 +2738,7 @@ async def get_receipt_impl(
         for w in sorted_words[1:]:
             if abs(w["y"] - current_y) <= y_tolerance:
                 current_line.append(w)
-                current_y = sum(c["y"] for c in current_line) / len(
-                    current_line
-                )
+                current_y = sum(c["y"] for c in current_line) / len(current_line)
             else:
                 current_line.sort(key=lambda c: c["x"])
                 visual_lines.append(current_line)
@@ -3016,11 +2983,7 @@ async def search_product_lines_impl(
                 seen.add(key)
 
                 # Calculate similarity from distance
-                distance = (
-                    results["distances"][0][idx]
-                    if results["distances"]
-                    else 1.0
-                )
+                distance = results["distances"][0][idx] if results["distances"] else 1.0
                 similarity = max(0.0, 1.0 - distance)
 
                 # Skip low similarity results
@@ -3047,9 +3010,7 @@ async def search_product_lines_impl(
             items = items[:limit]
 
             # Calculate total for items that have prices
-            total = sum(
-                item["price"] for item in items if item["price"] is not None
-            )
+            total = sum(item["price"] for item in items if item["price"] is not None)
 
             return {
                 "query": query,
@@ -3115,9 +3076,7 @@ async def search_product_lines_impl(
             items = items[:limit]
 
             # Calculate total for items that have prices
-            total = sum(
-                item["price"] for item in items if item["price"] is not None
-            )
+            total = sum(item["price"] for item in items if item["price"] is not None)
 
             return {
                 "query": query,
@@ -3155,18 +3114,14 @@ async def get_receipt_summaries_impl(
         end_dt = None
         if start_date:
             try:
-                start_dt = datetime.fromisoformat(
-                    start_date.replace("Z", "+00:00")
-                )
+                start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
             except ValueError:
                 return {
                     "error": f"Invalid start_date format: '{start_date}'. Use ISO format (e.g., 2024-01-15)."
                 }
         if end_date:
             try:
-                end_dt = datetime.fromisoformat(
-                    end_date.replace("Z", "+00:00")
-                )
+                end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
             except ValueError:
                 return {
                     "error": f"Invalid end_date format: '{end_date}'. Use ISO format (e.g., 2024-01-15)."
@@ -3329,18 +3284,14 @@ async def label_validation_summary_impl(dynamo_client) -> dict:
             last_key = None
 
             while True:
-                records, last_key = (
-                    dynamo_client.get_receipt_word_labels_by_label(
-                        label=label,
-                        limit=1000,
-                        last_evaluated_key=last_key,
-                    )
+                records, last_key = dynamo_client.get_receipt_word_labels_by_label(
+                    label=label,
+                    limit=1000,
+                    last_evaluated_key=last_key,
                 )
 
                 for record in records:
-                    status = (
-                        getattr(record, "validation_status", None) or "NONE"
-                    )
+                    status = getattr(record, "validation_status", None) or "NONE"
                     counts[status] += 1
 
                 if last_key is None:
@@ -3400,17 +3351,13 @@ async def list_words_by_label_impl(
             words.append(
                 {
                     "text": getattr(record, "text", ""),
-                    "validation_status": getattr(
-                        record, "validation_status", None
-                    )
+                    "validation_status": getattr(record, "validation_status", None)
                     or "NONE",
                     "image_id": record.image_id,
                     "receipt_id": record.receipt_id,
                     "line_id": record.line_id,
                     "word_id": record.word_id,
-                    "label_proposed_by": getattr(
-                        record, "label_proposed_by", None
-                    ),
+                    "label_proposed_by": getattr(record, "label_proposed_by", None),
                 }
             )
 
@@ -3513,9 +3460,7 @@ async def validate_word_similarity_impl(
                 positive_results.get("distances", [[]]),
             )
         ]:
-            for meta, dist in zip(
-                metas[0] if metas else [], dists[0] if dists else []
-            ):
+            for meta, dist in zip(metas[0] if metas else [], dists[0] if dists else []):
                 sim = dist_to_sim(dist)
                 if sim < MIN_SIMILARITY:
                     continue
@@ -3528,8 +3473,7 @@ async def validate_word_similarity_impl(
                         "text": meta.get("text", ""),
                         "similarity": round(sim, 3),
                         "merchant": meta.get("merchant_name", ""),
-                        "same_merchant": meta.get("merchant_name", "")
-                        == merchant_name,
+                        "same_merchant": meta.get("merchant_name", "") == merchant_name,
                     }
                 )
 
@@ -3539,9 +3483,7 @@ async def validate_word_similarity_impl(
                 negative_results.get("distances", [[]]),
             )
         ]:
-            for meta, dist in zip(
-                metas[0] if metas else [], dists[0] if dists else []
-            ):
+            for meta, dist in zip(metas[0] if metas else [], dists[0] if dists else []):
                 sim = dist_to_sim(dist)
                 if sim < MIN_SIMILARITY:
                     continue
@@ -3553,8 +3495,7 @@ async def validate_word_similarity_impl(
                         "text": meta.get("text", ""),
                         "similarity": round(sim, 3),
                         "merchant": meta.get("merchant_name", ""),
-                        "same_merchant": meta.get("merchant_name", "")
-                        == merchant_name,
+                        "same_merchant": meta.get("merchant_name", "") == merchant_name,
                     }
                 )
 
@@ -3610,12 +3551,12 @@ async def validate_word_similarity_impl(
             reason = f"{confidence:.0%} of similar words validated as {label}"
         elif confidence <= (1.0 - CONSENSUS_THRESHOLD):
             recommended_status = "INVALID"
-            reason = (
-                f"{1.0 - confidence:.0%} of similar words rejected {label}"
-            )
+            reason = f"{1.0 - confidence:.0%} of similar words rejected {label}"
         else:
             recommended_status = "NEEDS_REVIEW"
-            reason = f"Mixed evidence: {confidence:.0%} for, {1.0 - confidence:.0%} against"
+            reason = (
+                f"Mixed evidence: {confidence:.0%} for, {1.0 - confidence:.0%} against"
+            )
 
         # Find suggested labels if invalid or uncertain
         suggested_labels = []
@@ -3707,9 +3648,7 @@ async def update_word_label_impl(
             ValidationStatus(new_status)
         except ValueError:
             valid = [s.value for s in ValidationStatus]
-            return {
-                "error": f"Invalid status '{new_status}'. Must be one of: {valid}"
-            }
+            return {"error": f"Invalid status '{new_status}'. Must be one of: {valid}"}
 
         # Fetch existing record
         existing = dynamo_client.get_receipt_word_label(
@@ -3721,9 +3660,7 @@ async def update_word_label_impl(
         )
 
         # Use provided reasoning or keep existing
-        final_reasoning = (
-            reasoning if reasoning is not None else existing.reasoning
-        )
+        final_reasoning = reasoning if reasoning is not None else existing.reasoning
 
         # Build updated entity (triggers __post_init__ validation)
         updated = ReceiptWordLabel(
@@ -3749,8 +3686,7 @@ async def update_word_label_impl(
             "line_id": line_id,
             "word_id": word_id,
             "label": label,
-            "old_status": getattr(existing, "validation_status", None)
-            or "NONE",
+            "old_status": getattr(existing, "validation_status", None) or "NONE",
             "new_status": new_status,
             "reasoning": final_reasoning,
             "label_proposed_by": "mcp-claude-review",
@@ -3804,21 +3740,15 @@ async def get_receipt_words_impl(
             labels_by_word[(label.line_id, label.word_id)].append(
                 {
                     "label": label.label,
-                    "validation_status": getattr(
-                        label, "validation_status", None
-                    )
+                    "validation_status": getattr(label, "validation_status", None)
                     or "NONE",
-                    "label_proposed_by": getattr(
-                        label, "label_proposed_by", None
-                    ),
+                    "label_proposed_by": getattr(label, "label_proposed_by", None),
                 }
             )
 
         # Build word list
         words = []
-        for word in sorted(
-            details.words, key=lambda w: (w.line_id, w.word_id)
-        ):
+        for word in sorted(details.words, key=lambda w: (w.line_id, w.word_id)):
             if line_id is not None and word.line_id != line_id:
                 continue
             word_labels = labels_by_word.get((word.line_id, word.word_id), [])
@@ -3993,9 +3923,9 @@ async def list_recent_uploads_impl(dynamo_client, limit: int = 10) -> dict:
             results.append(
                 {
                     "image_id": img.image_id,
-                    "timestamp_added": _to_utc_dt(
-                        img.timestamp_added
-                    ).isoformat(timespec="milliseconds"),
+                    "timestamp_added": _to_utc_dt(img.timestamp_added).isoformat(
+                        timespec="milliseconds"
+                    ),
                     "image_type": img.image_type,
                     "receipt_count": len(receipts_info),
                     "width": img.width,
@@ -4181,11 +4111,7 @@ async def set_receipt_place_impl(
         if not 0.0 <= float(confidence) <= 1.0:
             return {"error": "confidence must be between 0.0 and 1.0"}
         if validation_status not in ("MATCHED", "UNSURE", "NO_MATCH"):
-            return {
-                "error": (
-                    "validation_status must be MATCHED, UNSURE, or NO_MATCH"
-                )
-            }
+            return {"error": ("validation_status must be MATCHED, UNSURE, or NO_MATCH")}
 
         def _write():
             # Refuse writes for nonexistent receipts: a typo'd id would
@@ -4281,9 +4207,7 @@ async def set_receipt_place_impl(
             import boto3
             import botocore.exceptions
 
-            table = boto3.resource("dynamodb").Table(
-                dynamo_client.table_name
-            )
+            table = boto3.resource("dynamodb").Table(dynamo_client.table_name)
             try:
                 table.update_item(
                     Key={
@@ -4296,10 +4220,7 @@ async def set_receipt_place_impl(
                 )
                 summary_updated = True
             except botocore.exceptions.ClientError as ce:
-                if (
-                    ce.response["Error"]["Code"]
-                    != "ConditionalCheckFailedException"
-                ):
+                if ce.response["Error"]["Code"] != "ConditionalCheckFailedException":
                     raise
                 summary_updated = False
             return before, summary_updated
@@ -4503,28 +4424,22 @@ async def compute_reocr_region_impl(
 
         # Filter words to only those on the requested lines
         target_line_ids = set(line_ids)
-        words_in_region = [
-            w for w in details.words if w.line_id in target_line_ids
-        ]
+        words_in_region = [w for w in details.words if w.line_id in target_line_ids]
 
         if not words_in_region:
             return {
                 "error": f"No words found on line_ids {line_ids}",
-                "available_line_ids": sorted(
-                    {w.line_id for w in details.words}
-                ),
+                "available_line_ids": sorted({w.line_id for w in details.words}),
             }
 
         # Compute axis-aligned bounding box in receipt-relative space
         min_x = min(w.bounding_box["x"] for w in words_in_region)
         min_y = min(w.bounding_box["y"] for w in words_in_region)
         max_x = max(
-            w.bounding_box["x"] + w.bounding_box["width"]
-            for w in words_in_region
+            w.bounding_box["x"] + w.bounding_box["width"] for w in words_in_region
         )
         max_y = max(
-            w.bounding_box["y"] + w.bounding_box["height"]
-            for w in words_in_region
+            w.bounding_box["y"] + w.bounding_box["height"] for w in words_in_region
         )
 
         # Always use full width — Vision OCR produces better results with
@@ -4631,12 +4546,8 @@ async def compute_reocr_region_impl(
         }
 
         # Include context: which lines were found, word count
-        found_line_ids = sorted(
-            target_line_ids & {w.line_id for w in details.words}
-        )
-        missing_line_ids = sorted(
-            target_line_ids - {w.line_id for w in details.words}
-        )
+        found_line_ids = sorted(target_line_ids & {w.line_id for w in details.words})
+        missing_line_ids = sorted(target_line_ids - {w.line_id for w in details.words})
 
         return {
             "image_id": image_id,
@@ -4708,15 +4619,11 @@ async def get_receipt_image_url_impl(
         if receipt.cdn_avif_s3_key:
             variants["avif"] = f"https://{domain}/{receipt.cdn_avif_s3_key}"
         if receipt.cdn_thumbnail_s3_key:
-            variants["thumbnail"] = (
-                f"https://{domain}/{receipt.cdn_thumbnail_s3_key}"
-            )
+            variants["thumbnail"] = f"https://{domain}/{receipt.cdn_thumbnail_s3_key}"
         if receipt.cdn_small_s3_key:
             variants["small"] = f"https://{domain}/{receipt.cdn_small_s3_key}"
         if receipt.cdn_medium_s3_key:
-            variants["medium"] = (
-                f"https://{domain}/{receipt.cdn_medium_s3_key}"
-            )
+            variants["medium"] = f"https://{domain}/{receipt.cdn_medium_s3_key}"
         if variants:
             result["variants"] = variants
 
@@ -4726,9 +4633,7 @@ async def get_receipt_image_url_impl(
         return {"error": str(e)}
 
 
-async def delete_image_impl(
-    dynamo_client, image_id: str, dry_run: bool = True
-) -> dict:
+async def delete_image_impl(dynamo_client, image_id: str, dry_run: bool = True) -> dict:
     """Delete all DynamoDB records under an image partition key."""
     try:
         details = dynamo_client.get_image_details(image_id)
@@ -4809,16 +4714,10 @@ async def delete_receipt_impl(
         try:
             details = dynamo_client.get_receipt_details(image_id, receipt_id)
         except EntityNotFoundError:
-            return {
-                "error": (
-                    f"Receipt {receipt_id} not found for image {image_id}"
-                )
-            }
+            return {"error": (f"Receipt {receipt_id} not found for image {image_id}")}
 
         place = getattr(details, "place", None)
-        merchant_name = (
-            getattr(place, "merchant_name", None) if place else None
-        )
+        merchant_name = getattr(place, "merchant_name", None) if place else None
 
         # Note: ReceiptLetters are excluded from the GSI4 query that backs
         # get_receipt_details, so they are not counted here. The compactor
@@ -4886,18 +4785,12 @@ async def get_receipt_sections_impl(
         try:
             details = dynamo_client.get_receipt_details(image_id, receipt_id)
         except EntityNotFoundError:
-            return {
-                "error": (
-                    f"Receipt {receipt_id} not found for image {image_id}"
-                )
-            }
+            return {"error": (f"Receipt {receipt_id} not found for image {image_id}")}
 
         # line_id -> text so a reviewer can QA sections without a second call
         line_text = {line.line_id: line.text for line in details.lines or []}
 
-        sections = dynamo_client.get_receipt_sections_from_receipt(
-            image_id, receipt_id
-        )
+        sections = dynamo_client.get_receipt_sections_from_receipt(image_id, receipt_id)
 
         section_dicts = []
         for section in sorted(
@@ -5216,8 +5109,7 @@ def _extraction_words(details) -> list[dict]:
                     "word_id": int(word.word_id),
                     "text": str(word.text or ""),
                     "x": float(bb.get("x", 0)),
-                    "y_mid": float(bb.get("y", 0))
-                    + float(bb.get("height", 0)) / 2,
+                    "y_mid": float(bb.get("y", 0)) + float(bb.get("height", 0)) / 2,
                     "h": float(bb.get("height", 0)),
                 }
             )
@@ -5294,9 +5186,7 @@ async def get_receipt_line_items_impl(
             sections = []
         for section in sections or []:
             if section.section_type == "ITEMS":
-                items_section_line_ids = sorted(
-                    int(x) for x in section.line_ids or []
-                )
+                items_section_line_ids = sorted(int(x) for x in section.line_ids or [])
                 items_section_status = section.validation_status or "NONE"
                 break
 
@@ -5338,14 +5228,10 @@ async def get_receipt_line_items_impl(
             )
         if recon.baseline is not None:
             baseline = recon.baseline
-        delta = (
-            round(items_sum - baseline, 2) if baseline is not None else None
-        )
+        delta = round(items_sum - baseline, 2) if baseline is not None else None
 
         statuses = {
-            li.reconciliation_status
-            for li in line_items
-            if li.reconciliation_status
+            li.reconciliation_status for li in line_items if li.reconciliation_status
         }
         receipt_status = (
             max(statuses, key=lambda s: _RECON_SEVERITY.get(s, -1))
@@ -5401,18 +5287,12 @@ async def extend_items_section_impl(
         except (TypeError, ValueError):
             return {"error": "add_line_ids must be a list of integers"}
         if not added:
-            return {
-                "error": "add_line_ids must be a non-empty list of integers"
-            }
+            return {"error": "add_line_ids must be a non-empty list of integers"}
 
         try:
             details = dynamo_client.get_receipt_details(image_id, receipt_id)
         except EntityNotFoundError:
-            return {
-                "error": (
-                    f"Receipt {receipt_id} not found for image {image_id}"
-                )
-            }
+            return {"error": (f"Receipt {receipt_id} not found for image {image_id}")}
 
         receipt_line_ids = {line.line_id for line in details.lines or []}
         unknown = sorted(set(added) - receipt_line_ids)
@@ -5444,20 +5324,14 @@ async def extend_items_section_impl(
         current_lids = sorted(int(x) for x in items_section.line_ids or [])
         already = sorted(set(added) & set(current_lids))
         if already:
-            return {
-                "error": (
-                    f"line_ids {already} are already in the ITEMS section"
-                )
-            }
+            return {"error": (f"line_ids {already} are already in the ITEMS section")}
 
         # Lines claimed by another section are exactly how summary/payment
         # rows leak into ITEMS — refuse rather than double-claim them.
         for section in sections or []:
             if section.section_type == "ITEMS":
                 continue
-            overlap = sorted(
-                set(added) & {int(x) for x in section.line_ids or []}
-            )
+            overlap = sorted(set(added) & {int(x) for x in section.line_ids or []})
             if overlap:
                 return {
                     "error": (
@@ -5492,15 +5366,10 @@ async def extend_items_section_impl(
         new_row_ids = items_section.row_ids
         if items_section.row_ids is not None:
             rows = (
-                dynamo_client.get_receipt_rows_from_receipt(
-                    image_id, receipt_id
-                )
-                or []
+                dynamo_client.get_receipt_rows_from_receipt(image_id, receipt_id) or []
             )
             covering = [
-                r
-                for r in rows
-                if set(int(x) for x in r.line_ids) & set(extended_lids)
+                r for r in rows if set(int(x) for x in r.line_ids) & set(extended_lids)
             ]
             union: set[int] = set()
             for r in covering:
@@ -5546,8 +5415,7 @@ async def extend_items_section_impl(
         result["verified"] = True
         if dry_run:
             result["note"] = (
-                "Arithmetic guard passed; re-run with dry_run=false to "
-                "apply."
+                "Arithmetic guard passed; re-run with dry_run=false to " "apply."
             )
             return result
 
@@ -5697,17 +5565,13 @@ async def list_reconciliation_worklist_impl(
                 except EntityNotFoundError:
                     figures, baseline = None, None
             recon = _reconcile_stored_items(priced, figures)
-            items_sum = (
-                recon.item_sum if recon.item_sum is not None else excluded_sum
-            )
+            items_sum = recon.item_sum if recon.item_sum is not None else excluded_sum
             if recon.baseline is not None:
                 baseline = recon.baseline
             cand["items_sum"] = items_sum
             cand["subtotal"] = baseline
             cand["delta"] = (
-                round(items_sum - baseline, 2)
-                if baseline is not None
-                else None
+                round(items_sum - baseline, 2) if baseline is not None else None
             )
 
         candidates.sort(
@@ -5769,9 +5633,9 @@ def _athena_run(sql: str, max_wait: int = 90, max_rows: int = 5000) -> list:
     )["QueryExecutionId"]
     waited = 0.0
     while True:
-        status = ath.get_query_execution(QueryExecutionId=qid)[
-            "QueryExecution"
-        ]["Status"]
+        status = ath.get_query_execution(QueryExecutionId=qid)["QueryExecution"][
+            "Status"
+        ]
         state = status["State"]
         if state in ("SUCCEEDED", "FAILED", "CANCELLED"):
             break
@@ -5956,9 +5820,7 @@ async def analytics_top_impl(
             col = "org"
             extra = "AND org IS NOT NULL"
         else:
-            return {
-                "error": "dimension must be: page, referrer, ip, country, org"
-            }
+            return {"error": "dimension must be: page, referrer, ip, country, org"}
         sql = _analytics_base_cte(s, e) + f"""
 SELECT {col} AS value, count(*) AS hits, count(DISTINCT IF(sid <> '', sid, NULL)) AS sessions
 FROM base
@@ -6177,9 +6039,7 @@ async def list_training_jobs_impl(
                 {
                     "name": job.name,
                     "status": job.status,
-                    "created_at": (
-                        str(job.created_at) if job.created_at else None
-                    ),
+                    "created_at": (str(job.created_at) if job.created_at else None),
                     "best_f1": r.get("best_f1"),
                     "best_epoch": r.get("best_epoch"),
                     "num_train_samples": r.get("num_train_samples"),
@@ -6188,9 +6048,7 @@ async def list_training_jobs_impl(
                     "epochs": config.get("epochs"),
                     "batch_size": config.get("batch_size"),
                     "merge_amounts": config.get("merge_amounts"),
-                    "early_stopping_patience": config.get(
-                        "early_stopping_patience"
-                    ),
+                    "early_stopping_patience": config.get("early_stopping_patience"),
                 }
             )
 
@@ -6281,9 +6139,7 @@ async def set_active_model_impl(
         old_active = dynamo_client.get_active_model_job()
         if old_active:
             old_active.tags = {
-                k: v
-                for k, v in (old_active.tags or {}).items()
-                if k != "active_model"
+                k: v for k, v in (old_active.tags or {}).items() if k != "active_model"
             }
             dynamo_client.update_job(old_active)
 
@@ -6320,18 +6176,14 @@ async def get_label_distribution_impl(dynamo_client) -> dict:
             last_key = None
 
             while True:
-                records, last_key = (
-                    dynamo_client.get_receipt_word_labels_by_label(
-                        label=label,
-                        limit=1000,
-                        last_evaluated_key=last_key,
-                    )
+                records, last_key = dynamo_client.get_receipt_word_labels_by_label(
+                    label=label,
+                    limit=1000,
+                    last_evaluated_key=last_key,
                 )
 
                 for record in records:
-                    status = (
-                        getattr(record, "validation_status", None) or "NONE"
-                    )
+                    status = getattr(record, "validation_status", None) or "NONE"
                     counts[status] += 1
 
                 if last_key is None:
