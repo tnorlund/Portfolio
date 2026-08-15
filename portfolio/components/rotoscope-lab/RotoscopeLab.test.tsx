@@ -9,7 +9,12 @@ test("renders an accessible unlinked lab with real distribution controls", () =>
     "/",
   );
   expect(screen.getByRole("group", { name: "Strategy" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Radial" })).toHaveAttribute(
+  expect(
+    within(screen.getByRole("group", { name: "Strategy" })).getByRole(
+      "button",
+      { name: "Apple Vision" },
+    ),
+  ).toHaveAttribute(
     "aria-pressed",
     "true",
   );
@@ -22,7 +27,10 @@ test("renders an accessible unlinked lab with real distribution controls", () =>
     "0.18",
   );
   expect(screen.getByRole("checkbox", { name: "Show seeds" })).toBeChecked();
-  expect(screen.getByRole("img", { name: "Interactive rotoscope result" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("img", { name: "Catchment basin diagnostic map" }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Vision labels" })).toBeChecked();
 });
 
 test("disables no-op controls and reveals the hybrid blend only when relevant", () => {
@@ -69,7 +77,9 @@ test("disables no-op controls and reveals the hybrid blend only when relevant", 
 
 test("moves the radial origin by clicking the preview and reset restores it", () => {
   render(<RotoscopeLab />);
-  const preview = screen.getByRole("img", { name: "Interactive rotoscope result" });
+  const preview = screen.getByRole("img", {
+    name: "Catchment basin diagnostic map",
+  });
   jest.spyOn(preview, "getBoundingClientRect").mockReturnValue({
     left: 10,
     top: 20,

@@ -1,0 +1,49 @@
+name: Vision portrait worker CI
+
+on:
+    push:
+        branches: [main]
+        paths:
+            - "tools/vision-portrait-worker/**"
+            - "portfolio/public/rotoscope-portrait.jpg"
+            - "portfolio/public/rotoscope/vision-portrait-v1.json"
+            - "portfolio/public/rotoscope/vision-person-mask-v1.json"
+            - ".github/workflows/vision-portrait-worker-ci.yml"
+    pull_request:
+        paths:
+            - "tools/vision-portrait-worker/**"
+            - "portfolio/public/rotoscope-portrait.jpg"
+            - "portfolio/public/rotoscope/vision-portrait-v1.json"
+            - "portfolio/public/rotoscope/vision-person-mask-v1.json"
+            - ".github/workflows/vision-portrait-worker-ci.yml"
+    workflow_dispatch:
+
+concurrency:
+    group: vision-portrait-worker-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    test:
+        name: Build, test, and validate artifacts
+        runs-on: macos-latest
+        timeout-minutes: 15
+
+        steps:
+            - uses: actions/checkout@v7
+
+            - name: Swift toolchain
+              run: swift --version && xcodebuild -version
+
+            - name: Build and test
+              working-directory: tools/vision-portrait-worker
+              run: |
+                  swift build --build-tests
+                  swift test
+
+            - name: Validate checked-in artifacts
+              run: |
+                  swift run --package-path tools/vision-portrait-worker vision-portrait-worker \
+                    --input portfolio/public/rotoscope-portrait.jpg \
+                    --manifest portfolio/public/rotoscope/vision-portrait-v1.json \
+                    --mask portfolio/public/rotoscope/vision-person-mask-v1.json \
+                    --validate-only

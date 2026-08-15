@@ -3,8 +3,9 @@ import type {
   MarkerExperimentInput,
   MarkerExperimentOptions,
 } from "./labAlgorithm";
+import type { VisionFeature } from "./vision";
 
-export const ROTOSCOPE_LAB_WORKER_VERSION = 2 as const;
+export const ROTOSCOPE_LAB_WORKER_VERSION = 3 as const;
 
 export interface RotoscopeLabRenderRequest {
   version: typeof ROTOSCOPE_LAB_WORKER_VERSION;
@@ -40,6 +41,15 @@ export interface RotoscopeLabRenderSuccess {
   tierCounts: { face: number; body: number; background: number };
   markerDigest: string;
   labelDigest: string;
+  vision?: {
+    available: boolean;
+    featureCount: number;
+    markerCount: number;
+    faceLandmarkCount: number;
+    captureQuality: number | null;
+    message?: string;
+  };
+  visionFeatures?: VisionFeature[];
   path: "scalar-lab";
   normalizedExperiment: MarkerExperimentOptions;
   normalizedBaseOptions: RotoscopeOptions;

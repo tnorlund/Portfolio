@@ -18,6 +18,7 @@ import {
   type NoiseKind,
 } from "./labAlgorithm";
 import type { RotoscopeLabRenderSuccess } from "./protocol";
+import type { VisionFeature } from "./vision";
 import styles from "./RotoscopeLab.module.css";
 
 type Quality = 320 | 480;
@@ -37,6 +38,7 @@ interface RenderSummary {
   path: string;
   markerDigest: string;
   labelDigest: string;
+  vision?: RotoscopeLabRenderSuccess["vision"];
 }
 
 // Kept local so the unlinked lab never becomes a shared dependency of the
@@ -175,7 +177,10 @@ const initialSettings = (): LabSettings => ({
       background: 8,
     }),
   },
-  experiment: normalizeMarkerExperiment(DEFAULT_MARKER_EXPERIMENT),
+  experiment: normalizeMarkerExperiment({
+    ...DEFAULT_MARKER_EXPERIMENT,
+    strategy: "vision",
+  }),
 });
 
 const paintCanvas = (
@@ -214,6 +219,7 @@ const closeResult = (result: RotoscopeLabRenderSuccess): void => {
 };
 
 const strategyOptions = [
+  { value: "vision", label: "Apple Vision" },
   { value: "radial", label: "Radial" },
   { value: "features", label: "Best features" },
   { value: "hybrid", label: "Hybrid" },
@@ -239,9 +245,11 @@ export default function RotoscopeLab() {
   const [settings, setSettings] = useState<LabSettings>(() => settingsRef.current);
   const [imageReady, setImageReady] = useState(false);
   const [status, setStatus] = useState<LabStatus>("idle");
-  const [viewMode, setViewMode] = useState<ViewMode>("output");
+  const [viewMode, setViewMode] = useState<ViewMode>("diagnostic");
   const [showSeeds, setShowSeeds] = useState(true);
+  const [showVisionLabels, setShowVisionLabels] = useState(true);
   const [markers, setMarkers] = useState<Uint32Array>(() => new Uint32Array());
+  const [visionFeatures, setVisionFeatures] = useState<VisionFeature[]>([]);
   const [renderSize, setRenderSize] = useState({ width: 480, height: 360 });
   const [summary, setSummary] = useState<RenderSummary | null>(null);
   const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
@@ -324,6 +332,7 @@ export default function RotoscopeLab() {
         result.diagnosticPixelsBuffer,
       );
       setMarkers(new Uint32Array(result.markerIndicesBuffer));
+      setVisionFeatures(result.visionFeatures ?? []);
       setRenderSize({ width: result.width, height: result.height });
       setSummary({
         markerCount: result.markerCount,
@@ -332,6 +341,7 @@ export default function RotoscopeLab() {
         path: result.path,
         markerDigest: result.markerDigest,
         labelDigest: result.labelDigest,
+        vision: result.vision,
       });
       setStatus("ready");
     } catch {
@@ -374,20 +384,21 @@ export default function RotoscopeLab() {
     const context = canvas.getContext("2d");
     if (!context) return;
     context.clearRect(0, 0, canvas.width, canvas.height);
-    if (!showSeeds) return;
-    context.fillStyle = "rgba(255, 255, 255, 0.94)";
-    context.strokeStyle = "rgba(18, 23, 31, 0.82)";
-    context.lineWidth = 1;
-    for (let marker = 0; marker < markers.length; marker += 1) {
-      const index = markers[marker];
-      const y = Math.floor(index / renderSize.width);
-      const x = index - y * renderSize.width;
-      context.beginPath();
-      context.arc(x + 0.5, y + 0.5, 2.1, 0, Math.PI * 2);
-      context.fill();
-      context.stroke();
+    if (showSeeds) {
+      context.fillStyle = "rgba(255, 255, 255, 0.94)";
+      context.strokeStyle = "rgba(18, 23, 31, 0.82)";
+      context.lineWidth = 1;
+      for (let marker = 0; marker < markers.length; marker += 1) {
+        const index = markers[marker];
+        const y = Math.floor(index / renderSize.width);
+        const x = index - y * renderSize.width;
+        context.beginPath();
+        context.arc(x + 0.5, y + 0.5, 2.1, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+      }
     }
-    if (settings.experiment.strategy !== "features") {
+    if (showSeeds && settings.experiment.strategy !== "features") {
       const center = settings.experiment.radial;
       const centerX = center.centerX * renderSize.width;
       const centerY = center.centerY * renderSize.height;
@@ -403,12 +414,70 @@ export default function RotoscopeLab() {
       context.arc(centerX, centerY, 5, 0, Math.PI * 2);
       context.stroke();
     }
+    if (
+      showVisionLabels &&
+      settings.experiment.strategy === "vision" &&
+      visionFeatures.length > 0
+    ) {
+      const labelPoints = new Map<
+        string,
+        { x: number; y: number; count: number; label: string; kind: string }
+      >();
+      context.fillStyle = "rgba(89, 232, 255, 0.96)";
+      context.strokeStyle = "rgba(9, 24, 35, 0.9)";
+      context.lineWidth = 1;
+      for (const feature of visionFeatures) {
+        const x = feature.point.x * renderSize.width;
+        const y = feature.point.y * renderSize.height;
+        context.beginPath();
+        context.arc(x, y, feature.kind === "face-landmark" ? 1.8 : 2.4, 0, Math.PI * 2);
+        context.fill();
+        context.stroke();
+        const key =
+          feature.kind === "face-landmark"
+            ? `face:${feature.group}`
+            : feature.id;
+        const current = labelPoints.get(key);
+        if (current) {
+          current.x += x;
+          current.y += y;
+          current.count += 1;
+        } else if (
+          feature.kind === "face-landmark" ||
+          feature.confidence >= 0.35
+        ) {
+          labelPoints.set(key, {
+            x,
+            y,
+            count: 1,
+            label: feature.label,
+            kind: feature.kind,
+          });
+        }
+      }
+      context.font = `${renderSize.width >= 480 ? 9 : 8}px ui-monospace, SFMono-Regular, Menlo, monospace`;
+      context.textBaseline = "middle";
+      context.lineWidth = 3;
+      for (const label of labelPoints.values()) {
+        const x = label.x / label.count + 4;
+        const y = label.y / label.count - 4;
+        context.strokeStyle = "rgba(9, 24, 35, 0.9)";
+        context.strokeText(label.label, x, y);
+        context.fillStyle =
+          label.kind === "face-landmark"
+            ? "rgba(167, 246, 255, 0.98)"
+            : "rgba(255, 211, 117, 0.98)";
+        context.fillText(label.label, x, y);
+      }
+    }
   }, [
     markers,
     renderSize,
     settings.experiment.radial,
     settings.experiment.strategy,
     showSeeds,
+    showVisionLabels,
+    visionFeatures,
   ]);
 
   useEffect(() => {
@@ -436,7 +505,24 @@ export default function RotoscopeLab() {
     updateBase({ [field]: { ...current, [tier]: value } });
   };
 
-  const applyPreset = (preset: "features" | "bloom" | "ripple") => {
+  const applyPreset = (preset: "vision" | "features" | "bloom" | "ripple") => {
+    if (preset === "vision") {
+      mutateSettings((current) => ({
+        ...current,
+        base: { ...current.base, markerBudget: 312 },
+        experiment: normalizeMarkerExperiment({
+          ...current.experiment,
+          strategy: "vision",
+          radial: { ...current.experiment.radial, coverage: 0.18 },
+          noise: {
+            ...current.experiment.noise,
+            kind: "fbm",
+            amount: 0.2,
+          },
+        }),
+      }));
+      return;
+    }
     if (preset === "features") {
       mutateSettings((current) => ({
         ...current,
@@ -551,7 +637,7 @@ export default function RotoscopeLab() {
         </Link>
         <div>
           <h1>Rotoscope Lab</h1>
-          <p>Explore Gaussian blue-noise marker distributions to shape region growth and detail.</p>
+          <p>Compare Apple Vision face and body labels with Gaussian blue-noise basin placement.</p>
         </div>
       </header>
 
@@ -575,6 +661,18 @@ export default function RotoscopeLab() {
               />
               Show seeds
             </label>
+            {settings.experiment.strategy === "vision" ? (
+              <label className={styles.checkbox}>
+                <input
+                  type="checkbox"
+                  checked={showVisionLabels}
+                  onChange={(event) =>
+                    setShowVisionLabels(event.currentTarget.checked)
+                  }
+                />
+                Vision labels
+              </label>
+            ) : null}
           </div>
           <div
             className={styles.preview}
@@ -618,7 +716,11 @@ export default function RotoscopeLab() {
               }
             />
             <span className={styles.previewHint}>
-              {radialDisabled ? "Feature score field" : "Click to move the radial origin"}
+              {settings.experiment.strategy === "vision"
+                ? "Apple Vision labels + Gaussian fill"
+                : radialDisabled
+                  ? "Feature score field"
+                  : "Click to move the radial origin"}
             </span>
           </div>
 
@@ -631,7 +733,9 @@ export default function RotoscopeLab() {
                   : status === "error"
                     ? "The lab worker is unavailable"
                     : status === "ready"
-                      ? "Rendered"
+                      ? summary?.vision?.available === false
+                        ? "Vision unavailable — Gaussian fallback rendered"
+                        : "Rendered"
                       : "Preparing portrait…"}
             </span>
             {summary ? (
@@ -646,6 +750,8 @@ export default function RotoscopeLab() {
             <div><dt>Face</dt><dd>{summary?.tierCounts.face ?? "—"}</dd></div>
             <div><dt>Body</dt><dd>{summary?.tierCounts.body ?? "—"}</dd></div>
             <div><dt>Background</dt><dd>{summary?.tierCounts.background ?? "—"}</dd></div>
+            <div><dt>Vision labels</dt><dd>{summary?.vision?.featureCount ?? "—"}</dd></div>
+            <div><dt>Vision seeds</dt><dd>{summary?.vision?.markerCount ?? "—"}</dd></div>
             <div><dt>Render</dt><dd>{summary ? `${Math.round(summary.elapsedMs)} ms` : "—"}</dd></div>
             <div><dt>Worker</dt><dd>{summary?.path ?? "—"}</dd></div>
           </dl>
@@ -897,12 +1003,13 @@ export default function RotoscopeLab() {
             <RangeControl label="Face" value={spacing.face} min={1} max={16} step={1} onChange={(value) => updateTier("spacing", "face", value)} />
             <RangeControl label="Body" value={spacing.body} min={1} max={24} step={1} onChange={(value) => updateTier("spacing", "body", value)} />
             <RangeControl label="Background" value={spacing.background} min={1} max={32} step={1} onChange={(value) => updateTier("spacing", "background", value)} />
-            <RangeControl label="Feature scale" value={settings.base.blurRadius ?? 9} min={1} max={32} step={1} disabled={settings.experiment.strategy === "radial"} onChange={(blurRadius) => updateBase({ blurRadius })} />
+            <RangeControl label="Feature scale" value={settings.base.blurRadius ?? 9} min={1} max={32} step={1} disabled={settings.experiment.strategy === "radial" || settings.experiment.strategy === "vision"} onChange={(blurRadius) => updateBase({ blurRadius })} />
           </Section>
 
           <div className={styles.presets}>
             <span>Presets</span>
             <div>
+              <button type="button" onClick={() => applyPreset("vision")}>Apple Vision</button>
               <button type="button" onClick={() => applyPreset("features")}>Best features</button>
               <button type="button" onClick={() => applyPreset("bloom")}>Face bloom</button>
               <button type="button" onClick={() => applyPreset("ripple")}>Organic ripple</button>

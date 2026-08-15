@@ -20,6 +20,10 @@ import {
   type RotoscopeLabWorkerResponse,
 } from "./protocol";
 import { LabSourceCache, labSourceCacheKey } from "./sourceCache";
+import {
+  loadVisionPortraitArtifacts,
+  type VisionPortraitArtifacts,
+} from "./vision";
 
 type WorkerTransfer = ArrayBuffer | ImageBitmap;
 
@@ -50,6 +54,22 @@ let cachedNoise: CachedNoise | null = null;
 let pendingRequest: RotoscopeLabRenderRequest | null = null;
 let latestRequestId = 0;
 let draining = false;
+let cachedVision: VisionPortraitArtifacts | null = null;
+let visionLoadAttempted = false;
+let visionLoadError: string | null = null;
+
+const visionArtifacts = async (): Promise<VisionPortraitArtifacts | null> => {
+  if (cachedVision) return cachedVision;
+  if (visionLoadAttempted) return null;
+  visionLoadAttempted = true;
+  try {
+    cachedVision = await loadVisionPortraitArtifacts();
+    return cachedVision;
+  } catch (error) {
+    visionLoadError = error instanceof Error ? error.message : String(error);
+    return null;
+  }
+};
 
 const post = (
   response: RotoscopeLabWorkerResponse,
@@ -176,6 +196,10 @@ const render = async (request: RotoscopeLabRenderRequest): Promise<void> => {
     normalizedExperiment.strategy === "features" ||
     (normalizedExperiment.strategy === "hybrid" &&
       normalizedExperiment.hybridRadialWeight < 1);
+  const vision =
+    normalizedExperiment.strategy === "vision"
+      ? await visionArtifacts()
+      : null;
 
   const prepareStartedAt = performance.now();
   const stageKey = `${decoded.key}:${request.width}x${request.height}`;
@@ -222,6 +246,7 @@ const render = async (request: RotoscopeLabRenderRequest): Promise<void> => {
     normalizedBase,
     normalizedExperiment,
     cachedNoise.field,
+    vision ?? undefined,
   );
   const paintStartedAt = performance.now();
   const output = paintPixels(result.pixels, request.width, request.height);
@@ -260,6 +285,22 @@ const render = async (request: RotoscopeLabRenderRequest): Promise<void> => {
     tierCounts: result.tierCounts,
     markerDigest: result.markerDigest,
     labelDigest: result.labelDigest,
+    vision:
+      normalizedExperiment.strategy === "vision"
+        ? {
+            available: vision !== null,
+            featureCount: result.visionFeatureCount,
+            markerCount: result.visionMarkerCount,
+            faceLandmarkCount:
+              vision?.features.filter((feature) => feature.kind === "face-landmark")
+                .length ?? 0,
+            captureQuality: vision?.primaryFace.captureQuality ?? null,
+            ...(visionLoadError ? { message: visionLoadError } : {}),
+          }
+        : undefined,
+    visionFeatures: vision?.features.filter(
+      (feature) => feature.kind !== "contour" && feature.kind !== "saliency",
+    ),
     path: "scalar-lab",
     normalizedExperiment: result.normalizedExperiment,
     normalizedBaseOptions: result.normalizedBaseOptions,

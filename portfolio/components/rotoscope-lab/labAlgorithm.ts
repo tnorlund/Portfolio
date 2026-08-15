@@ -13,8 +13,9 @@ import {
   type RotoscopeOptions,
   type TierValues,
 } from "../home/Rotoscope/algorithm";
+import type { VisionFeature, VisionPortraitArtifacts } from "./vision";
 
-export type MarkerStrategy = "features" | "radial" | "hybrid";
+export type MarkerStrategy = "features" | "radial" | "hybrid" | "vision";
 export type NoiseKind = "none" | "white" | "value" | "fbm";
 
 export interface MarkerNoiseOptions {
@@ -76,6 +77,8 @@ export interface RotoscopeExperimentResult {
   tierCounts: Record<FocusTierName, number>;
   markerDigest: string;
   labelDigest: string;
+  visionFeatureCount: number;
+  visionMarkerCount: number;
   normalizedBaseOptions: RotoscopeOptions;
   normalizedExperiment: MarkerExperimentOptions;
   timings: ExperimentStageTimings;
@@ -110,7 +113,10 @@ const finiteOr = (value: number | undefined, fallback: number): number =>
   value !== undefined && Number.isFinite(value) ? value : fallback;
 
 const isStrategy = (value: unknown): value is MarkerStrategy =>
-  value === "features" || value === "radial" || value === "hybrid";
+  value === "features" ||
+  value === "radial" ||
+  value === "hybrid" ||
+  value === "vision";
 
 const isNoiseKind = (value: unknown): value is NoiseKind =>
   value === "none" || value === "white" || value === "value" || value === "fbm";
@@ -487,11 +493,122 @@ const perturbScores = (
   return output;
 };
 
+const visionFeatureWeight = (
+  feature: VisionFeature,
+  insidePrimaryPerson: boolean,
+): number => {
+  switch (feature.kind) {
+    case "face-landmark":
+      return 4;
+    case "face-center":
+      return 3.8;
+    case "hand-joint":
+      return insidePrimaryPerson ? 3.1 : 1.15;
+    case "body-joint":
+      return insidePrimaryPerson ? 2.9 : 1.1;
+    case "human-center":
+      return insidePrimaryPerson ? 2.5 : 1.05;
+    case "saliency":
+      return 1.2;
+    case "contour":
+      return 0.82;
+  }
+};
+
+const visionMaskValue = (
+  vision: VisionPortraitArtifacts,
+  normalizedX: number,
+  normalizedY: number,
+): number => {
+  const x = Math.min(
+    vision.mask.width - 1,
+    Math.max(0, Math.floor(normalizedX * vision.mask.width)),
+  );
+  const y = Math.min(
+    vision.mask.height - 1,
+    Math.max(0, Math.floor(normalizedY * vision.mask.height)),
+  );
+  return vision.mask.pixels[y * vision.mask.width + x];
+};
+
+/**
+ * Apple Vision landmarks become the strongest exact candidates, body/person
+ * geometry is medium weight, and saliency/contours only guide the distributed
+ * Gaussian fill. The seeded priority field keeps all non-Vision markers
+ * replayable while the native observations remain fixed.
+ */
+export const createVisionPriorityField = (
+  width: number,
+  height: number,
+  experiment: MarkerExperimentOptions,
+  baseOptions: RotoscopeOptions,
+  noise: Float32Array | null,
+  vision?: VisionPortraitArtifacts,
+): Float32Array => {
+  const focusTiers = createFocusTierMap(width, height, baseOptions.focus);
+  let density = createRadialDensityField(
+    width,
+    height,
+    experiment,
+    focusTiers,
+  );
+  density = modulateDensity(
+    density,
+    noise,
+    experiment.noise.amount,
+    experiment.radial.coverage,
+  );
+  if (vision) {
+    const personWeighted = new Float32Array(density);
+    for (let y = 0; y < height; y += 1) {
+      const normalizedY = (y + 0.5) / height;
+      for (let x = 0; x < width; x += 1) {
+        const normalizedX = (x + 0.5) / width;
+        const index = y * width + x;
+        if (visionMaskValue(vision, normalizedX, normalizedY)) {
+          personWeighted[index] = Math.fround(
+            Math.max(personWeighted[index], 0.42 + personWeighted[index] * 0.42),
+          );
+        }
+      }
+    }
+    density = personWeighted;
+  }
+  const priorities = createWeightedPriorityField(
+    density,
+    width,
+    height,
+    experiment.noise.seed,
+  );
+  if (!vision) return priorities;
+
+  for (let featureIndex = 0; featureIndex < vision.features.length; featureIndex += 1) {
+    const feature = vision.features[featureIndex];
+    const x = Math.min(width - 1, Math.max(0, Math.floor(feature.point.x * width)));
+    const y = Math.min(height - 1, Math.max(0, Math.floor(feature.point.y * height)));
+    const insidePrimaryPerson = visionMaskValue(
+      vision,
+      feature.point.x,
+      feature.point.y,
+    ) > 0;
+    const weight = visionFeatureWeight(feature, insidePrimaryPerson);
+    const stableTieBreak = (vision.features.length - featureIndex) * 1e-6;
+    priorities[y * width + x] = Math.fround(
+      Math.max(
+        priorities[y * width + x],
+        weight + feature.confidence * 0.2 + stableTieBreak,
+      ),
+    );
+  }
+  return priorities;
+};
+
 const experimentScores = (
   stages: PreparedExperimentStages,
   baseOptions: RotoscopeOptions,
   experiment: MarkerExperimentOptions,
   noise: Float32Array | null,
+  vision?: VisionPortraitArtifacts,
 ): Float32Array => {
   if (experiment.strategy === "features") {
     if (!stages.featureScores) throw new Error("feature scores were not prepared");
@@ -510,6 +627,17 @@ const experimentScores = (
       normalizeScores(stages.featureScores),
       noise,
       experiment.noise.amount,
+    );
+  }
+
+  if (experiment.strategy === "vision") {
+    return createVisionPriorityField(
+      stages.width,
+      stages.height,
+      experiment,
+      baseOptions,
+      noise,
+      vision,
     );
   }
 
@@ -577,6 +705,7 @@ export const createDiagnosticPixels = (
   width: number,
   height: number,
   baseOptions: RotoscopeOptions,
+  vision?: VisionPortraitArtifacts,
 ): Uint8ClampedArray => {
   const regionTier: FocusTierName[] = new Array(markerIndices.length + 1);
   for (let marker = 0; marker < markerIndices.length; marker += 1) {
@@ -597,8 +726,29 @@ export const createDiagnosticPixels = (
         (y > 0 && labels[index - width] !== label) ||
         (x + 1 < width && labels[index + 1] !== label) ||
         (y + 1 < height && labels[index + width] !== label);
+      const maskValue = vision
+        ? visionMaskValue(vision, (x + 0.5) / width, (y + 0.5) / height)
+        : 0;
+      const personBoundary =
+        vision !== undefined &&
+        ((x > 0 &&
+          visionMaskValue(vision, (x - 0.5) / width, (y + 0.5) / height) !==
+            maskValue) ||
+          (y > 0 &&
+            visionMaskValue(vision, (x + 0.5) / width, (y - 0.5) / height) !==
+              maskValue) ||
+          (x + 1 < width &&
+            visionMaskValue(vision, (x + 1.5) / width, (y + 0.5) / height) !==
+              maskValue) ||
+          (y + 1 < height &&
+            visionMaskValue(vision, (x + 0.5) / width, (y + 1.5) / height) !==
+              maskValue));
       const offset = index * 4;
-      if (boundary) {
+      if (personBoundary) {
+        output[offset] = 40;
+        output[offset + 1] = 225;
+        output[offset + 2] = 205;
+      } else if (boundary) {
         output[offset] = 25;
         output[offset + 1] = 29;
         output[offset + 2] = 34;
@@ -634,6 +784,7 @@ export const runRotoscopeExperiment = (
   baseInput: Partial<RotoscopeOptions>,
   experimentInput: MarkerExperimentInput,
   cachedNoise?: Float32Array | null,
+  vision?: VisionPortraitArtifacts,
 ): RotoscopeExperimentResult => {
   const count = validateRgba(
     stages.source,
@@ -655,6 +806,7 @@ export const runRotoscopeExperiment = (
     normalizedBaseOptions,
     normalizedExperiment,
     noise,
+    vision,
   );
   const selected = selectMarkers(
     scores,
@@ -662,6 +814,24 @@ export const runRotoscopeExperiment = (
     stages.height,
     normalizedBaseOptions,
   );
+  const visionMarkerIndices = new Set<number>();
+  if (vision) {
+    for (const feature of vision.features) {
+      const x = Math.min(
+        stages.width - 1,
+        Math.max(0, Math.floor(feature.point.x * stages.width)),
+      );
+      const y = Math.min(
+        stages.height - 1,
+        Math.max(0, Math.floor(feature.point.y * stages.height)),
+      );
+      visionMarkerIndices.add(y * stages.width + x);
+    }
+  }
+  let visionMarkerCount = 0;
+  for (const index of selected.indices) {
+    if (visionMarkerIndices.has(index)) visionMarkerCount += 1;
+  }
   const selectionMs = performance.now() - selectionStartedAt;
 
   const watershedStartedAt = performance.now();
@@ -690,6 +860,7 @@ export const runRotoscopeExperiment = (
     stages.width,
     stages.height,
     normalizedBaseOptions,
+    vision,
   );
   const diagnosticMs = performance.now() - diagnosticStartedAt;
 
@@ -702,6 +873,8 @@ export const runRotoscopeExperiment = (
     tierCounts: selected.tierCounts,
     markerDigest: digestUint32(selected.indices),
     labelDigest: digestUint32(segmented.labels),
+    visionFeatureCount: vision?.features.length ?? 0,
+    visionMarkerCount,
     normalizedBaseOptions,
     normalizedExperiment,
     timings: { noiseMs, selectionMs, watershedMs, colorMs, diagnosticMs },

@@ -107,7 +107,7 @@ test("one-in-flight one-latest backpressure collapses a 100-event burst", async 
   const promises = Array.from({ length: 100 }, () => client.render(request()));
 
   expect(worker.postMessage).toHaveBeenCalledTimes(1);
-  expect(worker.postMessage.mock.calls[0][0]).toMatchObject({ id: 1, version: 2 });
+  expect(worker.postMessage.mock.calls[0][0]).toMatchObject({ id: 1, version: 3 });
 
   const staleOutputClose = jest.fn();
   const staleDiagnosticClose = jest.fn();
@@ -122,7 +122,7 @@ test("one-in-flight one-latest backpressure collapses a 100-event burst", async 
   expect(staleOutputClose).toHaveBeenCalledTimes(1);
   expect(staleDiagnosticClose).toHaveBeenCalledTimes(1);
   expect(worker.postMessage).toHaveBeenCalledTimes(2);
-  expect(worker.postMessage.mock.calls[1][0]).toMatchObject({ id: 100, version: 2 });
+  expect(worker.postMessage.mock.calls[1][0]).toMatchObject({ id: 100, version: 3 });
 
   const final = success(100);
   worker.emit(final);

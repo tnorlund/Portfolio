@@ -1,0 +1,5020 @@
+{
+  "bodyPoses" : [
+    {
+      "index" : 0,
+      "joints" : [
+        {
+          "confidence" : 0.718262,
+          "group" : "body",
+          "id" : "body.0.head_joint",
+          "kind" : "body-joint",
+          "label" : "Head_joint",
+          "point" : {
+            "x" : 0.104582,
+            "y" : 0.527331
+          }
+        },
+        {
+          "confidence" : 0.780273,
+          "group" : "body",
+          "id" : "body.0.left_ear_joint",
+          "kind" : "body-joint",
+          "label" : "Left_ear_joint",
+          "point" : {
+            "x" : 0.123331,
+            "y" : 0.521836
+          }
+        },
+        {
+          "confidence" : 0.742676,
+          "group" : "body",
+          "id" : "body.0.left_eye_joint",
+          "kind" : "body-joint",
+          "label" : "Left_eye_joint",
+          "point" : {
+            "x" : 0.109832,
+            "y" : 0.522947
+          }
+        },
+        {
+          "confidence" : 0.396729,
+          "group" : "body",
+          "id" : "body.0.left_foot_joint",
+          "kind" : "body-joint",
+          "label" : "Left_foot_joint",
+          "point" : {
+            "x" : 0.135589,
+            "y" : 0.751183
+          }
+        },
+        {
+          "confidence" : 0.761719,
+          "group" : "body",
+          "id" : "body.0.left_forearm_joint",
+          "kind" : "body-joint",
+          "label" : "Left_forearm_joint",
+          "point" : {
+            "x" : 0.159803,
+            "y" : 0.58432
+          }
+        },
+        {
+          "confidence" : 0.775391,
+          "group" : "body",
+          "id" : "body.0.left_hand_joint",
+          "kind" : "body-joint",
+          "label" : "Left_hand_joint",
+          "point" : {
+            "x" : 0.118915,
+            "y" : 0.590551
+          }
+        },
+        {
+          "confidence" : 0.509766,
+          "group" : "body",
+          "id" : "body.0.left_leg_joint",
+          "kind" : "body-joint",
+          "label" : "Left_leg_joint",
+          "point" : {
+            "x" : 0.134039,
+            "y" : 0.690851
+          }
+        },
+        {
+          "confidence" : 0.455566,
+          "group" : "body",
+          "id" : "body.0.left_shoulder_1_joint",
+          "kind" : "body-joint",
+          "label" : "Left_shoulder_1_joint",
+          "point" : {
+            "x" : 0.145481,
+            "y" : 0.548787
+          }
+        },
+        {
+          "confidence" : 0.691895,
+          "group" : "body",
+          "id" : "body.0.left_upLeg_joint",
+          "kind" : "body-joint",
+          "label" : "Left_up Leg_joint",
+          "point" : {
+            "x" : 0.137357,
+            "y" : 0.623219
+          }
+        },
+        {
+          "confidence" : 0.587158,
+          "group" : "body",
+          "id" : "body.0.neck_1_joint",
+          "kind" : "body-joint",
+          "label" : "Neck_1_joint",
+          "point" : {
+            "x" : 0.129842,
+            "y" : 0.548956
+          }
+        },
+        {
+          "confidence" : 0.278076,
+          "group" : "body",
+          "id" : "body.0.right_eye_joint",
+          "kind" : "body-joint",
+          "label" : "Right_eye_joint",
+          "point" : {
+            "x" : 0.102335,
+            "y" : 0.521894
+          }
+        },
+        {
+          "confidence" : 0.420166,
+          "group" : "body",
+          "id" : "body.0.right_foot_joint",
+          "kind" : "body-joint",
+          "label" : "Right_foot_joint",
+          "point" : {
+            "x" : 0.136232,
+            "y" : 0.753948
+          }
+        },
+        {
+          "confidence" : 0.401855,
+          "group" : "body",
+          "id" : "body.0.right_forearm_joint",
+          "kind" : "body-joint",
+          "label" : "Right_forearm_joint",
+          "point" : {
+            "x" : 0.105609,
+            "y" : 0.585414
+          }
+        },
+        {
+          "confidence" : 0.311279,
+          "group" : "body",
+          "id" : "body.0.right_hand_joint",
+          "kind" : "body-joint",
+          "label" : "Right_hand_joint",
+          "point" : {
+            "x" : 0.102119,
+            "y" : 0.59298
+          }
+        },
+        {
+          "confidence" : 0.483154,
+          "group" : "body",
+          "id" : "body.0.right_leg_joint",
+          "kind" : "body-joint",
+          "label" : "Right_leg_joint",
+          "point" : {
+            "x" : 0.132439,
+            "y" : 0.690343
+          }
+        },
+        {
+          "confidence" : 0.71875,
+          "group" : "body",
+          "id" : "body.0.right_shoulder_1_joint",
+          "kind" : "body-joint",
+          "label" : "Right_shoulder_1_joint",
+          "point" : {
+            "x" : 0.114203,
+            "y" : 0.549125
+          }
+        },
+        {
+          "confidence" : 0.618164,
+          "group" : "body",
+          "id" : "body.0.right_upLeg_joint",
+          "kind" : "body-joint",
+          "label" : "Right_up Leg_joint",
+          "point" : {
+            "x" : 0.119884,
+            "y" : 0.622379
+          }
+        },
+        {
+          "confidence" : 0.655029,
+          "group" : "body",
+          "id" : "body.0.root",
+          "kind" : "body-joint",
+          "label" : "Root",
+          "point" : {
+            "x" : 0.12862,
+            "y" : 0.622799
+          }
+        }
+      ]
+    },
+    {
+      "index" : 1,
+      "joints" : [
+        {
+          "confidence" : 0.451172,
+          "group" : "body",
+          "id" : "body.1.left_ear_joint",
+          "kind" : "body-joint",
+          "label" : "Left_ear_joint",
+          "point" : {
+            "x" : 0.206833,
+            "y" : 0.506469
+          }
+        },
+        {
+          "confidence" : 0.247559,
+          "group" : "body",
+          "id" : "body.1.left_hand_joint",
+          "kind" : "body-joint",
+          "label" : "Left_hand_joint",
+          "point" : {
+            "x" : 0.167912,
+            "y" : 0.600276
+          }
+        },
+        {
+          "confidence" : 0.800293,
+          "group" : "body",
+          "id" : "body.1.left_shoulder_1_joint",
+          "kind" : "body-joint",
+          "label" : "Left_shoulder_1_joint",
+          "point" : {
+            "x" : 0.191035,
+            "y" : 0.539074
+          }
+        },
+        {
+          "confidence" : 0.710449,
+          "group" : "body",
+          "id" : "body.1.left_upLeg_joint",
+          "kind" : "body-joint",
+          "label" : "Left_up Leg_joint",
+          "point" : {
+            "x" : 0.194594,
+            "y" : 0.618724
+          }
+        },
+        {
+          "confidence" : 0.777832,
+          "group" : "body",
+          "id" : "body.1.neck_1_joint",
+          "kind" : "body-joint",
+          "label" : "Neck_1_joint",
+          "point" : {
+            "x" : 0.212338,
+            "y" : 0.537509
+          }
+        },
+        {
+          "confidence" : 0.304443,
+          "group" : "body",
+          "id" : "body.1.right_ear_joint",
+          "kind" : "body-joint",
+          "label" : "Right_ear_joint",
+          "point" : {
+            "x" : 0.241375,
+            "y" : 0.512527
+          }
+        },
+        {
+          "confidence" : 0.755371,
+          "group" : "body",
+          "id" : "body.1.right_shoulder_1_joint",
+          "kind" : "body-joint",
+          "label" : "Right_shoulder_1_joint",
+          "point" : {
+            "x" : 0.233641,
+            "y" : 0.535945
+          }
+        },
+        {
+          "confidence" : 0.631348,
+          "group" : "body",
+          "id" : "body.1.right_upLeg_joint",
+          "kind" : "body-joint",
+          "label" : "Right_up Leg_joint",
+          "point" : {
+            "x" : 0.233757,
+            "y" : 0.613535
+          }
+        },
+        {
+          "confidence" : 0.670898,
+          "group" : "body",
+          "id" : "body.1.root",
+          "kind" : "body-joint",
+          "label" : "Root",
+          "point" : {
+            "x" : 0.214175,
+            "y" : 0.616129
+          }
+        }
+      ]
+    },
+    {
+      "index" : 2,
+      "joints" : [
+        {
+          "confidence" : 0.561035,
+          "group" : "body",
+          "id" : "body.2.left_foot_joint",
+          "kind" : "body-joint",
+          "label" : "Left_foot_joint",
+          "point" : {
+            "x" : 0.206812,
+            "y" : 0.727316
+          }
+        },
+        {
+          "confidence" : 0.683594,
+          "group" : "body",
+          "id" : "body.2.left_leg_joint",
+          "kind" : "body-joint",
+          "label" : "Left_leg_joint",
+          "point" : {
+            "x" : 0.206775,
+            "y" : 0.677482
+          }
+        },
+        {
+          "confidence" : 0.411621,
+          "group" : "body",
+          "id" : "body.2.right_foot_joint",
+          "kind" : "body-joint",
+          "label" : "Right_foot_joint",
+          "point" : {
+            "x" : 0.229168,
+            "y" : 0.728224
+          }
+        },
+        {
+          "confidence" : 0.521973,
+          "group" : "body",
+          "id" : "body.2.right_forearm_joint",
+          "kind" : "body-joint",
+          "label" : "Right_forearm_joint",
+          "point" : {
+            "x" : 0.239368,
+            "y" : 0.575117
+          }
+        },
+        {
+          "confidence" : 0.288818,
+          "group" : "body",
+          "id" : "body.2.right_hand_joint",
+          "kind" : "body-joint",
+          "label" : "Right_hand_joint",
+          "point" : {
+            "x" : 0.238776,
+            "y" : 0.584836
+          }
+        },
+        {
+          "confidence" : 0.531738,
+          "group" : "body",
+          "id" : "body.2.right_leg_joint",
+          "kind" : "body-joint",
+          "label" : "Right_leg_joint",
+          "point" : {
+            "x" : 0.2443,
+            "y" : 0.674481
+          }
+        }
+      ]
+    }
+  ],
+  "classifications" : [
+
+  ],
+  "coordinateSpace" : "normalized-top-left",
+  "diagnostics" : [
+
+  ],
+  "features" : [
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.0",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.499746,
+        "y" : 0.531457
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.1",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.49949,
+        "y" : 0.570399
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.10",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.349295,
+        "y" : 0.749566
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.11",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.333027,
+        "y" : 0.714723
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.12",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.320121,
+        "y" : 0.677318
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.13",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.311762,
+        "y" : 0.637523
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.14",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.308352,
+        "y" : 0.596787
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.15",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.308336,
+        "y" : 0.555881
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.16",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.310802,
+        "y" : 0.515658
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.2",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.49616,
+        "y" : 0.609341
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.3",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.48873,
+        "y" : 0.647429
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.4",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.477329,
+        "y" : 0.68398
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.5",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.462598,
+        "y" : 0.718481
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.6",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.446073,
+        "y" : 0.751957
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.7",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.425962,
+        "y" : 0.781334
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.8",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.398165,
+        "y" : 0.792948
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "faceContour",
+      "id" : "face.faceContour.9",
+      "kind" : "face-landmark",
+      "label" : "Face Contour",
+      "point" : {
+        "x" : 0.369855,
+        "y" : 0.778943
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "innerLips",
+      "id" : "face.innerLips.0",
+      "kind" : "face-landmark",
+      "label" : "Inner Lips",
+      "point" : {
+        "x" : 0.385931,
+        "y" : 0.642647
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "innerLips",
+      "id" : "face.innerLips.2",
+      "kind" : "face-landmark",
+      "label" : "Inner Lips",
+      "point" : {
+        "x" : 0.425962,
+        "y" : 0.646062
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "innerLips",
+      "id" : "face.innerLips.3",
+      "kind" : "face-landmark",
+      "label" : "Inner Lips",
+      "point" : {
+        "x" : 0.427243,
+        "y" : 0.695765
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "innerLips",
+      "id" : "face.innerLips.5",
+      "kind" : "face-landmark",
+      "label" : "Inner Lips",
+      "point" : {
+        "x" : 0.378565,
+        "y" : 0.693886
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEye",
+      "id" : "face.leftEye.0",
+      "kind" : "face-landmark",
+      "label" : "Left Eye",
+      "point" : {
+        "x" : 0.346541,
+        "y" : 0.516598
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEye",
+      "id" : "face.leftEye.1",
+      "kind" : "face-landmark",
+      "label" : "Left Eye",
+      "point" : {
+        "x" : 0.358262,
+        "y" : 0.50904
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEye",
+      "id" : "face.leftEye.2",
+      "kind" : "face-landmark",
+      "label" : "Left Eye",
+      "point" : {
+        "x" : 0.375811,
+        "y" : 0.513097
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEye",
+      "id" : "face.leftEye.3",
+      "kind" : "face-landmark",
+      "label" : "Left Eye",
+      "point" : {
+        "x" : 0.386636,
+        "y" : 0.523515
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEye",
+      "id" : "face.leftEye.4",
+      "kind" : "face-landmark",
+      "label" : "Left Eye",
+      "point" : {
+        "x" : 0.374402,
+        "y" : 0.524028
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEye",
+      "id" : "face.leftEye.5",
+      "kind" : "face-landmark",
+      "label" : "Left Eye",
+      "point" : {
+        "x" : 0.357942,
+        "y" : 0.523003
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEyebrow",
+      "id" : "face.leftEyebrow.0",
+      "kind" : "face-landmark",
+      "label" : "Left Eyebrow",
+      "point" : {
+        "x" : 0.328895,
+        "y" : 0.479108
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEyebrow",
+      "id" : "face.leftEyebrow.1",
+      "kind" : "face-landmark",
+      "label" : "Left Eyebrow",
+      "point" : {
+        "x" : 0.360504,
+        "y" : 0.462669
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEyebrow",
+      "id" : "face.leftEyebrow.2",
+      "kind" : "face-landmark",
+      "label" : "Left Eyebrow",
+      "point" : {
+        "x" : 0.393169,
+        "y" : 0.473898
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEyebrow",
+      "id" : "face.leftEyebrow.3",
+      "kind" : "face-landmark",
+      "label" : "Left Eyebrow",
+      "point" : {
+        "x" : 0.391055,
+        "y" : 0.48927
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEyebrow",
+      "id" : "face.leftEyebrow.4",
+      "kind" : "face-landmark",
+      "label" : "Left Eyebrow",
+      "point" : {
+        "x" : 0.360568,
+        "y" : 0.478723
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftEyebrow",
+      "id" : "face.leftEyebrow.5",
+      "kind" : "face-landmark",
+      "label" : "Left Eyebrow",
+      "point" : {
+        "x" : 0.330112,
+        "y" : 0.487818
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "leftPupil",
+      "id" : "face.leftPupil.0",
+      "kind" : "face-landmark",
+      "label" : "Left Pupil",
+      "point" : {
+        "x" : 0.362105,
+        "y" : 0.516256
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "medianLine",
+      "id" : "face.medianLine.5",
+      "kind" : "face-landmark",
+      "label" : "Median Line",
+      "point" : {
+        "x" : 0.408476,
+        "y" : 0.638547
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "medianLine",
+      "id" : "face.medianLine.6",
+      "kind" : "face-landmark",
+      "label" : "Median Line",
+      "point" : {
+        "x" : 0.407708,
+        "y" : 0.647258
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "medianLine",
+      "id" : "face.medianLine.7",
+      "kind" : "face-landmark",
+      "label" : "Median Line",
+      "point" : {
+        "x" : 0.403865,
+        "y" : 0.706866
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "medianLine",
+      "id" : "face.medianLine.8",
+      "kind" : "face-landmark",
+      "label" : "Median Line",
+      "point" : {
+        "x" : 0.402328,
+        "y" : 0.724971
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "nose",
+      "id" : "face.nose.0",
+      "kind" : "face-landmark",
+      "label" : "Nose",
+      "point" : {
+        "x" : 0.414049,
+        "y" : 0.544352
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "nose",
+      "id" : "face.nose.1",
+      "kind" : "face-landmark",
+      "label" : "Nose",
+      "point" : {
+        "x" : 0.386379,
+        "y" : 0.575779
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "nose",
+      "id" : "face.nose.2",
+      "kind" : "face-landmark",
+      "label" : "Nose",
+      "point" : {
+        "x" : 0.382985,
+        "y" : 0.603363
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "nose",
+      "id" : "face.nose.3",
+      "kind" : "face-landmark",
+      "label" : "Nose",
+      "point" : {
+        "x" : 0.397012,
+        "y" : 0.610366
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "nose",
+      "id" : "face.nose.4",
+      "kind" : "face-landmark",
+      "label" : "Nose",
+      "point" : {
+        "x" : 0.410462,
+        "y" : 0.618735
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "nose",
+      "id" : "face.nose.5",
+      "kind" : "face-landmark",
+      "label" : "Nose",
+      "point" : {
+        "x" : 0.423272,
+        "y" : 0.612757
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "nose",
+      "id" : "face.nose.6",
+      "kind" : "face-landmark",
+      "label" : "Nose",
+      "point" : {
+        "x" : 0.436338,
+        "y" : 0.607633
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "nose",
+      "id" : "face.nose.7",
+      "kind" : "face-landmark",
+      "label" : "Nose",
+      "point" : {
+        "x" : 0.435569,
+        "y" : 0.580391
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "noseCrest",
+      "id" : "face.noseCrest.0",
+      "kind" : "face-landmark",
+      "label" : "Nose Crest",
+      "point" : {
+        "x" : 0.414817,
+        "y" : 0.515744
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "noseCrest",
+      "id" : "face.noseCrest.2",
+      "kind" : "face-landmark",
+      "label" : "Nose Crest",
+      "point" : {
+        "x" : 0.413408,
+        "y" : 0.5739
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "noseCrest",
+      "id" : "face.noseCrest.3",
+      "kind" : "face-landmark",
+      "label" : "Nose Crest",
+      "point" : {
+        "x" : 0.412512,
+        "y" : 0.602338
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "noseCrest",
+      "id" : "face.noseCrest.4",
+      "kind" : "face-landmark",
+      "label" : "Nose Crest",
+      "point" : {
+        "x" : 0.394065,
+        "y" : 0.595506
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "noseCrest",
+      "id" : "face.noseCrest.5",
+      "kind" : "face-landmark",
+      "label" : "Nose Crest",
+      "point" : {
+        "x" : 0.428652,
+        "y" : 0.599435
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.0",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.366973,
+        "y" : 0.637352
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.1",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.38228,
+        "y" : 0.634448
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.11",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.37658,
+        "y" : 0.712844
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.12",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.360376,
+        "y" : 0.681588
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.13",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.354291,
+        "y" : 0.645721
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.2",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.397844,
+        "y" : 0.635644
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.4",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.419429,
+        "y" : 0.637352
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.5",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.431598,
+        "y" : 0.638718
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.6",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.442743,
+        "y" : 0.643671
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.7",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.450813,
+        "y" : 0.652211
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.8",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.443127,
+        "y" : 0.686029
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "outerLips",
+      "id" : "face.outerLips.9",
+      "kind" : "face-landmark",
+      "label" : "Outer Lips",
+      "point" : {
+        "x" : 0.426987,
+        "y" : 0.714894
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEye",
+      "id" : "face.rightEye.0",
+      "kind" : "face-landmark",
+      "label" : "Right Eye",
+      "point" : {
+        "x" : 0.475023,
+        "y" : 0.526931
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEye",
+      "id" : "face.rightEye.1",
+      "kind" : "face-landmark",
+      "label" : "Right Eye",
+      "point" : {
+        "x" : 0.464007,
+        "y" : 0.517196
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEye",
+      "id" : "face.rightEye.2",
+      "kind" : "face-landmark",
+      "label" : "Right Eye",
+      "point" : {
+        "x" : 0.44697,
+        "y" : 0.518647
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEye",
+      "id" : "face.rightEye.3",
+      "kind" : "face-landmark",
+      "label" : "Right Eye",
+      "point" : {
+        "x" : 0.436466,
+        "y" : 0.527871
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEye",
+      "id" : "face.rightEye.4",
+      "kind" : "face-landmark",
+      "label" : "Right Eye",
+      "point" : {
+        "x" : 0.447995,
+        "y" : 0.530091
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEye",
+      "id" : "face.rightEye.5",
+      "kind" : "face-landmark",
+      "label" : "Right Eye",
+      "point" : {
+        "x" : 0.463879,
+        "y" : 0.531457
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEyebrow",
+      "id" : "face.rightEyebrow.0",
+      "kind" : "face-landmark",
+      "label" : "Right Eyebrow",
+      "point" : {
+        "x" : 0.496928,
+        "y" : 0.490039
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEyebrow",
+      "id" : "face.rightEyebrow.1",
+      "kind" : "face-landmark",
+      "label" : "Right Eyebrow",
+      "point" : {
+        "x" : 0.469259,
+        "y" : 0.471208
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEyebrow",
+      "id" : "face.rightEyebrow.2",
+      "kind" : "face-landmark",
+      "label" : "Right Eyebrow",
+      "point" : {
+        "x" : 0.438515,
+        "y" : 0.477528
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEyebrow",
+      "id" : "face.rightEyebrow.3",
+      "kind" : "face-landmark",
+      "label" : "Right Eyebrow",
+      "point" : {
+        "x" : 0.439412,
+        "y" : 0.493156
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEyebrow",
+      "id" : "face.rightEyebrow.4",
+      "kind" : "face-landmark",
+      "label" : "Right Eyebrow",
+      "point" : {
+        "x" : 0.46785,
+        "y" : 0.486836
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightEyebrow",
+      "id" : "face.rightEyebrow.5",
+      "kind" : "face-landmark",
+      "label" : "Right Eyebrow",
+      "point" : {
+        "x" : 0.495391,
+        "y" : 0.498835
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "rightPupil",
+      "id" : "face.rightPupil.0",
+      "kind" : "face-landmark",
+      "label" : "Right Pupil",
+      "point" : {
+        "x" : 0.454528,
+        "y" : 0.523601
+      }
+    },
+    {
+      "confidence" : 0.785613,
+      "group" : "face",
+      "id" : "face.center",
+      "kind" : "face-center",
+      "label" : "Face",
+      "point" : {
+        "x" : 0.408541,
+        "y" : 0.598239
+      }
+    },
+    {
+      "confidence" : 0.718262,
+      "group" : "body",
+      "id" : "body.0.head_joint",
+      "kind" : "body-joint",
+      "label" : "Head_joint",
+      "point" : {
+        "x" : 0.104582,
+        "y" : 0.527331
+      }
+    },
+    {
+      "confidence" : 0.780273,
+      "group" : "body",
+      "id" : "body.0.left_ear_joint",
+      "kind" : "body-joint",
+      "label" : "Left_ear_joint",
+      "point" : {
+        "x" : 0.123331,
+        "y" : 0.521836
+      }
+    },
+    {
+      "confidence" : 0.742676,
+      "group" : "body",
+      "id" : "body.0.left_eye_joint",
+      "kind" : "body-joint",
+      "label" : "Left_eye_joint",
+      "point" : {
+        "x" : 0.109832,
+        "y" : 0.522947
+      }
+    },
+    {
+      "confidence" : 0.396729,
+      "group" : "body",
+      "id" : "body.0.left_foot_joint",
+      "kind" : "body-joint",
+      "label" : "Left_foot_joint",
+      "point" : {
+        "x" : 0.135589,
+        "y" : 0.751183
+      }
+    },
+    {
+      "confidence" : 0.761719,
+      "group" : "body",
+      "id" : "body.0.left_forearm_joint",
+      "kind" : "body-joint",
+      "label" : "Left_forearm_joint",
+      "point" : {
+        "x" : 0.159803,
+        "y" : 0.58432
+      }
+    },
+    {
+      "confidence" : 0.775391,
+      "group" : "body",
+      "id" : "body.0.left_hand_joint",
+      "kind" : "body-joint",
+      "label" : "Left_hand_joint",
+      "point" : {
+        "x" : 0.118915,
+        "y" : 0.590551
+      }
+    },
+    {
+      "confidence" : 0.509766,
+      "group" : "body",
+      "id" : "body.0.left_leg_joint",
+      "kind" : "body-joint",
+      "label" : "Left_leg_joint",
+      "point" : {
+        "x" : 0.134039,
+        "y" : 0.690851
+      }
+    },
+    {
+      "confidence" : 0.455566,
+      "group" : "body",
+      "id" : "body.0.left_shoulder_1_joint",
+      "kind" : "body-joint",
+      "label" : "Left_shoulder_1_joint",
+      "point" : {
+        "x" : 0.145481,
+        "y" : 0.548787
+      }
+    },
+    {
+      "confidence" : 0.691895,
+      "group" : "body",
+      "id" : "body.0.left_upLeg_joint",
+      "kind" : "body-joint",
+      "label" : "Left_up Leg_joint",
+      "point" : {
+        "x" : 0.137357,
+        "y" : 0.623219
+      }
+    },
+    {
+      "confidence" : 0.587158,
+      "group" : "body",
+      "id" : "body.0.neck_1_joint",
+      "kind" : "body-joint",
+      "label" : "Neck_1_joint",
+      "point" : {
+        "x" : 0.129842,
+        "y" : 0.548956
+      }
+    },
+    {
+      "confidence" : 0.278076,
+      "group" : "body",
+      "id" : "body.0.right_eye_joint",
+      "kind" : "body-joint",
+      "label" : "Right_eye_joint",
+      "point" : {
+        "x" : 0.102335,
+        "y" : 0.521894
+      }
+    },
+    {
+      "confidence" : 0.420166,
+      "group" : "body",
+      "id" : "body.0.right_foot_joint",
+      "kind" : "body-joint",
+      "label" : "Right_foot_joint",
+      "point" : {
+        "x" : 0.136232,
+        "y" : 0.753948
+      }
+    },
+    {
+      "confidence" : 0.401855,
+      "group" : "body",
+      "id" : "body.0.right_forearm_joint",
+      "kind" : "body-joint",
+      "label" : "Right_forearm_joint",
+      "point" : {
+        "x" : 0.105609,
+        "y" : 0.585414
+      }
+    },
+    {
+      "confidence" : 0.311279,
+      "group" : "body",
+      "id" : "body.0.right_hand_joint",
+      "kind" : "body-joint",
+      "label" : "Right_hand_joint",
+      "point" : {
+        "x" : 0.102119,
+        "y" : 0.59298
+      }
+    },
+    {
+      "confidence" : 0.483154,
+      "group" : "body",
+      "id" : "body.0.right_leg_joint",
+      "kind" : "body-joint",
+      "label" : "Right_leg_joint",
+      "point" : {
+        "x" : 0.132439,
+        "y" : 0.690343
+      }
+    },
+    {
+      "confidence" : 0.71875,
+      "group" : "body",
+      "id" : "body.0.right_shoulder_1_joint",
+      "kind" : "body-joint",
+      "label" : "Right_shoulder_1_joint",
+      "point" : {
+        "x" : 0.114203,
+        "y" : 0.549125
+      }
+    },
+    {
+      "confidence" : 0.618164,
+      "group" : "body",
+      "id" : "body.0.right_upLeg_joint",
+      "kind" : "body-joint",
+      "label" : "Right_up Leg_joint",
+      "point" : {
+        "x" : 0.119884,
+        "y" : 0.622379
+      }
+    },
+    {
+      "confidence" : 0.655029,
+      "group" : "body",
+      "id" : "body.0.root",
+      "kind" : "body-joint",
+      "label" : "Root",
+      "point" : {
+        "x" : 0.12862,
+        "y" : 0.622799
+      }
+    },
+    {
+      "confidence" : 0.451172,
+      "group" : "body",
+      "id" : "body.1.left_ear_joint",
+      "kind" : "body-joint",
+      "label" : "Left_ear_joint",
+      "point" : {
+        "x" : 0.206833,
+        "y" : 0.506469
+      }
+    },
+    {
+      "confidence" : 0.247559,
+      "group" : "body",
+      "id" : "body.1.left_hand_joint",
+      "kind" : "body-joint",
+      "label" : "Left_hand_joint",
+      "point" : {
+        "x" : 0.167912,
+        "y" : 0.600276
+      }
+    },
+    {
+      "confidence" : 0.800293,
+      "group" : "body",
+      "id" : "body.1.left_shoulder_1_joint",
+      "kind" : "body-joint",
+      "label" : "Left_shoulder_1_joint",
+      "point" : {
+        "x" : 0.191035,
+        "y" : 0.539074
+      }
+    },
+    {
+      "confidence" : 0.710449,
+      "group" : "body",
+      "id" : "body.1.left_upLeg_joint",
+      "kind" : "body-joint",
+      "label" : "Left_up Leg_joint",
+      "point" : {
+        "x" : 0.194594,
+        "y" : 0.618724
+      }
+    },
+    {
+      "confidence" : 0.777832,
+      "group" : "body",
+      "id" : "body.1.neck_1_joint",
+      "kind" : "body-joint",
+      "label" : "Neck_1_joint",
+      "point" : {
+        "x" : 0.212338,
+        "y" : 0.537509
+      }
+    },
+    {
+      "confidence" : 0.304443,
+      "group" : "body",
+      "id" : "body.1.right_ear_joint",
+      "kind" : "body-joint",
+      "label" : "Right_ear_joint",
+      "point" : {
+        "x" : 0.241375,
+        "y" : 0.512527
+      }
+    },
+    {
+      "confidence" : 0.755371,
+      "group" : "body",
+      "id" : "body.1.right_shoulder_1_joint",
+      "kind" : "body-joint",
+      "label" : "Right_shoulder_1_joint",
+      "point" : {
+        "x" : 0.233641,
+        "y" : 0.535945
+      }
+    },
+    {
+      "confidence" : 0.631348,
+      "group" : "body",
+      "id" : "body.1.right_upLeg_joint",
+      "kind" : "body-joint",
+      "label" : "Right_up Leg_joint",
+      "point" : {
+        "x" : 0.233757,
+        "y" : 0.613535
+      }
+    },
+    {
+      "confidence" : 0.670898,
+      "group" : "body",
+      "id" : "body.1.root",
+      "kind" : "body-joint",
+      "label" : "Root",
+      "point" : {
+        "x" : 0.214175,
+        "y" : 0.616129
+      }
+    },
+    {
+      "confidence" : 0.561035,
+      "group" : "body",
+      "id" : "body.2.left_foot_joint",
+      "kind" : "body-joint",
+      "label" : "Left_foot_joint",
+      "point" : {
+        "x" : 0.206812,
+        "y" : 0.727316
+      }
+    },
+    {
+      "confidence" : 0.683594,
+      "group" : "body",
+      "id" : "body.2.left_leg_joint",
+      "kind" : "body-joint",
+      "label" : "Left_leg_joint",
+      "point" : {
+        "x" : 0.206775,
+        "y" : 0.677482
+      }
+    },
+    {
+      "confidence" : 0.411621,
+      "group" : "body",
+      "id" : "body.2.right_foot_joint",
+      "kind" : "body-joint",
+      "label" : "Right_foot_joint",
+      "point" : {
+        "x" : 0.229168,
+        "y" : 0.728224
+      }
+    },
+    {
+      "confidence" : 0.521973,
+      "group" : "body",
+      "id" : "body.2.right_forearm_joint",
+      "kind" : "body-joint",
+      "label" : "Right_forearm_joint",
+      "point" : {
+        "x" : 0.239368,
+        "y" : 0.575117
+      }
+    },
+    {
+      "confidence" : 0.288818,
+      "group" : "body",
+      "id" : "body.2.right_hand_joint",
+      "kind" : "body-joint",
+      "label" : "Right_hand_joint",
+      "point" : {
+        "x" : 0.238776,
+        "y" : 0.584836
+      }
+    },
+    {
+      "confidence" : 0.531738,
+      "group" : "body",
+      "id" : "body.2.right_leg_joint",
+      "kind" : "body-joint",
+      "label" : "Right_leg_joint",
+      "point" : {
+        "x" : 0.2443,
+        "y" : 0.674481
+      }
+    },
+    {
+      "confidence" : 0.575684,
+      "group" : "background",
+      "id" : "saliency.0",
+      "kind" : "saliency",
+      "label" : "Attention",
+      "point" : {
+        "x" : 0.423401,
+        "y" : 0.550415
+      }
+    },
+    {
+      "confidence" : 0.72998,
+      "group" : "background",
+      "id" : "saliency.1",
+      "kind" : "saliency",
+      "label" : "Object",
+      "point" : {
+        "x" : 0.359619,
+        "y" : 0.664185
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.0.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.010361,
+        "y" : 0.559896
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.0.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.052734,
+        "y" : 0.375203
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.0.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.110199,
+        "y" : 0.523438
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.0.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.251953,
+        "y" : 0.476217
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.0.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.170319,
+        "y" : 0.200521
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.0.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.005859,
+        "y" : 0.000468
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.0.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.000519,
+        "y" : 0.221354
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.0.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.017715,
+        "y" : 0.335938
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.1.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.640335,
+        "y" : 0.575521
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.1.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.610794,
+        "y" : 0.377604
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.1.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.576172,
+        "y" : 0.304871
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.1.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.653931,
+        "y" : 0.283854
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.1.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.498047,
+        "y" : 0.229858
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.1.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.438873,
+        "y" : 0.263021
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.1.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.487015,
+        "y" : 0.294271
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.1.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.580078,
+        "y" : 0.421468
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.10.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.628082,
+        "y" : 0.674479
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.10.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.629272,
+        "y" : 0.664063
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.10.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.623047,
+        "y" : 0.655457
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.10.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.615234,
+        "y" : 0.655945
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.10.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.606049,
+        "y" : 0.664063
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.10.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.607422,
+        "y" : 0.673686
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.10.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.617188,
+        "y" : 0.669271
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.10.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.623047,
+        "y" : 0.67334
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.11.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.231369,
+        "y" : 0.721354
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.11.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.236328,
+        "y" : 0.716268
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.11.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.241119,
+        "y" : 0.705729
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.11.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.238922,
+        "y" : 0.695313
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.11.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.231003,
+        "y" : 0.695313
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.11.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.227341,
+        "y" : 0.700521
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.11.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.218643,
+        "y" : 0.710938
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.11.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.220703,
+        "y" : 0.720459
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.12.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.935593,
+        "y" : 0.216146
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.12.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.935547,
+        "y" : 0.20754
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.12.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.927734,
+        "y" : 0.207113
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.12.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.916016,
+        "y" : 0.207092
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.12.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.908203,
+        "y" : 0.209656
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.12.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.908203,
+        "y" : 0.213664
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.12.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.916016,
+        "y" : 0.216899
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.12.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.923828,
+        "y" : 0.21757
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.13.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.299042,
+        "y" : 0.658854
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.13.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.299591,
+        "y" : 0.653646
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.13.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.300461,
+        "y" : 0.643229
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.13.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.298828,
+        "y" : 0.635417
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.13.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.294922,
+        "y" : 0.641378
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.13.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.291779,
+        "y" : 0.648438
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.13.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.289642,
+        "y" : 0.653646
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.13.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.294922,
+        "y" : 0.662638
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.14.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.358597,
+        "y" : 0.309896
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.14.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.35968,
+        "y" : 0.304688
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.14.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.357697,
+        "y" : 0.299479
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.14.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.349609,
+        "y" : 0.296875
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.14.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.346542,
+        "y" : 0.299479
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.14.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.348373,
+        "y" : 0.304688
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.14.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.35228,
+        "y" : 0.309896
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.14.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.353516,
+        "y" : 0.31193
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.15.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.526474,
+        "y" : 0.554688
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.15.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.528809,
+        "y" : 0.549479
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.15.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.52861,
+        "y" : 0.544271
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.15.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.521484,
+        "y" : 0.54008
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.15.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.518738,
+        "y" : 0.544271
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.15.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.517578,
+        "y" : 0.546183
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.15.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.517578,
+        "y" : 0.553772
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.15.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.521484,
+        "y" : 0.556681
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.16.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.655731,
+        "y" : 0.736979
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.16.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.658203,
+        "y" : 0.733683
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.16.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.659332,
+        "y" : 0.731771
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.16.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.660156,
+        "y" : 0.726563
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.16.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.65715,
+        "y" : 0.726563
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.16.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.654297,
+        "y" : 0.730367
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.16.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.653381,
+        "y" : 0.731771
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.16.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.652649,
+        "y" : 0.736979
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.17.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.379425,
+        "y" : 0.638021
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.17.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.380859,
+        "y" : 0.633931
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.17.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.380859,
+        "y" : 0.631246
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.17.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.376953,
+        "y" : 0.628906
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.17.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.369141,
+        "y" : 0.632202
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.17.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.366455,
+        "y" : 0.638021
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.17.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.369141,
+        "y" : 0.639058
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.17.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.373047,
+        "y" : 0.639058
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.18.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.170074,
+        "y" : 0.585938
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.18.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.173828,
+        "y" : 0.580933
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.18.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.173431,
+        "y" : 0.575521
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.18.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.169922,
+        "y" : 0.570841
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.18.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.166504,
+        "y" : 0.570313
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.18.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.16391,
+        "y" : 0.575521
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.18.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.16478,
+        "y" : 0.580729
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.18.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.166016,
+        "y" : 0.585531
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.19.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.658401,
+        "y" : 0.601563
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.19.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.65863,
+        "y" : 0.596354
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.19.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.654297,
+        "y" : 0.592163
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.19.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.650391,
+        "y" : 0.594299
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.19.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.649384,
+        "y" : 0.596354
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.19.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.650391,
+        "y" : 0.598409
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.19.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.654297,
+        "y" : 0.600545
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.19.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.657028,
+        "y" : 0.601563
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.2.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.311523,
+        "y" : 0.794271
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.2.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.341797,
+        "y" : 0.600159
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.2.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.419357,
+        "y" : 0.518229
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.2.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.337402,
+        "y" : 0.497396
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.2.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.474609,
+        "y" : 0.471639
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.2.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.384766,
+        "y" : 0.41982
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.2.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.298538,
+        "y" : 0.466146
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.2.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.310333,
+        "y" : 0.643229
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.20.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.33403,
+        "y" : 0.638021
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.20.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.334381,
+        "y" : 0.632813
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.20.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.334946,
+        "y" : 0.627604
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.20.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.335938,
+        "y" : 0.622396
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.20.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.334229,
+        "y" : 0.617188
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.20.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.332596,
+        "y" : 0.622396
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.20.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.33194,
+        "y" : 0.627604
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.20.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.331711,
+        "y" : 0.632813
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.21.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.659912,
+        "y" : 0.653646
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.21.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.659851,
+        "y" : 0.648438
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.21.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.658203,
+        "y" : 0.647644
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.21.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.655823,
+        "y" : 0.648438
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.21.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.654297,
+        "y" : 0.649455
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.21.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.651154,
+        "y" : 0.653646
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.21.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.654297,
+        "y" : 0.657837
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.21.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.658203,
+        "y" : 0.656372
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.22.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.091202,
+        "y" : 0.658854
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.22.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.091797,
+        "y" : 0.657206
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.22.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.092804,
+        "y" : 0.653646
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.22.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.091797,
+        "y" : 0.651957
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.22.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.087891,
+        "y" : 0.65096
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.22.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.086105,
+        "y" : 0.653646
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.22.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.085068,
+        "y" : 0.658854
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.22.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.087891,
+        "y" : 0.661336
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.23.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.451706,
+        "y" : 0.580729
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.23.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.448105,
+        "y" : 0.575521
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.23.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.443359,
+        "y" : 0.573832
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.23.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.441711,
+        "y" : 0.575521
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.23.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.443359,
+        "y" : 0.57721
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.23.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.445999,
+        "y" : 0.580729
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.23.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.447266,
+        "y" : 0.581563
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.24.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.521713,
+        "y" : 0.528646
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.24.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.522079,
+        "y" : 0.523438
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.24.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.521484,
+        "y" : 0.519348
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.24.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.517578,
+        "y" : 0.514038
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.24.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.516586,
+        "y" : 0.518229
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.24.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.516159,
+        "y" : 0.523438
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.24.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.517548,
+        "y" : 0.528646
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.25.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.401917,
+        "y" : 0.664063
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.25.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.40213,
+        "y" : 0.658854
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.25.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.400391,
+        "y" : 0.657633
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.25.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.396484,
+        "y" : 0.657511
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.25.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.393509,
+        "y" : 0.658854
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.25.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.39621,
+        "y" : 0.664063
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.25.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.400391,
+        "y" : 0.66453
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.26.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.611816,
+        "y" : 0.132813
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.26.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.607422,
+        "y" : 0.132406
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.26.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.603516,
+        "y" : 0.132467
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.26.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.599609,
+        "y" : 0.13269
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.26.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.603516,
+        "y" : 0.133179
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.26.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.607422,
+        "y" : 0.133179
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.27.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.549072,
+        "y" : 0.518229
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.27.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.550476,
+        "y" : 0.513021
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.27.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.548828,
+        "y" : 0.508931
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.27.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.544922,
+        "y" : 0.510417
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.27.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.544083,
+        "y" : 0.513021
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.27.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.544922,
+        "y" : 0.515625
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.28.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.50296,
+        "y" : 0.585938
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.28.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.502655,
+        "y" : 0.580729
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.28.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.500671,
+        "y" : 0.580729
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.28.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.50087,
+        "y" : 0.585938
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.28.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.501953,
+        "y" : 0.587626
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.29.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.435822,
+        "y" : 0.596354
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.29.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.436401,
+        "y" : 0.591146
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.29.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.435547,
+        "y" : 0.588196
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.29.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.432571,
+        "y" : 0.591146
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.3.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.8853,
+        "y" : 0.742188
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.3.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.900391,
+        "y" : 0.727051
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.3.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.892822,
+        "y" : 0.705729
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.3.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.861328,
+        "y" : 0.696065
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.3.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.830078,
+        "y" : 0.693868
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.3.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.798828,
+        "y" : 0.700399
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.3.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.823593,
+        "y" : 0.721354
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.3.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.849487,
+        "y" : 0.736979
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.30.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.52243,
+        "y" : 0.966146
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.30.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.521484,
+        "y" : 0.964884
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.30.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.519577,
+        "y" : 0.966146
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.30.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.521484,
+        "y" : 0.967407
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.31.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.391144,
+        "y" : 0.658854
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.31.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.388672,
+        "y" : 0.656494
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.31.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.387878,
+        "y" : 0.658854
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.4.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.408691,
+        "y" : 0.768229
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.4.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.412109,
+        "y" : 0.752075
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.4.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.381577,
+        "y" : 0.742188
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.4.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.373093,
+        "y" : 0.710938
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.4.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.369141,
+        "y" : 0.694194
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.4.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.362839,
+        "y" : 0.700521
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.4.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.367188,
+        "y" : 0.736979
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.4.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.378906,
+        "y" : 0.768229
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.5.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.659775,
+        "y" : 0.486979
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.5.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.669617,
+        "y" : 0.466146
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.5.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.66658,
+        "y" : 0.429688
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.5.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.651825,
+        "y" : 0.414063
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.5.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.627747,
+        "y" : 0.424479
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.5.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.611328,
+        "y" : 0.449646
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.5.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.616257,
+        "y" : 0.476563
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.5.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.634766,
+        "y" : 0.491557
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.6.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.542969,
+        "y" : 0.507813
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.6.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.543472,
+        "y" : 0.486979
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.6.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.551102,
+        "y" : 0.466146
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.6.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.549759,
+        "y" : 0.434896
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.6.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.530365,
+        "y" : 0.429688
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.6.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.520828,
+        "y" : 0.445313
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.6.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.516724,
+        "y" : 0.471354
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.6.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.521484,
+        "y" : 0.501892
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.7.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.299271,
+        "y" : 0.403646
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.7.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.306641,
+        "y" : 0.384908
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.7.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.318359,
+        "y" : 0.376587
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.7.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.323547,
+        "y" : 0.356771
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.7.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.330475,
+        "y" : 0.341146
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.7.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.316177,
+        "y" : 0.351563
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.7.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.310547,
+        "y" : 0.365458
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.7.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.301788,
+        "y" : 0.388021
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.8.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.495071,
+        "y" : 0.997396
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.8.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.505508,
+        "y" : 0.986979
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.8.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.517578,
+        "y" : 0.972656
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.8.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.509766,
+        "y" : 0.966614
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.8.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.501953,
+        "y" : 0.954183
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.8.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.489014,
+        "y" : 0.960938
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.8.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.482422,
+        "y" : 0.978251
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.8.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.483093,
+        "y" : 0.992188
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.9.0",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.252274,
+        "y" : 0.742188
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.9.1",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.259766,
+        "y" : 0.740255
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.9.2",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.26944,
+        "y" : 0.731771
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.9.3",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.273697,
+        "y" : 0.726563
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.9.4",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.263672,
+        "y" : 0.723307
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.9.5",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.251953,
+        "y" : 0.725383
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.9.6",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.245865,
+        "y" : 0.726563
+      }
+    },
+    {
+      "confidence" : 0.35,
+      "group" : "background",
+      "id" : "contour.9.7",
+      "kind" : "contour",
+      "label" : "Contour",
+      "point" : {
+        "x" : 0.243683,
+        "y" : 0.736979
+      }
+    }
+  ],
+  "generator" : {
+    "name" : "vision-portrait-worker",
+    "operatingSystem" : "Version 26.6 (Build 25G72)",
+    "requestRevisions" : {
+      "attentionSaliency" : 2,
+      "bodyPose" : 1,
+      "contours" : 1,
+      "faceCaptureQuality" : 3,
+      "faceLandmarks" : 3,
+      "faceRectangles" : 3,
+      "handPose" : 1,
+      "humanRectangles" : 2,
+      "objectnessSaliency" : 2,
+      "personInstanceMask" : 1,
+      "personSegmentationFallback" : 1
+    },
+    "sdk" : "macOS 26.5",
+    "swiftVersion" : "6.3",
+    "version" : 1
+  },
+  "handPoses" : [
+
+  ],
+  "humans" : [
+    {
+      "boundingBox" : {
+        "height" : 0.69029,
+        "width" : 0.776801,
+        "x" : 0,
+        "y" : 0.307199
+      },
+      "confidence" : 0.689096,
+      "upperBodyOnly" : false
+    },
+    {
+      "boundingBox" : {
+        "height" : 0.26702,
+        "width" : 0.070875,
+        "x" : 0.181062,
+        "y" : 0.487026
+      },
+      "confidence" : 0.563151,
+      "upperBodyOnly" : false
+    },
+    {
+      "boundingBox" : {
+        "height" : 0.280413,
+        "width" : 0.078884,
+        "x" : 0.093096,
+        "y" : 0.505999
+      },
+      "confidence" : 0.582123,
+      "upperBodyOnly" : false
+    }
+  ],
+  "personMask" : {
+    "boundingBox" : {
+      "height" : 0.694444,
+      "width" : 0.758333,
+      "x" : 0,
+      "y" : 0.305556
+    },
+    "containsPrimaryFaceCenter" : true,
+    "coverage" : 0.244074,
+    "height" : 180,
+    "path" : "/rotoscope/vision-person-mask-v1.json",
+    "sha256" : "55ec270347ef52211692a3ba7a35cba35fd41f3e78dfb595eca5561d9c5afc9b",
+    "width" : 240
+  },
+  "primaryFace" : {
+    "boundingBox" : {
+      "height" : 0.349794,
+      "width" : 0.262345,
+      "x" : 0.277368,
+      "y" : 0.423342
+    },
+    "captureQuality" : 0.664063,
+    "confidence" : 0.785613,
+    "landmarkRegions" : [
+      {
+        "name" : "faceContour",
+        "points" : [
+          {
+            "x" : 0.499746,
+            "y" : 0.531457
+          },
+          {
+            "x" : 0.49949,
+            "y" : 0.570399
+          },
+          {
+            "x" : 0.49616,
+            "y" : 0.609341
+          },
+          {
+            "x" : 0.48873,
+            "y" : 0.647429
+          },
+          {
+            "x" : 0.477329,
+            "y" : 0.68398
+          },
+          {
+            "x" : 0.462598,
+            "y" : 0.718481
+          },
+          {
+            "x" : 0.446073,
+            "y" : 0.751957
+          },
+          {
+            "x" : 0.425962,
+            "y" : 0.781334
+          },
+          {
+            "x" : 0.398165,
+            "y" : 0.792948
+          },
+          {
+            "x" : 0.369855,
+            "y" : 0.778943
+          },
+          {
+            "x" : 0.349295,
+            "y" : 0.749566
+          },
+          {
+            "x" : 0.333027,
+            "y" : 0.714723
+          },
+          {
+            "x" : 0.320121,
+            "y" : 0.677318
+          },
+          {
+            "x" : 0.311762,
+            "y" : 0.637523
+          },
+          {
+            "x" : 0.308352,
+            "y" : 0.596787
+          },
+          {
+            "x" : 0.308336,
+            "y" : 0.555881
+          },
+          {
+            "x" : 0.310802,
+            "y" : 0.515658
+          }
+        ]
+      },
+      {
+        "name" : "leftEye",
+        "points" : [
+          {
+            "x" : 0.346541,
+            "y" : 0.516598
+          },
+          {
+            "x" : 0.358262,
+            "y" : 0.50904
+          },
+          {
+            "x" : 0.375811,
+            "y" : 0.513097
+          },
+          {
+            "x" : 0.386636,
+            "y" : 0.523515
+          },
+          {
+            "x" : 0.374402,
+            "y" : 0.524028
+          },
+          {
+            "x" : 0.357942,
+            "y" : 0.523003
+          }
+        ]
+      },
+      {
+        "name" : "rightEye",
+        "points" : [
+          {
+            "x" : 0.475023,
+            "y" : 0.526931
+          },
+          {
+            "x" : 0.464007,
+            "y" : 0.517196
+          },
+          {
+            "x" : 0.44697,
+            "y" : 0.518647
+          },
+          {
+            "x" : 0.436466,
+            "y" : 0.527871
+          },
+          {
+            "x" : 0.447995,
+            "y" : 0.530091
+          },
+          {
+            "x" : 0.463879,
+            "y" : 0.531457
+          }
+        ]
+      },
+      {
+        "name" : "leftEyebrow",
+        "points" : [
+          {
+            "x" : 0.328895,
+            "y" : 0.479108
+          },
+          {
+            "x" : 0.360504,
+            "y" : 0.462669
+          },
+          {
+            "x" : 0.393169,
+            "y" : 0.473898
+          },
+          {
+            "x" : 0.391055,
+            "y" : 0.48927
+          },
+          {
+            "x" : 0.360568,
+            "y" : 0.478723
+          },
+          {
+            "x" : 0.330112,
+            "y" : 0.487818
+          }
+        ]
+      },
+      {
+        "name" : "rightEyebrow",
+        "points" : [
+          {
+            "x" : 0.496928,
+            "y" : 0.490039
+          },
+          {
+            "x" : 0.469259,
+            "y" : 0.471208
+          },
+          {
+            "x" : 0.438515,
+            "y" : 0.477528
+          },
+          {
+            "x" : 0.439412,
+            "y" : 0.493156
+          },
+          {
+            "x" : 0.46785,
+            "y" : 0.486836
+          },
+          {
+            "x" : 0.495391,
+            "y" : 0.498835
+          }
+        ]
+      },
+      {
+        "name" : "leftPupil",
+        "points" : [
+          {
+            "x" : 0.362105,
+            "y" : 0.516256
+          }
+        ]
+      },
+      {
+        "name" : "rightPupil",
+        "points" : [
+          {
+            "x" : 0.454528,
+            "y" : 0.523601
+          }
+        ]
+      },
+      {
+        "name" : "nose",
+        "points" : [
+          {
+            "x" : 0.414049,
+            "y" : 0.544352
+          },
+          {
+            "x" : 0.386379,
+            "y" : 0.575779
+          },
+          {
+            "x" : 0.382985,
+            "y" : 0.603363
+          },
+          {
+            "x" : 0.397012,
+            "y" : 0.610366
+          },
+          {
+            "x" : 0.410462,
+            "y" : 0.618735
+          },
+          {
+            "x" : 0.423272,
+            "y" : 0.612757
+          },
+          {
+            "x" : 0.436338,
+            "y" : 0.607633
+          },
+          {
+            "x" : 0.435569,
+            "y" : 0.580391
+          }
+        ]
+      },
+      {
+        "name" : "noseCrest",
+        "points" : [
+          {
+            "x" : 0.414817,
+            "y" : 0.515744
+          },
+          {
+            "x" : 0.414049,
+            "y" : 0.544352
+          },
+          {
+            "x" : 0.413408,
+            "y" : 0.5739
+          },
+          {
+            "x" : 0.412512,
+            "y" : 0.602338
+          },
+          {
+            "x" : 0.394065,
+            "y" : 0.595506
+          },
+          {
+            "x" : 0.428652,
+            "y" : 0.599435
+          }
+        ]
+      },
+      {
+        "name" : "medianLine",
+        "points" : [
+          {
+            "x" : 0.414817,
+            "y" : 0.515744
+          },
+          {
+            "x" : 0.414049,
+            "y" : 0.544352
+          },
+          {
+            "x" : 0.413408,
+            "y" : 0.5739
+          },
+          {
+            "x" : 0.412512,
+            "y" : 0.602338
+          },
+          {
+            "x" : 0.410462,
+            "y" : 0.618735
+          },
+          {
+            "x" : 0.408476,
+            "y" : 0.638547
+          },
+          {
+            "x" : 0.407708,
+            "y" : 0.647258
+          },
+          {
+            "x" : 0.403865,
+            "y" : 0.706866
+          },
+          {
+            "x" : 0.402328,
+            "y" : 0.724971
+          },
+          {
+            "x" : 0.398165,
+            "y" : 0.792948
+          }
+        ]
+      },
+      {
+        "name" : "outerLips",
+        "points" : [
+          {
+            "x" : 0.366973,
+            "y" : 0.637352
+          },
+          {
+            "x" : 0.38228,
+            "y" : 0.634448
+          },
+          {
+            "x" : 0.397844,
+            "y" : 0.635644
+          },
+          {
+            "x" : 0.408476,
+            "y" : 0.638547
+          },
+          {
+            "x" : 0.419429,
+            "y" : 0.637352
+          },
+          {
+            "x" : 0.431598,
+            "y" : 0.638718
+          },
+          {
+            "x" : 0.442743,
+            "y" : 0.643671
+          },
+          {
+            "x" : 0.450813,
+            "y" : 0.652211
+          },
+          {
+            "x" : 0.443127,
+            "y" : 0.686029
+          },
+          {
+            "x" : 0.426987,
+            "y" : 0.714894
+          },
+          {
+            "x" : 0.402328,
+            "y" : 0.724971
+          },
+          {
+            "x" : 0.37658,
+            "y" : 0.712844
+          },
+          {
+            "x" : 0.360376,
+            "y" : 0.681588
+          },
+          {
+            "x" : 0.354291,
+            "y" : 0.645721
+          }
+        ]
+      },
+      {
+        "name" : "innerLips",
+        "points" : [
+          {
+            "x" : 0.385931,
+            "y" : 0.642647
+          },
+          {
+            "x" : 0.407708,
+            "y" : 0.647258
+          },
+          {
+            "x" : 0.425962,
+            "y" : 0.646062
+          },
+          {
+            "x" : 0.427243,
+            "y" : 0.695765
+          },
+          {
+            "x" : 0.403865,
+            "y" : 0.706866
+          },
+          {
+            "x" : 0.378565,
+            "y" : 0.693886
+          }
+        ]
+      },
+      {
+        "name" : "allPoints",
+        "points" : [
+          {
+            "x" : 0.346541,
+            "y" : 0.516598
+          },
+          {
+            "x" : 0.386636,
+            "y" : 0.523515
+          },
+          {
+            "x" : 0.357942,
+            "y" : 0.523003
+          },
+          {
+            "x" : 0.374402,
+            "y" : 0.524028
+          },
+          {
+            "x" : 0.358262,
+            "y" : 0.50904
+          },
+          {
+            "x" : 0.375811,
+            "y" : 0.513097
+          },
+          {
+            "x" : 0.362105,
+            "y" : 0.516256
+          },
+          {
+            "x" : 0.475023,
+            "y" : 0.526931
+          },
+          {
+            "x" : 0.436466,
+            "y" : 0.527871
+          },
+          {
+            "x" : 0.463879,
+            "y" : 0.531457
+          },
+          {
+            "x" : 0.447995,
+            "y" : 0.530091
+          },
+          {
+            "x" : 0.464007,
+            "y" : 0.517196
+          },
+          {
+            "x" : 0.44697,
+            "y" : 0.518647
+          },
+          {
+            "x" : 0.454528,
+            "y" : 0.523601
+          },
+          {
+            "x" : 0.330112,
+            "y" : 0.487818
+          },
+          {
+            "x" : 0.360568,
+            "y" : 0.478723
+          },
+          {
+            "x" : 0.391055,
+            "y" : 0.48927
+          },
+          {
+            "x" : 0.393169,
+            "y" : 0.473898
+          },
+          {
+            "x" : 0.360504,
+            "y" : 0.462669
+          },
+          {
+            "x" : 0.328895,
+            "y" : 0.479108
+          },
+          {
+            "x" : 0.495391,
+            "y" : 0.498835
+          },
+          {
+            "x" : 0.46785,
+            "y" : 0.486836
+          },
+          {
+            "x" : 0.439412,
+            "y" : 0.493156
+          },
+          {
+            "x" : 0.438515,
+            "y" : 0.477528
+          },
+          {
+            "x" : 0.469259,
+            "y" : 0.471208
+          },
+          {
+            "x" : 0.496928,
+            "y" : 0.490039
+          },
+          {
+            "x" : 0.354291,
+            "y" : 0.645721
+          },
+          {
+            "x" : 0.366973,
+            "y" : 0.637352
+          },
+          {
+            "x" : 0.38228,
+            "y" : 0.634448
+          },
+          {
+            "x" : 0.397844,
+            "y" : 0.635644
+          },
+          {
+            "x" : 0.408476,
+            "y" : 0.638547
+          },
+          {
+            "x" : 0.419429,
+            "y" : 0.637352
+          },
+          {
+            "x" : 0.431598,
+            "y" : 0.638718
+          },
+          {
+            "x" : 0.442743,
+            "y" : 0.643671
+          },
+          {
+            "x" : 0.450813,
+            "y" : 0.652211
+          },
+          {
+            "x" : 0.443127,
+            "y" : 0.686029
+          },
+          {
+            "x" : 0.426987,
+            "y" : 0.714894
+          },
+          {
+            "x" : 0.402328,
+            "y" : 0.724971
+          },
+          {
+            "x" : 0.37658,
+            "y" : 0.712844
+          },
+          {
+            "x" : 0.360376,
+            "y" : 0.681588
+          },
+          {
+            "x" : 0.407708,
+            "y" : 0.647258
+          },
+          {
+            "x" : 0.403865,
+            "y" : 0.706866
+          },
+          {
+            "x" : 0.385931,
+            "y" : 0.642647
+          },
+          {
+            "x" : 0.425962,
+            "y" : 0.646062
+          },
+          {
+            "x" : 0.378565,
+            "y" : 0.693886
+          },
+          {
+            "x" : 0.427243,
+            "y" : 0.695765
+          },
+          {
+            "x" : 0.414817,
+            "y" : 0.515744
+          },
+          {
+            "x" : 0.414049,
+            "y" : 0.544352
+          },
+          {
+            "x" : 0.413408,
+            "y" : 0.5739
+          },
+          {
+            "x" : 0.412512,
+            "y" : 0.602338
+          },
+          {
+            "x" : 0.436338,
+            "y" : 0.607633
+          },
+          {
+            "x" : 0.423272,
+            "y" : 0.612757
+          },
+          {
+            "x" : 0.410462,
+            "y" : 0.618735
+          },
+          {
+            "x" : 0.397012,
+            "y" : 0.610366
+          },
+          {
+            "x" : 0.382985,
+            "y" : 0.603363
+          },
+          {
+            "x" : 0.435569,
+            "y" : 0.580391
+          },
+          {
+            "x" : 0.386379,
+            "y" : 0.575779
+          },
+          {
+            "x" : 0.428652,
+            "y" : 0.599435
+          },
+          {
+            "x" : 0.394065,
+            "y" : 0.595506
+          },
+          {
+            "x" : 0.499746,
+            "y" : 0.531457
+          },
+          {
+            "x" : 0.49949,
+            "y" : 0.570399
+          },
+          {
+            "x" : 0.49616,
+            "y" : 0.609341
+          },
+          {
+            "x" : 0.48873,
+            "y" : 0.647429
+          },
+          {
+            "x" : 0.477329,
+            "y" : 0.68398
+          },
+          {
+            "x" : 0.462598,
+            "y" : 0.718481
+          },
+          {
+            "x" : 0.446073,
+            "y" : 0.751957
+          },
+          {
+            "x" : 0.425962,
+            "y" : 0.781334
+          },
+          {
+            "x" : 0.398165,
+            "y" : 0.792948
+          },
+          {
+            "x" : 0.369855,
+            "y" : 0.778943
+          },
+          {
+            "x" : 0.349295,
+            "y" : 0.749566
+          },
+          {
+            "x" : 0.333027,
+            "y" : 0.714723
+          },
+          {
+            "x" : 0.320121,
+            "y" : 0.677318
+          },
+          {
+            "x" : 0.311762,
+            "y" : 0.637523
+          },
+          {
+            "x" : 0.308352,
+            "y" : 0.596787
+          },
+          {
+            "x" : 0.308336,
+            "y" : 0.555881
+          },
+          {
+            "x" : 0.310802,
+            "y" : 0.515658
+          }
+        ]
+      }
+    ],
+    "pitchRadians" : 0.190214,
+    "rollRadians" : 0.021476,
+    "yawRadians" : 0.102777
+  },
+  "primaryFaceAnchor" : {
+    "x" : 0.4,
+    "y" : 0.56
+  },
+  "saliency" : [
+    {
+      "boundingBox" : {
+        "height" : 0.447998,
+        "width" : 0.38269,
+        "x" : 0.232056,
+        "y" : 0.326416
+      },
+      "confidence" : 0.575684,
+      "kind" : "attention"
+    },
+    {
+      "boundingBox" : {
+        "height" : 0.671631,
+        "width" : 0.719238,
+        "x" : 0,
+        "y" : 0.328369
+      },
+      "confidence" : 0.72998,
+      "kind" : "objectness"
+    }
+  ],
+  "schemaVersion" : 1,
+  "source" : {
+    "fileName" : "rotoscope-portrait.jpg",
+    "height" : 720,
+    "sha256" : "ba3fd0cd5920876b639846ca37f6fc2a8a393a6e32ad0d76b7e018113339fef9",
+    "width" : 960
+  }
+}
