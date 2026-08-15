@@ -182,3 +182,10 @@ export const SynthesisPipeline = dynamic(
     loading: () => loadingShell("within"),
   }
 );
+export const LineItemDecoderVisualization = dynamic(
+  () => import("./LineItemDecoderVisualization"),
+  {
+    ssr: false,
+    loading: () => loadingShell("layoutlm"),
+  }
+);
