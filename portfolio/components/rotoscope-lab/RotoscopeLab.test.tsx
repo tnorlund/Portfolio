@@ -18,6 +18,9 @@ test("renders an accessible unlinked lab with real distribution controls", () =>
     "aria-pressed",
     "true",
   );
+  expect(screen.getByRole("slider", { name: "Coverage floor" })).toHaveValue(
+    "0.18",
+  );
   expect(screen.getByRole("checkbox", { name: "Show seeds" })).toBeChecked();
   expect(screen.getByRole("img", { name: "Interactive rotoscope result" })).toBeInTheDocument();
 });
@@ -53,6 +56,14 @@ test("disables no-op controls and reveals the hybrid blend only when relevant", 
   fireEvent.click(screen.getByRole("button", { name: "None" }));
   expect(screen.getByRole("slider", { name: "Strength" })).toBeDisabled();
   expect(screen.getByRole("slider", { name: "Scale" })).toBeDisabled();
+  expect(screen.getByRole("spinbutton", { name: "Seed" })).toBeEnabled();
+
+  fireEvent.click(
+    within(screen.getByRole("group", { name: "Strategy" })).getByRole(
+      "button",
+      { name: "Best features" },
+    ),
+  );
   expect(screen.getByRole("spinbutton", { name: "Seed" })).toBeDisabled();
 });
 

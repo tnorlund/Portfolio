@@ -463,6 +463,7 @@ export default function RotoscopeLab() {
             radiusX: 0.27,
             radiusY: 0.38,
             falloff: 2.8,
+            coverage: 0.12,
           },
           noise: {
             ...current.experiment.noise,
@@ -482,6 +483,7 @@ export default function RotoscopeLab() {
         ...current.experiment,
         strategy: "hybrid",
         hybridRadialWeight: 0.62,
+        radial: { ...current.experiment.radial, coverage: 0.22 },
         noise: {
           ...current.experiment.noise,
           kind: "fbm",
@@ -536,6 +538,8 @@ export default function RotoscopeLab() {
   const percentages = quotaPercentages(quotas);
   const radialDisabled = settings.experiment.strategy === "features";
   const noiseDisabled = settings.experiment.noise.kind === "none";
+  const seedDisabled =
+    noiseDisabled && settings.experiment.strategy === "features";
   const noiseScaleDisabled =
     noiseDisabled || settings.experiment.noise.kind === "white";
 
@@ -547,7 +551,7 @@ export default function RotoscopeLab() {
         </Link>
         <div>
           <h1>Rotoscope Lab</h1>
-          <p>Explore watershed marker distributions to shape region growth and detail.</p>
+          <p>Explore Gaussian blue-noise marker distributions to shape region growth and detail.</p>
         </div>
       </header>
 
@@ -712,7 +716,7 @@ export default function RotoscopeLab() {
               }
             />
             <RangeControl
-              label="Radius X"
+              label="Spread X"
               value={settings.experiment.radial.radiusX}
               min={0.08}
               max={1.2}
@@ -726,7 +730,7 @@ export default function RotoscopeLab() {
               }
             />
             <RangeControl
-              label="Radius Y"
+              label="Spread Y"
               value={settings.experiment.radial.radiusY}
               min={0.08}
               max={1.2}
@@ -750,6 +754,20 @@ export default function RotoscopeLab() {
               onChange={(falloff) =>
                 updateExperiment({
                   radial: { ...settings.experiment.radial, falloff },
+                })
+              }
+            />
+            <RangeControl
+              label="Coverage floor"
+              value={settings.experiment.radial.coverage}
+              min={0}
+              max={0.75}
+              step={0.01}
+              display={`${Math.round(settings.experiment.radial.coverage * 100)}%`}
+              disabled={radialDisabled}
+              onChange={(coverage) =>
+                updateExperiment({
+                  radial: { ...settings.experiment.radial, coverage },
                 })
               }
             />
@@ -844,7 +862,7 @@ export default function RotoscopeLab() {
                 min={0}
                 max={0xffffffff}
                 value={settings.experiment.noise.seed}
-                disabled={noiseDisabled}
+                disabled={seedDisabled}
                 onChange={(event) =>
                   updateExperiment({
                     noise: {
@@ -854,7 +872,7 @@ export default function RotoscopeLab() {
                   })
                 }
               />
-              <button type="button" disabled={noiseDisabled} onClick={rerollSeed}>
+              <button type="button" disabled={seedDisabled} onClick={rerollSeed}>
                 Reroll
               </button>
             </div>

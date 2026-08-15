@@ -25,7 +25,7 @@ const result = (
   outputBitmap = bitmap(),
   diagnosticBitmap = bitmap(),
 ): RotoscopeLabRenderSuccess => ({
-  version: 1,
+  version: 2,
   type: "result",
   id: 1,
   width: 4,

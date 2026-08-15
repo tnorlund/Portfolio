@@ -1,6 +1,7 @@
 import {
   classifyFocusTier,
   colorizeRegions,
+  createFocusTierMap,
   grayscaleAndDifference,
   normalizeRotoscopeOptions,
   selectMarkers,
@@ -32,6 +33,7 @@ export interface RadialDistributionOptions {
   radiusX: number;
   radiusY: number;
   falloff: number;
+  coverage: number;
 }
 
 export interface MarkerExperimentOptions {
@@ -87,6 +89,7 @@ export const DEFAULT_MARKER_EXPERIMENT: Readonly<MarkerExperimentOptions> = {
     radiusX: 0.4,
     radiusY: 0.54,
     falloff: 1.4,
+    coverage: 0.18,
   },
   hybridRadialWeight: 0.55,
   noise: {
@@ -126,6 +129,7 @@ export const normalizeMarkerExperiment = (
       radiusX: clamp(finiteOr(radial.radiusX, defaults.radial.radiusX), 0.01, 2),
       radiusY: clamp(finiteOr(radial.radiusY, defaults.radial.radiusY), 0.01, 2),
       falloff: clamp(finiteOr(radial.falloff, defaults.radial.falloff), 0.25, 8),
+      coverage: clamp(finiteOr(radial.coverage, defaults.radial.coverage), 0, 0.75),
     },
     hybridRadialWeight: clamp(
       finiteOr(input.hybridRadialWeight, defaults.hybridRadialWeight),
@@ -331,26 +335,108 @@ export const experimentNoiseCacheKey = (
   ]);
 };
 
-export const createRadialScoreField = (
+const RADIAL_TIER_SPREAD = [1, 1.45, 2.25] as const;
+
+/**
+ * Gaussian sampling density with progressively broader body/background tails.
+ * The coverage floor keeps every focus tier eligible for deterministic
+ * sampling instead of collapsing its markers onto the nearest contour.
+ */
+export const createRadialDensityField = (
   width: number,
   height: number,
   input: MarkerExperimentInput | MarkerExperimentOptions,
+  focusTiers?: Uint8Array,
 ): Float32Array => {
   const radial = normalizeMarkerExperiment(input).radial;
-  const scores = new Float32Array(width * height);
+  const count = width * height;
+  if (focusTiers && focusTiers.length !== count) {
+    throw new RangeError("focus tier length mismatch");
+  }
+  const density = new Float32Array(count);
   for (let y = 0; y < height; y += 1) {
     const normalizedY = (y + 0.5) / height;
-    const dy = (normalizedY - radial.centerY) / radial.radiusY;
     for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
       const normalizedX = (x + 0.5) / width;
-      const dx = (normalizedX - radial.centerX) / radial.radiusX;
+      const spread = RADIAL_TIER_SPREAD[focusTiers?.[index] ?? 0] ?? 1;
+      const dx =
+        (normalizedX - radial.centerX) / (radial.radiusX * spread);
+      const dy =
+        (normalizedY - radial.centerY) / (radial.radiusY * spread);
       const distanceSquared = Math.fround(dx * dx + dy * dy);
-      scores[y * width + x] = Math.fround(
-        1 / (1 + radial.falloff * distanceSquared),
+      const gaussian = Math.fround(
+        Math.exp(Math.fround(-0.5 * radial.falloff * distanceSquared)),
+      );
+      density[index] = Math.fround(
+        radial.coverage + Math.fround((1 - radial.coverage) * gaussian),
       );
     }
   }
-  return scores;
+  return density;
+};
+
+const modulateDensity = (
+  base: Float32Array,
+  noise: Float32Array | null,
+  amount: number,
+  coverage: number,
+): Float32Array => {
+  if (!noise || amount <= 0) return base;
+  const output = new Float32Array(base.length);
+  for (let index = 0; index < output.length; index += 1) {
+    const centeredNoise = Math.fround(noise[index] * 2 - 1);
+    const modulation = Math.fround(1 + amount * centeredNoise);
+    const aboveFloor = Math.max(0, base[index] - coverage);
+    output[index] = Math.fround(
+      clamp(coverage + Math.fround(aboveFloor * modulation), coverage, 1),
+    );
+  }
+  return output;
+};
+
+/**
+ * Converts density into deterministic Gumbel priorities. Ranking these keys is
+ * weighted sampling without replacement; the existing spatial suppression
+ * then supplies the blue-noise separation.
+ */
+export const createWeightedPriorityField = (
+  density: Float32Array,
+  width: number,
+  height: number,
+  seed: number,
+): Float32Array => {
+  if (density.length !== width * height) {
+    throw new RangeError("density length mismatch");
+  }
+  const priorities = new Float32Array(density.length);
+  let minimum = Number.POSITIVE_INFINITY;
+  let maximum = Number.NEGATIVE_INFINITY;
+  const sampleSeed = (seed ^ 0xa511e9b3) >>> 0;
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = y * width + x;
+      const uniform = (hash32(x, y, sampleSeed) + 0.5) / 0x100000000;
+      const gumbel = -Math.log(-Math.log(uniform));
+      const priority = Math.fround(
+        Math.log(Math.max(1e-6, density[index])) + gumbel,
+      );
+      priorities[index] = priority;
+      minimum = Math.min(minimum, priority);
+      maximum = Math.max(maximum, priority);
+    }
+  }
+  const range = maximum - minimum;
+  if (!Number.isFinite(range) || range <= 0) {
+    priorities.fill(1);
+    return priorities;
+  }
+  for (let index = 0; index < priorities.length; index += 1) {
+    priorities[index] = Math.fround(
+      1e-6 + Math.fround(((priorities[index] - minimum) / range) * (1 - 1e-6)),
+    );
+  }
+  return priorities;
 };
 
 const normalizeScores = (scores: Float32Array): Float32Array => {
@@ -403,6 +489,7 @@ const perturbScores = (
 
 const experimentScores = (
   stages: PreparedExperimentStages,
+  baseOptions: RotoscopeOptions,
   experiment: MarkerExperimentOptions,
   noise: Float32Array | null,
 ): Float32Array => {
@@ -426,17 +513,41 @@ const experimentScores = (
     );
   }
 
-  const radial = createRadialScoreField(stages.width, stages.height, experiment);
-  let scores = radial;
+  const focusTiers = createFocusTierMap(
+    stages.width,
+    stages.height,
+    baseOptions.focus,
+  );
+  const radial = createRadialDensityField(
+    stages.width,
+    stages.height,
+    experiment,
+    focusTiers,
+  );
+  let density = radial;
   if (experiment.strategy === "hybrid" && experiment.hybridRadialWeight < 1) {
     if (!stages.featureScores) throw new Error("feature scores were not prepared");
-    scores = blendScores(
+    density = blendScores(
       normalizeScores(stages.featureScores),
       radial,
       experiment.hybridRadialWeight,
     );
+    for (let index = 0; index < density.length; index += 1) {
+      density[index] = Math.max(density[index], experiment.radial.coverage);
+    }
   }
-  return perturbScores(scores, noise, experiment.noise.amount);
+  density = modulateDensity(
+    density,
+    noise,
+    experiment.noise.amount,
+    experiment.radial.coverage,
+  );
+  return createWeightedPriorityField(
+    density,
+    stages.width,
+    stages.height,
+    experiment.noise.seed,
+  );
 };
 
 const tierForMarker = (
@@ -539,7 +650,12 @@ export const runRotoscopeExperiment = (
   const noiseMs = performance.now() - noiseStartedAt;
 
   const selectionStartedAt = performance.now();
-  const scores = experimentScores(stages, normalizedExperiment, noise);
+  const scores = experimentScores(
+    stages,
+    normalizedBaseOptions,
+    normalizedExperiment,
+    noise,
+  );
   const selected = selectMarkers(
     scores,
     stages.width,

@@ -4,7 +4,7 @@ import type {
   MarkerExperimentOptions,
 } from "./labAlgorithm";
 
-export const ROTOSCOPE_LAB_WORKER_VERSION = 1 as const;
+export const ROTOSCOPE_LAB_WORKER_VERSION = 2 as const;
 
 export interface RotoscopeLabRenderRequest {
   version: typeof ROTOSCOPE_LAB_WORKER_VERSION;

@@ -9,7 +9,8 @@ import {
   createDiagnosticPixels,
   experimentNoiseCacheKey,
   createNoiseField,
-  createRadialScoreField,
+  createRadialDensityField,
+  createWeightedPriorityField,
   normalizeMarkerExperiment,
   prepareExperimentStages,
   runRotoscopeExperiment,
@@ -49,6 +50,7 @@ test("normalizes every experimental value into a bounded deterministic contract"
       radiusX: 0,
       radiusY: Number.POSITIVE_INFINITY,
       falloff: 99,
+      coverage: -1,
     },
     hybridRadialWeight: -5,
     noise: {
@@ -67,6 +69,7 @@ test("normalizes every experimental value into a bounded deterministic contract"
     radiusX: 0.01,
     radiusY: 0.54,
     falloff: 8,
+    coverage: 0,
   });
   expect(normalized.hybridRadialWeight).toBe(0);
   expect(normalized.noise).toEqual({
@@ -148,21 +151,109 @@ test("noise cache keys distinguish disabled fields and reuse positive-strength f
   ).toBe(experimentNoiseCacheKey(40, 30, white));
 });
 
-test("the radial field matches a centered anisotropic distance golden", () => {
-  const scores = createRadialScoreField(3, 3, {
+test("the radial field is a Gaussian density with an explicit coverage floor", () => {
+  const density = createRadialDensityField(3, 3, {
     radial: {
       centerX: 0.5,
       centerY: 0.5,
       radiusX: 0.5,
       radiusY: 0.5,
       falloff: 1,
+      coverage: 0,
     },
   });
-  expect(Array.from(scores).map((value) => Number(value.toFixed(8)))).toEqual([
-    0.52941173, 0.69230771, 0.52941173,
-    0.69230771, 1, 0.69230771,
-    0.52941173, 0.69230771, 0.52941173,
+  expect(Array.from(density).map((value) => Number(value.toFixed(8)))).toEqual([
+    0.6411804, 0.80073738, 0.6411804,
+    0.80073738, 1, 0.80073738,
+    0.6411804, 0.80073738, 0.6411804,
   ]);
+
+  const tailed = createRadialDensityField(3, 3, {
+    radial: { coverage: 0.25 },
+  });
+  expect(Math.min(...tailed)).toBeGreaterThanOrEqual(0.25);
+
+  const faceTail = createRadialDensityField(
+    3,
+    3,
+    { radial: { coverage: 0 } },
+    new Uint8Array(9).fill(0),
+  );
+  const bodyTail = createRadialDensityField(
+    3,
+    3,
+    { radial: { coverage: 0 } },
+    new Uint8Array(9).fill(1),
+  );
+  const backgroundTail = createRadialDensityField(
+    3,
+    3,
+    { radial: { coverage: 0 } },
+    new Uint8Array(9).fill(2),
+  );
+  expect(faceTail[0]).toBeLessThan(bodyTail[0]);
+  expect(bodyTail[0]).toBeLessThan(backgroundTail[0]);
+});
+
+test("weighted priorities are seeded, finite, and preserve nonzero eligibility", () => {
+  const density = new Float32Array([1, 0.75, 0.5, 0.25, 0.1, 0.01]);
+  const first = createWeightedPriorityField(density, 3, 2, 123);
+  const replay = createWeightedPriorityField(density, 3, 2, 123);
+  const changed = createWeightedPriorityField(density, 3, 2, 124);
+  expect(Array.from(replay)).toEqual(Array.from(first));
+  expect(Array.from(changed)).not.toEqual(Array.from(first));
+  expect(Array.from(first).every((value) => Number.isFinite(value) && value > 0)).toBe(true);
+});
+
+test("coverage produces a deterministic distributed tail with blue-noise spacing", () => {
+  const width = 80;
+  const height = 60;
+  const source = rgba(width, height);
+  const stages = prepareExperimentStages(source, width, height, 2, false);
+  const base = {
+    ...allFaceOptions,
+    markerBudget: 160,
+    spacing: { face: 2, body: 2, background: 2 },
+  };
+  const render = (coverage: number) =>
+    runRotoscopeExperiment(stages, base, {
+      strategy: "radial",
+      radial: {
+        centerX: 0.5,
+        centerY: 0.5,
+        radiusX: 0.18,
+        radiusY: 0.18,
+        falloff: 4,
+        coverage,
+      },
+      noise: { kind: "none", amount: 0, seed: 834821 },
+    });
+  const concentrated = render(0);
+  const distributed = render(0.18);
+  const outsideTwoSigma = (indices: Uint32Array) =>
+    Array.from(indices).filter((index) => {
+      const y = Math.floor(index / width);
+      const x = index - y * width;
+      const dx = ((x + 0.5) / width - 0.5) / 0.18;
+      const dy = ((y + 0.5) / height - 0.5) / 0.18;
+      return Math.hypot(dx, dy) > 2;
+    }).length;
+
+  expect(outsideTwoSigma(distributed.markerIndices)).toBeGreaterThan(
+    outsideTwoSigma(concentrated.markerIndices) + 60,
+  );
+  expect(outsideTwoSigma(distributed.markerIndices)).toBeGreaterThan(80);
+  for (let left = 0; left < distributed.markerIndices.length; left += 1) {
+    const leftIndex = distributed.markerIndices[left];
+    const leftY = Math.floor(leftIndex / width);
+    const leftX = leftIndex - leftY * width;
+    for (let right = left + 1; right < distributed.markerIndices.length; right += 1) {
+      const rightIndex = distributed.markerIndices[right];
+      const rightY = Math.floor(rightIndex / width);
+      const rightX = rightIndex - rightY * width;
+      expect(Math.abs(leftX - rightX) + Math.abs(leftY - rightY)).toBeGreaterThan(2);
+    }
+  }
 });
 
 test("feature plus no noise is pixel-for-pixel identical to the production scalar", () => {
@@ -213,8 +304,8 @@ test("radial markers and hybrid endpoints are exact and deterministic", () => {
     noise: { kind: "none", amount: 0 },
   });
 
-  expect(Array.from(radial.markerIndices)).toEqual([30, 40, 28, 12, 57, 33, 10]);
-  expect(radial.markerDigest).toBe("092c5b11");
+  expect(Array.from(radial.markerIndices)).toEqual([53, 31, 46, 39, 49, 13, 21]);
+  expect(radial.markerDigest).toBe("ae7323cf");
   expect(Array.from(featureEndpoint.markerIndices)).toEqual(
     Array.from(feature.markerIndices),
   );
