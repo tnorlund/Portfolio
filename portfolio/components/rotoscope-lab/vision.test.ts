@@ -4,6 +4,7 @@ import { webcrypto } from "node:crypto";
 import { TextDecoder } from "node:util";
 import {
   parseVisionPortraitArtifacts,
+  primaryFaceVisionFeatures,
   VISION_PORTRAIT_SOURCE_SHA256,
 } from "./vision";
 
@@ -46,6 +47,16 @@ test("accepts the canonical Apple Vision portrait artifacts", async () => {
   );
   expect(parsed.features.filter((feature) => feature.kind === "face-landmark"))
     .toHaveLength(76);
+  expect(parsed.features.filter((feature) => feature.kind === "body-joint"))
+    .toHaveLength(33);
+  const primaryFaceFeatures = primaryFaceVisionFeatures(parsed);
+  expect(primaryFaceFeatures).toHaveLength(77);
+  expect(
+    primaryFaceFeatures.every(
+      (feature) =>
+        feature.kind === "face-landmark" || feature.kind === "face-center",
+    ),
+  ).toBe(true);
   expect(parsed.mask.pixels).toHaveLength(240 * 180);
   const face = parsed.primaryFace.boundingBox;
   const faceX = Math.floor((face.x + face.width / 2) * parsed.mask.width);

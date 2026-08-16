@@ -48,7 +48,7 @@ export class RotoscopeWorkerClient {
     try {
       this.worker = workerFactory
         ? workerFactory()
-        : new Worker("/rotoscope/worker-v2.js", {
+        : new Worker("/rotoscope/worker-v3.js", {
             name: "portfolio-rotoscope",
           });
     } catch {
@@ -109,7 +109,6 @@ export class RotoscopeWorkerClient {
   private handleMessage(message: RotoscopeWorkerResponse): void {
     const entry = this.pending.get(message.id);
     if (!entry) {
-      if (message.type === "result") message.bitmap?.close();
       return;
     }
     switch (message.type) {
@@ -120,11 +119,7 @@ export class RotoscopeWorkerClient {
             entry.request.width,
             entry.request.height,
           );
-          const fallbackRequest = {
-            ...entry.request,
-            sourceUrl: undefined,
-            pixelsBuffer,
-          };
+          const fallbackRequest = { ...entry.request, pixelsBuffer };
           this.worker?.postMessage(fallbackRequest, [pixelsBuffer]);
         } catch (error) {
           this.pending.delete(message.id);
@@ -142,7 +137,6 @@ export class RotoscopeWorkerClient {
       case "result": {
         this.pending.delete(message.id);
         if (message.id !== this.latestId) {
-          message.bitmap?.close();
           entry.resolve(null);
           return;
         }

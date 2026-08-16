@@ -22,6 +22,7 @@ import {
 import { LabSourceCache, labSourceCacheKey } from "./sourceCache";
 import {
   loadVisionPortraitArtifacts,
+  primaryFaceVisionFeatures,
   type VisionPortraitArtifacts,
 } from "./vision";
 
@@ -298,9 +299,7 @@ const render = async (request: RotoscopeLabRenderRequest): Promise<void> => {
             ...(visionLoadError ? { message: visionLoadError } : {}),
           }
         : undefined,
-    visionFeatures: vision?.features.filter(
-      (feature) => feature.kind !== "contour" && feature.kind !== "saliency",
-    ),
+    visionFeatures: vision ? primaryFaceVisionFeatures(vision) : undefined,
     path: "scalar-lab",
     normalizedExperiment: result.normalizedExperiment,
     normalizedBaseOptions: result.normalizedBaseOptions,

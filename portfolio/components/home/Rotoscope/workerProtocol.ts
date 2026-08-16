@@ -1,6 +1,6 @@
 import type { RotoscopeOptions } from "./algorithm";
 
-export const ROTOSCOPE_WORKER_VERSION = 2 as const;
+export const ROTOSCOPE_WORKER_VERSION = 3 as const;
 
 export interface RotoscopeRenderRequest {
   version: typeof ROTOSCOPE_WORKER_VERSION;
@@ -32,8 +32,10 @@ export interface RotoscopeRenderSuccess {
   tierCounts: { face: number; body: number; background: number };
   path: "wasm-scalar" | "scalar-worker";
   timings: RotoscopeTimings;
-  bitmap?: ImageBitmap;
-  pixelsBuffer?: ArrayBuffer;
+  pixelsBuffer: ArrayBuffer;
+  revealPhasesBuffer: ArrayBuffer;
+  revealPhaseCount: number;
+  revealBasinCount: number;
 }
 
 export interface RotoscopeNeedsPixels {

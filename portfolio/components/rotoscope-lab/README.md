@@ -13,8 +13,11 @@ mean-color stages. Controls only change marker desirability and selection:
 - **Radial** builds an anisotropic Gaussian density around a configurable origin. A
   coverage floor and broader body/background tails keep distant regions eligible.
 - **Hybrid** linearly blends normalized feature scores with the Gaussian density.
-- **Apple Vision** weights a checked-in primary-person mask, all 76 native face
-  landmarks, visible pose joints, saliency regions, and bounded contour samples.
+- **Apple Vision** weights a checked-in primary-person mask and promotes the 76
+  landmarks plus center of the one selected primary face. Pose joints from the
+  three people in the restaurant background, saliency regions, and contour
+  samples remain in the raw manifest for inspection but cannot become active
+  seeds or overlays.
 - **White**, **value**, and **fractal value (fBm)** noise modulate the density.
 - Seeded Gumbel priorities turn density into weighted sampling without replacement;
   deterministic tier quotas and Manhattan suppression provide blue-noise separation.
@@ -24,9 +27,10 @@ allows one active request and one replaceable queued request, so rapid slider ch
 cannot build an unbounded worker queue.
 
 The basin diagnostic colors regions by the tier of their marker: blue for face, orange
-for body, and gray for background. Apple Vision mode outlines the selected primary-
-person mask in cyan. Marker and label digests make saved settings easy to compare across
-reruns.
+for body, and gray for background. The default overlay shows only the selected face
+points, with general basin seed dots available as a separate opt-in control. The person
+mask still biases density but does not add a competing silhouette. Marker and label
+digests make saved settings easy to compare across reruns.
 
 Vision is generated offline by the zero-dependency macOS CLI in
 `tools/vision-portrait-worker`. The website never uploads the portrait or runs native

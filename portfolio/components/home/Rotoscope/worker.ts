@@ -3,8 +3,10 @@
 import {
   MAX_ROTOSCOPE_DIMENSION,
   MAX_ROTOSCOPE_PIXELS,
+  normalizeRotoscopeOptions,
   runRotoscope,
 } from "./algorithm";
+import { createBasinRevealMap } from "./reveal";
 import {
   ROTOSCOPE_WORKER_VERSION,
   type RotoscopeRenderRequest,
@@ -14,7 +16,7 @@ import {
 } from "./workerProtocol";
 import { runRotoscopeWasm } from "./wasm";
 
-type WorkerTransfer = ArrayBuffer | ImageBitmap;
+type WorkerTransfer = ArrayBuffer;
 
 interface RotoscopeWorkerScope {
   onmessage: ((event: MessageEvent<RotoscopeRenderRequest>) => void) | null;
@@ -89,30 +91,20 @@ const pixelsForRequest = async (
   request: RotoscopeRenderRequest,
 ): Promise<{ pixels: Uint8ClampedArray; elapsedMs: number }> => {
   if (request.pixelsBuffer) {
+    const pixels = new Uint8ClampedArray(request.pixelsBuffer);
+    if (request.sourceUrl) {
+      cachedSource = {
+        key: `${request.sourceUrl}:${request.width}x${request.height}`,
+        pixels,
+      };
+    }
     return {
-      pixels: new Uint8ClampedArray(request.pixelsBuffer),
+      pixels,
       elapsedMs: 0,
     };
   }
   if (!request.sourceUrl) throw new Error("missing portrait source");
   return decodeSource(request.sourceUrl, request.width, request.height);
-};
-
-const paintResult = (
-  pixels: Uint8ClampedArray,
-  width: number,
-  height: number,
-): { bitmap?: ImageBitmap; pixelsBuffer?: ArrayBuffer } => {
-  if (typeof OffscreenCanvas === "undefined") {
-    return { pixelsBuffer: pixels.buffer as ArrayBuffer };
-  }
-  const canvas = new OffscreenCanvas(width, height);
-  const context = canvas.getContext("2d");
-  if (!context) return { pixelsBuffer: pixels.buffer as ArrayBuffer };
-  const imageData = context.createImageData(width, height);
-  imageData.data.set(pixels);
-  context.putImageData(imageData, 0, 0);
-  return { bitmap: canvas.transferToImageBitmap() };
 };
 
 const render = async (request: RotoscopeRenderRequest): Promise<void> => {
@@ -182,12 +174,17 @@ const render = async (request: RotoscopeRenderRequest): Promise<void> => {
     path = "scalar-worker";
   }
   const paintStartedAt = performance.now();
-  const painted = paintResult(result.pixels, request.width, request.height);
+  const normalizedOptions = normalizeRotoscopeOptions(request.options, pixelCount);
+  const reveal = createBasinRevealMap(
+    result.pixels,
+    request.width,
+    request.height,
+    normalizedOptions.focus,
+  );
   const paintMs = performance.now() - paintStartedAt;
 
   // A newer request superseded this result while decode or compute was active.
   if (request.id !== latestRequestId) {
-    painted.bitmap?.close();
     return;
   }
 
@@ -209,12 +206,12 @@ const render = async (request: RotoscopeRenderRequest): Promise<void> => {
     tierCounts: result.tierCounts,
     path,
     timings,
-    ...painted,
+    pixelsBuffer: result.pixels.buffer as ArrayBuffer,
+    revealPhasesBuffer: reveal.phases.buffer as ArrayBuffer,
+    revealPhaseCount: reveal.phaseCount,
+    revealBasinCount: reveal.basinCount,
   };
-  const transfer: WorkerTransfer[] = [];
-  if (painted.bitmap) transfer.push(painted.bitmap);
-  if (painted.pixelsBuffer) transfer.push(painted.pixelsBuffer);
-  post(response, transfer);
+  post(response, [response.pixelsBuffer, response.revealPhasesBuffer]);
 };
 
 const drain = async (): Promise<void> => {

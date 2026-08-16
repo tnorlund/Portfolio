@@ -26,11 +26,11 @@ test("renders an accessible unlinked lab with real distribution controls", () =>
   expect(screen.getByRole("slider", { name: "Coverage floor" })).toHaveValue(
     "0.18",
   );
-  expect(screen.getByRole("checkbox", { name: "Show seeds" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Show seeds" })).not.toBeChecked();
   expect(
     screen.getByRole("img", { name: "Catchment basin diagnostic map" }),
   ).toBeInTheDocument();
-  expect(screen.getByRole("checkbox", { name: "Vision labels" })).toBeChecked();
+  expect(screen.getByRole("checkbox", { name: "Primary face" })).toBeChecked();
 });
 
 test("disables no-op controls and reveals the hybrid blend only when relevant", () => {
@@ -51,6 +51,7 @@ test("disables no-op controls and reveals the hybrid blend only when relevant", 
   fireEvent.click(screen.getByRole("button", { name: "Hybrid" }));
   expect(screen.getByRole("slider", { name: "Origin X" })).toBeEnabled();
   expect(screen.getByRole("slider", { name: "Radial blend" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "Show seeds" }));
   expect(document.querySelector("canvas[data-crosshair]"))?.toHaveAttribute(
     "data-crosshair",
     "visible",

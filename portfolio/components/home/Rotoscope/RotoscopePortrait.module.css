@@ -4,7 +4,6 @@
 }
 
 .frame {
-  --fill-radius: 0%;
   position: relative;
   overflow: hidden;
   width: 100%;
@@ -37,12 +36,6 @@
 
 .rotoscoped {
   z-index: 1;
-  clip-path: circle(var(--fill-radius) at 50% 50%);
-  transition: clip-path 1100ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.frame[data-state="processing"] .rotoscoped {
-  transition: none;
 }
 
 .caption {
@@ -103,11 +96,5 @@
   .links {
     display: flex;
     margin-top: 0.45rem;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .rotoscoped {
-    transition: none;
   }
 }

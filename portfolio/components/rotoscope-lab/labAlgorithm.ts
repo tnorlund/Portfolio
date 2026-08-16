@@ -13,7 +13,10 @@ import {
   type RotoscopeOptions,
   type TierValues,
 } from "../home/Rotoscope/algorithm";
-import type { VisionFeature, VisionPortraitArtifacts } from "./vision";
+import {
+  primaryFaceVisionFeatures,
+  type VisionPortraitArtifacts,
+} from "./vision";
 
 export type MarkerStrategy = "features" | "radial" | "hybrid" | "vision";
 export type NoiseKind = "none" | "white" | "value" | "fbm";
@@ -493,28 +496,6 @@ const perturbScores = (
   return output;
 };
 
-const visionFeatureWeight = (
-  feature: VisionFeature,
-  insidePrimaryPerson: boolean,
-): number => {
-  switch (feature.kind) {
-    case "face-landmark":
-      return 4;
-    case "face-center":
-      return 3.8;
-    case "hand-joint":
-      return insidePrimaryPerson ? 3.1 : 1.15;
-    case "body-joint":
-      return insidePrimaryPerson ? 2.9 : 1.1;
-    case "human-center":
-      return insidePrimaryPerson ? 2.5 : 1.05;
-    case "saliency":
-      return 1.2;
-    case "contour":
-      return 0.82;
-  }
-};
-
 const visionMaskValue = (
   vision: VisionPortraitArtifacts,
   normalizedX: number,
@@ -532,10 +513,10 @@ const visionMaskValue = (
 };
 
 /**
- * Apple Vision landmarks become the strongest exact candidates, body/person
- * geometry is medium weight, and saliency/contours only guide the distributed
- * Gaussian fill. The seeded priority field keeps all non-Vision markers
- * replayable while the native observations remain fixed.
+ * The selected face landmarks become the strongest exact candidates. The
+ * primary-person mask gently biases the remaining Gaussian fill toward Tyler,
+ * while pose observations from people in the background remain inspection-only
+ * metadata. The seeded priority field keeps non-Vision markers replayable.
  */
 export const createVisionPriorityField = (
   width: number,
@@ -582,17 +563,17 @@ export const createVisionPriorityField = (
   );
   if (!vision) return priorities;
 
-  for (let featureIndex = 0; featureIndex < vision.features.length; featureIndex += 1) {
-    const feature = vision.features[featureIndex];
+  const primaryFaceFeatures = primaryFaceVisionFeatures(vision);
+  for (
+    let featureIndex = 0;
+    featureIndex < primaryFaceFeatures.length;
+    featureIndex += 1
+  ) {
+    const feature = primaryFaceFeatures[featureIndex];
     const x = Math.min(width - 1, Math.max(0, Math.floor(feature.point.x * width)));
     const y = Math.min(height - 1, Math.max(0, Math.floor(feature.point.y * height)));
-    const insidePrimaryPerson = visionMaskValue(
-      vision,
-      feature.point.x,
-      feature.point.y,
-    ) > 0;
-    const weight = visionFeatureWeight(feature, insidePrimaryPerson);
-    const stableTieBreak = (vision.features.length - featureIndex) * 1e-6;
+    const weight = feature.kind === "face-landmark" ? 4 : 3.8;
+    const stableTieBreak = (primaryFaceFeatures.length - featureIndex) * 1e-6;
     priorities[y * width + x] = Math.fround(
       Math.max(
         priorities[y * width + x],
@@ -815,8 +796,11 @@ export const runRotoscopeExperiment = (
     normalizedBaseOptions,
   );
   const visionMarkerIndices = new Set<number>();
+  const primaryFaceFeatures = vision
+    ? primaryFaceVisionFeatures(vision)
+    : [];
   if (vision) {
-    for (const feature of vision.features) {
+    for (const feature of primaryFaceFeatures) {
       const x = Math.min(
         stages.width - 1,
         Math.max(0, Math.floor(feature.point.x * stages.width)),
@@ -860,7 +844,9 @@ export const runRotoscopeExperiment = (
     stages.width,
     stages.height,
     normalizedBaseOptions,
-    vision,
+    // The mask still guides density, but keeping its silhouette out of the
+    // default diagnostic makes the single selected face unambiguous.
+    undefined,
   );
   const diagnosticMs = performance.now() - diagnosticStartedAt;
 
@@ -873,7 +859,7 @@ export const runRotoscopeExperiment = (
     tierCounts: selected.tierCounts,
     markerDigest: digestUint32(selected.indices),
     labelDigest: digestUint32(segmented.labels),
-    visionFeatureCount: vision?.features.length ?? 0,
+    visionFeatureCount: primaryFaceFeatures.length,
     visionMarkerCount,
     normalizedBaseOptions,
     normalizedExperiment,

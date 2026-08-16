@@ -263,8 +263,26 @@ test("Apple Vision landmarks outrank Gaussian fill and replay by seed", () => {
     null,
     vision,
   );
+  const primaryFaceOnlyPriorities = createVisionPriorityField(
+    width,
+    height,
+    experiment,
+    normalizedBase,
+    null,
+    {
+      ...vision,
+      features: vision.features.filter(
+        (feature) =>
+          feature.kind === "face-landmark" || feature.kind === "face-center",
+      ),
+    },
+  );
   const eyeIndex = Math.floor(0.4 * height) * width + Math.floor(0.4 * width);
+  const backgroundPersonJoint =
+    Math.floor(0.75 * height) * width + Math.floor(0.35 * width);
   expect(priorities[eyeIndex]).toBeGreaterThan(4);
+  expect(priorities[backgroundPersonJoint]).toBeLessThan(2);
+  expect(Array.from(priorities)).toEqual(Array.from(primaryFaceOnlyPriorities));
 
   const first = runRotoscopeExperiment(stages, base, experiment, null, vision);
   const replay = runRotoscopeExperiment(stages, base, experiment, null, vision);
@@ -276,7 +294,7 @@ test("Apple Vision landmarks outrank Gaussian fill and replay by seed", () => {
     vision,
   );
   expect(Array.from(first.markerIndices)).toContain(eyeIndex);
-  expect(first.visionFeatureCount).toBe(2);
+  expect(first.visionFeatureCount).toBe(1);
   expect(first.visionMarkerCount).toBeGreaterThan(0);
   expect(
     Array.from({ length: width * height }, (_, index) => index * 4).some(
@@ -285,7 +303,7 @@ test("Apple Vision landmarks outrank Gaussian fill and replay by seed", () => {
         first.diagnosticPixels[offset + 1] === 225 &&
         first.diagnosticPixels[offset + 2] === 205,
     ),
-  ).toBe(true);
+  ).toBe(false);
   expect(replay.markerDigest).toBe(first.markerDigest);
   expect(changed.markerDigest).not.toBe(first.markerDigest);
 });

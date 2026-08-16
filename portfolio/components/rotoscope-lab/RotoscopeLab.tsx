@@ -246,8 +246,8 @@ export default function RotoscopeLab() {
   const [imageReady, setImageReady] = useState(false);
   const [status, setStatus] = useState<LabStatus>("idle");
   const [viewMode, setViewMode] = useState<ViewMode>("diagnostic");
-  const [showSeeds, setShowSeeds] = useState(true);
-  const [showVisionLabels, setShowVisionLabels] = useState(true);
+  const [showSeeds, setShowSeeds] = useState(false);
+  const [showPrimaryFace, setShowPrimaryFace] = useState(true);
   const [markers, setMarkers] = useState<Uint32Array>(() => new Uint32Array());
   const [visionFeatures, setVisionFeatures] = useState<VisionFeature[]>([]);
   const [renderSize, setRenderSize] = useState({ width: 480, height: 360 });
@@ -415,14 +415,10 @@ export default function RotoscopeLab() {
       context.stroke();
     }
     if (
-      showVisionLabels &&
+      showPrimaryFace &&
       settings.experiment.strategy === "vision" &&
       visionFeatures.length > 0
     ) {
-      const labelPoints = new Map<
-        string,
-        { x: number; y: number; count: number; label: string; kind: string }
-      >();
       context.fillStyle = "rgba(89, 232, 255, 0.96)";
       context.strokeStyle = "rgba(9, 24, 35, 0.9)";
       context.lineWidth = 1;
@@ -430,44 +426,15 @@ export default function RotoscopeLab() {
         const x = feature.point.x * renderSize.width;
         const y = feature.point.y * renderSize.height;
         context.beginPath();
-        context.arc(x, y, feature.kind === "face-landmark" ? 1.8 : 2.4, 0, Math.PI * 2);
+        context.arc(
+          x,
+          y,
+          feature.kind === "face-landmark" ? 1.8 : 4.2,
+          0,
+          Math.PI * 2,
+        );
         context.fill();
         context.stroke();
-        const key =
-          feature.kind === "face-landmark"
-            ? `face:${feature.group}`
-            : feature.id;
-        const current = labelPoints.get(key);
-        if (current) {
-          current.x += x;
-          current.y += y;
-          current.count += 1;
-        } else if (
-          feature.kind === "face-landmark" ||
-          feature.confidence >= 0.35
-        ) {
-          labelPoints.set(key, {
-            x,
-            y,
-            count: 1,
-            label: feature.label,
-            kind: feature.kind,
-          });
-        }
-      }
-      context.font = `${renderSize.width >= 480 ? 9 : 8}px ui-monospace, SFMono-Regular, Menlo, monospace`;
-      context.textBaseline = "middle";
-      context.lineWidth = 3;
-      for (const label of labelPoints.values()) {
-        const x = label.x / label.count + 4;
-        const y = label.y / label.count - 4;
-        context.strokeStyle = "rgba(9, 24, 35, 0.9)";
-        context.strokeText(label.label, x, y);
-        context.fillStyle =
-          label.kind === "face-landmark"
-            ? "rgba(167, 246, 255, 0.98)"
-            : "rgba(255, 211, 117, 0.98)";
-        context.fillText(label.label, x, y);
       }
     }
   }, [
@@ -476,7 +443,7 @@ export default function RotoscopeLab() {
     settings.experiment.radial,
     settings.experiment.strategy,
     showSeeds,
-    showVisionLabels,
+    showPrimaryFace,
     visionFeatures,
   ]);
 
@@ -637,7 +604,7 @@ export default function RotoscopeLab() {
         </Link>
         <div>
           <h1>Rotoscope Lab</h1>
-          <p>Compare Apple Vision face and body labels with Gaussian blue-noise basin placement.</p>
+          <p>Use Apple Vision&apos;s primary face to guide Gaussian blue-noise basin placement.</p>
         </div>
       </header>
 
@@ -665,12 +632,12 @@ export default function RotoscopeLab() {
               <label className={styles.checkbox}>
                 <input
                   type="checkbox"
-                  checked={showVisionLabels}
+                  checked={showPrimaryFace}
                   onChange={(event) =>
-                    setShowVisionLabels(event.currentTarget.checked)
+                    setShowPrimaryFace(event.currentTarget.checked)
                   }
                 />
-                Vision labels
+                Primary face
               </label>
             ) : null}
           </div>
@@ -717,7 +684,7 @@ export default function RotoscopeLab() {
             />
             <span className={styles.previewHint}>
               {settings.experiment.strategy === "vision"
-                ? "Apple Vision labels + Gaussian fill"
+                ? "Primary face + Gaussian fill"
                 : radialDisabled
                   ? "Feature score field"
                   : "Click to move the radial origin"}
@@ -750,7 +717,7 @@ export default function RotoscopeLab() {
             <div><dt>Face</dt><dd>{summary?.tierCounts.face ?? "—"}</dd></div>
             <div><dt>Body</dt><dd>{summary?.tierCounts.body ?? "—"}</dd></div>
             <div><dt>Background</dt><dd>{summary?.tierCounts.background ?? "—"}</dd></div>
-            <div><dt>Vision labels</dt><dd>{summary?.vision?.featureCount ?? "—"}</dd></div>
+            <div><dt>Face landmarks</dt><dd>{summary?.vision?.faceLandmarkCount ?? "—"}</dd></div>
             <div><dt>Vision seeds</dt><dd>{summary?.vision?.markerCount ?? "—"}</dd></div>
             <div><dt>Render</dt><dd>{summary ? `${Math.round(summary.elapsedMs)} ms` : "—"}</dd></div>
             <div><dt>Worker</dt><dd>{summary?.path ?? "—"}</dd></div>

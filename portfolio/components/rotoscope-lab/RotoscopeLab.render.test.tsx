@@ -37,7 +37,7 @@ const result = (
   labelDigest: "90abcdef",
   vision: {
     available: visionAvailable,
-    featureCount: visionAvailable ? 76 : 0,
+    featureCount: visionAvailable ? 77 : 0,
     markerCount: visionAvailable ? 61 : 0,
     faceLandmarkCount: visionAvailable ? 76 : 0,
     captureQuality: visionAvailable ? 0.659 : null,
@@ -139,11 +139,8 @@ describe("rendered lab results", () => {
     expect(screen.getByText("markers 12345678")).toBeInTheDocument();
     expect(screen.getByText("76")).toBeInTheDocument();
     expect(screen.getByText("61")).toBeInTheDocument();
-    expect(twoDimensionalContext.fillText).toHaveBeenCalledWith(
-      "Left Eye",
-      expect.any(Number),
-      expect.any(Number),
-    );
+    expect(twoDimensionalContext.arc).toHaveBeenCalled();
+    expect(twoDimensionalContext.fillText).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Basin map" }));
     fireEvent.click(

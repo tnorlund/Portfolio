@@ -47,6 +47,20 @@ export interface VisionPortraitArtifacts {
   };
 }
 
+/**
+ * The portrait contains people behind Tyler. Vision reports their pose joints
+ * globally, so they must not be presented as part of the selected subject.
+ * Keep the full manifest for inspection while limiting the active experiment
+ * to the one face selected by the native generator.
+ */
+export const primaryFaceVisionFeatures = (
+  vision: VisionPortraitArtifacts,
+): VisionFeature[] =>
+  vision.features.filter(
+    (feature) =>
+      feature.kind === "face-landmark" || feature.kind === "face-center",
+  );
+
 type JsonRecord = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is JsonRecord =>

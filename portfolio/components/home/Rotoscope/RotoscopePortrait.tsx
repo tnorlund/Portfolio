@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   PORTRAIT_PROCESSING_SIZE,
@@ -6,6 +5,7 @@ import {
   PORTRAIT_SOURCES,
 } from "./portraitConfig";
 import styles from "./RotoscopePortrait.module.css";
+import { applyBasinRevealPhase } from "./reveal";
 import { RotoscopeWorkerClient } from "./workerClient";
 import type {
   RotoscopeRenderSuccess,
@@ -13,6 +13,7 @@ import type {
 } from "./workerProtocol";
 
 type RenderState = "idle" | "processing" | "ready" | "unavailable";
+type RevealState = "waiting" | "revealing" | "complete";
 
 type IdleWindow = Window & {
   requestIdleCallback?: (
@@ -22,44 +23,46 @@ type IdleWindow = Window & {
   cancelIdleCallback?: (id: number) => void;
 };
 
-const paintWorkerResult = (
+const prepareWorkerResult = (
   canvas: HTMLCanvasElement,
   result: RotoscopeRenderSuccess,
-): void => {
+): {
+  context: CanvasRenderingContext2D;
+  imageData: ImageData;
+  source: Uint8ClampedArray;
+  phases: Uint8Array;
+} => {
+  const expectedPixels = result.width * result.height;
+  const source = new Uint8ClampedArray(result.pixelsBuffer);
+  const phases = new Uint8Array(result.revealPhasesBuffer);
+  if (
+    source.length !== expectedPixels * 4 ||
+    phases.length !== expectedPixels ||
+    !Number.isInteger(result.revealPhaseCount) ||
+    result.revealPhaseCount < 2 ||
+    result.revealPhaseCount > 255
+  ) {
+    throw new Error("invalid basin reveal result");
+  }
   canvas.width = result.width;
   canvas.height = result.height;
-  if (result.bitmap) {
-    const bitmapContext = canvas.getContext("bitmaprenderer");
-    if (bitmapContext) {
-      bitmapContext.transferFromImageBitmap(result.bitmap);
-    } else {
-      const context = canvas.getContext("2d");
-      context?.drawImage(result.bitmap, 0, 0);
-    }
-    result.bitmap.close();
-    return;
-  }
-  if (result.pixelsBuffer) {
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    context.putImageData(
-      new ImageData(
-        new Uint8ClampedArray(result.pixelsBuffer),
-        result.width,
-        result.height,
-      ),
-      0,
-      0,
-    );
-  }
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("2D canvas is unavailable");
+  const imageData = context.createImageData(result.width, result.height);
+  context.clearRect(0, 0, result.width, result.height);
+  return { context, imageData, source, phases };
 };
+
+const REVEAL_DURATION_MS = 1100;
 
 export default function RotoscopePortrait() {
   const imageRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<RotoscopeWorkerClient | null>(null);
   const scheduledRef = useRef<{ type: "idle" | "timeout"; id: number } | null>(null);
-  const fillFrameRef = useRef<number | null>(null);
+  const revealFrameRef = useRef<number | null>(null);
+  const revealGenerationRef = useRef(0);
   const mountedRef = useRef(true);
   const [renderState, setRenderState] = useState<RenderState>("idle");
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
@@ -67,7 +70,86 @@ export default function RotoscopePortrait() {
     null,
   );
   const [timings, setTimings] = useState<RotoscopeTimings | null>(null);
-  const [filled, setFilled] = useState(false);
+  const [revealState, setRevealState] = useState<RevealState>("waiting");
+
+  const cancelReveal = useCallback((clearCanvas: boolean) => {
+    revealGenerationRef.current += 1;
+    if (revealFrameRef.current !== null) {
+      window.cancelAnimationFrame(revealFrameRef.current);
+      revealFrameRef.current = null;
+    }
+    const frame = frameRef.current;
+    if (frame) {
+      frame.dataset.revealPhase = "0";
+      frame.dataset.revealState = "waiting";
+    }
+    if (clearCanvas) {
+      const canvas = canvasRef.current;
+      canvas?.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }, []);
+
+  const revealResult = useCallback(
+    (canvas: HTMLCanvasElement, result: RotoscopeRenderSuccess) => {
+      const prepared = prepareWorkerResult(canvas, result);
+      const frame = frameRef.current;
+      const reducedMotion = window.matchMedia(
+        "(prefers-reduced-motion: reduce)",
+      ).matches;
+      if (reducedMotion) {
+        prepared.imageData.data.set(prepared.source);
+        prepared.context.putImageData(prepared.imageData, 0, 0);
+        if (frame) {
+          frame.dataset.revealPhase = String(result.revealPhaseCount - 1);
+          frame.dataset.revealState = "complete";
+        }
+        setRevealState("complete");
+        return;
+      }
+
+      const generation = revealGenerationRef.current;
+      let previousPhase = -1;
+      const startedAt = performance.now();
+      setRevealState("revealing");
+      if (frame) frame.dataset.revealState = "revealing";
+
+      const paint = (now: number) => {
+        if (
+          generation !== revealGenerationRef.current ||
+          !mountedRef.current
+        ) {
+          return;
+        }
+        const progress = Math.min(1, (now - startedAt) / REVEAL_DURATION_MS);
+        const nextPhase = Math.min(
+          result.revealPhaseCount - 1,
+          Math.floor(progress * result.revealPhaseCount),
+        );
+        if (nextPhase > previousPhase) {
+          applyBasinRevealPhase(
+            prepared.imageData.data,
+            prepared.source,
+            prepared.phases,
+            previousPhase,
+            nextPhase,
+          );
+          prepared.context.putImageData(prepared.imageData, 0, 0);
+          previousPhase = nextPhase;
+          if (frame) frame.dataset.revealPhase = String(nextPhase);
+        }
+        if (nextPhase < result.revealPhaseCount - 1) {
+          revealFrameRef.current = window.requestAnimationFrame(paint);
+          return;
+        }
+        revealFrameRef.current = null;
+        if (frame) frame.dataset.revealState = "complete";
+        setRevealState("complete");
+      };
+
+      revealFrameRef.current = window.requestAnimationFrame(paint);
+    },
+    [],
+  );
 
   const renderPortrait = useCallback(async () => {
     const image = imageRef.current;
@@ -79,8 +161,9 @@ export default function RotoscopePortrait() {
       setRenderState("unavailable");
       return;
     }
+    cancelReveal(true);
     setRenderState("processing");
-    setFilled(false);
+    setRevealState("waiting");
     const requestedAt = performance.now();
     try {
       const result = await client.render({
@@ -88,29 +171,16 @@ export default function RotoscopePortrait() {
         ...PORTRAIT_PROCESSING_SIZE,
         options: PORTRAIT_ROTOSCOPE_OPTIONS,
       });
-      if (!mountedRef.current || !result) {
-        result?.bitmap?.close();
-        return;
-      }
-      paintWorkerResult(canvas, result);
+      if (!mountedRef.current || !result) return;
+      revealResult(canvas, result);
       setElapsedMs(performance.now() - requestedAt);
       setRenderPath(result.path);
       setTimings(result.timings);
       setRenderState("ready");
-      const reducedMotion = window.matchMedia(
-        "(prefers-reduced-motion: reduce)",
-      ).matches;
-      if (reducedMotion) setFilled(true);
-      else {
-        fillFrameRef.current = window.requestAnimationFrame(() => {
-          fillFrameRef.current = null;
-          setFilled(true);
-        });
-      }
     } catch {
       if (mountedRef.current) setRenderState("unavailable");
     }
-  }, []);
+  }, [cancelReveal, revealResult]);
 
   const scheduleRender = useCallback(() => {
     if (scheduledRef.current || renderState !== "idle") return;
@@ -143,12 +213,10 @@ export default function RotoscopePortrait() {
       } else if (scheduled) {
         window.clearTimeout(scheduled.id);
       }
-      if (fillFrameRef.current !== null) {
-        window.cancelAnimationFrame(fillFrameRef.current);
-      }
+      cancelReveal(false);
       clientRef.current?.dispose();
     };
-  }, []);
+  }, [cancelReveal]);
 
   useEffect(() => {
     // Cached/preloaded images can finish before React attaches the `load`
@@ -156,17 +224,15 @@ export default function RotoscopePortrait() {
     if (imageRef.current?.complete) scheduleRender();
   }, [scheduleRender]);
 
-  const frameStyle = {
-    "--fill-radius": filled ? "90%" : "0%",
-  } as CSSProperties;
   const ready = renderState === "ready";
 
   return (
     <figure className={styles.figure}>
       <div
+        ref={frameRef}
         className={styles.frame}
-        style={frameStyle}
         data-state={renderState}
+        data-reveal-state={revealState}
         data-render-path={renderPath ?? undefined}
         data-render-ms={elapsedMs === null ? undefined : elapsedMs.toFixed(2)}
         data-pipeline-ms={timings?.pipelineMs.toFixed(2)}
@@ -212,7 +278,9 @@ export default function RotoscopePortrait() {
       <figcaption className={styles.caption} aria-live="polite">
         <span>
           <strong>Best-features rotoscope.</strong>{" "}
-          {ready && elapsedMs !== null
+          {ready && revealState === "revealing"
+            ? "Filling each catchment basin…"
+            : ready && elapsedMs !== null
             ? `Single-image · ${Math.round(elapsedMs)} ms.`
             : renderState === "processing"
               ? "Filling catchment basins…"

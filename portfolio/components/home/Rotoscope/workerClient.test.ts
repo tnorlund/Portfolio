@@ -36,10 +36,7 @@ const image = (): HTMLImageElement => {
   return element;
 };
 
-const success = (
-  id: number,
-  bitmap?: ImageBitmap,
-): RotoscopeRenderSuccess => ({
+const success = (id: number): RotoscopeRenderSuccess => ({
   version: ROTOSCOPE_WORKER_VERSION,
   type: "result",
   id,
@@ -56,7 +53,10 @@ const success = (
     paintMs: 3,
     totalMs: 6,
   },
-  bitmap,
+  pixelsBuffer: new ArrayBuffer(4 * 3 * 4),
+  revealPhasesBuffer: new ArrayBuffer(4 * 3),
+  revealPhaseCount: 36,
+  revealBasinCount: 2,
 });
 
 beforeEach(() => {
@@ -107,25 +107,20 @@ test("reposts a needs-pixels request with the pixel buffer transferred", () => {
     { sourceUrl?: string; pixelsBuffer: ArrayBuffer },
     ArrayBuffer[],
   ];
-  expect(message.sourceUrl).toBeUndefined();
+  expect(message.sourceUrl).toBe("https://example.test/portrait.jpg");
   expect(message.pixelsBuffer).toBe(pixels.buffer);
   expect(transfer).toEqual([pixels.buffer]);
 });
 
-test("closes result bitmaps for stale and unknown requests", async () => {
+test("ignores stale and unknown results while resolving the latest request", async () => {
   const worker = new FakeWorker();
   const client = new RotoscopeWorkerClient(() => worker as unknown as Worker);
   const first = client.render({ image: image(), width: 4, height: 3, options: {} });
   const second = client.render({ image: image(), width: 4, height: 3, options: {} });
   await expect(first).resolves.toBeNull();
 
-  const staleClose = jest.fn();
-  const unknownClose = jest.fn();
-  worker.emit(success(1, { close: staleClose } as unknown as ImageBitmap));
-  worker.emit(success(404, { close: unknownClose } as unknown as ImageBitmap));
-
-  expect(staleClose).toHaveBeenCalledTimes(1);
-  expect(unknownClose).toHaveBeenCalledTimes(1);
+  worker.emit(success(1));
+  worker.emit(success(404));
   const current = success(2);
   worker.emit(current);
   await expect(second).resolves.toBe(current);
