@@ -250,14 +250,16 @@ function WatershedFigure() {
 function RegionMap({ painted }: { painted: boolean }) {
   return (
     <svg className={styles.regionMap} viewBox="0 0 220 150" role="img" aria-label={painted ? "Flat painted regions" : "Textured pixels grouped into regions"}>
-      <defs>
-        <pattern id={painted ? "painted-dots" : "pixel-dots"} width="6" height="6" patternUnits="userSpaceOnUse">
-          <rect width="6" height="6" fill="#555" />
-          <rect x="0" y="0" width="2" height="2" fill="#898989" />
-          <rect x="3" y="2" width="2" height="2" fill="#2f2f2f" />
-          <rect x="1" y="4" width="2" height="2" fill="#707070" />
-        </pattern>
-      </defs>
+      {painted ? null : (
+        <defs>
+          <pattern id="pixel-dots" width="6" height="6" patternUnits="userSpaceOnUse">
+            <rect width="6" height="6" fill="#555" />
+            <rect x="0" y="0" width="2" height="2" fill="#898989" />
+            <rect x="3" y="2" width="2" height="2" fill="#2f2f2f" />
+            <rect x="1" y="4" width="2" height="2" fill="#707070" />
+          </pattern>
+        </defs>
+      )}
       {BASIN_PATHS.map((path, index) => (
         <path key={path} d={path} fill={painted ? BASIN_COLORS[index] : "url(#pixel-dots)"} stroke="#fff" strokeWidth="1.4" />
       ))}
