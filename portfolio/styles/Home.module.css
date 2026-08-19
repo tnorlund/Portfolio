@@ -19,18 +19,19 @@
 .actions {
   position: absolute;
   z-index: 3;
-  right: max(1rem, env(safe-area-inset-right));
+  right: max(1.5rem, env(safe-area-inset-right));
   bottom: max(1rem, env(safe-area-inset-bottom));
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 0.5rem;
+  max-width: calc(100% - 2rem);
 }
 
 .actions button {
-  min-width: 8.5rem;
+  min-width: 0;
   margin: 0;
-  padding-inline: 0.9rem;
+  padding: 0.7rem 1.15rem;
   border-color: rgba(255, 255, 255, 0.7);
   background: rgba(0, 0, 0, 0.78);
   color: #fff;
