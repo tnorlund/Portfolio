@@ -1,0 +1,443 @@
+.page {
+  --lab-accent: #2d67d3;
+  display: block;
+  min-height: 100vh;
+  background: var(--background-color);
+  color: var(--text-color);
+}
+
+.header {
+  display: grid;
+  grid-template-columns: 12rem minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: center;
+  min-height: 5.4rem;
+  padding: 1rem clamp(1.25rem, 3vw, 3rem);
+  border-bottom: 1px solid rgba(var(--text-color-rgb), 0.12);
+  background: var(--background-color);
+  color: var(--text-color);
+  text-align: left;
+}
+
+.header a {
+  color: var(--lab-accent);
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.header a:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.header div {
+  display: flex;
+  gap: 1.6rem;
+  align-items: baseline;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: clamp(1.65rem, 2.5vw, 2.35rem);
+  line-height: 1;
+  letter-spacing: -0.035em;
+}
+
+.header p {
+  margin: 0;
+  color: rgba(var(--text-color-rgb), 0.66);
+  font-size: 0.9rem;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(21rem, 27rem);
+  min-height: calc(100vh - 5.4rem);
+}
+
+.previewColumn {
+  min-width: 0;
+  padding: clamp(1rem, 2vw, 2rem);
+}
+
+.previewToolbar,
+.inspectorActions,
+.footerActions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.previewToolbar {
+  flex-wrap: wrap;
+  min-height: 2.4rem;
+  margin-bottom: 0.8rem;
+}
+
+.preview {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border: 1px solid rgba(var(--text-color-rgb), 0.16);
+  border-radius: 0.55rem;
+  background: var(--code-background);
+  cursor: crosshair;
+  isolation: isolate;
+}
+
+.preview picture,
+.preview img,
+.preview canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.preview img {
+  object-fit: cover;
+}
+
+.outputCanvas,
+.diagnosticCanvas {
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.preview[data-view="output"] .outputCanvas,
+.preview[data-view="diagnostic"] .diagnosticCanvas {
+  opacity: 1;
+}
+
+.seedCanvas {
+  z-index: 2;
+  pointer-events: none;
+}
+
+.previewHint {
+  position: absolute;
+  z-index: 3;
+  right: 0.7rem;
+  bottom: 0.65rem;
+  padding: 0.3rem 0.48rem;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  border-radius: 0.3rem;
+  background: rgba(16, 20, 27, 0.72);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.68rem;
+  letter-spacing: 0.01em;
+  pointer-events: none;
+}
+
+.statusLine {
+  display: flex;
+  justify-content: space-between;
+  min-height: 2rem;
+  padding: 0.62rem 0.1rem 0.2rem;
+  color: rgba(var(--text-color-rgb), 0.62);
+  font-size: 0.72rem;
+}
+
+.statusLine span[data-status="editing"],
+.statusLine span[data-status="rendering"] {
+  color: var(--lab-accent);
+}
+
+.statusLine span[data-status="error"] {
+  color: #b62d2d;
+}
+
+.statusLine code {
+  font-size: 0.68rem;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  margin: 0.75rem 0 0;
+  border: 1px solid rgba(var(--text-color-rgb), 0.12);
+  border-radius: 0.5rem;
+}
+
+.metrics div {
+  min-width: 0;
+  padding: 0.85rem 1rem;
+}
+
+.metrics dt {
+  overflow: hidden;
+  color: rgba(var(--text-color-rgb), 0.58);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metrics dd {
+  overflow: hidden;
+  margin: 0.25rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector {
+  padding: 1.25rem 1.45rem 2rem;
+  border-left: 1px solid rgba(var(--text-color-rgb), 0.12);
+}
+
+.inspectorActions {
+  padding-bottom: 1rem;
+}
+
+.controlSection {
+  padding: 1rem 0;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid rgba(var(--text-color-rgb), 0.1);
+}
+
+.controlSection legend,
+.presets > span {
+  padding: 0;
+  color: rgba(var(--text-color-rgb), 0.64);
+  font-size: 0.67rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.rangeControl {
+  display: grid;
+  grid-template-columns: 6.8rem 3.5rem minmax(5rem, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+  min-height: 2rem;
+  font-size: 0.76rem;
+}
+
+.rangeControl[data-disabled] {
+  opacity: 0.42;
+}
+
+.rangeControl output {
+  overflow: hidden;
+  padding: 0.22rem 0.35rem;
+  border: 1px solid rgba(var(--text-color-rgb), 0.12);
+  border-radius: 0.28rem;
+  color: rgba(var(--text-color-rgb), 0.72);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  text-overflow: ellipsis;
+}
+
+.rangeControl input[type="range"] {
+  width: 100%;
+  accent-color: var(--lab-accent);
+}
+
+.segmentedRow {
+  display: grid;
+  grid-template-columns: 6.8rem minmax(0, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+  min-height: 2.2rem;
+  font-size: 0.76rem;
+}
+
+.previewToolbar .segmentedRow,
+.inspectorActions .segmentedRow {
+  grid-template-columns: auto auto;
+}
+
+.segmented {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+}
+
+.segmented button,
+.presets button,
+.footerActions button,
+.seedControl button,
+.primaryButton {
+  min-height: 1.9rem;
+  border: 1px solid rgba(var(--text-color-rgb), 0.16);
+  background: transparent;
+  color: var(--text-color);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 650;
+  margin: 0;
+}
+
+.segmented button {
+  padding: 0.3rem 0.58rem;
+  border-right-width: 0;
+}
+
+.segmented button:first-child {
+  border-radius: 0.32rem 0 0 0.32rem;
+}
+
+.segmented button:last-child {
+  border-right-width: 1px;
+  border-radius: 0 0.32rem 0.32rem 0;
+}
+
+.segmented button[aria-pressed="true"],
+.primaryButton {
+  border-color: var(--lab-accent);
+  background: var(--lab-accent);
+  color: #fff;
+}
+
+.segmented button:hover,
+.presets button:hover,
+.footerActions button:hover,
+.seedControl button:hover {
+  border-color: rgba(var(--text-color-rgb), 0.42);
+}
+
+.segmented button[aria-pressed="true"]:hover,
+.primaryButton:hover {
+  border-color: var(--lab-accent);
+  background: var(--lab-accent);
+  color: #fff;
+}
+
+.checkbox {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  font-size: 0.74rem;
+}
+
+.checkbox input {
+  accent-color: var(--lab-accent);
+}
+
+.seedControl {
+  display: grid;
+  grid-template-columns: 6.8rem minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: center;
+  min-height: 2.2rem;
+  font-size: 0.76rem;
+}
+
+.seedControl input {
+  min-width: 0;
+  height: 1.9rem;
+  padding: 0 0.45rem;
+  border: 1px solid rgba(var(--text-color-rgb), 0.16);
+  border-radius: 0.3rem;
+  background: var(--background-color);
+  color: var(--text-color);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.seedControl button,
+.primaryButton,
+.presets button,
+.footerActions button {
+  padding: 0.35rem 0.7rem;
+  border-radius: 0.32rem;
+}
+
+.presets {
+  padding: 1rem 0;
+  border-top: 1px solid rgba(var(--text-color-rgb), 0.1);
+}
+
+.presets > div {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.footerActions {
+  justify-content: flex-end;
+}
+
+.footerActions button:last-child {
+  border-color: var(--lab-accent);
+  color: var(--lab-accent);
+}
+
+@media (max-width: 980px) {
+  .workspace {
+    display: block;
+  }
+
+  .inspector {
+    border-top: 1px solid rgba(var(--text-color-rgb), 0.12);
+    border-left: 0;
+  }
+}
+
+@media (max-width: 680px) {
+  .header {
+    display: block;
+    min-height: 0;
+  }
+
+  .header div {
+    display: block;
+    margin-top: 1rem;
+  }
+
+  .header p {
+    margin-top: 0.55rem;
+    line-height: 1.45;
+  }
+
+  .previewColumn,
+  .inspector {
+    padding: 1rem;
+  }
+
+  .previewToolbar {
+    align-items: flex-end;
+  }
+
+  .metrics {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .metrics div:nth-child(n + 4) {
+    border-top: 1px solid rgba(var(--text-color-rgb), 0.1);
+  }
+
+  .rangeControl {
+    grid-template-columns: 5.7rem 3.25rem minmax(4rem, 1fr);
+    gap: 0.45rem;
+  }
+
+  .segmentedRow,
+  .seedControl {
+    grid-template-columns: 5.7rem minmax(0, 1fr);
+  }
+
+  .seedControl button {
+    grid-column: 2;
+  }
+
+  .presets > div {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .outputCanvas,
+  .diagnosticCanvas {
+    transition: none;
+  }
+}
