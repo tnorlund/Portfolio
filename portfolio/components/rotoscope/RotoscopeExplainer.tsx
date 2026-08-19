@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useInView } from "react-intersection-observer";
 import styles from "../../styles/Rotoscope.module.css";
 
 /**
@@ -67,44 +68,150 @@ function Arrow() {
   );
 }
 
+const PIPELINE_STAGES = [
+  {
+    label: "Difference",
+    src: STILLS.difference,
+    alt: "Difference image of the portrait: edges and fine detail glow against black",
+  },
+  {
+    label: "Features",
+    src: STILLS.markers,
+    alt: "Feature markers on the portrait, colored by face, body, and background tier",
+  },
+  {
+    label: "Watershed",
+    src: STILLS.basins,
+    alt: "Catchment basin outlines traced over the portrait",
+  },
+  {
+    label: "Average color",
+    src: STILLS.painted,
+    alt: "The portrait painted with one flat color per basin",
+  },
+] as const;
+
+const STAGE_DWELL_MS = 3200;
+const AUTOPLAY_IDLE_RESUME_MS = 10000;
+
+const usePrefersReducedMotion = (): boolean => {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") {
+      return;
+    }
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(mq.matches);
+    const onChange = (event: MediaQueryListEvent) => setReduced(event.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+  return reduced;
+};
+
+/**
+ * One stage at a time, matching the SynthesisPipeline stepper: autoplay loops
+ * while the figure is in view, the dots double as navigation, and a manual
+ * jump pauses autoplay until a short idle passes. Under prefers-reduced-motion
+ * the four stages render side by side instead of auto-advancing.
+ */
 function PipelineOverview() {
-  const stages = [
-    {
-      label: "Difference",
-      src: STILLS.difference,
-      alt: "Difference image of the portrait: edges and fine detail glow against black",
+  const { ref: inViewRef, inView } = useInView({
+    threshold: 0.4,
+    fallbackInView: true,
+  });
+  const reducedMotion = usePrefersReducedMotion();
+  const [activeStage, setActiveStage] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const playing = inView && !paused && !reducedMotion;
+
+  useEffect(() => {
+    if (!playing) {
+      return;
+    }
+    const timer = setInterval(() => {
+      setActiveStage((stage) => (stage + 1) % PIPELINE_STAGES.length);
+    }, STAGE_DWELL_MS);
+    return () => clearInterval(timer);
+  }, [playing]);
+
+  useEffect(
+    () => () => {
+      if (resumeTimer.current) {
+        clearTimeout(resumeTimer.current);
+      }
     },
-    {
-      label: "Features",
-      src: STILLS.markers,
-      alt: "Feature markers on the portrait, colored by face, body, and background tier",
-    },
-    {
-      label: "Watershed",
-      src: STILLS.basins,
-      alt: "Catchment basin outlines traced over the portrait",
-    },
-    {
-      label: "Average color",
-      src: STILLS.painted,
-      alt: "The portrait painted with one flat color per basin",
-    },
-  ] as const;
+    [],
+  );
+
+  const jumpToStage = useCallback((index: number) => {
+    setActiveStage(index);
+    setPaused(true);
+    if (resumeTimer.current) {
+      clearTimeout(resumeTimer.current);
+    }
+    resumeTimer.current = setTimeout(() => {
+      setPaused(false);
+    }, AUTOPLAY_IDLE_RESUME_MS);
+  }, []);
+
+  if (reducedMotion) {
+    return (
+      <div className={styles.pipelineScroller} aria-label="The four rotoscoping stages">
+        <div className={styles.pipeline}>
+          {PIPELINE_STAGES.map((stage, index) => (
+            <React.Fragment key={stage.label}>
+              <figure className={styles.stage}>
+                <figcaption>{stage.label}</figcaption>
+                <Still src={stage.src} alt={stage.alt} />
+              </figure>
+              {index < PIPELINE_STAGES.length - 1 ? <Arrow /> : null}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className={styles.pipelineScroller} aria-label="The four rotoscoping stages">
-      <div className={styles.pipeline}>
-        {stages.map((stage, index) => (
-          <React.Fragment key={stage.label}>
-            <figure className={styles.stage}>
-              <figcaption>{stage.label}</figcaption>
-              <Still src={stage.src} alt={stage.alt} />
-            </figure>
-            {index < stages.length - 1 ? <Arrow /> : null}
-          </React.Fragment>
+    <figure ref={inViewRef} className={styles.stepper} aria-label="The four rotoscoping stages">
+      <figcaption className={styles.stepperCaption} aria-live="polite">
+        {PIPELINE_STAGES[activeStage].label}
+      </figcaption>
+      <div className={styles.stepperStage}>
+        {PIPELINE_STAGES.map((stage, index) => (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={stage.label}
+            className={`${styles.still} ${styles.stepperFrame}`}
+            data-active={index === activeStage}
+            aria-hidden={index !== activeStage}
+            src={stage.src}
+            alt={stage.alt}
+            width={STILL_WIDTH}
+            height={STILL_HEIGHT}
+            loading="lazy"
+          />
         ))}
       </div>
-    </div>
+      <ol className={styles.stepperDots} aria-label="Pipeline stages">
+        {PIPELINE_STAGES.map((stage, index) => (
+          <li key={stage.label} className={styles.stepperDotItem}>
+            <button
+              type="button"
+              className={styles.stepperDot}
+              data-active={index === activeStage}
+              data-done={index < activeStage}
+              aria-pressed={index === activeStage}
+              aria-label={stage.label}
+              onClick={() => jumpToStage(index)}
+            />
+          </li>
+        ))}
+      </ol>
+    </figure>
   );
 }
 
