@@ -16,6 +16,12 @@ describe("RotoscopePage", () => {
       "href",
       "https://doi.org/10.1109/ACSSC.2017.8335175",
     );
+    expect(
+      screen.getByText(/50\/30\/20 shares are the paper and engine defaults/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/homepage portrait overrides them to 55\/30\/15/),
+    ).toBeInTheDocument();
   });
 
   it("can replay the watershed animation", () => {

@@ -312,7 +312,9 @@ export default function RotoscopeExplainer() {
           Shi–Tomasi scores the corners and texture in the difference image. The
           strongest points become markers. Half go to the face, three in ten to the
           body, and the rest to the background, so a busy wall cannot steal all the
-          detail.
+          detail. Those 50/30/20 shares are the paper and engine defaults. The
+          homepage portrait overrides them to 55/30/15 so the face keeps a little
+          more of the budget.
         </p>
         <MarkerFigure />
       </section>
