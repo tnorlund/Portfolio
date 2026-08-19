@@ -1,18 +1,18 @@
 import type { RotoscopeOptions } from "./algorithm";
 
-/** Display-derived processing size: 480x360 is enough for a 240px DPR2 hero. */
-export const PORTRAIT_PROCESSING_SIZE = { width: 480, height: 360 } as const;
+/** Full-viewport 4:3 pass. 960×720 matches the authored portrait files. */
+export const PORTRAIT_PROCESSING_SIZE = { width: 960, height: 720 } as const;
 
 /**
  * Authored geometry for `/rotoscope-portrait.*` after its full-frame 4:3 resize.
- * Explicit quotas keep the busy restaurant background from consuming the
- * feature budget: face first, then torso, then scene context.
+ * Dense face spacing keeps the homepage from looking like a stretched 480×360
+ * splotch. Engine defaults stay in `algorithm.ts`; this object is homepage-only.
  */
 export const PORTRAIT_ROTOSCOPE_OPTIONS: Partial<RotoscopeOptions> = {
-  blurRadius: 9,
-  markerBudget: 720,
-  quotas: { face: 0.55, body: 0.3, background: 0.15 },
-  spacing: { face: 2, body: 4, background: 8 },
+  blurRadius: 6,
+  markerBudget: 1600,
+  quotas: { face: 0.7, body: 0.22, background: 0.08 },
+  spacing: { face: 1, body: 4, background: 8 },
   focus: {
     face: {
       centerX: 0.4,

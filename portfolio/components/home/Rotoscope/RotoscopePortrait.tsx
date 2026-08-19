@@ -237,8 +237,28 @@ export default function RotoscopePortrait() {
 
   const ready = renderState === "ready";
 
+  const replayIfReady = () => {
+    if (!ready) return;
+    void renderPortrait();
+  };
+
+  const onFigureKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (!ready) return;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      void renderPortrait();
+    }
+  };
+
   return (
-    <figure className={styles.figure}>
+    <figure
+      className={styles.figure}
+      role={ready ? "button" : undefined}
+      tabIndex={ready ? 0 : undefined}
+      aria-label={ready ? "Replay" : undefined}
+      onClick={replayIfReady}
+      onKeyDown={onFigureKeyDown}
+    >
       <div
         ref={frameRef}
         className={styles.frame}
@@ -252,18 +272,28 @@ export default function RotoscopePortrait() {
         data-decode-ms={timings?.decodeAndResizeMs.toFixed(2)}
         data-paint-ms={timings?.paintMs.toFixed(2)}
       >
-        {/* This pre-generated static asset avoids the next/image client wrapper. */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          className={`${styles.mediaLayer} ${styles.basinMap}`}
-          src={PORTRAIT_SOURCES.basins}
-          alt="Catchment basins outlining Tyler Norlund's portrait"
-          width={480}
-          height={360}
-          loading="eager"
-          decoding="async"
-          fetchPriority="high"
-        />
+        <noscript>
+          {/* Fallback for browsers with JavaScript disabled. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className={`${styles.mediaLayer} ${styles.basinMap}`}
+            src={PORTRAIT_SOURCES.basins}
+            alt="Catchment basins outlining Tyler Norlund's portrait"
+            width={PORTRAIT_PROCESSING_SIZE.width}
+            height={PORTRAIT_PROCESSING_SIZE.height}
+          />
+        </noscript>
+        {renderState === "unavailable" ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            className={`${styles.mediaLayer} ${styles.basinMap}`}
+            src={PORTRAIT_SOURCES.basins}
+            alt="Catchment basins outlining Tyler Norlund's portrait"
+            width={PORTRAIT_PROCESSING_SIZE.width}
+            height={PORTRAIT_PROCESSING_SIZE.height}
+            decoding="async"
+          />
+        ) : null}
         <picture>
           <source srcSet={PORTRAIT_SOURCES.avif} type="image/avif" />
           <source srcSet={PORTRAIT_SOURCES.webp} type="image/webp" />
@@ -273,8 +303,8 @@ export default function RotoscopePortrait() {
             src={PORTRAIT_SOURCES.fallback}
             alt=""
             aria-hidden="true"
-            width={960}
-            height={720}
+            width={PORTRAIT_PROCESSING_SIZE.width}
+            height={PORTRAIT_PROCESSING_SIZE.height}
             loading="eager"
             decoding="async"
             onLoad={scheduleRender}
@@ -286,39 +316,6 @@ export default function RotoscopePortrait() {
           aria-hidden="true"
         />
       </div>
-      <figcaption className={styles.caption} aria-live="polite">
-        <span>
-          <strong>Best-features rotoscope.</strong>{" "}
-          {ready && revealState === "revealing"
-            ? "Filling each catchment basin…"
-            : ready && elapsedMs !== null
-            ? `Single-image · ${Math.round(elapsedMs)} ms.`
-            : renderState === "processing"
-              ? "Filling catchment basins…"
-              : "From my 2017 paper."}
-        </span>
-        <span className={styles.links}>
-          {ready ? (
-            <button className={styles.textButton} type="button" onClick={renderPortrait}>
-              Replay
-            </button>
-          ) : null}
-          <a
-            href="https://doi.org/10.1109/ACSSC.2017.8335175"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Paper
-          </a>
-          <a
-            href="https://github.com/tnorlund/BestFeatureRotoscope"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Source
-          </a>
-        </span>
-      </figcaption>
     </figure>
   );
 }

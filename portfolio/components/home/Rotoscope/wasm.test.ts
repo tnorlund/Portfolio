@@ -121,20 +121,20 @@ test("Wasm matches adversarial quota normalization and budget one", async () => 
   });
 });
 
-test("Wasm matches the actual 480x360 homepage portrait byte for byte", async () => {
+test("Wasm matches the actual 960x720 homepage portrait byte for byte", async () => {
   mockWasmFetch();
   const { data, info } = await sharp(PORTRAIT_PATH)
-    .resize(480, 360, { fit: "fill" })
+    .resize(960, 720, { fit: "fill" })
     .ensureAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
-  expect(info.width).toBe(480);
-  expect(info.height).toBe(360);
+  expect(info.width).toBe(960);
+  expect(info.height).toBe(720);
   const source = new Uint8ClampedArray(
     data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
   );
-  await expectExactParity(source, 480, 360, PORTRAIT_ROTOSCOPE_OPTIONS);
-});
+  await expectExactParity(source, 960, 720, PORTRAIT_ROTOSCOPE_OPTIONS);
+}, 60_000);
 
 test("Wasm load is cached and an unavailable artifact falls back cleanly", async () => {
   const fetchMock = mockWasmFetch();

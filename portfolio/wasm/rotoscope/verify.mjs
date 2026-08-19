@@ -166,19 +166,19 @@ const fixtures = [
   },
   {
     name: "production-size-random",
-    width: 480,
-    height: 360,
-    source: rgba(480, 360, () => [
+    width: 960,
+    height: 720,
+    source: rgba(960, 720, () => [
       randomByte(),
       randomByte(),
       randomByte(),
       randomByte(),
     ]),
     options: {
-      blurRadius: 9,
-      markerBudget: 720,
-      quotas: { face: 0.55, body: 0.3, background: 0.15 },
-      spacing: { face: 2, body: 4, background: 8 },
+      blurRadius: 6,
+      markerBudget: 1600,
+      quotas: { face: 0.7, body: 0.22, background: 0.08 },
+      spacing: { face: 1, body: 4, background: 8 },
     },
   },
 ];

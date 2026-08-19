@@ -46,7 +46,8 @@
 
   .actions a {
     flex: 1 1 0;
-    max-width: 10rem;
+    min-width: 0;
+    max-width: none;
   }
 
   .actions button {

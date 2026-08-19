@@ -20,21 +20,29 @@ optimized WebAssembly kernel. The authored normalized focus geometry belongs to
 the image configuration rather than the numerical stages, keeping the engine
 reusable for future portraits.
 
-`public/rotoscope-basins.webp` is the immediate first-paint projection of that
-same 480x360 result: region boundaries are dark and interiors are neutral. The
-map remains fully visible while the worker-produced color result arrives. The
-worker groups the final flat-color regions into catchment basins and assigns a
-36-step reveal schedule: Apple Vision's eyes, nose, and mouth regions begin
-first, the rest of the person mask follows, and its inverse background finishes
-the sequence. Each basin grows radially from its own stable interior point. This
-avoids a single page-wide wipe while preserving the basin map as the first frame.
+`public/rotoscope-basins.webp` is the no-JavaScript / worker-unavailable
+fallback: a 960×720 watershed outline of the same homepage pass. JavaScript
+keeps that image out of the frame during idle, processing, and Replay so the
+canvas sits on the dark page background. Unpainted canvas pixels stay
+transparent. The worker still groups flat-color regions into catchment basins
+and assigns a 36-step reveal schedule: Apple Vision's eyes, nose, and mouth
+regions begin first, the rest of the person mask follows, and its inverse
+background finishes the sequence. Each basin grows radially from its own stable
+interior point over ~1100ms. The homepage figure itself is the Replay
+control; there is no caption overlay. Paper and source notes live on
+`/rotoscope`. `/rotoscope-lab` stays unlinked.
+
+Regenerate the fallback outline after changing homepage size or quotas:
+
+```sh
+npx tsx scripts/generate-rotoscope-basins.ts
+```
 
 Production keeps all computation off the main thread. The versioned worker
 decodes and resizes the source once, caches the authored focus map, and runs the
 allocation-free scalar Wasm kernel in one reusable arena. If Wasm fetch,
 compilation, export validation, allocation, or execution fails, the same worker
-falls back to the TypeScript oracle. The basin projection stays visible during
-idle initialization and remains the no-JavaScript experience. Worker protocol
+falls back to the TypeScript oracle. Worker protocol
 v5 embeds the compact Vision person mask and transfers the final pixels plus one
 byte per pixel of reveal phases; the main thread reuses one Canvas2D frame and
 only paints when a phase advances.

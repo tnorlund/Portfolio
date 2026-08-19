@@ -12,8 +12,8 @@ export default function Home() {
         <link
           rel="preload"
           as="image"
-          href="/rotoscope-basins.webp"
-          type="image/webp"
+          href="/rotoscope-portrait.avif"
+          type="image/avif"
         />
       </Head>
       <main className={styles.main}>
@@ -24,6 +24,9 @@ export default function Home() {
           </Link>
           <Link href="/receipt">
             <button>Receipt</button>
+          </Link>
+          <Link href="/rotoscope">
+            <button>Rotoscope</button>
           </Link>
         </nav>
       </main>
