@@ -19,7 +19,7 @@
 .actions {
   position: absolute;
   z-index: 3;
-  left: 40%;
+  left: 50%;
   bottom: max(1.25rem, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
@@ -43,4 +43,15 @@
   box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.2);
   backdrop-filter: blur(0.75rem);
   white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .actions {
+    bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .actions button {
+    min-width: 8.5rem;
+    padding: 0.65rem 1rem;
+  }
 }

@@ -34,6 +34,7 @@ describe("Home", () => {
     expect(screen.getByRole("button", { name: "Receipt" })).toBeInTheDocument();
 
     const nav = screen.getByRole("navigation", { name: "Portfolio pages" });
+    expect(nav.className).toMatch(/actions/);
     expect(
       [...nav.querySelectorAll("a")].map((link) => link.getAttribute("href")),
     ).toEqual(["/resume", "/receipt", "/rotoscope"]);
