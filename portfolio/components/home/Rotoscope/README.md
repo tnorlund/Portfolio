@@ -24,9 +24,10 @@ reusable for future portraits.
 same 480x360 result: region boundaries are dark and interiors are neutral. The
 map remains fully visible while the worker-produced color result arrives. The
 worker groups the final flat-color regions into catchment basins and assigns a
-36-step reveal schedule: face basins begin first, then body and background, and
-each basin grows radially from its own stable interior point. This avoids a
-single page-wide wipe while preserving the basin map as the first frame.
+36-step reveal schedule: Apple Vision's eyes, nose, and mouth regions begin
+first, the rest of the person mask follows, and its inverse background finishes
+the sequence. Each basin grows radially from its own stable interior point. This
+avoids a single page-wide wipe while preserving the basin map as the first frame.
 
 Production keeps all computation off the main thread. The versioned worker
 decodes and resizes the source once, caches the authored focus map, and runs the
@@ -34,7 +35,7 @@ allocation-free scalar Wasm kernel in one reusable arena. If Wasm fetch,
 compilation, export validation, allocation, or execution fails, the same worker
 falls back to the TypeScript oracle. The basin projection stays visible during
 idle initialization and remains the no-JavaScript experience. Worker protocol
-v3 transfers the final pixels plus one byte per pixel of reveal phases; the main
+v4 transfers the final pixels plus one byte per pixel of reveal phases; the main
 thread reuses one Canvas2D frame and only paints when a phase advances.
 
 The worker currently routes Firefox directly to that scalar oracle. Production

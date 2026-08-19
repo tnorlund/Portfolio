@@ -5,7 +5,10 @@ import {
   PORTRAIT_SOURCES,
 } from "./portraitConfig";
 import styles from "./RotoscopePortrait.module.css";
-import { applyBasinRevealPhase } from "./reveal";
+import {
+  applyBasinRevealPhase,
+  basinRevealActForPhase,
+} from "./reveal";
 import { RotoscopeWorkerClient } from "./workerClient";
 import type {
   RotoscopeRenderSuccess,
@@ -82,6 +85,7 @@ export default function RotoscopePortrait() {
     if (frame) {
       frame.dataset.revealPhase = "0";
       frame.dataset.revealState = "waiting";
+      frame.dataset.revealAct = "waiting";
     }
     if (clearCanvas) {
       const canvas = canvasRef.current;
@@ -102,6 +106,7 @@ export default function RotoscopePortrait() {
         if (frame) {
           frame.dataset.revealPhase = String(result.revealPhaseCount - 1);
           frame.dataset.revealState = "complete";
+          frame.dataset.revealAct = "background";
         }
         setRevealState("complete");
         return;
@@ -135,7 +140,13 @@ export default function RotoscopePortrait() {
           );
           prepared.context.putImageData(prepared.imageData, 0, 0);
           previousPhase = nextPhase;
-          if (frame) frame.dataset.revealPhase = String(nextPhase);
+          if (frame) {
+            frame.dataset.revealPhase = String(nextPhase);
+            frame.dataset.revealAct = basinRevealActForPhase(
+              nextPhase,
+              result.revealPhaseCount,
+            );
+          }
         }
         if (nextPhase < result.revealPhaseCount - 1) {
           revealFrameRef.current = window.requestAnimationFrame(paint);

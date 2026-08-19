@@ -1,5 +1,8 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { RotoscopeRenderSuccess } from "./workerProtocol";
+import {
+  ROTOSCOPE_WORKER_VERSION,
+  type RotoscopeRenderSuccess,
+} from "./workerProtocol";
 
 const mockAvailable = jest.fn(() => true);
 const mockRender = jest.fn();
@@ -57,7 +60,7 @@ test("reduced motion paints the complete result without scheduling a reveal", as
     40, 50, 60, 255,
   ]);
   const result: RotoscopeRenderSuccess = {
-    version: 3,
+    version: ROTOSCOPE_WORKER_VERSION,
     type: "result",
     id: 1,
     width: 2,

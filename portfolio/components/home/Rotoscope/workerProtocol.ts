@@ -1,6 +1,6 @@
 import type { RotoscopeOptions } from "./algorithm";
 
-export const ROTOSCOPE_WORKER_VERSION = 3 as const;
+export const ROTOSCOPE_WORKER_VERSION = 4 as const;
 
 export interface RotoscopeRenderRequest {
   version: typeof ROTOSCOPE_WORKER_VERSION;

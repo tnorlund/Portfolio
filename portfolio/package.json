@@ -31,7 +31,7 @@
     "build:wasm": "npm run build:synthesis-wasm && npm run build:rotoscope-wasm",
     "build:synthesis-wasm": "asc --config wasm/synthesis-pipeline/asconfig.json --target release",
     "build:rotoscope-wasm": "asc --config wasm/rotoscope/asconfig.json --target release",
-    "build:rotoscope-worker": "esbuild components/home/Rotoscope/worker.ts --bundle --format=iife --platform=browser --target=chrome91,firefox90,safari15,edge91 --minify --outfile=public/rotoscope/worker-v3.js",
+    "build:rotoscope-worker": "esbuild components/home/Rotoscope/worker.ts --bundle --format=iife --platform=browser --target=chrome91,firefox90,safari15,edge91 --minify --outfile=public/rotoscope/worker-v4.js",
     "build:rotoscope-lab-worker": "esbuild components/rotoscope-lab/worker.ts --bundle --format=iife --platform=browser --target=chrome91,firefox90,safari15,edge91 --minify --outfile=public/rotoscope/lab-worker-v3.js",
     "build:rotoscope-workers": "npm run build:rotoscope-worker && npm run build:rotoscope-lab-worker",
     "benchmark:rotoscope": "node scripts/benchmark-rotoscope.mjs",

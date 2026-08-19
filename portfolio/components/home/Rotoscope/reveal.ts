@@ -5,11 +5,41 @@ import {
 } from "./algorithm";
 
 export const BASIN_REVEAL_PHASE_COUNT = 36;
+export type BasinRevealAct = "features" | "subject" | "background";
+
+export const basinRevealActForPhase = (
+  phase: number,
+  phaseCount: number,
+): BasinRevealAct => {
+  const lastPhase = Math.max(1, phaseCount - 1);
+  if (phase < Math.floor(0.34 * lastPhase)) return "features";
+  if (phase < Math.floor(0.68 * lastPhase)) return "subject";
+  return "background";
+};
 
 export interface BasinRevealMap {
   phases: Uint8Array;
   basinCount: number;
   phaseCount: number;
+}
+
+export interface BasinRevealFeatureRegion {
+  centerX: number;
+  centerY: number;
+  radiusX: number;
+  radiusY: number;
+  order: number;
+}
+
+export interface BasinRevealPersonMask {
+  width: number;
+  height: number;
+  pixels: Uint8Array;
+}
+
+export interface BasinRevealSemantics {
+  primaryFeatures: readonly BasinRevealFeatureRegion[];
+  personMask?: BasinRevealPersonMask;
 }
 
 const TIER_SCHEDULE: Record<
@@ -20,6 +50,12 @@ const TIER_SCHEDULE: Record<
   body: { start: 0.25, stagger: 0.18, radialSpan: 0.28 },
   background: { start: 0.55, stagger: 0.17, radialSpan: 0.28 },
 };
+
+const SEMANTIC_SCHEDULE = {
+  primary: { start: 0, stagger: 0.04, radialSpan: 0.25 },
+  subject: { start: 0.34, stagger: 0.06, radialSpan: 0.24 },
+  background: { start: 0.68, stagger: 0.06, radialSpan: 0.25 },
+} as const;
 
 const validate = (
   pixels: Uint8ClampedArray,
@@ -69,6 +105,7 @@ export const createBasinRevealMap = (
   height: number,
   focus: FocusGeometry,
   phaseCount = BASIN_REVEAL_PHASE_COUNT,
+  semantics?: BasinRevealSemantics,
 ): BasinRevealMap => {
   const count = validate(pixels, width, height, phaseCount);
   const labels = new Uint32Array(count);
@@ -187,6 +224,7 @@ export const createBasinRevealMap = (
     body: [],
     background: [],
   };
+  const focusTierForLabel = new Uint8Array(basinCount + 1);
   const distanceFromFace = new Float64Array(basinCount + 1);
   for (let label = 1; label <= basinCount; label += 1) {
     const seed = seeds[label];
@@ -194,6 +232,7 @@ export const createBasinRevealMap = (
     const seedX = seed - seedY * width;
     const tier = classifyFocusTier(seedX, seedY, width, height, focus);
     tiers[tier].push(label);
+    focusTierForLabel[label] = tier === "face" ? 0 : tier === "body" ? 1 : 2;
     const normalizedX = (seedX + 0.5) / width;
     const normalizedY = (seedY + 0.5) / height;
     const dx =
@@ -205,19 +244,148 @@ export const createBasinRevealMap = (
 
   const start = new Float64Array(basinCount + 1);
   const radialSpan = new Float64Array(basinCount + 1);
-  for (const tier of ["face", "body", "background"] as const) {
-    const labelsInTier = tiers[tier];
-    labelsInTier.sort(
+  if (semantics) {
+    const personMask = semantics.personMask;
+    if (
+      personMask &&
+      (!Number.isInteger(personMask.width) ||
+        !Number.isInteger(personMask.height) ||
+        personMask.width <= 0 ||
+        personMask.height <= 0 ||
+        personMask.pixels.length !== personMask.width * personMask.height)
+    ) {
+      throw new Error("invalid basin reveal person mask");
+    }
+
+    const primaryOrder = new Float64Array(basinCount + 1);
+    const primaryDistance = new Float64Array(basinCount + 1);
+    const personMatch = new Uint8Array(basinCount + 1);
+    primaryOrder.fill(Number.POSITIVE_INFINITY);
+    primaryDistance.fill(Number.POSITIVE_INFINITY);
+    const maskValue = (x: number, y: number): number => {
+      if (!personMask) return 0;
+      const maskX = Math.min(
+        personMask.width - 1,
+        Math.max(0, Math.floor(x * personMask.width)),
+      );
+      const maskY = Math.min(
+        personMask.height - 1,
+        Math.max(0, Math.floor(y * personMask.height)),
+      );
+      return personMask.pixels[maskY * personMask.width + maskX];
+    };
+
+    // Basin seeds and centroids are already stable interior representatives.
+    // Sampling those avoids rescanning the entire image for semantic staging.
+    for (let label = 1; label <= basinCount; label += 1) {
+      const seed = seeds[label];
+      const seedY = Math.floor(seed / width);
+      const seedX = seed - seedY * width;
+      const normalizedX = (seedX + 0.5) / width;
+      const normalizedY = (seedY + 0.5) / height;
+      if (personMask) {
+        personMatch[label] =
+          maskValue(normalizedX, normalizedY) === 1 ||
+          maskValue(
+            (centerX[label] + 0.5) / width,
+            (centerY[label] + 0.5) / height,
+          ) === 1
+            ? 1
+            : 0;
+      }
+      for (const feature of semantics.primaryFeatures) {
+        const dx =
+          (normalizedX - feature.centerX) / Math.max(feature.radiusX, 1e-6);
+        const dy =
+          (normalizedY - feature.centerY) / Math.max(feature.radiusY, 1e-6);
+        const distance = dx * dx + dy * dy;
+        if (
+          distance <= 1 &&
+          (feature.order < primaryOrder[label] ||
+            (feature.order === primaryOrder[label] &&
+              distance < primaryDistance[label]))
+        ) {
+          primaryOrder[label] = feature.order;
+          primaryDistance[label] = distance;
+        }
+      }
+    }
+
+    // Always include the basin under each exact Vision region center, even if
+    // that basin's own interior seed falls just outside the compact ellipse.
+    for (const feature of semantics.primaryFeatures) {
+      const x = Math.min(
+        width - 1,
+        Math.max(0, Math.floor(feature.centerX * width)),
+      );
+      const y = Math.min(
+        height - 1,
+        Math.max(0, Math.floor(feature.centerY * height)),
+      );
+      const label = labels[y * width + x];
+      if (feature.order < primaryOrder[label]) {
+        primaryOrder[label] = feature.order;
+        primaryDistance[label] = 0;
+      }
+    }
+
+    const acts: Record<keyof typeof SEMANTIC_SCHEDULE, number[]> = {
+      primary: [],
+      subject: [],
+      background: [],
+    };
+    for (let label = 1; label <= basinCount; label += 1) {
+      if (Number.isFinite(primaryOrder[label])) {
+        acts.primary.push(label);
+        continue;
+      }
+      const subject = personMask
+        ? personMatch[label] === 1 || focusTierForLabel[label] !== 2
+        : focusTierForLabel[label] !== 2;
+      acts[subject ? "subject" : "background"].push(label);
+    }
+
+    acts.primary.sort(
+      (left, right) =>
+        primaryOrder[left] - primaryOrder[right] ||
+        primaryDistance[left] - primaryDistance[right] ||
+        left - right,
+    );
+    acts.subject.sort(
       (left, right) =>
         distanceFromFace[left] - distanceFromFace[right] || left - right,
     );
-    const schedule = TIER_SCHEDULE[tier];
-    for (let rank = 0; rank < labelsInTier.length; rank += 1) {
-      const label = labelsInTier[rank];
-      const progress =
-        labelsInTier.length <= 1 ? 0 : rank / (labelsInTier.length - 1);
-      start[label] = schedule.start + schedule.stagger * progress;
-      radialSpan[label] = schedule.radialSpan;
+    acts.background.sort(
+      (left, right) =>
+        distanceFromFace[left] - distanceFromFace[right] || left - right,
+    );
+
+    for (const act of ["primary", "subject", "background"] as const) {
+      const labelsInAct = acts[act];
+      const schedule = SEMANTIC_SCHEDULE[act];
+      for (let rank = 0; rank < labelsInAct.length; rank += 1) {
+        const label = labelsInAct[rank];
+        const progress =
+          labelsInAct.length <= 1 ? 0 : rank / (labelsInAct.length - 1);
+        start[label] = schedule.start + schedule.stagger * progress;
+        radialSpan[label] = schedule.radialSpan;
+      }
+    }
+  } else {
+    for (const tier of ["face", "body", "background"] as const) {
+      const labelsInTier = tiers[tier];
+      labelsInTier.sort(
+        (left, right) =>
+          distanceFromFace[left] - distanceFromFace[right] || left - right,
+      );
+      const schedule = TIER_SCHEDULE[tier];
+      for (let rank = 0; rank < labelsInTier.length; rank += 1) {
+        const label = labelsInTier[rank];
+        const progress =
+          labelsInTier.length <= 1 ? 0 : rank / (labelsInTier.length - 1);
+        start[label] = schedule.start + schedule.stagger * progress;
+        radialSpan[label] = schedule.radialSpan;
+      }
     }
   }
 

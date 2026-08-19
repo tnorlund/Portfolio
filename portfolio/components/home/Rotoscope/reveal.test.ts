@@ -1,5 +1,6 @@
 import {
   applyBasinRevealPhase,
+  basinRevealActForPhase,
   createBasinRevealMap,
 } from "./reveal";
 import type { FocusGeometry } from "./algorithm";
@@ -48,6 +49,40 @@ test("stages connected basins by tier and grows each one from its own center", (
     6, 0, 6, 15, 18, 19, 26,
     9, 6, 9, 15, 24, 26, 29,
   ]);
+});
+
+test("uses Vision semantics for a strict features, subject, background sequence", () => {
+  const result = createBasinRevealMap(fixture(), 7, 3, focus, 36, {
+    primaryFeatures: [
+      {
+        centerX: 1.5 / 7,
+        centerY: 1.5 / 3,
+        radiusX: 0.2,
+        radiusY: 0.45,
+        order: 0,
+      },
+    ],
+    personMask: {
+      width: 7,
+      height: 3,
+      pixels: Uint8Array.from([
+        1, 1, 1, 1, 1, 0, 0,
+        1, 1, 1, 1, 1, 0, 0,
+        1, 1, 1, 1, 1, 0, 0,
+      ]),
+    },
+  });
+
+  const basinPhases = (indices: number[]) => indices.map((index) => result.phases[index]);
+  const features = basinPhases([0, 1, 2, 7, 8, 9, 14, 15, 16]);
+  const subject = basinPhases([3, 4, 10, 11, 17, 18]);
+  const background = basinPhases([5, 6, 12, 13, 19, 20]);
+
+  expect(Math.max(...features)).toBeLessThan(Math.min(...subject));
+  expect(Math.max(...subject)).toBeLessThan(Math.min(...background));
+  expect(basinRevealActForPhase(Math.max(...features), 36)).toBe("features");
+  expect(basinRevealActForPhase(Math.min(...subject), 36)).toBe("subject");
+  expect(basinRevealActForPhase(Math.min(...background), 36)).toBe("background");
 });
 
 test("reveal frames are monotonic and finish byte-identical to the result", () => {
