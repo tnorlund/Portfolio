@@ -147,9 +147,7 @@ cloudfront_logs_bucket_acl = aws.s3.BucketAcl(
     "cloudfrontLogsBucket-acl",
     bucket=cloudfront_logs_bucket.id,
     acl="log-delivery-write",
-    opts=pulumi.ResourceOptions(
-        depends_on=[cloudfront_logs_bucket_ownership]
-    ),
+    opts=pulumi.ResourceOptions(depends_on=[cloudfront_logs_bucket_ownership]),
 )
 
 cloudfront_logs_public_access_block = aws.s3.BucketPublicAccessBlock(
@@ -238,7 +236,7 @@ function handler(event) {
 
     // Handle static pages and SPA fallback
     if (!uri.includes('.') && uri !== '/' && !uri.startsWith('/assets/')) {
-        var staticPages = ['/receipt', '/resume'];
+        var staticPages = ['/receipt', '/resume', '/rotoscope'];
         if (staticPages.indexOf(uri) > -1) {
             request.uri = uri + '.html';
         } else {
@@ -536,9 +534,7 @@ for domain in site_domains:
 ########################
 pulumi.export("cdn_bucket_name", site_bucket.bucket)
 pulumi.export("cloudfront_logs_bucket_name", cloudfront_logs_bucket.bucket)
-pulumi.export(
-    "cloudfront_log_retention_days", cloudfront_log_retention_days
-)
+pulumi.export("cloudfront_log_retention_days", cloudfront_log_retention_days)
 pulumi.export("domains", site_domains)
 pulumi.export(
     "google_analytics_measurement_id", google_analytics_measurement_id
