@@ -73,9 +73,7 @@ export class RotoscopeWorkerClient {
 
   render(request: RenderPortraitRequest): Promise<RotoscopeRenderSuccess | null> {
     if (!this.worker) return Promise.resolve(null);
-    this.pending.forEach((entry, id) => {
-      if (id < this.nextId) entry.resolve(null);
-    });
+    this.pending.forEach((entry) => entry.resolve(null));
     this.pending.clear();
 
     const id = this.nextId;
@@ -114,32 +112,47 @@ export class RotoscopeWorkerClient {
       if (message.type === "result") message.bitmap?.close();
       return;
     }
-    if (message.type === "needs-pixels") {
-      try {
-        const pixelsBuffer = extractPixels(
-          entry.image,
-          entry.request.width,
-          entry.request.height,
-        );
-        const fallbackRequest = { ...entry.request, sourceUrl: undefined, pixelsBuffer };
-        this.worker?.postMessage(fallbackRequest, [pixelsBuffer]);
-      } catch (error) {
-        this.pending.delete(message.id);
-        entry.reject(error instanceof Error ? error : new Error(String(error)));
+    switch (message.type) {
+      case "needs-pixels": {
+        try {
+          const pixelsBuffer = extractPixels(
+            entry.image,
+            entry.request.width,
+            entry.request.height,
+          );
+          const fallbackRequest = {
+            ...entry.request,
+            sourceUrl: undefined,
+            pixelsBuffer,
+          };
+          this.worker?.postMessage(fallbackRequest, [pixelsBuffer]);
+        } catch (error) {
+          this.pending.delete(message.id);
+          entry.reject(
+            error instanceof Error ? error : new Error(String(error)),
+          );
+        }
+        return;
       }
-      return;
+      case "error": {
+        this.pending.delete(message.id);
+        entry.reject(new Error(message.message));
+        return;
+      }
+      case "result": {
+        this.pending.delete(message.id);
+        if (message.id !== this.latestId) {
+          message.bitmap?.close();
+          entry.resolve(null);
+          return;
+        }
+        entry.resolve(message);
+        return;
+      }
+      default: {
+        const _exhaustive: never = message;
+        return _exhaustive;
+      }
     }
-
-    this.pending.delete(message.id);
-    if (message.type === "error") {
-      entry.reject(new Error(message.message));
-      return;
-    }
-    if (message.id !== this.latestId) {
-      message.bitmap?.close();
-      entry.resolve(null);
-      return;
-    }
-    entry.resolve(message);
   }
 }

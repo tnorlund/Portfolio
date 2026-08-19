@@ -9,6 +9,7 @@ test("keeps the catchment basin map as the immediate accessible image", () => {
   expect(image).toHaveAttribute("src", "/rotoscope-basins.webp");
   expect(image).toHaveAttribute("loading", "eager");
   expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Replay" })).not.toBeInTheDocument();
   expect(screen.getByText("Best-features rotoscope.")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Paper" })).toHaveAttribute(
     "href",

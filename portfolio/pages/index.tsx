@@ -30,5 +30,3 @@ export default function Home() {
     </div>
   );
 }
-
-// Remove getServerSideProps - no longer needed for static export
