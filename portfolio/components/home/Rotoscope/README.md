@@ -35,8 +35,9 @@ allocation-free scalar Wasm kernel in one reusable arena. If Wasm fetch,
 compilation, export validation, allocation, or execution fails, the same worker
 falls back to the TypeScript oracle. The basin projection stays visible during
 idle initialization and remains the no-JavaScript experience. Worker protocol
-v4 transfers the final pixels plus one byte per pixel of reveal phases; the main
-thread reuses one Canvas2D frame and only paints when a phase advances.
+v5 embeds the compact Vision person mask and transfers the final pixels plus one
+byte per pixel of reveal phases; the main thread reuses one Canvas2D frame and
+only paints when a phase advances.
 
 The worker currently routes Firefox directly to that scalar oracle. Production
 browser medians showed its JavaScript JIT completing this workload much faster

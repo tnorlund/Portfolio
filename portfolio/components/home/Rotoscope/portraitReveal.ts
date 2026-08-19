@@ -2,9 +2,7 @@ import type {
   BasinRevealFeatureRegion,
   BasinRevealPersonMask,
 } from "./reveal";
-
-export const PORTRAIT_PERSON_MASK_PATH =
-  "/rotoscope/vision-person-mask-v1.json" as const;
+import personMaskArtifact from "../../../public/rotoscope/vision-person-mask-v1.json";
 
 /**
  * Compact regions distilled from Apple Vision's primary-face landmark groups.
@@ -97,3 +95,6 @@ export const decodePortraitPersonMask = (
   }
   return { width, height, pixels };
 };
+
+/** Decoded once when the dedicated worker starts; no homepage mask fetch. */
+export const PORTRAIT_PERSON_MASK = decodePortraitPersonMask(personMaskArtifact);

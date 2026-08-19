@@ -7,9 +7,8 @@ import {
   runRotoscope,
 } from "./algorithm";
 import {
-  PORTRAIT_PERSON_MASK_PATH,
+  PORTRAIT_PERSON_MASK,
   PORTRAIT_PRIMARY_FEATURES,
-  decodePortraitPersonMask,
 } from "./portraitReveal";
 import {
   createBasinRevealMap,
@@ -49,22 +48,9 @@ let cachedSource: CachedSource | null = null;
 let pendingRequest: RotoscopeRenderRequest | null = null;
 let draining = false;
 let latestRequestId = 0;
-let revealSemanticsPromise: Promise<BasinRevealSemantics> | null = null;
-
-const loadRevealSemantics = (): Promise<BasinRevealSemantics> => {
-  if (revealSemanticsPromise) return revealSemanticsPromise;
-  revealSemanticsPromise = fetch(PORTRAIT_PERSON_MASK_PATH, {
-    cache: "force-cache",
-  })
-    .then(async (response) => {
-      if (!response.ok) throw new Error("portrait person mask is unavailable");
-      return {
-        primaryFeatures: PORTRAIT_PRIMARY_FEATURES,
-        personMask: decodePortraitPersonMask(await response.json()),
-      };
-    })
-    .catch(() => ({ primaryFeatures: PORTRAIT_PRIMARY_FEATURES }));
-  return revealSemanticsPromise;
+const revealSemantics: BasinRevealSemantics = {
+  primaryFeatures: PORTRAIT_PRIMARY_FEATURES,
+  personMask: PORTRAIT_PERSON_MASK,
 };
 
 const post = (
@@ -153,7 +139,6 @@ const render = async (request: RotoscopeRenderRequest): Promise<void> => {
     throw new Error("RGBA byte length does not match the dimensions");
   }
   const totalStartedAt = performance.now();
-  const revealSemantics = loadRevealSemantics();
   let decoded: { pixels: Uint8ClampedArray; elapsedMs: number };
   try {
     decoded = await pixelsForRequest(request);
@@ -207,7 +192,7 @@ const render = async (request: RotoscopeRenderRequest): Promise<void> => {
     request.height,
     normalizedOptions.focus,
     undefined,
-    await revealSemantics,
+    revealSemantics,
   );
   const paintMs = performance.now() - paintStartedAt;
 

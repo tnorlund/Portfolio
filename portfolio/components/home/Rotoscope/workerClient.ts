@@ -48,7 +48,7 @@ export class RotoscopeWorkerClient {
     try {
       this.worker = workerFactory
         ? workerFactory()
-        : new Worker("/rotoscope/worker-v4.js", {
+        : new Worker("/rotoscope/worker-v5.js", {
             name: "portfolio-rotoscope",
           });
     } catch {
