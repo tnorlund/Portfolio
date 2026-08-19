@@ -1,7 +1,7 @@
 .page {
   min-height: 100vh;
-  background: var(--background-color);
-  color: var(--text-color);
+  background: #fff;
+  color: #000;
 }
 
 .article {
@@ -14,6 +14,12 @@
 .article,
 .article article {
   width: 100%;
+}
+
+.article h1,
+.article h2,
+.article p {
+  color: #000;
 }
 
 .hero h1 {
@@ -52,79 +58,6 @@
   padding-bottom: 0.65rem;
 }
 
-.stepper {
-  margin: 3.25rem auto 9rem;
-  max-width: 860px;
-}
-
-.stepperCaption {
-  margin-bottom: 0.75rem;
-  font-size: 1rem;
-  font-weight: 750;
-  text-align: center;
-}
-
-.stepperStage {
-  display: grid;
-}
-
-.stepperFrame {
-  grid-area: 1 / 1;
-  opacity: 0;
-  transition: opacity 450ms ease;
-}
-
-.stepperFrame[data-active="true"] {
-  opacity: 1;
-}
-
-.stepperDots {
-  display: flex;
-  gap: 0.55rem;
-  justify-content: center;
-  align-items: center;
-  list-style: none;
-  margin: 1.1rem 0 0;
-  padding: 0;
-}
-
-.stepperDotItem {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Stage dots double as navigation buttons, like the synthesis pipeline. */
-.stepperDot {
-  width: 0.62rem;
-  height: 0.62rem;
-  padding: 0;
-  border: none;
-  border-radius: 50%;
-  background: rgba(var(--text-color-rgb), 0.22);
-  cursor: pointer;
-  transition:
-    background 0.25s ease,
-    transform 0.25s ease;
-}
-
-.stepperDot:hover {
-  transform: scale(1.25);
-}
-
-.stepperDot[data-active="true"] {
-  background: var(--text-color);
-  transform: scale(1.18);
-}
-
-.stepperDot[data-active="true"]:hover {
-  transform: scale(1.3);
-}
-
-.stepperDot[data-done="true"] {
-  background: rgba(var(--text-color-rgb), 0.5);
-}
-
 .stage,
 .processPanel,
 .paintFigure figure,
@@ -142,21 +75,18 @@
   text-align: center;
 }
 
-/* The stills are baked light-background images; the white backing keeps the
-   frame honest while it decodes in either theme. */
-.still {
+.filmFrame,
+.processArt,
+.regionMap {
   display: block;
-  box-sizing: border-box;
   width: 100%;
   height: auto;
-  border: 1px solid rgba(var(--text-color-rgb), 0.25);
-  background: #fff;
 }
 
 .arrow {
   width: 34px;
   height: 24px;
-  color: var(--text-color);
+  color: #000;
 }
 
 .section {
@@ -179,10 +109,27 @@
   max-width: 1180px;
 }
 
+.miniFilm {
+  overflow: hidden;
+  border: 10px solid #050505;
+  border-radius: 3px;
+  background: #050505;
+}
+
+.miniFilm .filmFrame {
+  margin: -10px;
+  width: calc(100% + 20px);
+}
+
 .operator {
   font-size: 2.25rem;
   line-height: 1;
   text-align: center;
+}
+
+.blurred {
+  filter: blur(6px);
+  opacity: 0.76;
 }
 
 .markerFigure {
@@ -217,8 +164,6 @@
   border-radius: 50%;
 }
 
-/* Legend dots stay hardcoded to the marker colors baked into the still, so
-   they keep matching the figure when the theme's accent palette shifts. */
 .faceDot {
   background: #1e88e5;
 }
@@ -228,7 +173,7 @@
 }
 
 .backgroundDot {
-  background: #6d6d6d;
+  background: #9d9d9d;
 }
 
 .watershedFigure {
@@ -236,44 +181,40 @@
   max-width: 1180px;
 }
 
-.floodStack {
-  position: relative;
-}
-
-.floodBase,
-.floodFrame {
+.watershedArt {
   display: block;
-  box-sizing: border-box;
   width: 100%;
   height: auto;
-  border: 1px solid rgba(var(--text-color-rgb), 0.25);
-  background: #fff;
 }
 
-.floodFrame {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  animation: flood-frame 500ms ease-out both;
+.floodRegion {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: flood-in 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--delay);
+}
+
+.seedWave {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: seed-wave 900ms ease-out both;
 }
 
 .replayButton {
   margin: 1rem 0 0;
   padding: 0.65rem 1rem;
-  border: 1px solid var(--text-color);
+  border: 1px solid #000;
   border-radius: 4px;
-  background: var(--background-color);
-  color: var(--text-color);
+  background: #fff;
+  color: #000;
   font-family: inherit;
   font-size: 0.95rem;
   font-weight: 650;
-  cursor: pointer;
 }
 
 .replayButton:hover {
-  background: var(--text-color);
-  color: var(--background-color);
+  background: #000;
+  color: #fff;
 }
 
 .paintFigure {
@@ -288,7 +229,7 @@
 .technicalNote {
   max-width: 850px;
   padding-top: 1rem;
-  border-top: 1px solid rgba(var(--text-color-rgb), 0.25);
+  border-top: 1px solid #cfcfcf;
 }
 
 .links {
@@ -298,15 +239,31 @@
 }
 
 .links a {
-  color: var(--text-color);
+  color: #000;
   font-weight: 700;
   text-decoration-thickness: 1px;
   text-underline-offset: 0.18em;
 }
 
-@keyframes flood-frame {
+@keyframes flood-in {
+  from {
+    opacity: 0.15;
+    transform: scale(0.22);
+  }
   to {
     opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes seed-wave {
+  from {
+    opacity: 0.7;
+    transform: scale(0.25);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.25);
   }
 }
 
@@ -319,11 +276,6 @@
   .pipelineScroller {
     margin-top: 2.5rem;
     margin-right: -1rem;
-  }
-
-  .stepper {
-    margin-top: 2.5rem;
-    margin-bottom: 6rem;
   }
 
   .section {
@@ -389,13 +341,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .stepperFrame,
-  .stepperDot {
-    transition: none;
-  }
-
-  .floodFrame {
+  .floodRegion,
+  .seedWave {
     animation: none;
-    opacity: 1;
   }
 }
