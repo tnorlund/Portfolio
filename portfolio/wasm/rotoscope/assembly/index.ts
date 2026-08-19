@@ -665,11 +665,6 @@ function watershed(width: i32, height: i32, selectedCount: i32): i32 {
     }
   }
 
-  if (visited < gPixelCount) {
-    for (let index: i32 = 0; index < gPixelCount; index += 1) {
-      if (load<u32>(labelsPtr + index * 4) == 0) store<u32>(labelsPtr + index * 4, 1);
-    }
-  }
   return regionCount;
 }
 
