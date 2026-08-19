@@ -20,6 +20,14 @@ optimized WebAssembly kernel. The authored normalized focus geometry belongs to
 the image configuration rather than the numerical stages, keeping the engine
 reusable for future portraits.
 
+Homepage processing stays 960×720. `portraitConfig.ts` sets a periocular
+`focus.face` ellipse around both Vision eyes (plus lid/brow) so the face quota
+lands in the irises instead of the whole skull; leftover head/shoulders sit on
+`focus.body` at coarser spacing. Quotas are `{face: 0.30, body: 0.64,
+background: 0.06}` with spacing `{face: 1, body: 4, background: 8}`. Engine
+defaults in `algorithm.ts` stay `{face: 0.5, body: 0.3, background: 0.2}` for
+the explainer and lab.
+
 `public/rotoscope-basins.webp` is the no-JavaScript / worker-unavailable
 fallback: a 960×720 watershed outline of the same homepage pass. JavaScript
 keeps that image out of the frame during idle, processing, and Replay so the

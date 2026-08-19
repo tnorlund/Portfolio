@@ -4,30 +4,33 @@ import type { RotoscopeOptions } from "./algorithm";
 export const PORTRAIT_PROCESSING_SIZE = { width: 960, height: 720 } as const;
 
 /**
- * Authored geometry for `/rotoscope-portrait.*` after its full-frame 4:3 resize.
- * Dense face spacing keeps the homepage from looking like a stretched 480×360
- * splotch. Engine defaults stay in `algorithm.ts`; this object is homepage-only.
+ * Homepage-only geometry for `/rotoscope-portrait.*` after its full-frame 4:3
+ * resize. The face ellipse is periocular (both Vision eyes plus lid/brow) so
+ * the face quota lands in the irises instead of the whole skull. The rest of
+ * the head is body. Engine defaults stay in `algorithm.ts`.
  */
 export const PORTRAIT_ROTOSCOPE_OPTIONS: Partial<RotoscopeOptions> = {
-  blurRadius: 6,
+  blurRadius: 3,
   markerBudget: 1600,
-  quotas: { face: 0.7, body: 0.22, background: 0.08 },
+  quotas: { face: 0.3, body: 0.64, background: 0.06 },
   spacing: { face: 1, body: 4, background: 8 },
   focus: {
     face: {
-      centerX: 0.4,
-      centerY: 0.56,
-      radiusX: 0.14,
-      radiusY: 0.27,
+      centerX: 0.4112,
+      centerY: 0.5218,
+      radiusX: 0.085,
+      radiusY: 0.055,
     },
     body: [
-      [0.31, 0.67],
-      [0.53, 0.66],
+      [0.26, 0.3],
+      [0.4, 0.26],
+      [0.54, 0.3],
+      [0.58, 0.52],
       [0.75, 0.82],
       [0.8, 1],
       [0, 1],
       [0, 0.84],
-      [0.26, 0.72],
+      [0.22, 0.52],
     ],
   },
 };

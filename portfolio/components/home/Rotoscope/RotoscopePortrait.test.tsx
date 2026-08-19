@@ -157,9 +157,9 @@ test("Replay keeps the basin map hidden and requests the dense homepage pass", a
       width: 960,
       height: 720,
       options: expect.objectContaining({
-        blurRadius: 6,
+        blurRadius: 3,
         markerBudget: 1600,
-        quotas: { face: 0.7, body: 0.22, background: 0.08 },
+        quotas: { face: 0.3, body: 0.64, background: 0.06 },
         spacing: { face: 1, body: 4, background: 8 },
       }),
     }),
