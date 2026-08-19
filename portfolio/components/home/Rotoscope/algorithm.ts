@@ -631,12 +631,6 @@ export const watershed = (
     }
   }
 
-  // Defensive completion for malformed or unexpectedly disconnected input.
-  if (visited < count) {
-    for (let index = 0; index < count; index += 1) {
-      if (labels[index] === 0) labels[index] = 1;
-    }
-  }
   return { labels, regionCount };
 };
 
