@@ -173,6 +173,9 @@ test("Replay keeps the basin map hidden and requests the dense homepage pass", a
   expect(screen.queryByText("Best-features rotoscope.")).not.toBeInTheDocument();
 
   fireEvent.click(replay);
+  await act(async () => {
+    await Promise.resolve();
+  });
   await waitFor(() => expect(mockRender).toHaveBeenCalledTimes(2));
   expect(
     screen.queryByRole("img", {
@@ -180,9 +183,18 @@ test("Replay keeps the basin map hidden and requests the dense homepage pass", a
     }),
   ).not.toBeInTheDocument();
 
-  fireEvent.keyDown(replay, { key: "Enter" });
+  const afterClick = await screen.findByRole("button", { name: "Replay" });
+  fireEvent.keyDown(afterClick, { key: "Enter" });
+  await act(async () => {
+    await Promise.resolve();
+  });
   await waitFor(() => expect(mockRender).toHaveBeenCalledTimes(3));
-  fireEvent.keyDown(replay, { key: " " });
+  fireEvent.keyDown(await screen.findByRole("button", { name: "Replay" }), {
+    key: " ",
+  });
+  await act(async () => {
+    await Promise.resolve();
+  });
   await waitFor(() => expect(mockRender).toHaveBeenCalledTimes(4));
   raf.mockRestore();
   jest.useRealTimers();
