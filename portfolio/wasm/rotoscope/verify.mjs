@@ -35,17 +35,6 @@ if (wasm.abiVersion() !== 1) throw new Error("unexpected Wasm ABI version");
 
 const defaults = reference.DEFAULT_ROTOSCOPE_OPTIONS;
 
-const focusMap = (width, height, focus) => {
-  const output = new Uint8Array(width * height);
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      const tier = reference.classifyFocusTier(x, y, width, height, focus);
-      output[y * width + x] = tier === "face" ? 0 : tier === "body" ? 1 : 2;
-    }
-  }
-  return output;
-};
-
 const runWasm = (source, width, height, options = {}) => {
   const markerBudget = Math.min(
     width * height,
@@ -60,7 +49,11 @@ const runWasm = (source, width, height, options = {}) => {
   const tiersPtr = wasm.focusTierPtr(width, height, markerBudget);
   new Uint8Array(wasm.memory.buffer, inputPtr, source.length).set(source);
   new Uint8Array(wasm.memory.buffer, tiersPtr, width * height).set(
-    focusMap(width, height, options.focus ?? defaults.focus),
+    reference.createFocusTierMap(
+      width,
+      height,
+      options.focus ?? defaults.focus,
+    ),
   );
   const quotas = options.quotas ?? defaults.quotas;
   const spacing = options.spacing ?? defaults.spacing;

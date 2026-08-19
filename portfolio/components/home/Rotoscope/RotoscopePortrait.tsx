@@ -7,8 +7,10 @@ import {
 } from "./portraitConfig";
 import styles from "./RotoscopePortrait.module.css";
 import { RotoscopeWorkerClient } from "./workerClient";
-import type { RotoscopeRenderSuccess } from "./workerProtocol";
-import type { RotoscopeTimings } from "./workerProtocol";
+import type {
+  RotoscopeRenderSuccess,
+  RotoscopeTimings,
+} from "./workerProtocol";
 
 type RenderState = "idle" | "processing" | "ready" | "unavailable";
 
