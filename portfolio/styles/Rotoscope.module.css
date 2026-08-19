@@ -1,0 +1,348 @@
+.page {
+  min-height: 100vh;
+  background: #fff;
+  color: #000;
+}
+
+.article {
+  max-width: 1360px;
+  box-sizing: border-box;
+  padding-top: 4rem;
+  padding-bottom: 7rem;
+}
+
+.article,
+.article article {
+  width: 100%;
+}
+
+.article h1,
+.article h2,
+.article p {
+  color: #000;
+}
+
+.hero h1 {
+  max-width: 760px;
+  margin: 0 0 1.5rem;
+  font-size: clamp(2.65rem, 5vw, 4rem);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.hero p {
+  max-width: 940px;
+  font-size: 1.08rem;
+  line-height: 1.7;
+}
+
+.section p {
+  max-width: 820px;
+  font-size: 1.08rem;
+  line-height: 1.7;
+}
+
+.pipelineScroller {
+  margin: 3.25rem 0 9rem;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.pipeline {
+  display: grid;
+  grid-template-columns: minmax(190px, 1fr) 34px minmax(190px, 1fr) 34px minmax(190px, 1fr) 34px minmax(190px, 1fr);
+  gap: 0.8rem;
+  min-width: 1060px;
+  align-items: center;
+  padding-bottom: 0.65rem;
+}
+
+.stage,
+.processPanel,
+.paintFigure figure,
+.watershedFigure,
+.markerFigure {
+  margin: 0;
+}
+
+.stage figcaption,
+.processPanel figcaption,
+.paintFigure figcaption {
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+  font-weight: 750;
+  text-align: center;
+}
+
+.filmFrame,
+.processArt,
+.regionMap {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.arrow {
+  width: 34px;
+  height: 24px;
+  color: #000;
+}
+
+.section {
+  margin-top: 6.5rem;
+}
+
+.section h2 {
+  margin: 0 0 1rem;
+  font-size: clamp(2rem, 3.2vw, 2.75rem);
+  line-height: 1.08;
+  letter-spacing: -0.04em;
+}
+
+.equation {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 30px minmax(180px, 1fr) 30px minmax(180px, 1fr);
+  gap: 1rem;
+  align-items: center;
+  margin-top: 2.5rem;
+  max-width: 1180px;
+}
+
+.miniFilm {
+  overflow: hidden;
+  border: 10px solid #050505;
+  border-radius: 3px;
+  background: #050505;
+}
+
+.miniFilm .filmFrame {
+  margin: -10px;
+  width: calc(100% + 20px);
+}
+
+.operator {
+  font-size: 2.25rem;
+  line-height: 1;
+  text-align: center;
+}
+
+.blurred {
+  filter: blur(6px);
+  opacity: 0.76;
+}
+
+.markerFigure {
+  display: flex;
+  gap: 5rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2rem;
+}
+
+.markerArt {
+  width: min(100%, 430px);
+  height: auto;
+}
+
+.markerLegend {
+  display: grid;
+  gap: 1.2rem;
+  min-width: 190px;
+  font-size: 1.05rem;
+}
+
+.markerLegend span {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.markerLegend i {
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+}
+
+.faceDot {
+  background: #1e88e5;
+}
+
+.bodyDot {
+  background: #fb8c00;
+}
+
+.backgroundDot {
+  background: #9d9d9d;
+}
+
+.watershedFigure {
+  margin-top: 2.5rem;
+  max-width: 1180px;
+}
+
+.watershedArt {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.floodRegion {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: flood-in 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: var(--delay);
+}
+
+.seedWave {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: seed-wave 900ms ease-out both;
+}
+
+.replayButton {
+  margin: 1rem 0 0;
+  padding: 0.65rem 1rem;
+  border: 1px solid #000;
+  border-radius: 4px;
+  background: #fff;
+  color: #000;
+  font-family: inherit;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.replayButton:hover {
+  background: #000;
+  color: #fff;
+}
+
+.paintFigure {
+  display: grid;
+  grid-template-columns: 1fr 34px 1fr;
+  gap: 1.6rem;
+  align-items: center;
+  margin-top: 2.5rem;
+  max-width: 1180px;
+}
+
+.technicalNote {
+  max-width: 850px;
+  padding-top: 1rem;
+  border-top: 1px solid #cfcfcf;
+}
+
+.links {
+  display: flex;
+  gap: 1.4rem;
+  margin-top: 1.35rem;
+}
+
+.links a {
+  color: #000;
+  font-weight: 700;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+@keyframes flood-in {
+  from {
+    opacity: 0.15;
+    transform: scale(0.22);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes seed-wave {
+  from {
+    opacity: 0.7;
+    transform: scale(0.25);
+  }
+  to {
+    opacity: 0;
+    transform: scale(2.25);
+  }
+}
+
+@media (max-width: 768px) {
+  .article {
+    padding-top: 3rem;
+    padding-bottom: 5rem;
+  }
+
+  .pipelineScroller {
+    margin-top: 2.5rem;
+    margin-right: -1rem;
+  }
+
+  .section {
+    margin-top: 5rem;
+  }
+
+  .equation {
+    grid-template-columns: 1fr;
+    max-width: 430px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .markerFigure {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .markerLegend {
+    grid-template-columns: repeat(3, auto);
+    min-width: 0;
+    font-size: 0.9rem;
+  }
+
+  .paintFigure {
+    grid-template-columns: 1fr;
+    max-width: 540px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .paintFigure > .arrow {
+    justify-self: center;
+    transform: rotate(90deg);
+  }
+}
+
+@media (max-width: 480px) {
+  .article {
+    max-width: none;
+    width: 100%;
+  }
+
+  .hero h1 {
+    font-size: 2.65rem;
+  }
+
+  .hero p,
+  .section p {
+    font-size: 1rem;
+  }
+
+  .markerLegend {
+    grid-template-columns: 1fr;
+    align-self: stretch;
+    padding-left: 1rem;
+  }
+
+  .links {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floodRegion,
+  .seedWave {
+    animation: none;
+  }
+}
