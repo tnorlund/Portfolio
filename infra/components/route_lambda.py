@@ -174,7 +174,10 @@ def create_route_lambda(
         code_assets["_lambda_profiler.py"] = pulumi.FileAsset(
             PROFILER_ASSET_PATH
         )
-        if stack == "dev":
+        if (
+            stack == "dev"
+            and os.environ.get("ENABLE_DEV_LAMBDA_PROFILING") == "1"
+        ):
             environment.update(
                 {
                     "LAMBDA_PROFILE_ENABLED": "1",
