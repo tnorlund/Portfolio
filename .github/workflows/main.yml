@@ -67,6 +67,31 @@ jobs:
           source .venv-email-receipt/bin/activate
           python -m pytest -q infra/tests/test_compaction_lock_config.py
 
+  rust-tests:
+    name: Rust (receipt_dynamo_rs)
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          clean: true
+
+      - name: Setup Rust
+        run: |
+          export PATH="$HOME/.cargo/bin:/usr/local/cargo/bin:$PATH"
+          if ! command -v rustup >/dev/null 2>&1; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          rustup update stable
+          rustup default stable
+          rustc --version
+          cargo --version
+
+      - name: Test receipt_dynamo_rs
+        run: |
+          cargo test --manifest-path receipt_dynamo_rs/Cargo.toml --no-default-features
+          cargo test --manifest-path receipt_dynamo_rs/Cargo.toml --no-default-features --release
+
   python-tests:
     name: Python (${{ matrix.package }})
     runs-on: [self-hosted, macOS, ARM64]

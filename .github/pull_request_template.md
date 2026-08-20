@@ -17,6 +17,7 @@
 ## Which Package(s) are Affected?
 
 - [ ] receipt_dynamo
+- [ ] receipt_dynamo_rs (Rust)
 - [ ] receipt_dynamo_stream
 - [ ] receipt_chroma
 - [ ] receipt_upload
