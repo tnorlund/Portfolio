@@ -26,7 +26,7 @@ dependencies = [
   # dependabot bumps across the next major.
   # coremltools 9.0 validates PyTorch through 2.7.0. Keep the shared runtime
   # inside that tested range so training checkpoints remain exportable.
-  "torch>=2.6.0,<=2.7.0",
+  "torch>=2.6.0,<=2.13.0",
   "transformers>=4.46.0,<6.0.0",
   "datasets>=2.19.0,<6.0.0",
   "numpy>=1.26.0,<3.0.0",
