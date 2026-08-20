@@ -834,12 +834,8 @@ class ChromaClient:
         results = []
         for start in range(0, len(batch), MAX_QUERY_EMBEDDINGS):
             chunk_args = dict(query_args)
-            chunk_args[batch_key] = batch[
-                start : start + MAX_QUERY_EMBEDDINGS
-            ]
-            results.append(
-                _retry_with_backoff(collection.query, **chunk_args)
-            )
+            chunk_args[batch_key] = batch[start : start + MAX_QUERY_EMBEDDINGS]
+            results.append(_retry_with_backoff(collection.query, **chunk_args))
         return _merge_query_results(results)
 
     def get(
