@@ -3,6 +3,7 @@ import {
   sobelGradient,
 } from "../home/Rotoscope/algorithm";
 import {
+  cropWindow,
   neighborhood,
   preparePixelFields,
   rec601Gray,
@@ -73,6 +74,23 @@ test("sobelAt matches the engine magnitude at an interior pixel", () => {
   expect(sample.magnitude).toBe(engine.magnitude[4 * 9 + 4]);
   expect(sample.window).toHaveLength(3);
   expect(sample.window[0]).toHaveLength(3);
+});
+
+test("cropWindow keeps the center of a larger neighborhood", () => {
+  const cells = [
+    [1, 2, 3, 4, 5],
+    [6, 7, 8, 9, 10],
+    [11, 12, 13, 14, 15],
+    [16, 17, 18, 19, 20],
+    [21, 22, 23, 24, 25],
+  ];
+  expect(cropWindow(cells, 1)).toEqual([
+    [7, 8, 9],
+    [12, 13, 14],
+    [17, 18, 19],
+  ]);
+  expect(cropWindow(cells, 2)).toEqual(cells);
+  expect(cropWindow([], 1)).toEqual([]);
 });
 
 test("sampleRgba clamps to the image", () => {

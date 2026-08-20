@@ -148,6 +148,17 @@ export const neighborhood = (
   radius: number,
 ): number[][] => neighborhoodNumeric(field, width, height, x, y, radius);
 
+/** Keep the center (2r+1) window of a larger sampled neighborhood. */
+export const cropWindow = <T>(cells: readonly (readonly T[])[], radius: number): T[][] => {
+  if (cells.length === 0) return [];
+  const size = radius * 2 + 1;
+  if (size >= cells.length) return cells.map((row) => [...row]);
+  const mid = Math.floor(cells.length / 2);
+  return cells
+    .slice(mid - radius, mid + radius + 1)
+    .map((row) => row.slice(mid - radius, mid + radius + 1));
+};
+
 export interface SobelSample {
   gx: number;
   gy: number;

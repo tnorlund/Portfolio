@@ -7,6 +7,7 @@ import {
 import styles from "../../styles/Rotoscope.module.css";
 import {
   clampCoord,
+  cropWindow,
   neighborhood,
   preparePixelFields,
   rec601Gray,
@@ -28,6 +29,7 @@ const STEPS = [
 ] as const;
 
 type StepId = (typeof STEPS)[number]["id"];
+type ZoomPhase = "photo" | "frame" | "zoom" | "pixels";
 
 const SAMPLE_POINTS = [
   { x: 0.367, y: 0.518, label: "left eye" },
@@ -40,18 +42,29 @@ const SAMPLE_POINTS = [
 const PIXEL_DWELL_MS = 1600;
 const IDLE_RESUME_MS = 10000;
 const BLUR_RADIUS = PORTRAIT_ROTOSCOPE_OPTIONS.blurRadius ?? 3;
+const ZOOM_PHOTO_MS = 800;
+const ZOOM_FRAME_MS = 650;
+const ZOOM_SCALE_MS = 1100;
+const ZOOM_FILL = 0.88;
+const MOBILE_QUERY = "(max-width: 768px)";
+const REDUCE_QUERY = "(prefers-reduced-motion: reduce)";
 
-const usePrefersReducedMotion = (): boolean => {
-  const [reduced, setReduced] = useState(false);
+const useMedia = (query: string): boolean => {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false;
+    }
+    return window.matchMedia(query).matches;
+  });
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const onChange = (event: MediaQueryListEvent) => setReduced(event.matches);
+    const mq = window.matchMedia(query);
+    setMatches(mq.matches);
+    const onChange = (event: MediaQueryListEvent) => setMatches(event.matches);
     mq.addEventListener?.("change", onChange);
     return () => mq.removeEventListener?.("change", onChange);
-  }, []);
-  return reduced;
+  }, [query]);
+  return matches;
 };
 
 const Bar = ({
@@ -176,6 +189,7 @@ const PixelBoard = ({
       className={styles.walkPixels}
       role="group"
       aria-label={label}
+      data-size={size}
       style={{ gridTemplateColumns: `repeat(${size || 1}, minmax(0, 1fr))` }}
     >
       {cells.map((row, y) =>
@@ -213,26 +227,39 @@ const Board = ({
   </div>
 );
 
+const sizeLabel = (displaySize: number, fullSize: number): string =>
+  displaySize === fullSize
+    ? `${displaySize}×${displaySize}`
+    : `${displaySize}×${displaySize} of ${fullSize}×${fullSize}`;
+
 export default function PixelWalkthrough({
-  source,
+  source: injected,
   blurRadius = BLUR_RADIUS,
+  skipIntro,
 }: {
   source?: RgbaBuffer;
   blurRadius?: number;
+  skipIntro?: boolean;
 }) {
   const { ref, inView } = useInView({ threshold: 0.35, fallbackInView: true });
-  const reducedMotion = usePrefersReducedMotion();
+  const compact = useMedia(MOBILE_QUERY);
+  const reducedMotion = useMedia(REDUCE_QUERY);
+  const skipZoom = skipIntro ?? Boolean(injected);
   const [fields, setFields] = useState<PixelFields | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [sampleIndex, setSampleIndex] = useState(0);
   const [picked, setPicked] = useState<{ x: number; y: number } | null>(null);
   const [paused, setPaused] = useState(false);
+  const [zoomPhase, setZoomPhase] = useState<ZoomPhase>(() =>
+    skipZoom || reducedMotion ? "pixels" : "photo",
+  );
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const zoomToken = useRef(0);
   const step: StepId = STEPS[stepIndex].id;
 
   useEffect(() => {
-    if (source) {
-      setFields(preparePixelFields(source, blurRadius));
+    if (injected) {
+      setFields(preparePixelFields(injected, blurRadius));
       return;
     }
     let cancelled = false;
@@ -258,7 +285,7 @@ export default function PixelWalkthrough({
     return () => {
       cancelled = true;
     };
-  }, [source, blurRadius]);
+  }, [injected, blurRadius]);
 
   const pause = useCallback(() => {
     setPaused(true);
@@ -266,14 +293,50 @@ export default function PixelWalkthrough({
     resumeTimer.current = setTimeout(() => setPaused(false), IDLE_RESUME_MS);
   }, []);
 
+  const playZoom = useCallback(() => {
+    zoomToken.current += 1;
+    const token = zoomToken.current;
+    if (skipZoom || reducedMotion) {
+      setZoomPhase("pixels");
+      return;
+    }
+    setZoomPhase("photo");
+    window.setTimeout(() => {
+      if (zoomToken.current !== token) return;
+      setZoomPhase("frame");
+      window.setTimeout(() => {
+        if (zoomToken.current !== token) return;
+        setZoomPhase("zoom");
+        window.setTimeout(() => {
+          if (zoomToken.current !== token) return;
+          setZoomPhase("pixels");
+        }, ZOOM_SCALE_MS);
+      }, ZOOM_FRAME_MS);
+    }, ZOOM_PHOTO_MS);
+  }, [reducedMotion, skipZoom]);
+
   useEffect(
     () => () => {
       if (resumeTimer.current) clearTimeout(resumeTimer.current);
+      zoomToken.current += 1;
     },
     [],
   );
 
-  const playing = inView && !paused && !reducedMotion && !picked;
+  useEffect(() => {
+    if (skipZoom || reducedMotion) {
+      setZoomPhase("pixels");
+      return;
+    }
+    if (!inView) return;
+    playZoom();
+    return () => {
+      zoomToken.current += 1;
+    };
+  }, [inView, stepIndex, playZoom, reducedMotion, skipZoom]);
+
+  const playing =
+    inView && !paused && !reducedMotion && !picked && zoomPhase === "pixels";
   useEffect(() => {
     if (!playing) return;
     const pixels = window.setInterval(() => {
@@ -289,6 +352,9 @@ export default function PixelWalkthrough({
   const sample = SAMPLE_POINTS[sampleIndex];
   const x = picked ? picked.x : Math.round(sample.x * (width - 1));
   const y = picked ? picked.y : Math.round(sample.y * (height - 1));
+  const displayRadius = step === "sobel" ? 1 : compact ? 1 : blurRadius;
+  const displaySize = displayRadius * 2 + 1;
+  const windowSize = blurRadius * 2 + 1;
 
   const rgb = useMemo(
     () => (fields ? sampleRgba(fields, x, y) : ([0, 0, 0] as const)),
@@ -297,9 +363,7 @@ export default function PixelWalkthrough({
   const gray = rec601Gray(rgb[0], rgb[1], rgb[2]);
   const blurred = fields ? sampleField(fields.blurred, width, height, x, y) : 0;
   const difference = fields ? sampleField(fields.difference, width, height, x, y) : 0;
-  const colorWindow = fields
-    ? rgbaNeighborhood(fields, x, y, blurRadius)
-    : [];
+  const colorWindow = fields ? rgbaNeighborhood(fields, x, y, blurRadius) : [];
   const blurWindow = fields
     ? neighborhood(fields.gray, width, height, x, y, blurRadius)
     : [];
@@ -327,15 +391,28 @@ export default function PixelWalkthrough({
   };
 
   const location = picked ? `pixel ${x}, ${y}` : sample.label;
-  const windowSize = blurRadius * 2 + 1;
-  const sourceCells = colorWindow.map((row) =>
-    row.map((cell) => ({
-      ...cell,
-      label: rec601Gray(cell.red, cell.green, cell.blue),
-    })),
+  const sourceCells = cropWindow(
+    colorWindow.map((row) =>
+      row.map((cell) => ({
+        ...cell,
+        label: rec601Gray(cell.red, cell.green, cell.blue),
+      })),
+    ),
+    displayRadius,
   );
-  const grayCells = lumaCells(blurWindow);
-  const blurCells = lumaCells(blurredWindow);
+  const grayCells = lumaCells(cropWindow(blurWindow, displayRadius));
+  const blurCells = lumaCells(cropWindow(blurredWindow, displayRadius));
+  const boardTitle = sizeLabel(displaySize, windowSize);
+  const zoomScale = Math.max(1, (ZOOM_FILL * width) / displaySize);
+  const originX = ((x + 0.5) / width) * 100;
+  const originY = ((y + 0.5) / height) * 100;
+  const rect = {
+    left: `${((x - displayRadius) / width) * 100}%`,
+    top: `${((y - displayRadius) / height) * 100}%`,
+    width: `${(displaySize / width) * 100}%`,
+    height: `${(displaySize / height) * 100}%`,
+  };
+  const scaled = zoomPhase === "zoom" || zoomPhase === "pixels";
 
   const viz = (() => {
     switch (step) {
@@ -448,7 +525,7 @@ export default function PixelWalkthrough({
     step === "gray"
       ? [
           {
-            title: `${windowSize}×${windowSize} source`,
+            title: `${boardTitle} source`,
             label: "Source pixels around the sample",
             cells: sourceCells,
           },
@@ -456,7 +533,7 @@ export default function PixelWalkthrough({
       : step === "blur"
         ? [
             {
-              title: `${windowSize}×${windowSize} gray`,
+              title: `${boardTitle} gray`,
               label: "Gray pixels under the box-blur kernel",
               cells: grayCells,
             },
@@ -464,12 +541,12 @@ export default function PixelWalkthrough({
         : step === "difference"
           ? [
               {
-                title: `${windowSize}×${windowSize} gray`,
+                title: `${boardTitle} gray`,
                 label: "Gray pixels around the sample",
                 cells: grayCells,
               },
               {
-                title: `${windowSize}×${windowSize} blur`,
+                title: `${boardTitle} blur`,
                 label: "Blurred pixels around the sample",
                 cells: blurCells,
               },
@@ -487,11 +564,26 @@ export default function PixelWalkthrough({
               },
             ];
 
+  const grid = (
+    <div className={styles.walkImages} data-pair={boards.length > 1 ? "true" : undefined}>
+      {boards.map((board) => (
+        <Board key={`${step}-${board.label}`} title={board.title}>
+          <PixelBoard cells={board.cells} label={board.label} onPick={pickCell} />
+        </Board>
+      ))}
+    </div>
+  );
+
+  const caption =
+    zoomPhase !== "pixels" && !skipZoom
+      ? `Zooming from the photograph into the ${displaySize}×${displaySize} at the ${location}`
+      : compact && step !== "sobel"
+        ? `${STEPS[stepIndex].label} at the ${location} — ${displaySize}×${displaySize} center of the ${windowSize}×${windowSize} neighborhood`
+        : `${STEPS[stepIndex].label} at the ${location}`;
+
   return (
     <figure ref={ref} className={styles.walk} aria-label="Pixel walkthrough of the grayscale chain">
-      <figcaption className={styles.walkCaption}>
-        {STEPS[stepIndex].label} at the {location}
-      </figcaption>
+      <figcaption className={styles.walkCaption}>{caption}</figcaption>
       <ol className={styles.walkSteps} aria-label="Image-processing steps">
         {STEPS.map((item, index) => (
           <li key={item.id}>
@@ -508,13 +600,53 @@ export default function PixelWalkthrough({
         ))}
       </ol>
       <div className={styles.walkLayout}>
-        <div className={styles.walkImages} data-pair={boards.length > 1 ? "true" : undefined}>
-          {boards.map((board) => (
-            <Board key={`${step}-${board.label}`} title={board.title}>
-              <PixelBoard cells={board.cells} label={board.label} onPick={pickCell} />
-            </Board>
-          ))}
-        </div>
+        {skipZoom ? (
+          grid
+        ) : (
+          <div className={styles.walkStage}>
+            <div
+              className={styles.walkZoomStage}
+              data-phase={zoomPhase}
+              data-testid="walk-zoom-stage"
+            >
+              <div
+                className={styles.walkZoomWorld}
+                style={
+                  {
+                    "--zoom-x": `${originX}%`,
+                    "--zoom-y": `${originY}%`,
+                    "--zoom-scale": scaled ? String(zoomScale) : "1",
+                  } as React.CSSProperties
+                }
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/rotoscope-portrait.jpg"
+                  alt="Original portrait; the highlighted window becomes the pixel grid"
+                  width={PORTRAIT_PROCESSING_SIZE.width}
+                  height={PORTRAIT_PROCESSING_SIZE.height}
+                />
+                <span className={styles.walkZoomRect} style={rect} />
+              </div>
+              <div
+                className={styles.walkZoomGrid}
+                aria-hidden={zoomPhase !== "pixels"}
+              >
+                {grid}
+              </div>
+            </div>
+            <button
+              className={styles.replayButton}
+              type="button"
+              onClick={() => {
+                pause();
+                playZoom();
+              }}
+            >
+              Replay the zoom
+            </button>
+          </div>
+        )}
         <div className={styles.walkViz}>{viz}</div>
       </div>
     </figure>
