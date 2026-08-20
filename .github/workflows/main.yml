@@ -377,6 +377,8 @@ jobs:
           python -m pytest -q \
             infra/components/test_lambda_profiler.py \
             infra/components/test_route_lambda.py \
+            infra/routes/images/handler/test_handler.py \
+            infra/routes/receipts/handler/test_handler.py \
             scripts/test_capture_dev_api_profiles.py
 
       - name: Deploy dev stack

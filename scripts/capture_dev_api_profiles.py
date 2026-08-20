@@ -82,10 +82,14 @@ def discover_function(lambda_client, logical_name: str) -> str:
     return matches[0]
 
 
-def invoke_profile(base_url: str, path: str) -> InvocationTiming:
+def invoke_route(
+    base_url: str, path: str, *, profile: bool = False
+) -> InvocationTiming:
     """Invoke a route and measure response-header TTFB and total time."""
-    separator = "&" if "?" in path else "?"
-    url = f"{base_url.rstrip('/')}{path}{separator}__profile=1"
+    url = f"{base_url.rstrip('/')}{path}"
+    if profile:
+        separator = "&" if "?" in path else "?"
+        url = f"{url}{separator}__profile=1"
     request = urllib.request.Request(
         url,
         headers={"Accept": "application/json"},
@@ -315,7 +319,8 @@ def capture_route(
     log_group = f"/aws/lambda/{function_name}"
     baseline = collect_baseline(logs_client, log_group, baseline_days)
     started_ms = int(time.time() * 1000) - 1000
-    timing = invoke_profile(base_url, spec.path)
+    cold_timing = invoke_route(base_url, spec.path)
+    timing = invoke_route(base_url, spec.path, profile=True)
     profile = wait_for_profile(
         logs_client,
         log_group,
@@ -349,6 +354,7 @@ def capture_route(
         "log_stream": profile["log_stream"],
         "profile_id": profile["profile_id"],
         "baseline": baseline,
+        "cold_invocation": asdict(cold_timing),
         "invocation": asdict(timing),
         "report": extract_report(messages, profile["profile_id"]),
         "artifacts": {

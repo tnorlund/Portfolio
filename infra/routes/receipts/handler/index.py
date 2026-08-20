@@ -10,6 +10,14 @@ logger.setLevel(logging.INFO)
 
 # Get the environment variables
 dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
+_dynamo_client = None
+
+
+def _get_dynamo_client():
+    global _dynamo_client
+    if _dynamo_client is None:
+        _dynamo_client = DynamoClient(dynamodb_table_name)
+    return _dynamo_client
 
 
 @profile_handler
@@ -18,13 +26,17 @@ def handler(event, _):
     http_method = event["requestContext"]["http"]["method"].upper()
 
     if http_method == "GET":
-        client = DynamoClient(dynamodb_table_name)
         query_params = event.get("queryStringParameters") or {}
 
         # Check for an optional 'limit'
         limit = query_params.get("limit")
         if limit is not None:
             limit = int(limit)
+            if limit <= 0:
+                return {
+                    "statusCode": 400,
+                    "body": "limit must be a positive integer",
+                }
 
         # Check for an optional 'lastEvaluatedKey'
         lastEvaluatedKey = None
@@ -35,6 +47,7 @@ def handler(event, _):
                 logger.error("Error decoding lastEvaluatedKey; ignoring it.")
                 lastEvaluatedKey = None
 
+        client = _get_dynamo_client()
         # Call listReceipts with the provided parameters.
         receipts, lek = client.list_receipts(
             limit=limit, last_evaluated_key=lastEvaluatedKey

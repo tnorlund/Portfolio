@@ -11,6 +11,14 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
+_dynamo_client = None
+
+
+def _get_dynamo_client():
+    global _dynamo_client
+    if _dynamo_client is None:
+        _dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
+    return _dynamo_client
 
 
 @profile_handler
@@ -19,7 +27,6 @@ def handler(event, _):
     http_method = event["requestContext"]["http"]["method"].upper()
 
     if http_method == "GET":
-        client = DynamoClient(DYNAMODB_TABLE_NAME)
         query_params = event.get("queryStringParameters") or {}
 
         # Check for optional 'image_type' parameter
@@ -28,6 +35,11 @@ def handler(event, _):
         # Check for an optional 'limit'
         limit_param = query_params.get("limit")
         limit = int(limit_param) if limit_param is not None else None
+        if limit is not None and limit <= 0:
+            return {
+                "statusCode": 400,
+                "body": "limit must be a positive integer",
+            }
 
         # Check for an optional 'lastEvaluatedKey'
         last_evaluated_key = None
@@ -40,6 +52,7 @@ def handler(event, _):
                 logger.error("Error decoding lastEvaluatedKey; ignoring it.")
                 last_evaluated_key = None
 
+        client = _get_dynamo_client()
         if image_type:
             # If image_type is specified, use listImagesByType
             raw_images, lek = client.list_images_by_type(
@@ -61,35 +74,41 @@ def handler(event, _):
 
             # If limit is specified, split it between Photo and Scan
             if limit:
-                photo_limit = limit // 2
-                scan_limit = limit - photo_limit
+                photo_limit = (limit + 1) // 2
+                scan_limit = limit // 2
             else:
                 photo_limit = None
                 scan_limit = None
 
             # Fetch Photo images
-            photo_images, photo_lek = client.list_images_by_type(
-                image_type=ImageType.PHOTO.value,
-                limit=photo_limit,
-                last_evaluated_key=(
-                    last_evaluated_key.get("photo")
-                    if last_evaluated_key
-                    and isinstance(last_evaluated_key, dict)
-                    else None
-                ),
-            )
+            if photo_limit != 0:
+                photo_images, photo_lek = client.list_images_by_type(
+                    image_type=ImageType.PHOTO.value,
+                    limit=photo_limit,
+                    last_evaluated_key=(
+                        last_evaluated_key.get("photo")
+                        if last_evaluated_key
+                        and isinstance(last_evaluated_key, dict)
+                        else None
+                    ),
+                )
+            else:
+                photo_images, photo_lek = [], None
 
             # Fetch Scan images
-            scan_images, scan_lek = client.list_images_by_type(
-                image_type=ImageType.SCAN.value,
-                limit=scan_limit,
-                last_evaluated_key=(
-                    last_evaluated_key.get("scan")
-                    if last_evaluated_key
-                    and isinstance(last_evaluated_key, dict)
-                    else None
-                ),
-            )
+            if scan_limit != 0:
+                scan_images, scan_lek = client.list_images_by_type(
+                    image_type=ImageType.SCAN.value,
+                    limit=scan_limit,
+                    last_evaluated_key=(
+                        last_evaluated_key.get("scan")
+                        if last_evaluated_key
+                        and isinstance(last_evaluated_key, dict)
+                        else None
+                    ),
+                )
+            else:
+                scan_images, scan_lek = [], None
 
             # Combine images and remove duplicates
             # Use a set to track unique image_ids
