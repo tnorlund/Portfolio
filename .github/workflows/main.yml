@@ -77,11 +77,13 @@ jobs:
 
       - name: Setup Rust
         run: |
-          export PATH="$HOME/.cargo/bin:/usr/local/cargo/bin:$PATH"
           if ! command -v rustup >/dev/null 2>&1; then
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-            export PATH="$HOME/.cargo/bin:$PATH"
           fi
+          # rustup installs to ~/.cargo/bin; GitHub Actions starts each step
+          # with a fresh PATH, so persist it via GITHUB_PATH.
+          . "$HOME/.cargo/env"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           rustup update stable
           rustup default stable
           rustc --version
@@ -89,6 +91,7 @@ jobs:
 
       - name: Test receipt_dynamo_rs
         run: |
+          . "$HOME/.cargo/env"
           cargo test --manifest-path receipt_dynamo_rs/Cargo.toml --no-default-features
           cargo test --manifest-path receipt_dynamo_rs/Cargo.toml --no-default-features --release
 
