@@ -379,32 +379,13 @@ jobs:
             infra/components/test_route_lambda.py \
             scripts/test_capture_dev_api_profiles.py
 
-      - name: Deploy only the profiled dev functions
+      - name: Deploy dev stack
         working-directory: infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
           pulumi stack select tnorlund/portfolio/dev
-          mapfile -t TARGET_URNS < <(
-            pulumi stack export \
-              | jq -r '.deployment.resources[]
-                | select(.type == "aws:lambda/function:Function")
-                | select(
-                    (.urn | endswith("::api_images_GET_lambda")) or
-                    (.urn | endswith("::api_receipts_GET_lambda"))
-                  )
-                | .urn'
-          )
-          if [ "${#TARGET_URNS[@]}" -ne 2 ]; then
-            echo "Expected two target Lambda URNs, found ${#TARGET_URNS[@]}"
-            printf '%s\n' "${TARGET_URNS[@]}"
-            exit 1
-          fi
-          TARGET_ARGS=()
-          for urn in "${TARGET_URNS[@]}"; do
-            TARGET_ARGS+=(--target "$urn")
-          done
-          pulumi up --yes "${TARGET_ARGS[@]}"
+          pulumi up --yes
 
       - name: Capture handler and import profiles
         run: |
