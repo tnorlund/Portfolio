@@ -1,6 +1,6 @@
 # Makefile for Portfolio project
 
-.PHONY: help format lint test test-fast test-integration test-e2e pre-push install-hooks clean
+.PHONY: help format lint test test-fast test-rust bench-rust test-integration test-e2e pre-push install-hooks clean
 .PHONY: export-sample-data analytics-cache analytics-cache-validate
 .PHONY: analytics-cache-invalidate analytics-cache-serve analytics-cache-stop
 
@@ -11,6 +11,8 @@ help:
 	@echo "  make format          - Format all Python code with Black and isort"
 	@echo "  make lint            - Run all linters (format check + mypy + pylint)"
 	@echo "  make test-fast       - Run fast unit tests only"
+	@echo "  make test-rust       - Run receipt_dynamo_rs unit tests"
+	@echo "  make bench-rust      - Run receipt_dynamo_rs Criterion benches"
 	@echo "  make test            - Run all tests except e2e"
 	@echo "  make test-integration - Run integration tests"
 	@echo "  make test-e2e        - Run end-to-end tests (requires AWS)"
@@ -47,6 +49,14 @@ lint-quality:
 	cd receipt_dynamo && pylint receipt_dynamo || true
 
 lint: lint-format lint-types lint-quality
+
+test-rust:
+	@echo "Running receipt_dynamo_rs tests..."
+	cargo test --manifest-path receipt_dynamo_rs/Cargo.toml --no-default-features
+
+bench-rust:
+	@echo "Running receipt_dynamo_rs benches..."
+	cargo bench --manifest-path receipt_dynamo_rs/Cargo.toml --no-default-features
 
 test-fast:
 	@echo "Running fast unit tests..."
