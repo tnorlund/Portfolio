@@ -68,6 +68,24 @@ def test_extract_report_parses_lambda_report() -> None:
     }
 
 
+def test_extract_cold_report_finds_init_metadata() -> None:
+    messages = [
+        "REPORT RequestId: cold-request\tDuration: 210.0 ms\t"
+        "Memory Size: 1024 MB\tMax Memory Used: 98 MB\t"
+        "Init Duration: 320.5 ms",
+        "REPORT RequestId: warm-request\tDuration: 12.0 ms\t"
+        "Memory Size: 1024 MB\tMax Memory Used: 98 MB",
+    ]
+
+    assert capture.extract_cold_report(messages) == {
+        "request_id": "cold-request",
+        "duration_ms": 210.0,
+        "memory_size_mb": 1024,
+        "max_memory_mb": 98,
+        "init_duration_ms": 320.5,
+    }
+
+
 def test_percentile_uses_nearest_rank() -> None:
     assert capture._percentile([4.0, 1.0, 3.0, 2.0], 0.50) == 2.0
     assert capture._percentile([4.0, 1.0, 3.0, 2.0], 0.99) == 4.0

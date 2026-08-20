@@ -6,7 +6,7 @@ client composes every entity accessor and validates the table with
 and stable JSON conversion.
 """
 
-import boto3
+from botocore.session import Session
 
 CDN_FIELDS = (
     "sha256",
@@ -83,7 +83,7 @@ class ApiDynamoClient:
 
     def __init__(self, table_name, dynamodb_client=None):
         self.table_name = table_name
-        self._client = dynamodb_client or boto3.client(
+        self._client = dynamodb_client or Session().create_client(
             "dynamodb", region_name="us-east-1"
         )
 

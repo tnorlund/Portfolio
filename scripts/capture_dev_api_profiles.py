@@ -234,6 +234,24 @@ def extract_report(messages: list[str], request_id: str) -> dict[str, Any]:
     return {}
 
 
+def extract_cold_report(messages: list[str]) -> dict[str, Any]:
+    """Return the execution environment's REPORT line with INIT metadata."""
+    for message in messages:
+        match = REPORT_PATTERN.search(message)
+        init_match = INIT_DURATION_PATTERN.search(message)
+        if match is None or init_match is None:
+            continue
+        values = match.groupdict()
+        return {
+            "request_id": values["request_id"],
+            "duration_ms": float(values["duration"]),
+            "memory_size_mb": int(values["memory_size"]),
+            "max_memory_mb": int(values["max_memory"]),
+            "init_duration_ms": float(init_match.group("value")),
+        }
+    return {}
+
+
 def _percentile(values: list[float], percentile: float) -> float | None:
     if not values:
         return None
@@ -355,6 +373,7 @@ def capture_route(
         "profile_id": profile["profile_id"],
         "baseline": baseline,
         "cold_invocation": asdict(cold_timing),
+        "cold_report": extract_cold_report(messages),
         "invocation": asdict(timing),
         "report": extract_report(messages, profile["profile_id"]),
         "artifacts": {
