@@ -27,6 +27,12 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    ignore:
+      # pyspark deliberately mirrors EMR_SPARK_RELEASE/EMR_SPARK_VERSION in
+      # infra/components/emr_serverless_runtime.py (parity enforced by
+      # infra/components/test_emr_serverless_runtime.py). Bump all three
+      # together when AWS ships an EMR Serverless label with a newer Spark.
+      - dependency-name: "pyspark"
 
   # Monitor base-image tags in Dockerfiles throughout the repository.
   - package-ecosystem: "docker"
