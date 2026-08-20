@@ -241,6 +241,12 @@ def _emit_section_observability(
                 "verification_abstained_count"
             ),
         }
+        # Emitted only when Section KNN verification errored (e.g. Chroma
+        # quota/outage). The failure is swallowed upstream so the drain
+        # continues — this metric is the only alarmable signal that receipts
+        # are ingesting without verified sections (#1466).
+        if embedding_result.get("verification_error"):
+            metric_map["UploadLambdaSectionVerificationError"] = 1
         row_source = embedding_result.get("row_source")
         if row_source is not None:
             # 1 when ingest did not persist rows and the lines pipeline fell

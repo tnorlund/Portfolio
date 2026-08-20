@@ -353,6 +353,31 @@ upload_images = UploadImages(
     summary_queue_arn=chromadb_infrastructure.chromadb_queues.summary_queue_arn,
 )
 
+# Section KNN verification failures are swallowed per-receipt so the drain
+# continues, which let #1466 (Chroma 20-embedding query quota) strip section
+# verification from every ingest for a week with green pipelines. The upload
+# handler emits UploadLambdaSectionVerificationError (EMF, EmbeddingWorkflow
+# namespace) per receipt; any error is worth a notification.
+upload_section_verification_alarm = aws.cloudwatch.MetricAlarm(
+    "upload-section-verification-error",
+    alarm_description=(
+        "Upload pipeline Section KNN verification is erroring (e.g. Chroma "
+        "Cloud quota/outage) - receipts are ingesting without verified "
+        "sections and product/financial labeling degrades silently."
+    ),
+    metric_name="UploadLambdaSectionVerificationError",
+    namespace="EmbeddingWorkflow",
+    statistic="Sum",
+    period=300,
+    evaluation_periods=1,
+    threshold=0,
+    comparison_operator="GreaterThanThreshold",
+    alarm_actions=[notification_system.critical_error_topic_arn],
+    ok_actions=[notification_system.critical_error_topic_arn],
+    treat_missing_data="notBreaching",
+    tags={"environment": stack},
+)
+
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
 pulumi.export(
