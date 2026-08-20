@@ -35,6 +35,15 @@ describe("RotoscopePage", () => {
     expect(
       screen.getByRole("button", { name: "Show Sobel step" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show Score step" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show Local max step" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show Tiers step" }),
+    ).toBeInTheDocument();
   });
 
   it("steps through the pipeline one stage at a time", () => {
@@ -86,6 +95,16 @@ describe("RotoscopePage", () => {
     expect(
       screen.getByAltText("Low-frequency box blur of the grayscale portrait"),
     ).toHaveAttribute("src", "/rotoscope-blurred.webp");
+    fireEvent.click(screen.getByRole("button", { name: "Show Local max step" }));
+    expect(
+      screen.getByAltText("Shi-Tomasi score field stretched for display"),
+    ).toHaveAttribute("src", "/rotoscope-shi-tomasi.webp");
+    fireEvent.click(screen.getByRole("button", { name: "Show Tiers step" }));
+    expect(
+      screen.getByAltText(
+        "Focus map: blue periocular ellipse, orange body polygon, gray background",
+      ),
+    ).toHaveAttribute("src", "/rotoscope-focus.webp");
     expect(
       screen.getByAltText(/markers over a lightened portrait/),
     ).toHaveAttribute("src", "/rotoscope-markers.webp");

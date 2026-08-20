@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import PixelWalkthrough from "./PixelWalkthrough";
+import MarkerWalkthrough from "./MarkerWalkthrough";
 import styles from "../../styles/Rotoscope.module.css";
 
 /**
@@ -330,11 +331,12 @@ export default function RotoscopeExplainer() {
       <section className={styles.section}>
         <h2>Corners for markers, edges for the flood</h2>
         <p>
-          Open the Sobel step in the walkthrough. The same 3×3 Gx and Gy kernels
-          run on two different fields. On the difference image they feed
-          Shi–Tomasi corners. On the source gray they build the landscape the
-          flood will climb. Mixing those two inputs is the whole trick.
+          The Sobel step above ran Gx and Gy on two fields. This walkthrough
+          stays on the difference image: a 3×3 window of those gradients becomes
+          a Shi–Tomasi score. Only a local maximum in that score field can become
+          a marker, and then only inside its focus tier.
         </p>
+        <MarkerWalkthrough />
       </section>
 
       <section className={styles.section}>

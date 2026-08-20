@@ -74,8 +74,8 @@ export const preparePixelFields = (
   };
 };
 
-export const sampleField = (
-  field: Uint8Array,
+export const sampleNumeric = (
+  field: ArrayLike<number>,
   width: number,
   height: number,
   x: number,
@@ -86,8 +86,16 @@ export const sampleField = (
   return field[py * width + px];
 };
 
-export const neighborhood = (
+export const sampleField = (
   field: Uint8Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+): number => sampleNumeric(field, width, height, x, y);
+
+export const neighborhoodNumeric = (
+  field: ArrayLike<number>,
   width: number,
   height: number,
   x: number,
@@ -100,14 +108,21 @@ export const neighborhood = (
   for (let dy = -radius; dy <= radius; dy += 1) {
     const row: number[] = [];
     for (let dx = -radius; dx <= radius; dx += 1) {
-      row.push(
-        sampleField(field, width, height, cx + dx, cy + dy),
-      );
+      row.push(sampleNumeric(field, width, height, cx + dx, cy + dy));
     }
     cells.push(row);
   }
   return cells;
 };
+
+export const neighborhood = (
+  field: Uint8Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  radius: number,
+): number[][] => neighborhoodNumeric(field, width, height, x, y, radius);
 
 export interface SobelSample {
   gx: number;
