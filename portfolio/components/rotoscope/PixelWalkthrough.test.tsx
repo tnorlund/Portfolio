@@ -41,6 +41,8 @@ test("walks grayscale, blur, difference, and Sobel with kernel arithmetic", () =
   expect(screen.getByLabelText("Gray values under the kernel")).toBeInTheDocument();
   expect(screen.getByText(/3×3 box, radius 1/)).toBeInTheDocument();
   expect(screen.getByText(/Average the row, then the column/)).toBeInTheDocument();
+  expect(screen.getByText("Kernel")).toBeInTheDocument();
+  expect(screen.getByText("Neighborhood")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Show Difference step" }));
   expect(screen.getByLabelText("Gray, blur, and absolute difference")).toBeInTheDocument();

@@ -73,6 +73,35 @@ const Bar = ({
   </div>
 );
 
+const Meter = ({
+  label,
+  value,
+  color,
+  chip,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  chip?: string;
+}) => (
+  <div className={styles.walkMeter} data-chip={chip ? "true" : undefined}>
+    {chip ? (
+      <span className={styles.walkMeterChip} style={{ background: chip }} />
+    ) : null}
+    <span className={styles.walkMeterLabel}>{label}</span>
+    <span className={styles.walkMeterTrack} aria-hidden="true">
+      <span
+        className={styles.walkMeterFill}
+        style={{
+          width: `${Math.round((value / 255) * 100)}%`,
+          background: color,
+        }}
+      />
+    </span>
+    <span className={styles.walkMeterValue}>{value}</span>
+  </div>
+);
+
 const KernelGrid = ({
   values,
   label,
@@ -81,48 +110,38 @@ const KernelGrid = ({
   values: ReadonlyArray<ReadonlyArray<number>>;
   label: string;
   mode?: "weights" | "luma";
-}) => (
-  <div
-    className={styles.walkKernel}
-    aria-label={label}
-    data-large={mode === "luma" && values.length > 3 ? "true" : undefined}
-    style={{ gridTemplateColumns: `repeat(${values[0]?.length ?? 1}, minmax(0, 1fr))` }}
-  >
-    {values.map((row, y) =>
-      row.map((value, x) => (
-        <span
-          key={`${label}-${y}-${x}`}
-          className={styles.walkKernelCell}
-          data-center={
-            y === Math.floor(values.length / 2) && x === Math.floor(row.length / 2)
-              ? "true"
-              : undefined
-          }
-          style={
-            mode === "luma"
-              ? { background: `rgb(${value}, ${value}, ${value})` }
-              : undefined
-          }
-        >
-          {mode === "luma" && values.length > 3 ? "" : value}
-        </span>
-      )),
-    )}
-  </div>
-);
-
-const Swatch = ({
-  color,
-  label,
-}: {
-  color: string;
-  label: string;
-}) => (
-  <div className={styles.walkSwatch}>
-    <span className={styles.walkSwatchChip} style={{ background: color }} />
-    <span>{label}</span>
-  </div>
-);
+}) => {
+  const large = values.length > 3;
+  return (
+    <div
+      className={styles.walkKernel}
+      aria-label={label}
+      data-large={large ? "true" : undefined}
+      style={{ gridTemplateColumns: `repeat(${values[0]?.length ?? 1}, minmax(0, 1fr))` }}
+    >
+      {values.map((row, y) =>
+        row.map((value, x) => (
+          <span
+            key={`${label}-${y}-${x}`}
+            className={styles.walkKernelCell}
+            data-center={
+              y === Math.floor(values.length / 2) && x === Math.floor(row.length / 2)
+                ? "true"
+                : undefined
+            }
+            style={
+              mode === "luma"
+                ? { background: `rgb(${value}, ${value}, ${value})` }
+                : undefined
+            }
+          >
+            {large ? "" : value}
+          </span>
+        )),
+      )}
+    </div>
+  );
+};
 
 const LeftFrame = ({
   src,
@@ -292,17 +311,28 @@ export default function PixelWalkthrough({
       case "gray":
         return (
           <>
-            <Swatch color={`rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})`} label="pulled pixel" />
-            <div className={styles.walkBars} aria-label="Red, green, and blue of the pixel">
-              <Bar label="R" value={rgb[0]} color="#d32f2f" />
-              <Bar label="G" value={rgb[1]} color="#2e7d32" />
-              <Bar label="B" value={rgb[2]} color="#1565c0" />
+            <div className={styles.walkLead}>
+              <span
+                className={styles.walkMeterChip}
+                style={{ background: `rgb(${rgb[0]}, ${rgb[1]}, ${rgb[2]})` }}
+              />
+              <span>pulled pixel</span>
+            </div>
+            <div className={styles.walkMeters} aria-label="Red, green, and blue of the pixel">
+              <Meter label="R" value={rgb[0]} color="#d32f2f" />
+              <Meter label="G" value={rgb[1]} color="#2e7d32" />
+              <Meter label="B" value={rgb[2]} color="#1565c0" />
             </div>
             <p className={styles.walkFormula}>
               (77R + 150G + 29B + 128) ≫ 8
             </p>
-            <div className={styles.walkBars} aria-label="Resulting grayscale value">
-              <Bar label="Gray" value={gray} color="#111" />
+            <div className={styles.walkMeters} aria-label="Resulting grayscale value">
+              <Meter
+                label="Gray"
+                value={gray}
+                color="#111"
+                chip={`rgb(${gray}, ${gray}, ${gray})`}
+              />
             </div>
           </>
         );
@@ -311,33 +341,56 @@ export default function PixelWalkthrough({
           <>
             <p className={styles.walkFormula}>
               {blurRadius * 2 + 1}×{blurRadius * 2 + 1} box, radius {blurRadius}.
-              Average the row, then the column. Each weight is 1.
+              Average the row, then the column.
             </p>
-            <KernelGrid values={kernelOnes} label="Box-blur kernel" />
-            <KernelGrid
-              values={blurWindow}
-              label="Gray values under the kernel"
-              mode="luma"
-            />
-            <div className={styles.walkBars} aria-label="Blurred grayscale value">
-              <Bar label="Mean" value={blurred} color="#111" />
+            <div className={styles.walkKernelPair}>
+              <div>
+                <p className={styles.walkKernelTitle}>Kernel</p>
+                <KernelGrid values={kernelOnes} label="Box-blur kernel" />
+              </div>
+              <div>
+                <p className={styles.walkKernelTitle}>Neighborhood</p>
+                <KernelGrid
+                  values={blurWindow}
+                  label="Gray values under the kernel"
+                  mode="luma"
+                />
+              </div>
+            </div>
+            <div className={styles.walkMeters} aria-label="Blurred grayscale value">
+              <Meter
+                label="Mean"
+                value={blurred}
+                color="#111"
+                chip={`rgb(${blurred}, ${blurred}, ${blurred})`}
+              />
             </div>
           </>
         );
       case "difference":
         return (
           <>
-            <div className={styles.walkPair}>
-              <Swatch color={`rgb(${gray}, ${gray}, ${gray})`} label={`gray ${gray}`} />
-              <span className={styles.walkOperator} aria-hidden="true">−</span>
-              <Swatch color={`rgb(${blurred}, ${blurred}, ${blurred})`} label={`blur ${blurred}`} />
+            <div
+              className={styles.walkMeters}
+              aria-label="Gray, blur, and absolute difference"
+            >
+              <Meter
+                label="Gray"
+                value={gray}
+                color="#444"
+                chip={`rgb(${gray}, ${gray}, ${gray})`}
+              />
+              <Meter
+                label="Blur"
+                value={blurred}
+                color="#999"
+                chip={`rgb(${blurred}, ${blurred}, ${blurred})`}
+              />
+              <Meter label="|Δ|" value={difference} color="#111" />
             </div>
-            <div className={styles.walkBars} aria-label="Gray, blur, and absolute difference">
-              <Bar label="Gray" value={gray} color="#444" />
-              <Bar label="Blur" value={blurred} color="#999" />
-              <Bar label="|Δ|" value={difference} color="#111" />
-            </div>
-            <p className={styles.walkFormula}>|{gray} − {blurred}| = {difference}</p>
+            <p className={styles.walkFormula}>
+              |{gray} − {blurred}| = {difference}
+            </p>
           </>
         );
       case "sobel":
@@ -444,7 +497,7 @@ export default function PixelWalkthrough({
         ))}
       </ol>
       <div className={styles.walkLayout}>
-        <div className={styles.walkImages}>
+        <div className={styles.walkImages} data-pair={frames.length > 1 ? "true" : undefined}>
           {frames.map((frame) => (
             <LeftFrame
               key={`${step}-${frame.src}`}
