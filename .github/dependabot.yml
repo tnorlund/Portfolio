@@ -33,6 +33,17 @@ updates:
       # infra/components/test_emr_serverless_runtime.py). Bump all three
       # together when AWS ships an EMR Serverless label with a newer Spark.
       - dependency-name: "pyspark"
+      # mcp is pinned <2: receipt_logo/receipt_logo/mcp_server.py and
+      # scripts/receipt_mcp_server.py use the mcp 1.x low-level Server API,
+      # which breaks under the mcp 2.x rework. Drop after migrating both
+      # servers to the v2 API.
+      - dependency-name: "mcp"
+        update-types: ["version-update:semver-major"]
+      # torch is capped <=2.7.0 in receipt_layoutlm: coremltools 9.0 (latest)
+      # validates PyTorch only through 2.7.0 and the [coreml] extra has no
+      # torch pin of its own. Raise the cap only alongside a coremltools
+      # release that certifies a newer torch.
+      - dependency-name: "torch"
 
   # Monitor base-image tags in Dockerfiles throughout the repository.
   - package-ecosystem: "docker"
