@@ -2,6 +2,7 @@ import json
 import logging
 import os
 
+from _lambda_profiler import profile_handler
 from receipt_dynamo import DynamoClient  # type: ignore
 
 logger = logging.getLogger()
@@ -11,6 +12,7 @@ logger.setLevel(logging.INFO)
 dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
 
 
+@profile_handler
 def handler(event, _):
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()

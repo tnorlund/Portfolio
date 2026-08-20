@@ -55,6 +55,7 @@ resources = create_route_lambda(
         layers=(dynamo_layer.arn,),
         memory_size=1024,
         timeout=120,
+        enable_dev_profiling=True,
     )
 )
 

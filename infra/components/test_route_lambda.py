@@ -179,6 +179,36 @@ def test_create_route_lambda_with_inline_policy_and_named_log_group(
     assert resources.policy_attachment is None
 
 
+def test_create_route_lambda_enables_dev_profiling(
+    mocked_resources: CreatedResources,
+) -> None:
+    definition = route_lambda.RouteLambdaDefinition(
+        role_name="api_images_lambda_role",
+        basic_execution_attachment_name="api_images_basic_execution",
+        function_name="api_images_GET_lambda",
+        log_group_name="api_images_log_group",
+        handler_directory="/tmp/handler",
+        environment={"TABLE_NAME": "table-name"},
+        enable_dev_profiling=True,
+    )
+
+    route_lambda.create_route_lambda(definition)
+
+    function_args = mocked_resources["functions"][0][1]
+    assert function_args["environment"] == {
+        "variables": {
+            "TABLE_NAME": "table-name",
+            "LAMBDA_PROFILE_ENABLED": "1",
+            "PYTHONPROFILEIMPORTTIME": "2",
+        }
+    }
+    code_assets = function_args["code"].assets
+    assert set(code_assets) == {".", "_lambda_profiler.py"}
+    assert code_assets["_lambda_profiler.py"].path == (
+        route_lambda.PROFILER_ASSET_PATH
+    )
+
+
 @pytest.mark.parametrize(
     ("changes", "message"),
     [

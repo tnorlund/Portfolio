@@ -3,6 +3,7 @@ import logging
 import os
 import random
 
+from _lambda_profiler import profile_handler
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ImageType
 
@@ -12,6 +13,7 @@ logger.setLevel(logging.INFO)
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
 
 
+@profile_handler
 def handler(event, _):
     logger.info("Received event: %s", event)
     http_method = event["requestContext"]["http"]["method"].upper()
