@@ -242,8 +242,10 @@ export default function PixelWalkthrough({
   skipIntro?: boolean;
 }) {
   const { ref, inView } = useInView({ threshold: 0.35, fallbackInView: true });
-  const compact = useMedia(MOBILE_QUERY);
+  const [mounted, setMounted] = useState(false);
+  const compactQuery = useMedia(MOBILE_QUERY);
   const reducedMotion = useMedia(REDUCE_QUERY);
+  const compact = mounted && compactQuery;
   const skipZoom = skipIntro ?? Boolean(injected);
   const [fields, setFields] = useState<PixelFields | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -251,7 +253,7 @@ export default function PixelWalkthrough({
   const [picked, setPicked] = useState<{ x: number; y: number } | null>(null);
   const [paused, setPaused] = useState(false);
   const [zoomPhase, setZoomPhase] = useState<ZoomPhase>(() =>
-    skipZoom || reducedMotion ? "pixels" : "photo",
+    skipZoom ? "pixels" : "photo",
   );
   const resumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const zoomToken = useRef(0);
@@ -324,6 +326,11 @@ export default function PixelWalkthrough({
   );
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
     if (skipZoom || reducedMotion) {
       setZoomPhase("pixels");
       return;
@@ -333,7 +340,7 @@ export default function PixelWalkthrough({
     return () => {
       zoomToken.current += 1;
     };
-  }, [inView, stepIndex, playZoom, reducedMotion, skipZoom]);
+  }, [mounted, inView, playZoom, reducedMotion, skipZoom]);
 
   const playing =
     inView && !paused && !reducedMotion && !picked && zoomPhase === "pixels";
