@@ -292,5 +292,5 @@ def test_canceling_batch_keeps_claims_until_provider_is_terminal() -> None:
         "batch-a", "openai-a", "canceling", FakeDynamo()
     )
 
-    assert summary.status == BatchStatus.CANCELING
+    assert summary.status == BatchStatus.CANCELING.value
     assert result["marked_for_retry"] == 0

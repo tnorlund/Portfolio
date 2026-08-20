@@ -19,6 +19,10 @@ import pulumi
 import pulumi_aws as aws
 from pulumi import ComponentResource, Output, ResourceOptions
 
+# Process-local singleton so accidental double calls (or dual import paths)
+# cannot RegisterResource the same URN twice in one program run.
+_shared_instance: "SharedLabelEvaluatorResources | None" = None
+
 
 class SharedLabelEvaluatorResources(ComponentResource):
     """
@@ -133,14 +137,31 @@ def create_shared_label_evaluator_resources(
 ) -> SharedLabelEvaluatorResources:
     """Factory function to create shared label evaluator resources.
 
+    Idempotent within a process: a second call returns the same instance
+    instead of registering a duplicate URN (see #1050). Callers in
+    ``infra/__main__.py`` must still invoke this **early** in program
+    evaluation so ``pulumi --target`` does not race a late RegisterResource
+    against an engine-side ``same`` step from state.
+
     Args:
-        opts: Pulumi resource options
+        opts: Pulumi resource options (honored only on first construction)
 
     Returns:
         SharedLabelEvaluatorResources component with batch and viz-cache buckets
     """
+    global _shared_instance
+    if _shared_instance is not None:
+        return _shared_instance
+
     stack = pulumi.get_stack()
-    return SharedLabelEvaluatorResources(
+    _shared_instance = SharedLabelEvaluatorResources(
         f"label-evaluator-{stack}",
         opts=opts,
     )
+    return _shared_instance
+
+
+def _reset_shared_label_evaluator_resources_for_tests() -> None:
+    """Clear the process singleton (unit tests only)."""
+    global _shared_instance
+    _shared_instance = None
