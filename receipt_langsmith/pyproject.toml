@@ -30,7 +30,7 @@ dependencies = [
 # Local-only Spark dependencies. EMR supplies both PySpark and PyArrow natively;
 # the deployment archive installs only the package's base dependencies.
 pyspark = [
-    "pyspark==4.0.2",
+    "pyspark==4.2.0",
     "pyarrow>=14.0.0",  # Required by parsers/parquet.py
 ]
 
