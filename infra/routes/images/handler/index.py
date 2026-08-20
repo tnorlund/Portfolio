@@ -3,22 +3,13 @@ import logging
 import os
 import random
 
+from _api_dynamo import get_api_dynamo_client
 from _lambda_profiler import profile_handler
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ImageType
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
-_dynamo_client = None
-
-
-def _get_dynamo_client():
-    global _dynamo_client
-    if _dynamo_client is None:
-        _dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
-    return _dynamo_client
 
 
 @profile_handler
@@ -52,7 +43,7 @@ def handler(event, _):
                 logger.error("Error decoding lastEvaluatedKey; ignoring it.")
                 last_evaluated_key = None
 
-        client = _get_dynamo_client()
+        client = get_api_dynamo_client(DYNAMODB_TABLE_NAME)
         if image_type:
             # If image_type is specified, use listImagesByType
             raw_images, lek = client.list_images_by_type(
@@ -64,8 +55,8 @@ def handler(event, _):
             seen_ids = set()
             images = []
             for img in raw_images:
-                if img.image_id not in seen_ids:
-                    seen_ids.add(img.image_id)
+                if img["image_id"] not in seen_ids:
+                    seen_ids.add(img["image_id"])
                     images.append(img)
         else:
             # If no image_type, fetch equal distribution of Photo and Scan
@@ -83,7 +74,7 @@ def handler(event, _):
             # Fetch Photo images
             if photo_limit != 0:
                 photo_images, photo_lek = client.list_images_by_type(
-                    image_type=ImageType.PHOTO.value,
+                    image_type="PHOTO",
                     limit=photo_limit,
                     last_evaluated_key=(
                         last_evaluated_key.get("photo")
@@ -98,7 +89,7 @@ def handler(event, _):
             # Fetch Scan images
             if scan_limit != 0:
                 scan_images, scan_lek = client.list_images_by_type(
-                    image_type=ImageType.SCAN.value,
+                    image_type="SCAN",
                     limit=scan_limit,
                     last_evaluated_key=(
                         last_evaluated_key.get("scan")
@@ -116,8 +107,8 @@ def handler(event, _):
             unique_images = []
 
             for img in photo_images + scan_images:
-                if img.image_id not in seen_ids:
-                    seen_ids.add(img.image_id)
+                if img["image_id"] not in seen_ids:
+                    seen_ids.add(img["image_id"])
                     unique_images.append(img)
 
             # Shuffle for mixed distribution

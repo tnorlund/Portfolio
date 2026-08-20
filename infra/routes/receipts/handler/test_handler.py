@@ -28,10 +28,17 @@ def handler_module(monkeypatch):
 
     profiler = ModuleType("_lambda_profiler")
     profiler.profile_handler = lambda handler: handler
-    dynamo = ModuleType("receipt_dynamo")
-    dynamo.DynamoClient = FakeDynamoClient
+    clients = {}
+    api_dynamo = ModuleType("_api_dynamo")
+
+    def get_api_dynamo_client(table_name):
+        if table_name not in clients:
+            clients[table_name] = FakeDynamoClient(table_name)
+        return clients[table_name]
+
+    api_dynamo.get_api_dynamo_client = get_api_dynamo_client
     monkeypatch.setitem(sys.modules, "_lambda_profiler", profiler)
-    monkeypatch.setitem(sys.modules, "receipt_dynamo", dynamo)
+    monkeypatch.setitem(sys.modules, "_api_dynamo", api_dynamo)
 
     path = Path(__file__).with_name("index.py")
     spec = importlib.util.spec_from_file_location("receipts_handler", path)

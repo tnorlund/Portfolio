@@ -2,22 +2,14 @@ import json
 import logging
 import os
 
+from _api_dynamo import get_api_dynamo_client
 from _lambda_profiler import profile_handler
-from receipt_dynamo import DynamoClient  # type: ignore
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Get the environment variables
 dynamodb_table_name = os.environ["DYNAMODB_TABLE_NAME"]
-_dynamo_client = None
-
-
-def _get_dynamo_client():
-    global _dynamo_client
-    if _dynamo_client is None:
-        _dynamo_client = DynamoClient(dynamodb_table_name)
-    return _dynamo_client
 
 
 @profile_handler
@@ -47,7 +39,7 @@ def handler(event, _):
                 logger.error("Error decoding lastEvaluatedKey; ignoring it.")
                 lastEvaluatedKey = None
 
-        client = _get_dynamo_client()
+        client = get_api_dynamo_client(dynamodb_table_name)
         # Call listReceipts with the provided parameters.
         receipts, lek = client.list_receipts(
             limit=limit, last_evaluated_key=lastEvaluatedKey

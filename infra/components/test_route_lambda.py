@@ -190,6 +190,7 @@ def test_create_route_lambda_enables_dev_profiling(
         handler_directory="/tmp/handler",
         environment={"TABLE_NAME": "table-name"},
         enable_dev_profiling=True,
+        extra_code_assets={"_api_dynamo.py": "/tmp/api_dynamo.py"},
     )
 
     route_lambda.create_route_lambda(definition)
@@ -203,7 +204,12 @@ def test_create_route_lambda_enables_dev_profiling(
         }
     }
     code_assets = function_args["code"].assets
-    assert set(code_assets) == {".", "_lambda_profiler.py"}
+    assert set(code_assets) == {
+        ".",
+        "_api_dynamo.py",
+        "_lambda_profiler.py",
+    }
+    assert code_assets["_api_dynamo.py"].path == "/tmp/api_dynamo.py"
     assert code_assets["_lambda_profiler.py"].path == (
         route_lambda.PROFILER_ASSET_PATH
     )

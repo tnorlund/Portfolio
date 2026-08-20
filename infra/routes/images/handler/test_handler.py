@@ -4,17 +4,9 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 
 import pytest
-
-
-class FakeImage:
-    def __init__(self, image_id):
-        self.image_id = image_id
-
-    def __iter__(self):
-        yield "image_id", self.image_id
 
 
 class FakeDynamoClient:
@@ -27,7 +19,7 @@ class FakeDynamoClient:
 
     def list_images_by_type(self, **kwargs):
         self.calls.append(kwargs)
-        return ([FakeImage(kwargs["image_type"])], None)
+        return ([{"image_id": kwargs["image_type"]}], None)
 
 
 @pytest.fixture
@@ -37,16 +29,17 @@ def handler_module(monkeypatch):
 
     profiler = ModuleType("_lambda_profiler")
     profiler.profile_handler = lambda handler: handler
-    dynamo = ModuleType("receipt_dynamo")
-    dynamo.DynamoClient = FakeDynamoClient
-    constants = ModuleType("receipt_dynamo.constants")
-    constants.ImageType = SimpleNamespace(
-        PHOTO=SimpleNamespace(value="PHOTO"),
-        SCAN=SimpleNamespace(value="SCAN"),
-    )
+    clients = {}
+    api_dynamo = ModuleType("_api_dynamo")
+
+    def get_api_dynamo_client(table_name):
+        if table_name not in clients:
+            clients[table_name] = FakeDynamoClient(table_name)
+        return clients[table_name]
+
+    api_dynamo.get_api_dynamo_client = get_api_dynamo_client
     monkeypatch.setitem(sys.modules, "_lambda_profiler", profiler)
-    monkeypatch.setitem(sys.modules, "receipt_dynamo", dynamo)
-    monkeypatch.setitem(sys.modules, "receipt_dynamo.constants", constants)
+    monkeypatch.setitem(sys.modules, "_api_dynamo", api_dynamo)
 
     path = Path(__file__).with_name("index.py")
     spec = importlib.util.spec_from_file_location("images_handler", path)

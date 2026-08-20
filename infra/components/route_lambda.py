@@ -19,6 +19,9 @@ BASIC_EXECUTION_POLICY_ARN = (
 PROFILER_ASSET_PATH = os.path.join(
     os.path.dirname(__file__), "lambda_profiler.py"
 )
+API_DYNAMO_ASSET_PATH = os.path.join(
+    os.path.dirname(__file__), "api_dynamo.py"
+)
 
 LAMBDA_ASSUME_ROLE_POLICY = json.dumps(
     {
@@ -79,6 +82,7 @@ class RouteLambdaDefinition:
     reserved_concurrent_executions: int | None = None
     function_options: pulumi.ResourceOptions | None = None
     enable_dev_profiling: bool = False
+    extra_code_assets: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -159,6 +163,12 @@ def create_route_lambda(
     code_assets: dict[str, pulumi.Asset | pulumi.Archive] = {
         ".": pulumi.FileArchive(definition.handler_directory)
     }
+    code_assets.update(
+        {
+            archive_path: pulumi.FileAsset(source_path)
+            for archive_path, source_path in definition.extra_code_assets.items()
+        }
+    )
     environment = dict(definition.environment)
     if definition.enable_dev_profiling:
         code_assets["_lambda_profiler.py"] = pulumi.FileAsset(

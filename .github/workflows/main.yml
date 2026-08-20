@@ -375,6 +375,7 @@ jobs:
       - name: Test profiling instrumentation
         run: |
           python -m pytest -q \
+            infra/components/test_api_dynamo.py \
             infra/components/test_lambda_profiler.py \
             infra/components/test_route_lambda.py \
             infra/routes/images/handler/test_handler.py \
