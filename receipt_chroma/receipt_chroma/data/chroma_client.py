@@ -214,6 +214,39 @@ def _retry_with_backoff(
     raise last_exc  # type: ignore[misc]
 
 
+# Chroma Cloud rejects Query calls with more than 20 query embeddings
+# ("Quota exceeded: 'Number of query embeddings'"), so larger batches must
+# be split into sequential requests and their results merged.
+MAX_QUERY_EMBEDDINGS = 20
+
+
+def _merge_query_results(
+    results: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Concatenate per-query result lists from chunked query calls.
+
+    Chroma query results carry one outer entry per query embedding in keys
+    like ``ids``/``distances``/``metadatas``/``embeddings``/``documents``;
+    merging preserves query order. Non-sequence values (and ``included``,
+    which is identical across chunks) are taken from the first chunk.
+    """
+    if len(results) == 1:
+        return results[0]
+    merged: Dict[str, Any] = {}
+    for result in results:
+        for key, value in result.items():
+            if key == "included" or value is None:
+                merged.setdefault(key, value)
+                continue
+            # list(...) also normalizes numpy arrays of per-query rows
+            chunk_rows = list(value)
+            if isinstance(merged.get(key), list):
+                merged[key].extend(chunk_rows)
+            else:
+                merged[key] = chunk_rows
+    return merged
+
+
 class ChromaCollection(Protocol):
     """Protocol for ChromaDB collection interface.
 
@@ -759,6 +792,10 @@ class ChromaClient:
         """
         Query vectors from a collection.
 
+        Batches of more than MAX_QUERY_EMBEDDINGS embeddings are split into
+        sequential requests and the per-query result lists concatenated, so
+        callers see one result regardless of batch size.
+
         Args:
             collection_name: Name of the collection
             query_embeddings: Optional query embedding vectors
@@ -780,21 +817,30 @@ class ChromaClient:
         if where:
             query_args["where"] = where
 
-        if query_embeddings is not None:
-            query_args["query_embeddings"] = query_embeddings
-        elif query_texts is not None:
-            if self.mode == "read":
-                raise ValueError(
-                    "Text queries require write mode with embedding function"
-                )
-            query_args["query_texts"] = query_texts
-        else:
+        if query_embeddings is None and query_texts is None:
             raise ValueError(
                 "Either query_embeddings or query_texts must be provided"
             )
+        if query_embeddings is None and self.mode == "read":
+            raise ValueError(
+                "Text queries require write mode with embedding function"
+            )
 
-        result = _retry_with_backoff(collection.query, **query_args)
-        return result  # type: ignore[no-any-return]
+        batch_key, batch = (
+            ("query_embeddings", query_embeddings)
+            if query_embeddings is not None
+            else ("query_texts", query_texts)
+        )
+        results = []
+        for start in range(0, len(batch), MAX_QUERY_EMBEDDINGS):
+            chunk_args = dict(query_args)
+            chunk_args[batch_key] = batch[
+                start : start + MAX_QUERY_EMBEDDINGS
+            ]
+            results.append(
+                _retry_with_backoff(collection.query, **chunk_args)
+            )
+        return _merge_query_results(results)
 
     def get(
         self,

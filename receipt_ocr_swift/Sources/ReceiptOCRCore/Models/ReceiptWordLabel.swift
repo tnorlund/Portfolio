@@ -40,6 +40,19 @@ public struct ReceiptWordLabel: Equatable {
         "WEBSITE",
     ]
 
+    /// Model-emitted labels the cloud pipeline reclassifies rather than
+    /// stores as-is. AMOUNT (merged-amount models) is deleted downstream
+    /// after amount_classifier / the LLM validator replace it with a
+    /// specific financial label; dropping it here instead strips every
+    /// currency anchor at ingest (#1466).
+    private static let reclassifiedLabels: Set<String> = ["AMOUNT"]
+
+    /// Canonical-name aliases, mirroring NON_CORE_LABEL_ALIASES in
+    /// receipt_dynamo.constants.
+    private static let labelAliases: [String: String] = [
+        "ADDRESS": "ADDRESS_LINE"
+    ]
+
     public let imageId: String
     public let receiptId: Int
     public let lineId: Int
@@ -198,11 +211,25 @@ public struct ReceiptWordLabel: Equatable {
                 let rawLabel = linePred.labels[wordIndex]
                 let confidence = linePred.confidences[wordIndex]
 
-                // Strip B-/I- prefix and keep only canonical CORE_LABELS.
-                let strippedLabel = stripBIOPrefix(rawLabel).uppercased()
+                // Strip B-/I- prefix and keep only canonical CORE_LABELS,
+                // plus the labels the cloud pipeline resolves itself:
+                // merged-amount models (layoutlm-v31+) emit AMOUNT for every
+                // currency word and ADDRESS instead of ADDRESS_LINE. AMOUNT
+                // must survive to DynamoDB — amount_classifier and the grok
+                // validator reclassify it into LINE_TOTAL/SUBTOTAL/TAX/
+                // GRAND_TOTAL, and those anchors gate all line-item labeling
+                // downstream (#1466). ADDRESS maps to its canonical alias,
+                // mirroring NON_CORE_LABEL_ALIASES in receipt_dynamo.
+                var strippedLabel = stripBIOPrefix(rawLabel).uppercased()
+                if let alias = labelAliases[strippedLabel] {
+                    strippedLabel = alias
+                }
 
                 // Skip "O" labels (Other/None) - they don't provide meaningful labeling
-                if strippedLabel == "O" || !coreLabels.contains(strippedLabel) {
+                if strippedLabel == "O"
+                    || !(coreLabels.contains(strippedLabel)
+                        || reclassifiedLabels.contains(strippedLabel))
+                {
                     continue
                 }
 
