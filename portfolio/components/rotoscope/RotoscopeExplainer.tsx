@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
+import PixelWalkthrough from "./PixelWalkthrough";
 import styles from "../../styles/Rotoscope.module.css";
 
 /**
@@ -13,12 +14,7 @@ const STILL_WIDTH = 960;
 const STILL_HEIGHT = 720;
 
 const STILLS = {
-  gray: "/rotoscope-gray.webp",
-  blurred: "/rotoscope-blurred.webp",
   difference: "/rotoscope-difference.webp",
-  shiTomasi: "/rotoscope-shi-tomasi.webp",
-  differenceEdges: "/rotoscope-difference-edges.webp",
-  watershedGradient: "/rotoscope-watershed-gradient.webp",
   focus: "/rotoscope-focus.webp",
   markers: "/rotoscope-markers.webp",
   basins: "/rotoscope-basins.webp",
@@ -219,51 +215,6 @@ function PipelineOverview() {
   );
 }
 
-function DifferenceFigure() {
-  return (
-    <div className={styles.equation} aria-label="Grayscale minus blurred copy equals difference">
-      <figure className={styles.processPanel}>
-        <figcaption>Grayscale</figcaption>
-        <Still src={STILLS.gray} alt="Rec. 601 grayscale of the source portrait" />
-      </figure>
-      <span className={styles.operator} aria-hidden="true">−</span>
-      <figure className={styles.processPanel}>
-        <figcaption>Box blur</figcaption>
-        <Still src={STILLS.blurred} alt="Low-frequency box blur of the grayscale portrait" />
-      </figure>
-      <span className={styles.operator} aria-hidden="true">=</span>
-      <figure className={styles.processPanel}>
-        <figcaption>Difference</figcaption>
-        <Still
-          src={STILLS.difference}
-          alt="Absolute difference between grayscale and its blur, stretched for display"
-        />
-      </figure>
-    </div>
-  );
-}
-
-function GradientCompare() {
-  return (
-    <div className={styles.compare} aria-label="Two Sobel landscapes from different inputs">
-      <figure>
-        <figcaption>Corners (Shi–Tomasi)</figcaption>
-        <Still
-          src={STILLS.shiTomasi}
-          alt="Shi-Tomasi minimum-eigenvalue scores computed on the difference image"
-        />
-      </figure>
-      <figure>
-        <figcaption>Flood landscape</figcaption>
-        <Still
-          src={STILLS.watershedGradient}
-          alt="Sobel magnitude of the source grayscale, used as the watershed landscape"
-        />
-      </figure>
-    </div>
-  );
-}
-
 function FocusFigure() {
   return (
     <figure className={styles.focusFigure}>
@@ -368,28 +319,22 @@ export default function RotoscopeExplainer() {
       <section className={styles.section}>
         <h2>Start with what changed</h2>
         <p>
-          The engine never scores the color photo directly. It converts the
-          portrait to Rec. 601 grayscale, then subtracts a box blur of that gray
-          field. The original paper compared a frame to a clean background; the
-          blur stands in for that missing plate. Flat regions cancel. Texture
-          and edges stay bright. That absolute-difference map is what Shi–Tomasi
-          will see.
+          The engine never scores the color photo directly. Click a pixel, or
+          watch the sampler move. Each step on the right is the arithmetic for
+          that one sample: RGB becomes Rec. 601 gray, a box kernel averages the
+          neighborhood, then gray minus blur leaves texture.
         </p>
-        <DifferenceFigure />
+        <PixelWalkthrough />
       </section>
 
       <section className={styles.section}>
         <h2>Corners for markers, edges for the flood</h2>
         <p>
-          Two different 3×3 Sobel landscapes are built from that grayscale chain.
-          On the left, Shi–Tomasi’s minimum eigenvalue is computed on the
-          difference image: pixels that are corners in two directions score
-          high, which is why irises, teeth, and hair light up. On the right,
-          Sobel magnitude of the source gray is the watershed landscape: floods
-          walk through smooth skin and stall at strong edges. Mixing those two
-          inputs is the whole trick.
+          Open the Sobel step in the walkthrough. The same 3×3 Gx and Gy kernels
+          run on two different fields. On the difference image they feed
+          Shi–Tomasi corners. On the source gray they build the landscape the
+          flood will climb. Mixing those two inputs is the whole trick.
         </p>
-        <GradientCompare />
       </section>
 
       <section className={styles.section}>

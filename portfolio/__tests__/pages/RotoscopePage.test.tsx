@@ -12,7 +12,7 @@ describe("RotoscopePage", () => {
     expect(
       screen.getByRole("heading", { name: "How the rotoscope works" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(2);
+    expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Features" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Watershed" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Average color" })).toBeInTheDocument();
@@ -29,6 +29,12 @@ describe("RotoscopePage", () => {
     expect(
       screen.getByRole("heading", { name: "Corners for markers, edges for the flood" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show Grayscale step" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show Sobel step" }),
+    ).toBeInTheDocument();
   });
 
   it("steps through the pipeline one stage at a time", () => {
@@ -37,7 +43,7 @@ describe("RotoscopePage", () => {
       render(<RotoscopePage />);
 
       // Only the active stage is announced; the dots navigate.
-      expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(2);
+      expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(1);
       expect(
         screen.queryByText("Watershed", { selector: "figcaption" }),
       ).not.toBeInTheDocument();
@@ -63,7 +69,7 @@ describe("RotoscopePage", () => {
       act(() => {
         jest.advanceTimersByTime(3200);
       });
-      expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(2);
+      expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(1);
     } finally {
       jest.useRealTimers();
     }
@@ -72,21 +78,14 @@ describe("RotoscopePage", () => {
   it("illustrates every stage with real stills from the portrait pass", () => {
     render(<RotoscopePage />);
 
+    fireEvent.click(screen.getByRole("button", { name: "Show Box blur step" }));
     expect(
       screen.getByAltText("Rec. 601 grayscale of the source portrait"),
     ).toHaveAttribute("src", "/rotoscope-gray.webp");
+    fireEvent.click(screen.getByRole("button", { name: "Show Difference step" }));
     expect(
       screen.getByAltText("Low-frequency box blur of the grayscale portrait"),
     ).toHaveAttribute("src", "/rotoscope-blurred.webp");
-    expect(
-      screen.getByAltText(/Shi-Tomasi minimum-eigenvalue scores/),
-    ).toHaveAttribute("src", "/rotoscope-shi-tomasi.webp");
-    expect(
-      screen.getByAltText(/Sobel magnitude of the source grayscale/),
-    ).toHaveAttribute("src", "/rotoscope-watershed-gradient.webp");
-    expect(
-      screen.getByAltText(/Focus map: blue periocular ellipse/),
-    ).toHaveAttribute("src", "/rotoscope-focus.webp");
     expect(
       screen.getByAltText(/markers over a lightened portrait/),
     ).toHaveAttribute("src", "/rotoscope-markers.webp");
