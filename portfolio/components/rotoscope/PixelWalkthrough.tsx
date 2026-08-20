@@ -6,9 +6,11 @@ import {
 } from "../home/Rotoscope/portraitConfig";
 import styles from "../../styles/Rotoscope.module.css";
 import {
+  clampCoord,
   neighborhood,
   preparePixelFields,
   rec601Gray,
+  rgbaNeighborhood,
   sampleField,
   sampleRgba,
   sobelAt,
@@ -143,56 +145,73 @@ const KernelGrid = ({
   );
 };
 
-const LeftFrame = ({
-  src,
-  alt,
-  x,
-  y,
-  width,
-  height,
-  radius,
+const lumaCells = (window: ReadonlyArray<ReadonlyArray<number>>) =>
+  window.map((row) =>
+    row.map((value) => ({
+      red: value,
+      green: value,
+      blue: value,
+      label: value,
+    })),
+  );
+
+const inkFor = (red: number, green: number, blue: number): string =>
+  rec601Gray(red, green, blue) > 140 ? "#111" : "#f4f4f4";
+
+const PixelBoard = ({
+  cells,
+  label,
   onPick,
 }: {
-  src: string;
-  alt: string;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  radius: number;
-  onPick: (nx: number, ny: number) => void;
+  cells: ReadonlyArray<
+    ReadonlyArray<{ red: number; green: number; blue: number; label: number }>
+  >;
+  label: string;
+  onPick: (dx: number, dy: number) => void;
 }) => {
-  const left = ((x + 0.5) / width) * 100;
-  const top = ((y + 0.5) / height) * 100;
+  const size = cells.length;
+  const mid = Math.floor(size / 2);
   return (
-    <button
-      type="button"
-      className={styles.walkFrame}
-      onClick={(event) => {
-        const bounds = event.currentTarget.getBoundingClientRect();
-        onPick(
-          (event.clientX - bounds.left) / bounds.width,
-          (event.clientY - bounds.top) / bounds.height,
-        );
-      }}
+    <div
+      className={styles.walkPixels}
+      role="group"
+      aria-label={label}
+      style={{ gridTemplateColumns: `repeat(${size || 1}, minmax(0, 1fr))` }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} width={960} height={720} />
-      {radius > 0 ? (
-        <span
-          className={styles.walkNeighborhood}
-          style={{
-            width: `${((radius * 2 + 1) / width) * 100}%`,
-            height: `${((radius * 2 + 1) / height) * 100}%`,
-            left: `${left}%`,
-            top: `${top}%`,
-          }}
-        />
-      ) : null}
-      <span className={styles.walkCursor} style={{ left: `${left}%`, top: `${top}%` }} />
-    </button>
+      {cells.map((row, y) =>
+        row.map((cell, x) => (
+          <button
+            key={`${label}-${y}-${x}`}
+            type="button"
+            className={styles.walkPixel}
+            data-center={x === mid && y === mid ? "true" : undefined}
+            aria-label={`${label}, offset ${x - mid}, ${y - mid}, value ${cell.label}`}
+            style={{
+              background: `rgb(${cell.red}, ${cell.green}, ${cell.blue})`,
+              color: inkFor(cell.red, cell.green, cell.blue),
+            }}
+            onClick={() => onPick(x - mid, y - mid)}
+          >
+            {cell.label}
+          </button>
+        )),
+      )}
+    </div>
   );
 };
+
+const Board = ({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) => (
+  <div className={styles.walkBoard}>
+    <p className={styles.walkKernelTitle}>{title}</p>
+    {children}
+  </div>
+);
 
 export default function PixelWalkthrough({
   source,
@@ -278,8 +297,14 @@ export default function PixelWalkthrough({
   const gray = rec601Gray(rgb[0], rgb[1], rgb[2]);
   const blurred = fields ? sampleField(fields.blurred, width, height, x, y) : 0;
   const difference = fields ? sampleField(fields.difference, width, height, x, y) : 0;
+  const colorWindow = fields
+    ? rgbaNeighborhood(fields, x, y, blurRadius)
+    : [];
   const blurWindow = fields
     ? neighborhood(fields.gray, width, height, x, y, blurRadius)
+    : [];
+  const blurredWindow = fields
+    ? neighborhood(fields.blurred, width, height, x, y, blurRadius)
     : [];
   const graySobel = fields
     ? sobelAt(fields.gray, fields.graySobel, width, height, x, y)
@@ -288,11 +313,11 @@ export default function PixelWalkthrough({
     ? sobelAt(fields.difference, fields.differenceSobel, width, height, x, y)
     : null;
 
-  const pick = (nx: number, ny: number) => {
+  const pickCell = (dx: number, dy: number) => {
     pause();
     setPicked({
-      x: Math.round(nx * (width - 1)),
-      y: Math.round(ny * (height - 1)),
+      x: clampCoord(x + dx, width - 1),
+      y: clampCoord(y + dy, height - 1),
     });
   };
 
@@ -302,9 +327,15 @@ export default function PixelWalkthrough({
   };
 
   const location = picked ? `pixel ${x}, ${y}` : sample.label;
-  const kernelOnes = Array.from({ length: blurRadius * 2 + 1 }, () =>
-    Array.from({ length: blurRadius * 2 + 1 }, () => 1),
+  const windowSize = blurRadius * 2 + 1;
+  const sourceCells = colorWindow.map((row) =>
+    row.map((cell) => ({
+      ...cell,
+      label: rec601Gray(cell.red, cell.green, cell.blue),
+    })),
   );
+  const grayCells = lumaCells(blurWindow);
+  const blurCells = lumaCells(blurredWindow);
 
   const viz = (() => {
     switch (step) {
@@ -339,24 +370,10 @@ export default function PixelWalkthrough({
       case "blur":
         return (
           <>
-            <p className={styles.walkFormula}>
-              {blurRadius * 2 + 1}×{blurRadius * 2 + 1} box, radius {blurRadius}.
-              Average the row, then the column.
+            <p className={styles.walkFormula} aria-label="Box-blur kernel">
+              {windowSize}×{windowSize} box, radius {blurRadius}. Average the
+              row, then the column. All weights 1.
             </p>
-            <div className={styles.walkKernelPair}>
-              <div>
-                <p className={styles.walkKernelTitle}>Kernel</p>
-                <KernelGrid values={kernelOnes} label="Box-blur kernel" />
-              </div>
-              <div>
-                <p className={styles.walkKernelTitle}>Neighborhood</p>
-                <KernelGrid
-                  values={blurWindow}
-                  label="Gray values under the kernel"
-                  mode="luma"
-                />
-              </div>
-            </div>
             <div className={styles.walkMeters} aria-label="Blurred grayscale value">
               <Meter
                 label="Mean"
@@ -406,24 +423,12 @@ export default function PixelWalkthrough({
                 <KernelGrid values={SOBEL_Y.map((row) => [...row])} label="Sobel Gy kernel" />
               </div>
             </div>
-            <p className={styles.walkKernelTitle}>On the difference</p>
-            <KernelGrid
-              values={differenceSobel?.window ?? []}
-              label="Difference neighborhood"
-              mode="luma"
-            />
             <p className={styles.walkFormula}>
-              Gx {differenceSobel?.gx ?? 0}, Gy {differenceSobel?.gy ?? 0}, mag{" "}
-              {differenceSobel?.magnitude ?? 0}
+              Difference Gx {differenceSobel?.gx ?? 0}, Gy {differenceSobel?.gy ?? 0},
+              mag {differenceSobel?.magnitude ?? 0}
             </p>
-            <p className={styles.walkKernelTitle}>On the source gray</p>
-            <KernelGrid
-              values={graySobel?.window ?? []}
-              label="Gray neighborhood"
-              mode="luma"
-            />
             <p className={styles.walkFormula}>
-              Gx {graySobel?.gx ?? 0}, Gy {graySobel?.gy ?? 0}, mag{" "}
+              Gray Gx {graySobel?.gx ?? 0}, Gy {graySobel?.gy ?? 0}, mag{" "}
               {graySobel?.magnitude ?? 0}
             </p>
             <div className={styles.walkBars} aria-label="Sobel magnitudes on both landscapes">
@@ -439,40 +444,46 @@ export default function PixelWalkthrough({
     }
   })();
 
-  const frames =
+  const boards =
     step === "gray"
-      ? [{ src: "/rotoscope-portrait.jpg", alt: "The source portrait", radius: 0 }]
+      ? [
+          {
+            title: `${windowSize}×${windowSize} source`,
+            label: "Source pixels around the sample",
+            cells: sourceCells,
+          },
+        ]
       : step === "blur"
         ? [
             {
-              src: "/rotoscope-gray.webp",
-              alt: "Rec. 601 grayscale of the source portrait",
-              radius: blurRadius,
+              title: `${windowSize}×${windowSize} gray`,
+              label: "Gray pixels under the box-blur kernel",
+              cells: grayCells,
             },
           ]
         : step === "difference"
           ? [
               {
-                src: "/rotoscope-gray.webp",
-                alt: "Rec. 601 grayscale of the source portrait",
-                radius: 0,
+                title: `${windowSize}×${windowSize} gray`,
+                label: "Gray pixels around the sample",
+                cells: grayCells,
               },
               {
-                src: "/rotoscope-blurred.webp",
-                alt: "Low-frequency box blur of the grayscale portrait",
-                radius: 0,
+                title: `${windowSize}×${windowSize} blur`,
+                label: "Blurred pixels around the sample",
+                cells: blurCells,
               },
             ]
           : [
               {
-                src: "/rotoscope-difference.webp",
-                alt: "Absolute difference between grayscale and its blur, stretched for display",
-                radius: 1,
+                title: "3×3 difference",
+                label: "Difference neighborhood",
+                cells: lumaCells(differenceSobel?.window ?? []),
               },
               {
-                src: "/rotoscope-gray.webp",
-                alt: "Rec. 601 grayscale of the source portrait",
-                radius: 1,
+                title: "3×3 gray",
+                label: "Gray neighborhood",
+                cells: lumaCells(graySobel?.window ?? []),
               },
             ];
 
@@ -497,19 +508,11 @@ export default function PixelWalkthrough({
         ))}
       </ol>
       <div className={styles.walkLayout}>
-        <div className={styles.walkImages} data-pair={frames.length > 1 ? "true" : undefined}>
-          {frames.map((frame) => (
-            <LeftFrame
-              key={`${step}-${frame.src}`}
-              src={frame.src}
-              alt={frame.alt}
-              x={x}
-              y={y}
-              width={width}
-              height={height}
-              radius={frame.radius}
-              onPick={pick}
-            />
+        <div className={styles.walkImages} data-pair={boards.length > 1 ? "true" : undefined}>
+          {boards.map((board) => (
+            <Board key={`${step}-${board.label}`} title={board.title}>
+              <PixelBoard cells={board.cells} label={board.label} onPick={pickCell} />
+            </Board>
           ))}
         </div>
         <div className={styles.walkViz}>{viz}</div>

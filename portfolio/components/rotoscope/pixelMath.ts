@@ -115,6 +115,30 @@ export const neighborhoodNumeric = (
   return cells;
 };
 
+export interface RgbaCell {
+  red: number;
+  green: number;
+  blue: number;
+}
+
+export const rgbaNeighborhood = (
+  source: RgbaBuffer,
+  x: number,
+  y: number,
+  radius: number,
+): RgbaCell[][] => {
+  const cells: RgbaCell[][] = [];
+  for (let dy = -radius; dy <= radius; dy += 1) {
+    const row: RgbaCell[] = [];
+    for (let dx = -radius; dx <= radius; dx += 1) {
+      const [red, green, blue] = sampleRgba(source, x + dx, y + dy);
+      row.push({ red, green, blue });
+    }
+    cells.push(row);
+  }
+  return cells;
+};
+
 export const neighborhood = (
   field: Uint8Array,
   width: number,

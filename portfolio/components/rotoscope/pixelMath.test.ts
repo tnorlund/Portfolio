@@ -6,6 +6,7 @@ import {
   neighborhood,
   preparePixelFields,
   rec601Gray,
+  rgbaNeighborhood,
   sampleRgba,
   sobelAt,
 } from "./pixelMath";
@@ -45,6 +46,18 @@ test("neighborhood is a clamped (2r+1) window around the sample", () => {
   expect(neighborhood(fields.gray, 5, 5, 0, 0, 1)).toHaveLength(3);
   expect(neighborhood(fields.gray, 5, 5, 0, 0, 1)[0]).toHaveLength(3);
   expect(neighborhood(fields.gray, 5, 5, 2, 2, 2)).toHaveLength(5);
+});
+
+test("rgbaNeighborhood is a (2r+1) window of source colors", () => {
+  const source = {
+    width: 3,
+    height: 3,
+    rgba: rgba(3, 3, (x, y) => [x, y, 9, 255]),
+  };
+  const window = rgbaNeighborhood(source, 1, 1, 1);
+  expect(window).toHaveLength(3);
+  expect(window[1][1]).toEqual({ red: 1, green: 1, blue: 9 });
+  expect(window[0][0]).toEqual({ red: 0, green: 0, blue: 9 });
 });
 
 test("sobelAt matches the engine magnitude at an interior pixel", () => {

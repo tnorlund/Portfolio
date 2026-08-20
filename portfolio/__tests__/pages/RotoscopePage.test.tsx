@@ -89,12 +89,12 @@ describe("RotoscopePage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Show Box blur step" }));
     expect(
-      screen.getByAltText("Rec. 601 grayscale of the source portrait"),
-    ).toHaveAttribute("src", "/rotoscope-gray.webp");
+      screen.getByLabelText("Gray pixels under the box-blur kernel"),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show Difference step" }));
     expect(
-      screen.getByAltText("Low-frequency box blur of the grayscale portrait"),
-    ).toHaveAttribute("src", "/rotoscope-blurred.webp");
+      screen.getByLabelText("Blurred pixels around the sample"),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show Local max step" }));
     expect(
       screen.getByAltText("Shi-Tomasi score field stretched for display"),

@@ -32,20 +32,21 @@ test("walks grayscale, blur, difference, and Sobel with kernel arithmetic", () =
     "aria-pressed",
     "true",
   );
+  expect(screen.getByLabelText("Source pixels around the sample")).toBeInTheDocument();
   expect(screen.getByText("pulled pixel")).toBeInTheDocument();
   expect(screen.getByLabelText("Red, green, and blue of the pixel")).toBeInTheDocument();
   expect(screen.getByLabelText("Resulting grayscale value")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Show Box blur step" }));
   expect(screen.getByLabelText("Box-blur kernel")).toBeInTheDocument();
-  expect(screen.getByLabelText("Gray values under the kernel")).toBeInTheDocument();
+  expect(screen.getByLabelText("Gray pixels under the box-blur kernel")).toBeInTheDocument();
   expect(screen.getByText(/3×3 box, radius 1/)).toBeInTheDocument();
   expect(screen.getByText(/Average the row, then the column/)).toBeInTheDocument();
-  expect(screen.getByText("Kernel")).toBeInTheDocument();
-  expect(screen.getByText("Neighborhood")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Show Difference step" }));
   expect(screen.getByLabelText("Gray, blur, and absolute difference")).toBeInTheDocument();
+  expect(screen.getByLabelText("Gray pixels around the sample")).toBeInTheDocument();
+  expect(screen.getByLabelText("Blurred pixels around the sample")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "Show Sobel step" }));
   expect(screen.getByLabelText("Sobel Gx kernel")).toBeInTheDocument();
@@ -55,21 +56,12 @@ test("walks grayscale, blur, difference, and Sobel with kernel arithmetic", () =
   expect(screen.getByLabelText("Sobel magnitudes on both landscapes")).toBeInTheDocument();
 });
 
-test("clicking the portrait picks a pixel and pauses the sampler", () => {
+test("clicking a zoomed pixel picks it and pauses the sampler", () => {
   render(<PixelWalkthrough source={source} blurRadius={1} />);
-  const frame = screen.getByRole("button", { name: "The source portrait" });
-  frame.getBoundingClientRect = () =>
-    ({
-      width: 100,
-      height: 100,
-      left: 0,
-      top: 0,
-      right: 100,
-      bottom: 100,
-      x: 0,
-      y: 0,
-      toJSON: () => ({}),
-    }) as DOMRect;
-  fireEvent.click(frame, { clientX: 50, clientY: 50 });
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: /Source pixels around the sample, offset 1, 0, value/,
+    }),
+  );
   expect(screen.getByText(/pixel \d+, \d+/)).toBeInTheDocument();
 });
