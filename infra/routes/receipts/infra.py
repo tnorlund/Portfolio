@@ -4,8 +4,8 @@ import json
 import os
 
 from dynamo_db import dynamodb_table
-from infra.components.lambda_layer import dynamo_layer
 from infra.components.route_lambda import (
+    API_DYNAMO_ASSET_PATH,
     ManagedPolicyDefinition,
     RouteLambdaDefinition,
     create_route_lambda,
@@ -52,9 +52,10 @@ resources = create_route_lambda(
             ),
         ),
         environment={"DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME},
-        layers=(dynamo_layer.arn,),
         memory_size=1024,
         timeout=120,
+        enable_dev_profiling=True,
+        extra_code_assets={"_api_dynamo.py": API_DYNAMO_ASSET_PATH},
     )
 )
 

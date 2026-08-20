@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      profile_dev_api:
+        description: "Deploy and capture dev /images + /receipts profiles"
+        required: false
+        type: boolean
+        default: false
 
 # Superseded PR runs are cancelled (a new push makes the old one moot), but
 # main-push runs are NEVER cancelled: their `deploy` job runs `pulumi up`, and
@@ -329,6 +335,97 @@ jobs:
         with:
           name: playwright-report
           path: portfolio/playwright-report/
+          retention-days: 7
+
+  # ============================================================================
+  # MANUAL: targeted dev API profiling (never runs on push or pull_request)
+  # ============================================================================
+
+  profile-dev-api:
+    name: Profile dev API Lambdas
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.profile_dev_api
+    needs:
+      - lambda-syntax
+      - repository-tests
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-development
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Install infrastructure and profiling tools
+        run: |
+          pip install -e infra
+          pip install boto3 flameprof pytest tuna
+
+      - name: Test profiling instrumentation
+        run: |
+          python -m pytest -q \
+            infra/components/test_api_dynamo.py \
+            infra/components/test_lambda_profiler.py \
+            infra/components/test_route_lambda.py \
+            infra/routes/images/handler/test_handler.py \
+            infra/routes/receipts/handler/test_handler.py \
+            scripts/test_capture_dev_api_profiles.py
+
+      - name: Deploy dev stack
+        id: profiled-dev-deploy
+        working-directory: infra
+        env:
+          ENABLE_DEV_LAMBDA_PROFILING: "1"
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          pulumi stack select tnorlund/portfolio/dev
+          pulumi up --yes
+
+      - name: Capture handler and import profiles
+        run: |
+          mkdir -p api-profile-artifacts
+          python scripts/capture_dev_api_profiles.py \
+            --route images \
+            --route receipts \
+            --output-dir api-profile-artifacts \
+            | tee api-profile-artifacts/summary.json
+
+          for route in images receipts; do
+            flameprof \
+              --out "api-profile-artifacts/${route}-handler.svg" \
+              "api-profile-artifacts/${route}.prof"
+            if [ -s "api-profile-artifacts/${route}.importtime" ]; then
+              tuna \
+                --outdir "api-profile-artifacts/${route}-imports" \
+                "api-profile-artifacts/${route}.importtime"
+            fi
+          done
+
+      - name: Disable dev profiling
+        if: always() && steps.profiled-dev-deploy.outcome == 'success'
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          pulumi stack select tnorlund/portfolio/dev
+          pulumi up --yes
+
+      - name: Upload dev API profiles
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-api-lambda-profiles-${{ github.sha }}
+          path: api-profile-artifacts/
           retention-days: 7
 
   # ============================================================================

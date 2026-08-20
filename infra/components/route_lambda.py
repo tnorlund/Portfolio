@@ -6,6 +6,7 @@ route does not change its resource parent or URN.
 """
 
 import json
+import os
 from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
@@ -14,6 +15,12 @@ import pulumi_aws as aws
 
 BASIC_EXECUTION_POLICY_ARN = (
     "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+)
+PROFILER_ASSET_PATH = os.path.join(
+    os.path.dirname(__file__), "lambda_profiler.py"
+)
+API_DYNAMO_ASSET_PATH = os.path.join(
+    os.path.dirname(__file__), "api_dynamo.py"
 )
 
 LAMBDA_ASSUME_ROLE_POLICY = json.dumps(
@@ -74,6 +81,8 @@ class RouteLambdaDefinition:
     handler: str = "index.handler"
     reserved_concurrent_executions: int | None = None
     function_options: pulumi.ResourceOptions | None = None
+    enable_dev_profiling: bool = False
+    extra_code_assets: Mapping[str, str] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -118,6 +127,7 @@ def create_route_lambda(
     definition: RouteLambdaDefinition,
 ) -> RouteLambdaResources:
     """Create the common resources for a file-archive API Lambda."""
+    stack = pulumi.get_stack()
     role = aws.iam.Role(
         definition.role_name,
         assume_role_policy=LAMBDA_ASSUME_ROLE_POLICY,
@@ -150,27 +160,46 @@ def create_route_lambda(
         policy_arn=BASIC_EXECUTION_POLICY_ARN,
     )
 
+    code_assets: dict[str, pulumi.Asset | pulumi.Archive] = {
+        ".": pulumi.FileArchive(definition.handler_directory)
+    }
+    code_assets.update(
+        {
+            archive_path: pulumi.FileAsset(source_path)
+            for archive_path, source_path in definition.extra_code_assets.items()
+        }
+    )
+    environment = dict(definition.environment)
+    if definition.enable_dev_profiling:
+        code_assets["_lambda_profiler.py"] = pulumi.FileAsset(
+            PROFILER_ASSET_PATH
+        )
+        if (
+            stack == "dev"
+            and os.environ.get("ENABLE_DEV_LAMBDA_PROFILING") == "1"
+        ):
+            environment.update(
+                {
+                    "LAMBDA_PROFILE_ENABLED": "1",
+                    "PYTHONPROFILEIMPORTTIME": "2",
+                }
+            )
+
     function = aws.lambda_.Function(
         definition.function_name,
         runtime=definition.runtime,
         architectures=[definition.architecture],
         role=role.arn,
-        code=pulumi.AssetArchive(
-            {".": pulumi.FileArchive(definition.handler_directory)}
-        ),
+        code=pulumi.AssetArchive(code_assets),
         handler=definition.handler,
         layers=list(definition.layers) if definition.layers else None,
-        environment=(
-            {"variables": dict(definition.environment)}
-            if definition.environment
-            else None
-        ),
+        environment={"variables": environment} if environment else None,
         memory_size=definition.memory_size,
         timeout=definition.timeout,
         reserved_concurrent_executions=(
             definition.reserved_concurrent_executions
         ),
-        tags={"environment": pulumi.get_stack()},
+        tags={"environment": stack},
         opts=definition.function_options,
     )
 
