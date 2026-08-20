@@ -12,7 +12,7 @@ authors = [
     { name = "Tyler Norlund" }
 ]
 dependencies = [
-    "mcp>=1.26.0,<2",
+    "mcp>=1.26.0,<3",
     "numpy>=1.26.0,<3.0.0",
     "Pillow>=10.0.0,<13.0.0",
 ]
