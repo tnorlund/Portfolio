@@ -14,7 +14,7 @@ jobs:
   stale:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/stale@v9
+      - uses: actions/stale@v11
         with:
           # Issues only — Dependabot / feature PRs are handled elsewhere.
           days-before-issue-stale: 90
