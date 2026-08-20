@@ -21,10 +21,13 @@ describe("RotoscopePage", () => {
       "https://doi.org/10.1109/ACSSC.2017.8335175",
     );
     expect(
-      screen.getByText(/50\/30\/20 shares are the paper and engine defaults/),
+      screen.getByText(/Paper and engine defaults stay 50\/30\/20/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/homepage portrait overrides them to 70\/22\/8/),
+      screen.getByText(/homepage pass shown here uses 30\/64\/6/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Corners for markers, edges for the flood" }),
     ).toBeInTheDocument();
   });
 
@@ -69,13 +72,21 @@ describe("RotoscopePage", () => {
   it("illustrates every stage with real stills from the portrait pass", () => {
     render(<RotoscopePage />);
 
-    expect(screen.getByAltText("The source portrait")).toHaveAttribute(
-      "src",
-      "/rotoscope-portrait.jpg",
-    );
     expect(
-      screen.getByAltText("Blurred grayscale copy of the portrait"),
+      screen.getByAltText("Rec. 601 grayscale of the source portrait"),
+    ).toHaveAttribute("src", "/rotoscope-gray.webp");
+    expect(
+      screen.getByAltText("Low-frequency box blur of the grayscale portrait"),
     ).toHaveAttribute("src", "/rotoscope-blurred.webp");
+    expect(
+      screen.getByAltText(/Shi-Tomasi minimum-eigenvalue scores/),
+    ).toHaveAttribute("src", "/rotoscope-shi-tomasi.webp");
+    expect(
+      screen.getByAltText(/Sobel magnitude of the source grayscale/),
+    ).toHaveAttribute("src", "/rotoscope-watershed-gradient.webp");
+    expect(
+      screen.getByAltText(/Focus map: blue periocular ellipse/),
+    ).toHaveAttribute("src", "/rotoscope-focus.webp");
     expect(
       screen.getByAltText(/markers over a lightened portrait/),
     ).toHaveAttribute("src", "/rotoscope-markers.webp");

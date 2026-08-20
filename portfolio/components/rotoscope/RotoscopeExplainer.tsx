@@ -5,17 +5,21 @@ import styles from "../../styles/Rotoscope.module.css";
 /**
  * Every figure on this page is a real still from the homepage portrait pass:
  * public/rotoscope-portrait.jpg resized to 960x720 and run through the engine
- * with the homepage overrides (blur 6, 1600 markers, 70/22/8 quotas). The
- * stills are checked in next to the portrait so the article needs no runtime
- * engine; regenerate them by re-running that pass whenever the engine or the
- * portrait changes.
+ * with homepage overrides (blur 3, 1600 markers, periocular 30/64/6 quotas).
+ * Regenerate with:
+ *   npx tsx scripts/generate-rotoscope-explainer-stills.ts
  */
 const STILL_WIDTH = 960;
 const STILL_HEIGHT = 720;
 
 const STILLS = {
+  gray: "/rotoscope-gray.webp",
   blurred: "/rotoscope-blurred.webp",
   difference: "/rotoscope-difference.webp",
+  shiTomasi: "/rotoscope-shi-tomasi.webp",
+  differenceEdges: "/rotoscope-difference-edges.webp",
+  watershedGradient: "/rotoscope-watershed-gradient.webp",
+  focus: "/rotoscope-focus.webp",
   markers: "/rotoscope-markers.webp",
   basins: "/rotoscope-basins.webp",
   painted: "/rotoscope-painted.webp",
@@ -217,25 +221,62 @@ function PipelineOverview() {
 
 function DifferenceFigure() {
   return (
-    <div className={styles.equation} aria-label="Portrait minus blurred copy equals difference">
+    <div className={styles.equation} aria-label="Grayscale minus blurred copy equals difference">
       <figure className={styles.processPanel}>
-        <figcaption>Portrait</figcaption>
-        <Portrait alt="The source portrait" />
+        <figcaption>Grayscale</figcaption>
+        <Still src={STILLS.gray} alt="Rec. 601 grayscale of the source portrait" />
       </figure>
       <span className={styles.operator} aria-hidden="true">−</span>
       <figure className={styles.processPanel}>
-        <figcaption>Blurred copy</figcaption>
-        <Still src={STILLS.blurred} alt="Blurred grayscale copy of the portrait" />
+        <figcaption>Box blur</figcaption>
+        <Still src={STILLS.blurred} alt="Low-frequency box blur of the grayscale portrait" />
       </figure>
       <span className={styles.operator} aria-hidden="true">=</span>
       <figure className={styles.processPanel}>
         <figcaption>Difference</figcaption>
         <Still
           src={STILLS.difference}
-          alt="Difference between the portrait and its blurred copy, brightened for display"
+          alt="Absolute difference between grayscale and its blur, stretched for display"
         />
       </figure>
     </div>
+  );
+}
+
+function GradientCompare() {
+  return (
+    <div className={styles.compare} aria-label="Two Sobel landscapes from different inputs">
+      <figure>
+        <figcaption>Corners (Shi–Tomasi)</figcaption>
+        <Still
+          src={STILLS.shiTomasi}
+          alt="Shi-Tomasi minimum-eigenvalue scores computed on the difference image"
+        />
+      </figure>
+      <figure>
+        <figcaption>Flood landscape</figcaption>
+        <Still
+          src={STILLS.watershedGradient}
+          alt="Sobel magnitude of the source grayscale, used as the watershed landscape"
+        />
+      </figure>
+    </div>
+  );
+}
+
+function FocusFigure() {
+  return (
+    <figure className={styles.focusFigure}>
+      <Still
+        src={STILLS.focus}
+        alt="Focus map: blue periocular ellipse for the face quota, orange body polygon, gray background"
+      />
+      <figcaption className={styles.markerLegend}>
+        <span><i className={styles.faceDot} />Face ellipse</span>
+        <span><i className={styles.bodyDot} />Body polygon</span>
+        <span><i className={styles.backgroundDot} />Background</span>
+      </figcaption>
+    </figure>
   );
 }
 
@@ -245,13 +286,13 @@ function MarkerFigure() {
       <div className={styles.markerArt}>
         <Still
           src={STILLS.markers}
-          alt="The 1,600 selected markers over a lightened portrait: blue on the face, orange on the body, gray in the background"
+          alt="The 1,600 selected markers over a lightened portrait: blue in the periocular ellipse, orange on the rest of the person, gray in the background"
         />
       </div>
       <figcaption className={styles.markerLegend}>
-        <span><i className={styles.faceDot} />Face 70%</span>
-        <span><i className={styles.bodyDot} />Body 22%</span>
-        <span><i className={styles.backgroundDot} />Background 8%</span>
+        <span><i className={styles.faceDot} />Face 30%</span>
+        <span><i className={styles.bodyDot} />Body 64%</span>
+        <span><i className={styles.backgroundDot} />Background 6%</span>
       </figcaption>
     </figure>
   );
@@ -327,34 +368,52 @@ export default function RotoscopeExplainer() {
       <section className={styles.section}>
         <h2>Start with what changed</h2>
         <p>
-          The original algorithm compares a frame with a clean background. On this
-          page there is only one portrait, so a blurred copy stands in for that
-          second frame. Subtract the two and the quiet parts disappear. Edges and
-          small details stay bright.
+          The engine never scores the color photo directly. It converts the
+          portrait to Rec. 601 grayscale, then subtracts a box blur of that gray
+          field. The original paper compared a frame to a clean background; the
+          blur stands in for that missing plate. Flat regions cancel. Texture
+          and edges stay bright. That absolute-difference map is what Shi–Tomasi
+          will see.
         </p>
         <DifferenceFigure />
       </section>
 
       <section className={styles.section}>
+        <h2>Corners for markers, edges for the flood</h2>
+        <p>
+          Two different 3×3 Sobel landscapes are built from that grayscale chain.
+          On the left, Shi–Tomasi’s minimum eigenvalue is computed on the
+          difference image: pixels that are corners in two directions score
+          high, which is why irises, teeth, and hair light up. On the right,
+          Sobel magnitude of the source gray is the watershed landscape: floods
+          walk through smooth skin and stall at strong edges. Mixing those two
+          inputs is the whole trick.
+        </p>
+        <GradientCompare />
+      </section>
+
+      <section className={styles.section}>
         <h2>Spend detail where it matters</h2>
         <p>
-          Shi–Tomasi scores the corners and texture in the difference image. The
-          strongest points become markers. Half go to the face, three in ten to the
-          body, and the rest to the background, so a busy wall cannot steal all the
-          detail. Those 50/30/20 shares are the paper and engine defaults. The
-          homepage portrait overrides them to 70/22/8 so the face keeps most of the
-          budget, and that is the pass shown here.
+          Markers are the strongest local maxima in that corner field, but they
+          are not free to land anywhere. A periocular ellipse around both eyes
+          owns the face quota so Shi–Tomasi spends those markers on irises and
+          lids instead of the whole skull. The leftover head and shoulders are
+          body. A busy wall cannot steal the budget. Paper and engine defaults
+          stay 50/30/20. The homepage pass shown here uses 30/64/6 with
+          spacing 1 / 4 / 8.
         </p>
+        <FocusFigure />
         <MarkerFigure />
       </section>
 
       <section className={styles.section}>
         <h2>Let the regions grow</h2>
         <p>
-          Imagine dropping every marker onto a landscape made from image edges.
-          Each marker floods outward through easy ground and slows at a strong edge.
-          When every pixel has been claimed, the image is divided into catchment
-          basins.
+          Imagine dropping every marker onto the source-gray edge landscape.
+          Each marker floods outward through easy ground and slows at a strong
+          edge. When every pixel has been claimed, the image is divided into
+          catchment basins.
         </p>
         <WatershedFigure />
       </section>
@@ -375,7 +434,9 @@ export default function RotoscopeExplainer() {
         <p>
           The 2017 version used a clean background frame. The browser demo uses a
           blurred copy of one portrait instead. The stage order stays the same; two
-          small kernels are simplified so it can run quickly at display size.
+          small kernels are simplified so it can run quickly at display size: an
+          integer 3×3 Sobel instead of a Gaussian derivative at σ 0.6, and a 3×3
+          structure-tensor window instead of 7×7.
         </p>
         <nav className={styles.links} aria-label="Rotoscope references">
           <a href="https://doi.org/10.1109/ACSSC.2017.8335175" target="_blank" rel="noreferrer">Read the paper</a>

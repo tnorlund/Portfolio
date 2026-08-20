@@ -135,7 +135,8 @@
 
 .stage figcaption,
 .processPanel figcaption,
-.paintFigure figcaption {
+.paintFigure figcaption,
+.compare figcaption {
   margin-bottom: 0.75rem;
   font-size: 1rem;
   font-weight: 750;
@@ -285,6 +286,32 @@
   max-width: 1180px;
 }
 
+.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.6rem;
+  align-items: start;
+  margin-top: 2.5rem;
+  max-width: 1180px;
+}
+
+.compare figure,
+.focusFigure {
+  margin: 0;
+}
+
+.focusFigure {
+  display: grid;
+  gap: 1.2rem;
+  justify-items: center;
+  margin-top: 2.5rem;
+  max-width: 640px;
+}
+
+.focusFigure .still {
+  width: 100%;
+}
+
 .technicalNote {
   max-width: 850px;
   padding-top: 1rem;
@@ -349,6 +376,13 @@
   }
 
   .paintFigure {
+    grid-template-columns: 1fr;
+    max-width: 540px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .compare {
     grid-template-columns: 1fr;
     max-width: 540px;
     margin-right: auto;
