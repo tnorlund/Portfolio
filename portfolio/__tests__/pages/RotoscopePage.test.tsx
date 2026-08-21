@@ -30,10 +30,10 @@ describe("RotoscopePage", () => {
       screen.getByRole("heading", { name: "Corners for markers, edges for the flood" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Show Grayscale step" }),
+      screen.getByText(/A 5×5 window at the left eye, followed through the whole chain/),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Show Sobel step" }),
+      screen.getByRole("button", { name: "left eye" }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Show Score step" }),
@@ -87,13 +87,18 @@ describe("RotoscopePage", () => {
   it("illustrates every stage with real stills from the portrait pass", () => {
     render(<RotoscopePage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Show Box blur step" }));
+    // The pixel story loads its values from the portrait in the browser; in
+    // jsdom only the photograph and its window chips render.
     expect(
-      screen.getByLabelText("Gray pixels under the box-blur kernel"),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Show Difference step" }));
+      screen.getByAltText(
+        "The original portrait; the marked window at the left eye is traced below",
+      ),
+    ).toHaveAttribute("src", "/rotoscope-portrait.jpg");
+    fireEvent.click(screen.getByRole("button", { name: "background" }));
     expect(
-      screen.getByLabelText("Blurred pixels around the sample"),
+      screen.getByAltText(
+        "The original portrait; the marked window at the background is traced below",
+      ),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Show Local max step" }));
     expect(

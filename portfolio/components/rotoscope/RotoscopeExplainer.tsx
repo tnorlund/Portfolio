@@ -320,13 +320,12 @@ export default function RotoscopeExplainer() {
       <section className={styles.section}>
         <h2>Start with what changed</h2>
         <p>
-          The engine never scores the color photo directly. The photograph zooms
-          into the neighborhood around one pixel, then the grid shows that crop
-          as numbers. Click a cell, or watch the sampler move. Each step on the
-          right is the arithmetic for the outlined pixel: RGB becomes Rec. 601
-          gray, a box kernel averages the neighborhood, then gray minus blur
-          leaves texture. On a phone the grid is the 3×3 center of the blur
-          window so the cells stay readable.
+          The engine never scores the color photo directly. Below, one small
+          window of the portrait is followed through the whole chain with its
+          real values: the RGB pixels collapse to Rec. 601 gray, a box blur
+          averages every pixel with its neighbors, and gray minus blur leaves
+          only texture. Sobel kernels then turn that texture into gradients.
+          Pick a different window to see the numbers change.
         </p>
         <PixelWalkthrough />
       </section>

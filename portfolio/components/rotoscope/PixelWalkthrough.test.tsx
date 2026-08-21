@@ -1,9 +1,5 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import PixelWalkthrough from "./PixelWalkthrough";
-
-jest.mock("react-intersection-observer", () => ({
-  useInView: () => ({ ref: jest.fn(), inView: true }),
-}));
 
 const rgba = (
   width: number,
@@ -19,120 +15,79 @@ const rgba = (
   return output;
 };
 
+// The default sample (the left eye at 0.367, 0.518) lands on pixel (3, 4):
+// R 72, G 48, B 40, so gray = (77·72 + 150·48 + 29·40 + 128) >> 8 = 54.
 const source = {
   width: 9,
   height: 9,
   rgba: rgba(9, 9, (x, y) => [x * 24, y * 12, 40, 255]),
 };
 
-const originalMatchMedia = window.matchMedia;
-
-const mockMatchMedia = (matches: (query: string) => boolean) => {
-  window.matchMedia = jest.fn().mockImplementation((query: string) => ({
-    matches: matches(query),
-    media: query,
-    onchange: null,
-    addListener: jest.fn(),
-    removeListener: jest.fn(),
-    addEventListener: jest.fn(),
-    removeEventListener: jest.fn(),
-    dispatchEvent: jest.fn(),
-  }));
-};
-
-afterEach(() => {
-  window.matchMedia = originalMatchMedia;
-});
-
-test("walks grayscale, blur, difference, and Sobel with kernel arithmetic", () => {
+test("follows one window from the photo through every stage with real values", () => {
   render(<PixelWalkthrough source={source} blurRadius={1} />);
 
-  expect(screen.getByRole("button", { name: "Show Grayscale step" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  expect(screen.getByLabelText("Source pixels around the sample")).toBeInTheDocument();
-  expect(screen.getByText("pulled pixel")).toBeInTheDocument();
-  expect(screen.getByLabelText("Red, green, and blue of the pixel")).toBeInTheDocument();
-  expect(screen.getByLabelText("Resulting grayscale value")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Replay the zoom" })).not.toBeInTheDocument();
+  expect(
+    screen.getByText(/A 5×5 window at the left eye, followed through the whole chain/),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByAltText(
+      "The original portrait; the marked window at the left eye is traced below",
+    ),
+  ).toBeInTheDocument();
 
-  fireEvent.click(screen.getByRole("button", { name: "Show Box blur step" }));
-  expect(screen.getByLabelText("Box-blur kernel")).toBeInTheDocument();
-  expect(screen.getByLabelText("Gray pixels under the box-blur kernel")).toBeInTheDocument();
-  expect(screen.getByText(/3×3 box, radius 1/)).toBeInTheDocument();
-  expect(screen.getByText(/Average the row, then the column/)).toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole("button", { name: "Show Difference step" }));
-  expect(screen.getByLabelText("Gray, blur, and absolute difference")).toBeInTheDocument();
-  expect(screen.getByLabelText("Gray pixels around the sample")).toBeInTheDocument();
-  expect(screen.getByLabelText("Blurred pixels around the sample")).toBeInTheDocument();
-
-  fireEvent.click(screen.getByRole("button", { name: "Show Sobel step" }));
+  // Every stage renders the same square window, in order.
+  expect(screen.getByLabelText("The 25 source pixels")).toBeInTheDocument();
+  expect(screen.getByLabelText("The same pixels as gray values")).toBeInTheDocument();
+  expect(
+    screen.getByLabelText("The same window after the box blur"),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByLabelText("Gray minus blur, the texture that remains"),
+  ).toBeInTheDocument();
+  expect(screen.getByLabelText("Difference neighborhood")).toBeInTheDocument();
   expect(screen.getByLabelText("Sobel Gx kernel")).toBeInTheDocument();
   expect(screen.getByLabelText("Sobel Gy kernel")).toBeInTheDocument();
-  expect(screen.getByLabelText("Difference neighborhood")).toBeInTheDocument();
-  expect(screen.getByLabelText("Gray neighborhood")).toBeInTheDocument();
-  expect(screen.getByLabelText("Sobel magnitudes on both landscapes")).toBeInTheDocument();
+
+  // The arithmetic uses the window's real values.
+  expect(screen.getByText(/R 72 · G 48 · B 40/)).toBeInTheDocument();
+  expect(
+    screen.getByText(/\(77·72 \+ 150·48 \+ 29·40 \+ 128\) ≫ 8 = 54/),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(/each pixel → mean of its 3×3 neighborhood, so 54 → \d+/),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/\|54 − \d+\| = \d+/)).toBeInTheDocument();
+  expect(screen.getByText(/Gx -?\d+ · Gy -?\d+ → \(\|-?\d+\| \+ \|-?\d+\| \+ 2\) ≫ 2 = \d+/)).toBeInTheDocument();
 });
 
-test("clicking a zoomed pixel picks it and pauses the sampler", () => {
+test("the grids show the real per-pixel numbers", () => {
   render(<PixelWalkthrough source={source} blurRadius={1} />);
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: /Source pixels around the sample, offset 1, 0, value/,
-    }),
+
+  // gray(4, 4) = (77·96 + 150·48 + 29·40 + 128) >> 8 = 62 sits one cell right
+  // of the center of the grayscale grid.
+  const grayGrid = screen.getByLabelText("The same pixels as gray values");
+  const values = Array.from(grayGrid.querySelectorAll("span")).map(
+    (cell) => cell.textContent,
   );
-  expect(screen.getByText(/pixel \d+, \d+/)).toBeInTheDocument();
+  expect(values).toHaveLength(25);
+  expect(values[12]).toBe("54"); // center of the 5×5
+  expect(values[13]).toBe("62");
 });
 
-test("uses a 3×3 neighborhood on a narrow viewport", () => {
-  mockMatchMedia((query) => query.includes("max-width: 768px"));
-  render(<PixelWalkthrough source={source} blurRadius={3} />);
+test("picking a different window recomputes every stage", () => {
+  render(<PixelWalkthrough source={source} blurRadius={1} />);
 
-  const board = screen.getByLabelText("Source pixels around the sample");
-  expect(board).toHaveAttribute("data-size", "3");
-  expect(board.querySelectorAll("button")).toHaveLength(9);
-  expect(screen.getByText(/3×3 of 7×7 source/)).toBeInTheDocument();
-  expect(screen.getByText(/3×3 center of the 7×7 neighborhood/)).toBeInTheDocument();
+  const eyeChip = screen.getByRole("button", { name: "left eye" });
+  const backgroundChip = screen.getByRole("button", { name: "background" });
+  expect(eyeChip).toHaveAttribute("aria-pressed", "true");
+  expect(backgroundChip).toHaveAttribute("aria-pressed", "false");
 
-  fireEvent.click(screen.getByRole("button", { name: "Show Box blur step" }));
-  expect(screen.getByLabelText("Box-blur kernel")).toHaveTextContent("7×7 box, radius 3");
-  expect(screen.getByLabelText("Gray pixels under the box-blur kernel")).toHaveAttribute(
-    "data-size",
-    "3",
-  );
-});
+  fireEvent.click(backgroundChip);
 
-test("zooms from the photograph into the pixel grid", () => {
-  jest.useFakeTimers();
-  try {
-    render(<PixelWalkthrough source={source} blurRadius={1} skipIntro={false} />);
-    const stage = screen.getByTestId("walk-zoom-stage");
-    expect(stage).toHaveAttribute("data-phase", "photo");
-    expect(
-      screen.getByRole("img", {
-        name: "Original portrait; the highlighted window becomes the pixel grid",
-      }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Replay the zoom" })).toBeInTheDocument();
-
-    act(() => {
-      jest.advanceTimersByTime(800);
-    });
-    expect(stage).toHaveAttribute("data-phase", "frame");
-    act(() => {
-      jest.advanceTimersByTime(650);
-    });
-    expect(stage).toHaveAttribute("data-phase", "zoom");
-    act(() => {
-      jest.advanceTimersByTime(1100);
-    });
-    expect(stage).toHaveAttribute("data-phase", "pixels");
-
-    fireEvent.click(screen.getByRole("button", { name: "Replay the zoom" }));
-    expect(stage).toHaveAttribute("data-phase", "photo");
-  } finally {
-    jest.useRealTimers();
-  }
+  // The background sample (0.78, 0.3) lands on pixel (6, 2): R 144, G 24, B 40.
+  expect(backgroundChip).toHaveAttribute("aria-pressed", "true");
+  expect(
+    screen.getByText(/A 5×5 window at the background, followed through the whole chain/),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/R 144 · G 24 · B 40/)).toBeInTheDocument();
 });
