@@ -9,6 +9,25 @@ import pytest
 from synthesis_loop import render_regression_guard as guard
 
 
+def test_pinned_fleet_covers_nine_receipts_and_names_dollar_tree_fixture():
+    assert len(guard.PINNED) == 9
+    assert {pin.slug for pin in guard.PINNED} == {
+        "costco_golden",
+        "costco_new",
+        "dollar_tree_fixture",
+        "gelsons",
+        "sprouts",
+        "the_stand",
+        "trader_joes",
+        "vons_golden",
+        "wild_fork",
+    }
+    dollar_tree = next(
+        pin for pin in guard.PINNED if pin.slug == "dollar_tree_fixture"
+    )
+    assert dollar_tree.truth_fixture == "legacy-profile-without-logo"
+
+
 @pytest.mark.parametrize("gate", ["check", "compare"])
 def test_gate_rejects_omitted_pinned_slug(
     gate: str,

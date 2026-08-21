@@ -1,6 +1,6 @@
 {
   "entries": {
-    "costco_wholesale_v1": {
+    "synthetic_selftest_v1": {
       "merchant": "Costco Wholesale",
       "metrics": {
         "arithmetic": {
@@ -60,7 +60,7 @@
           "verdict": "PASS"
         }
       },
-      "name": "costco_wholesale_v1",
+      "name": "synthetic_selftest_v1",
       "render_hashes": {
         "real": "b94210d9a3c15edf27c135568bcb975198e0ce4a037d17aa1eafb4c511931d8e",
         "syn": "b94210d9a3c15edf27c135568bcb975198e0ce4a037d17aa1eafb4c511931d8e"
