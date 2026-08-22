@@ -736,6 +736,174 @@
   text-align: center;
 }
 
+/* The intro tracer: the portrait with a Bézier loop over it, a switch between
+   color and black-and-white, and circles whose opacity is the pixel's value. */
+.tracer {
+  margin: 2.5rem 0 0;
+  max-width: 760px;
+}
+
+.tracerPhoto {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(var(--text-color-rgb), 0.25);
+  background: #fff;
+}
+
+.tracerPhoto img {
+  display: block;
+  width: 100%;
+  height: auto;
+  transition: filter 0.45s ease;
+}
+
+/* The Rec. 601 preview is painted from the sampled pixels and cross-fades over
+   the color photo; the CSS filter only stands in until that paint exists. */
+.tracerGray {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+
+.tracerGray[data-visible="true"] {
+  opacity: 1;
+}
+
+.tracerPhoto[data-bw="true"] img {
+  filter: grayscale(1);
+}
+
+.tracerOverlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.tracerPath {
+  fill: none;
+  stroke: #fbbf24;
+  stroke-width: 1.5px;
+  stroke-opacity: 0.55;
+  stroke-dasharray: 3 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.tracerDot {
+  fill: #fbbf24;
+  stroke: #111;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+
+.tracerControls {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.tracerSwitchLabel {
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: rgba(var(--text-color-rgb), 0.7);
+}
+
+.tracerSwitch {
+  position: relative;
+  width: 2.9rem;
+  height: 1.6rem;
+  padding: 0;
+  border: 1px solid rgba(var(--text-color-rgb), 0.4);
+  border-radius: 999px;
+  background: rgba(var(--text-color-rgb), 0.08);
+  cursor: pointer;
+  transition: background 0.25s ease;
+}
+
+.tracerSwitch[aria-checked="true"] {
+  background: var(--text-color);
+}
+
+.tracerSwitch:focus-visible {
+  outline: 2px solid #fbbf24;
+  outline-offset: 3px;
+}
+
+.tracerKnob {
+  position: absolute;
+  top: 50%;
+  left: 0.2rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: var(--text-color);
+  transform: translateY(-50%);
+  transition:
+    transform 0.25s ease,
+    background 0.25s ease;
+}
+
+.tracerSwitch[aria-checked="true"] .tracerKnob {
+  background: var(--background-color);
+  transform: translate(1.3rem, -50%);
+}
+
+.tracerReadout {
+  display: flex;
+  gap: clamp(1.25rem, 5vw, 2.75rem);
+  justify-content: center;
+  min-height: 7.25rem;
+  margin-top: 1rem;
+}
+
+.tracerSwatch {
+  display: grid;
+  gap: 0.3rem;
+  justify-items: center;
+}
+
+/* Channel light at opacity value/255 over a dark disc: 0 is black, 255 is the
+   full channel color, regardless of the page theme behind it. */
+.tracerCircle {
+  width: clamp(3.4rem, 14vw, 4.5rem);
+  height: clamp(3.4rem, 14vw, 4.5rem);
+  border: 1px solid rgba(var(--text-color-rgb), 0.3);
+  border-radius: 50%;
+  background:
+    linear-gradient(
+      rgba(var(--swatch-rgb), var(--swatch-alpha)),
+      rgba(var(--swatch-rgb), var(--swatch-alpha))
+    ),
+    #111;
+}
+
+.tracerLabel {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.tracerValue {
+  font-size: 1rem;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.tracerCaption {
+  margin: 0.9rem 0 0;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: rgba(var(--text-color-rgb), 0.72);
+}
+
 .technicalNote {
   max-width: 850px;
   padding-top: 1rem;
@@ -827,7 +995,8 @@
     gap: 0.55rem;
   }
 
-  .story {
+  .story,
+  .tracer {
     max-width: 100%;
   }
 
@@ -882,5 +1051,13 @@
   .floodFrame {
     animation: none;
     opacity: 1;
+  }
+
+  .tracerPhoto img,
+  .tracerGray,
+  .tracerSwitch,
+  .tracerKnob,
+  .tracerCircle {
+    transition: none;
   }
 }
