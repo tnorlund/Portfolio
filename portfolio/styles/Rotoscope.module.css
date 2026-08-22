@@ -758,6 +758,21 @@
   transition: filter 0.45s ease;
 }
 
+/* The Rec. 601 preview is painted from the sampled pixels and cross-fades over
+   the color photo; the CSS filter only stands in until that paint exists. */
+.tracerGray {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+
+.tracerGray[data-visible="true"] {
+  opacity: 1;
+}
+
 .tracerPhoto[data-bw="true"] img {
   filter: grayscale(1);
 }
@@ -1039,6 +1054,7 @@
   }
 
   .tracerPhoto img,
+  .tracerGray,
   .tracerSwitch,
   .tracerKnob,
   .tracerCircle {

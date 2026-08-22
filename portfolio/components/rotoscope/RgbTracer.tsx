@@ -57,6 +57,27 @@ export const samplePoint = (
 };
 
 /**
+ * Paint the buffer as Rec. 601 gray with the engine's integer weights, so the
+ * B/W preview is the exact image the readout and the rest of the page use.
+ */
+const paintGray = (buffer: RgbaBuffer, context: CanvasRenderingContext2D): string => {
+  const output = context.createImageData(buffer.width, buffer.height);
+  for (let offset = 0; offset < buffer.rgba.length; offset += 4) {
+    const gray = rec601Gray(
+      buffer.rgba[offset],
+      buffer.rgba[offset + 1],
+      buffer.rgba[offset + 2],
+    );
+    output.data[offset] = gray;
+    output.data[offset + 1] = gray;
+    output.data[offset + 2] = gray;
+    output.data[offset + 3] = 255;
+  }
+  context.putImageData(output, 0, 0);
+  return context.canvas.toDataURL("image/png");
+};
+
+/**
  * Each circle is the channel's light at opacity value/255 over a dark disc,
  * so 0 reads black and 255 reads full color in either theme.
  */
@@ -88,6 +109,7 @@ export default function RgbTracer({ source: injected }: { source?: RgbaBuffer })
   const { ref: inViewRef, inView } = useInView({ threshold: 0.2, fallbackInView: true });
   const reducedMotion = usePrefersReducedMotion();
   const [buffer, setBuffer] = useState<RgbaBuffer | null>(injected ?? null);
+  const [grayUrl, setGrayUrl] = useState<string | null>(null);
   const [bw, setBw] = useState(false);
   const [sample, setSample] = useState<Sample | null>(null);
   const pathRef = useRef<SVGPathElement | null>(null);
@@ -109,8 +131,11 @@ export default function RgbTracer({ source: injected }: { source?: RgbaBuffer })
       if (!context) return;
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
       const rgba = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      const loaded = { width: canvas.width, height: canvas.height, rgba };
+      const gray = paintGray(loaded, context);
       if (!cancelled) {
-        setBuffer({ width: canvas.width, height: canvas.height, rgba });
+        setBuffer(loaded);
+        setGrayUrl(gray);
       }
     };
     return () => {
@@ -161,7 +186,10 @@ export default function RgbTracer({ source: injected }: { source?: RgbaBuffer })
       className={styles.tracer}
       aria-label="A tracer reading pixel values off the portrait"
     >
-      <div className={styles.tracerPhoto} data-bw={bw ? "true" : undefined}>
+      <div
+        className={styles.tracerPhoto}
+        data-bw={bw && !grayUrl ? "true" : undefined}
+      >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/rotoscope-portrait.jpg"
@@ -173,6 +201,18 @@ export default function RgbTracer({ source: injected }: { source?: RgbaBuffer })
           width={PORTRAIT_PROCESSING_SIZE.width}
           height={PORTRAIT_PROCESSING_SIZE.height}
         />
+        {grayUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            className={styles.tracerGray}
+            src={grayUrl}
+            alt=""
+            aria-hidden="true"
+            data-visible={bw ? "true" : undefined}
+            width={PORTRAIT_PROCESSING_SIZE.width}
+            height={PORTRAIT_PROCESSING_SIZE.height}
+          />
+        ) : null}
         <svg
           className={styles.tracerOverlay}
           viewBox={`0 0 ${VIEW.width} ${VIEW.height}`}
