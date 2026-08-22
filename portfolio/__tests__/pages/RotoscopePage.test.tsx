@@ -12,6 +12,10 @@ describe("RotoscopePage", () => {
     expect(
       screen.getByRole("heading", { name: "How the rotoscope works" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "A photo is just numbers" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Black and white" })).toBeInTheDocument();
     expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Features" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Watershed" })).toBeInTheDocument();

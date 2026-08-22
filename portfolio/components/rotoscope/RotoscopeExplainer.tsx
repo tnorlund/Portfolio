@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
+import RgbTracer from "./RgbTracer";
 import PixelWalkthrough from "./PixelWalkthrough";
 import MarkerWalkthrough from "./MarkerWalkthrough";
 import styles from "../../styles/Rotoscope.module.css";
@@ -315,6 +316,23 @@ export default function RotoscopeExplainer() {
           color.
         </p>
         <PipelineOverview />
+      </section>
+
+      <section className={styles.section}>
+        <h2>A photo is just numbers</h2>
+        <p>
+          I wrote the first version of this rotoscope in college, for the 2017
+          paper linked at the bottom of this page, and it is where the idea
+          behind all of image processing clicked for me: a photograph is
+          nothing but numbers. Every pixel is three of them, red, green, and
+          blue, each somewhere between 0 and 255, and the moment you fold those
+          three into one brightness the entire DSP toolbox applies. Blurs,
+          gradients, corners, and watersheds are all arithmetic on that single
+          value. The tracer below wanders the portrait and reads out the
+          numbers under it. Flip the switch to collapse each pixel to the one
+          black-and-white value the rest of this page is built on.
+        </p>
+        <RgbTracer />
       </section>
 
       <section className={styles.section}>
