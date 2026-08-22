@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import { PORTRAIT_PROCESSING_SIZE } from "../home/Rotoscope/portraitConfig";
 import styles from "../../styles/Rotoscope.module.css";
-import { rec601Gray, sampleRgba, type RgbaBuffer } from "./pixelMath";
+import { clampCoord, rec601Gray, sampleRgba, type RgbaBuffer } from "./pixelMath";
 
 /**
  * The tracer rides a closed cubic-Bézier loop drawn in a 100×75 box, the
@@ -43,17 +43,24 @@ const usePrefersReducedMotion = (): boolean => {
   return reduced;
 };
 
-/** Map a point in the 100×75 loop box to the pixel under it. */
+/** Map a point in the 100×75 loop box to the raster cell beneath it. */
 export const samplePoint = (
   buffer: RgbaBuffer,
   point: { x: number; y: number },
 ): Sample => {
-  const x = Math.round((point.x / VIEW.width) * (buffer.width - 1));
-  const y = Math.round((point.y / VIEW.height) * (buffer.height - 1));
+  const x = clampCoord(Math.floor((point.x * buffer.width) / VIEW.width), buffer.width - 1);
+  const y = clampCoord(
+    Math.floor((point.y * buffer.height) / VIEW.height),
+    buffer.height - 1,
+  );
   const [red, green, blue] = sampleRgba(buffer, x, y);
   return { x, y, red, green, blue };
 };
 
+/**
+ * Each circle is the channel's light at opacity value/255 over a dark disc,
+ * so 0 reads black and 255 reads full color in either theme.
+ */
 const Swatch = ({
   label,
   value,
@@ -66,7 +73,12 @@ const Swatch = ({
   <div className={styles.tracerSwatch} aria-label={`${label} ${value}`}>
     <span
       className={styles.tracerCircle}
-      style={{ background: `rgba(${rgb}, ${value / 255})` }}
+      style={
+        {
+          "--swatch-rgb": rgb,
+          "--swatch-alpha": String(value / 255),
+        } as React.CSSProperties
+      }
     />
     <span className={styles.tracerLabel}>{label}</span>
     <span className={styles.tracerValue}>{value}</span>
@@ -190,7 +202,7 @@ export default function RgbTracer({ source: injected }: { source?: RgbaBuffer })
       <div className={styles.tracerReadout} aria-live="off">
         {sample ? (
           bw ? (
-            <Swatch label="Gray" value={gray} rgb="var(--text-color-rgb)" />
+            <Swatch label="Gray" value={gray} rgb="255, 255, 255" />
           ) : (
             CHANNELS.map((channel) => (
               <Swatch

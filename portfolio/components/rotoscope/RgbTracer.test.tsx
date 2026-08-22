@@ -20,8 +20,8 @@ const rgba = (
 };
 
 // jsdom has no SVG path geometry, so the tracer parks at the loop's start
-// (37, 50 in the 100×75 box), which is pixel (3, 5) of this 9×9 buffer:
-// R 72, G 60, B 40 → gray (77·72 + 150·60 + 29·40 + 128) >> 8 = 61.
+// (37, 50 in the 100×75 box), which is pixel (3, 6) of this 9×9 buffer:
+// R 72, G 72, B 40 → gray (77·72 + 150·72 + 29·40 + 128) >> 8 = 68.
 const source = {
   width: 9,
   height: 9,
@@ -39,9 +39,9 @@ test("maps loop coordinates onto the pixel grid", () => {
   expect(samplePoint(source, { x: 100, y: 75 })).toMatchObject({ x: 8, y: 8 });
   expect(samplePoint(source, { x: 37, y: 50 })).toEqual({
     x: 3,
-    y: 5,
+    y: 6,
     red: 72,
-    green: 60,
+    green: 72,
     blue: 40,
   });
 });
@@ -52,12 +52,13 @@ test("reads the pixel under the tracer as three alpha circles", () => {
   expect(container.querySelector("path")).toHaveAttribute("d", TRACER_LOOP);
   expect(screen.getByAltText("The original portrait in color")).toBeInTheDocument();
   expect(screen.getByLabelText("R 72")).toBeInTheDocument();
-  expect(screen.getByLabelText("G 60")).toBeInTheDocument();
+  expect(screen.getByLabelText("G 72")).toBeInTheDocument();
   expect(screen.getByLabelText("B 40")).toBeInTheDocument();
-  expect(screen.getByText(/pixel 3, 5 · three numbers, each 0 to 255/)).toBeInTheDocument();
+  expect(screen.getByText(/pixel 3, 6 · three numbers, each 0 to 255/)).toBeInTheDocument();
 
-  const red = screen.getByLabelText("R 72").querySelector("span");
-  expect(red).toHaveStyle({ background: `rgba(229, 57, 53, ${72 / 255})` });
+  const red = screen.getByLabelText("R 72").querySelector("span") as HTMLElement;
+  expect(red.style.getPropertyValue("--swatch-rgb")).toBe("229, 57, 53");
+  expect(red.style.getPropertyValue("--swatch-alpha")).toBe(String(72 / 255));
 });
 
 test("the switch collapses the readout to one black-and-white circle", () => {
@@ -70,10 +71,10 @@ test("the switch collapses the readout to one black-and-white circle", () => {
 
   expect(toggle).toHaveAttribute("aria-checked", "true");
   expect(screen.getByAltText("The original portrait in black and white")).toBeInTheDocument();
-  expect(screen.getByLabelText("Gray 61")).toBeInTheDocument();
+  expect(screen.getByLabelText("Gray 68")).toBeInTheDocument();
   expect(screen.queryByLabelText("R 72")).not.toBeInTheDocument();
   expect(
-    screen.getByText(/\(77·72 \+ 150·60 \+ 29·40 \+ 128\) ≫ 8 = 61/),
+    screen.getByText(/\(77·72 \+ 150·72 \+ 29·40 \+ 128\) ≫ 8 = 68/),
   ).toBeInTheDocument();
 
   fireEvent.click(toggle);

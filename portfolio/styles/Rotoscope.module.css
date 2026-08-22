@@ -855,12 +855,19 @@
   justify-items: center;
 }
 
+/* Channel light at opacity value/255 over a dark disc: 0 is black, 255 is the
+   full channel color, regardless of the page theme behind it. */
 .tracerCircle {
   width: clamp(3.4rem, 14vw, 4.5rem);
   height: clamp(3.4rem, 14vw, 4.5rem);
   border: 1px solid rgba(var(--text-color-rgb), 0.3);
   border-radius: 50%;
-  transition: background 0.12s linear;
+  background:
+    linear-gradient(
+      rgba(var(--swatch-rgb), var(--swatch-alpha)),
+      rgba(var(--swatch-rgb), var(--swatch-alpha))
+    ),
+    #111;
 }
 
 .tracerLabel {
