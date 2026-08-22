@@ -13,7 +13,6 @@ export const TRACER_LOOP =
 const LOOP_START = { x: 37, y: 50 };
 const VIEW = { width: 100, height: 75 } as const;
 const LOOP_MS = 18000;
-const SAMPLE_MS = 120;
 const REDUCE_QUERY = "(prefers-reduced-motion: reduce)";
 
 const CHANNELS = [
@@ -90,7 +89,6 @@ export default function RgbTracer({ source: injected }: { source?: RgbaBuffer })
   const reducedMotion = usePrefersReducedMotion();
   const [buffer, setBuffer] = useState<RgbaBuffer | null>(injected ?? null);
   const [bw, setBw] = useState(false);
-  const [point, setPoint] = useState(LOOP_START);
   const [sample, setSample] = useState<Sample | null>(null);
   const pathRef = useRef<SVGPathElement | null>(null);
   const dotRef = useRef<SVGCircleElement | null>(null);
@@ -125,24 +123,29 @@ export default function RgbTracer({ source: injected }: { source?: RgbaBuffer })
     const path = pathRef.current;
     const length =
       path && typeof path.getTotalLength === "function" ? path.getTotalLength() : 0;
+    // The dot is positioned imperatively so React never writes a stale
+    // coordinate back; the readout follows the dot every frame and only
+    // re-renders when the pixel underneath actually changes.
+    const moveDot = (x: number, y: number) => {
+      dotRef.current?.setAttribute("cx", String(x));
+      dotRef.current?.setAttribute("cy", String(y));
+    };
     if (!path || !length || reducedMotion || !inView) {
+      moveDot(LOOP_START.x, LOOP_START.y);
       setSample(samplePoint(buffer, LOOP_START));
-      setPoint(LOOP_START);
       return;
     }
     let frame = 0;
-    let lastSample = -Infinity;
+    let last: Sample | null = null;
     const start = performance.now();
     const tick = (now: number) => {
       const t = ((now - start) % LOOP_MS) / LOOP_MS;
       const at = path.getPointAtLength(t * length);
-      dotRef.current?.setAttribute("cx", String(at.x));
-      dotRef.current?.setAttribute("cy", String(at.y));
-      if (now - lastSample >= SAMPLE_MS) {
-        lastSample = now;
-        const next = { x: at.x, y: at.y };
-        setPoint(next);
-        setSample(samplePoint(buffer, next));
+      moveDot(at.x, at.y);
+      const next = samplePoint(buffer, at);
+      if (!last || next.x !== last.x || next.y !== last.y) {
+        last = next;
+        setSample(next);
       }
       frame = window.requestAnimationFrame(tick);
     };
@@ -179,8 +182,8 @@ export default function RgbTracer({ source: injected }: { source?: RgbaBuffer })
           <circle
             ref={dotRef}
             className={styles.tracerDot}
-            cx={point.x}
-            cy={point.y}
+            cx={LOOP_START.x}
+            cy={LOOP_START.y}
             r="1.6"
           />
         </svg>
