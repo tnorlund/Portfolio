@@ -28,6 +28,10 @@ struct Arguments {
     var stillsEvery = 30
     var skipMov = false
     var skipAudio = false
+    var plateThreshold: UInt8 = 48
+    var plateSamples = 48
+    var noRegistration = false
+    var verbose = false
 
     static func parse(_ argv: [String]) throws -> Arguments {
         var args = Array(argv.dropFirst())
@@ -37,6 +41,7 @@ struct Arguments {
         args.removeFirst()
         let input = URL(fileURLWithPath: first)
         var parsed = Arguments(input: input, outDir: input.deletingLastPathComponent())
+        parsed.options.colorEdges = true
         func value(_ flag: String) throws -> String {
             guard !args.isEmpty else { throw UsageError("\(flag) needs a value") }
             return args.removeFirst()
@@ -68,6 +73,11 @@ struct Arguments {
             case "--stills-every": parsed.stillsEvery = max(1, Int(try value(flag)) ?? 30)
             case "--no-mov": parsed.skipMov = true
             case "--no-audio": parsed.skipAudio = true
+            case "--gray-edges": parsed.options.colorEdges = false
+            case "--plate-threshold": parsed.plateThreshold = UInt8(clamping: Int(try value(flag)) ?? 48)
+            case "--plate-samples": parsed.plateSamples = max(3, Int(try value(flag)) ?? 48)
+            case "--no-registration": parsed.noRegistration = true
+            case "--verbose": parsed.verbose = true
             default: throw UsageError("unknown option \(flag)")
             }
         }
@@ -118,6 +128,64 @@ do {
             height: height, codec: .h264(matte: args.matte), audioFormat: audioFormat))
 
     let analyzer = FocusAnalyzer(width: width, height: height, mode: args.subject)
+    if args.subject == .held {
+        // Background plate for a handheld-but-still shot: every sampled frame is
+        // registered to the first frame (subject blanked) with Vision's
+        // homographic registration, warped into that reference space, and the
+        // per-pixel median of the aligned samples is the clean plate.
+        let plateStarted = Date()
+        let sampler = try await FrameReader(url: args.input, targetWidth: args.width)
+        try sampler.start()
+        let stride = max(1, sampler.estimatedFrames / args.plateSamples)
+        let registrar = args.noRegistration ? nil : FrameRegistrar(width: width, height: height)
+        var samples: [[UInt8]] = []
+        var sampled = 0
+        var rejectedSamples = 0
+        while let (buffer, _) = try sampler.next() {
+            defer { sampled += 1 }
+            if let max = args.maxFrames, sampled >= max * 4 { break }
+            if sampled % stride != 0 { continue }
+            var rgba = rgbaBytes(from: buffer)
+            let person = try analyzer.personMask(buffer)
+            // The subject never leaves the middle of the frame, so a plain
+            // median would keep a ghost of them there; cut the (dilated) person
+            // out of every sample so the median only ever sees background.
+            var cut = person.map { $0 > 32 ? UInt8(1) : 0 }
+            for _ in 0..<8 { cut = Morphology.dilate(cut, width: width, height: height) }
+            for index in 0..<(width * height) where cut[index] != 0 { rgba[index * 4 + 3] = 0 }
+            guard let registrar else {
+                samples.append(rgba)
+                continue
+            }
+            if !registrar.hasReference {
+                try registrar.setReference(rgba: rgba, blank: cut)
+                samples.append(rgba)
+                continue
+            }
+            // Sparse samples: no frame-to-frame continuity to enforce, only
+            // the absolute plausibility bounds; a rejected sample is dropped.
+            registrar.resetContinuity()
+            registrar.maxJump = .greatestFiniteMagnitude
+            // Fill from the reference, shifted by the coarse strip translation.
+            var fill = registrar.referencePixels
+            if let coarse = try registrar.coarseTranslation(rgba: rgba, blank: cut), let pixels = fill {
+                fill = try registrar.warp(rgba: pixels, by: coarse.inverse)
+            }
+            let (homography, accepted) = try registrar.homography(rgba: rgba, blank: cut, fill: fill)
+            if accepted { samples.append(try registrar.warp(rgba: rgba, by: homography)) } else { rejectedSamples += 1 }
+        }
+        registrar?.resetContinuity()
+        registrar?.maxJump = 40
+        analyzer.plate = BackgroundPlate.median(width: width, height: height, samples: samples)
+        analyzer.plateThreshold = args.plateThreshold
+        analyzer.registrar = registrar
+        log(String(format: "background plate: median of %d %@frames (every %d, %d rejected) in %.1fs", samples.count,
+                   registrar == nil ? "" : "registered ", stride, rejectedSamples, Date().timeIntervalSince(plateStarted)))
+        if let stillsDir = args.stillsDir, let plate = analyzer.plate {
+            try writePNG(rgba: plate.rgba, width: width, height: height,
+                         to: stillsDir.appendingPathComponent("plate.png"))
+        }
+    }
     // Audio is interleaved with video as we go: AVAssetWriter holds a track
     // input once it runs ahead of a sibling track, so feeding audio only at the
     // end would deadlock the video input.
@@ -150,6 +218,9 @@ do {
             sessionStarted = true
         }
         let rgba = rgbaBytes(from: buffer)
+        if let stillsDir = args.stillsDir, frameIndex % args.stillsEvery == 0 {
+            analyzer.debugDump = (stillsDir, String(format: "%04d", frameIndex))
+        }
         let focus = try analyzer.analyze(buffer)
         if focus.face != nil { facesSeen += 1 }
         if focus.subjectPixels == 0 { emptyMasks += 1 }
@@ -182,6 +253,25 @@ do {
             try writePNG(
                 rgba: debugOverlay(rgba: rgba, width: width, height: height, focus: focus, markers: frame.markers, tiers: tiers),
                 width: width, height: height, to: stillsDir.appendingPathComponent("\(tag)-focus.png"))
+            if let warped = analyzer.lastWarpedPlate, let diff = analyzer.lastDifference {
+                try writePNG(rgba: warped, width: width, height: height,
+                             to: stillsDir.appendingPathComponent("\(tag)-plate.png"))
+                var gray = [UInt8](repeating: 255, count: width * height * 4)
+                for index in 0..<(width * height) {
+                    gray[index * 4] = diff[index]
+                    gray[index * 4 + 1] = diff[index]
+                    gray[index * 4 + 2] = diff[index]
+                }
+                try writePNG(rgba: gray, width: width, height: height,
+                             to: stillsDir.appendingPathComponent("\(tag)-diff.png"))
+            }
+        }
+        if args.subject == .held, args.verbose {
+            let h = analyzer.lastHomography
+            log(String(format: "  frame %d homography tx=%.1f ty=%.1f sx=%.3f sy=%.3f %@ refine=%d,%d subject=%d", frameIndex,
+                       h.columns.2.x, h.columns.2.y, h.columns.0.x, h.columns.1.y,
+                       analyzer.lastRegistrationAccepted ? "ok" : "REJECTED",
+                       analyzer.lastRefinement.dx, analyzer.lastRefinement.dy, focus.subjectPixels))
         }
         frameIndex += 1
         if frameIndex % 10 == 0 || frameIndex == 1 {
@@ -198,8 +288,9 @@ do {
     }
     for writer in writers { try await writer.finish() }
     let elapsed = Date().timeIntervalSince(started)
-    log(String(format: "done: %d frames in %.1fs (%.2fs/frame); face found in %d frames; empty subject in %d",
-               frameIndex, elapsed, elapsed / Double(max(1, frameIndex)), facesSeen, emptyMasks))
+    log(String(format: "done: %d frames in %.1fs (%.2fs/frame); face found in %d frames; empty subject in %d%@",
+               frameIndex, elapsed, elapsed / Double(max(1, frameIndex)), facesSeen, emptyMasks,
+               args.subject == .held ? "; registration rejected in \(analyzer.rejectedRegistrations)" : ""))
     for writer in writers { print(writer.url.path) }
 } catch {
     log("error: \(error)")

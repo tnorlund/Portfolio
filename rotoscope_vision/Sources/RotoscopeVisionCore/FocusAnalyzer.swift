@@ -2,6 +2,7 @@ import CoreImage
 import CoreVideo
 import Foundation
 import Vision
+import simd
 
 /// How the subject is lifted off the background.
 public enum SubjectMode: String, CaseIterable {
@@ -13,6 +14,10 @@ public enum SubjectMode: String, CaseIterable {
     case foreground
     /// `VNGeneratePersonSegmentationRequest`: every person in frame.
     case people
+    /// Person instance mask plus anything that differs from a static-camera
+    /// background plate *and* is connected to the person: held props such as a
+    /// barbell or a band, which Vision's subject lift only keeps intermittently.
+    case held
     /// No segmentation; everything is body tier and nothing is removed.
     case none
 }
@@ -48,6 +53,32 @@ public final class FocusAnalyzer {
     public var eyeRadiusX: Double = 0.95
     public var eyeRadiusY: Double = 0.46
     public var maskThreshold: UInt8 = 127
+    /// Static-camera background plate for `.held`; pixels whose largest channel
+    /// difference from it exceeds `plateThreshold` are candidate prop pixels.
+    public var plate: BackgroundPlate?
+    public var plateThreshold: UInt8 = 48
+    /// Misalignment tolerance of the plate difference, in half-resolution pixels.
+    public var plateTolerance = 4
+    /// Aligns each frame to the plate's reference frame before differencing.
+    public var registrar: FrameRegistrar?
+    /// Last frame's homography (frame → reference), for diagnostics.
+    public private(set) var lastHomography = matrix_identity_float3x3
+    public private(set) var lastRegistrationAccepted = true
+    public private(set) var lastRefinement = (dx: 0, dy: 0)
+    /// Diagnostics from the last `.held` frame: the plate warped into the frame
+    /// and the plate difference, both frame-sized (RGBA / 1 byte).
+    public private(set) var lastWarpedPlate: [UInt8]?
+    public private(set) var lastDifference: [UInt8]?
+    public private(set) var rejectedRegistrations = 0
+    /// When set, `.held` dumps its intermediate masks for the next frame here
+    /// (strong, weak, cleaned, reachable, props) as `<prefix>-<stage>.png`.
+    public var debugDump: (directory: URL, prefix: String)?
+    /// Previous frame's prop pixels (binary); blanked before registering so a
+    /// moving barbell cannot pull the homography.
+    private var previousProps: [UInt8]?
+    private var previousAge: [UInt8]?
+    /// Frames a carried prop may survive on weak differences alone.
+    public var carryFrames = 90
 
     private let context = CIContext(options: [.cacheIntermediates: false])
     private var maskTarget: CVPixelBuffer?
@@ -56,6 +87,20 @@ public final class FocusAnalyzer {
         self.width = width
         self.height = height
         self.mode = mode
+    }
+
+    /// Largest-person soft mask only (no props, no tiers); used to blank the
+    /// subject while building the aligned background plate.
+    public func personMask(_ pixelBuffer: CVPixelBuffer) throws -> [UInt8] {
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: .up, options: [:])
+        let request = VNGeneratePersonInstanceMaskRequest()
+        try handler.perform([request])
+        if let observation = request.results?.first, let best = try largestInstance(in: observation) {
+            let scaled = try observation.generateScaledMaskForImage(
+                forInstances: IndexSet(integer: best), from: handler)
+            return try maskBytes(from: scaled)
+        }
+        return [UInt8](repeating: 0, count: width * height)
     }
 
     public func analyze(_ pixelBuffer: CVPixelBuffer) throws -> FrameFocus {
@@ -76,11 +121,11 @@ public final class FocusAnalyzer {
             } else {
                 mask = [UInt8](repeating: 0, count: count)
             }
-        case .person, .foreground:
+        case .person, .foreground, .held:
             let request: VNImageBasedRequest =
-                mode == .person
-                ? VNGeneratePersonInstanceMaskRequest()
-                : VNGenerateForegroundInstanceMaskRequest()
+                mode == .foreground
+                ? VNGenerateForegroundInstanceMaskRequest()
+                : VNGeneratePersonInstanceMaskRequest()
             try handler.perform([request])
             if let observation = request.results?.first as? VNInstanceMaskObservation,
                 let best = try largestInstance(in: observation)
@@ -90,6 +135,31 @@ public final class FocusAnalyzer {
                 mask = try maskBytes(from: scaled)
             } else {
                 mask = [UInt8](repeating: 0, count: count)
+            }
+            if mode == .held, let plate {
+                // Everyone else in the shot: never a prop, even when the bar
+                // sweeps across them.
+                let everyone = VNGeneratePersonSegmentationRequest()
+                everyone.qualityLevel = .accurate
+                everyone.outputPixelFormat = kCVPixelFormatType_OneComponent8
+                try handler.perform([everyone])
+                var others: [UInt8]? = nil
+                if let result = everyone.results?.first {
+                    // Whole-frame person segmentation is blobby and happily
+                    // labels the bar at the subject's arms as "person", so
+                    // decide per connected blob: blobs touching the subject's
+                    // own instance are the subject; the rest are other people.
+                    let all = try maskBytes(from: result.pixelBuffer)
+                    let people = all.map { $0 > 127 ? UInt8(1) : 0 }
+                    let own = mask.map { $0 > 32 ? UInt8(1) : 0 }
+                    let mine = Morphology.componentsTouching(people, anchor: own, width: width, height: height)
+                    var binary = [UInt8](repeating: 0, count: count)
+                    for index in 0..<count where people[index] != 0 && mine[index] == 0 { binary[index] = 1 }
+                    for _ in 0..<3 { binary = Morphology.dilate(binary, width: width, height: height) }
+                    others = binary
+                }
+                mask = try addHeldProps(
+                    to: mask, rgba: rgbaBytes(from: pixelBuffer), plate: plate, others: others)
             }
         }
 
@@ -117,6 +187,193 @@ public final class FocusAnalyzer {
             }
         }
         return FrameFocus(mask: mask, face: face, tiers: tiers, subjectPixels: subjectPixels)
+    }
+
+    /// Unions the person mask with background-plate difference blobs that touch
+    /// it. The blob mask is opened (erode, dilate twice) so sensor noise and
+    /// thin shadow fringes drop out before the connectivity test, and the
+    /// person mask itself is part of the connectivity graph so a prop only has
+    /// to touch the person somewhere.
+    // swiftlint:disable:next function_body_length
+    private func addHeldProps(
+        to mask: [UInt8], rgba: [UInt8], plate: BackgroundPlate, others: [UInt8]?
+    ) throws -> [UInt8] {
+        let count = width * height
+        let threshold = plateThreshold
+        let difference: [UInt8]
+        if let registrar {
+            // Frame → reference homography; the plate (reference space) is
+            // brought into this frame with the inverse. Everything that moves
+            // — the person and last frame's props, both dilated — is blanked
+            // first so only the static background drives the estimate.
+            var blank = mask.map { $0 > 96 ? UInt8(1) : 0 }
+            if let previousProps {
+                for index in 0..<count where previousProps[index] != 0 { blank[index] = 1 }
+            }
+            for _ in 0..<5 { blank = Morphology.dilate(blank, width: width, height: height) }
+            // Fill the hole with the plate aligned by an unbiased coarse
+            // estimate (top-strip translation), then let the homography refine
+            // on the full frame. Filling from the previous homography instead
+            // would lock the estimate to yesterday's answer and drift.
+            let plateRGBA = plate.rgba
+            let strip = try registrar.coarseTranslation(rgba: rgba, blank: blank)
+            let coarse = strip ?? lastHomography
+            let guess = try registrar.warp(rgba: plateRGBA, by: coarse.inverse)
+            let (homography, accepted) = try registrar.homography(rgba: rgba, blank: blank, fill: guess)
+            // A rejected refinement falls back to the unbiased coarse estimate.
+            lastHomography = accepted ? homography : coarse
+            lastRegistrationAccepted = accepted
+            if !accepted { rejectedRegistrations += 1 }
+            var warped = accepted ? try registrar.warp(rgba: plateRGBA, by: homography.inverse) : guess
+            // Direct photometric refinement over the visible background,
+            // which corrects whatever residual the feature-based estimate
+            // (or the strip fallback) left.
+            let shift = Morphology.refineTranslation(
+                rgba: rgba, warpedPlate: warped, exclude: blank, width: width, height: height, range: 10)
+            lastRefinement = shift
+            if shift.dx != 0 || shift.dy != 0 {
+                warped = Morphology.shifted(warped, width: width, height: height, dx: shift.dx, dy: shift.dy)
+            }
+            difference = BackgroundPlate.tolerantDifference(
+                rgba: rgba, warpedPlate: warped, width: width, height: height, radius: plateTolerance)
+            lastWarpedPlate = warped
+            lastDifference = difference
+        } else {
+            difference = plate.difference(rgba: rgba)
+        }
+        var blob = [UInt8](repeating: 0, count: count)
+        var weak = [UInt8](repeating: 0, count: count)
+        var person = [UInt8](repeating: 0, count: count)
+        var top = height
+        var bottom = -1
+        // Entry is strict, staying is lenient: new props need a strong
+        // difference, carried props survive on half that.
+        let entryThreshold = UInt8(min(255, Int(threshold) + Int(threshold) / 6))
+        let weakThreshold = threshold / 2
+        for index in 0..<count {
+            if mask[index] > maskThreshold {
+                person[index] = 1
+                let y = index / width
+                if y < top { top = y }
+                if y > bottom { bottom = y }
+            }
+            var isShadow = false
+            if let plate = lastWarpedPlate, plate[index * 4 + 3] != 0 {
+                // A cast shadow darkens the background without changing its
+                // chroma: the frame is a uniformly scaled-down copy of the
+                // plate. Never let one enter or sustain the props.
+                let fr = Int(rgba[index * 4]), fg = Int(rgba[index * 4 + 1]), fb = Int(rgba[index * 4 + 2])
+                let pr = Int(plate[index * 4]), pg = Int(plate[index * 4 + 1]), pb = Int(plate[index * 4 + 2])
+                let fSum = fr + fg + fb
+                let pSum = pr + pg + pb
+                if fSum < pSum && pSum > 30 && fSum * 2 >= pSum {
+                    let sr = fr * pSum, sg = fg * pSum, sb = fb * pSum
+                    let tr = pr * fSum, tg = pg * fSum, tb = pb * fSum
+                    let tolerance = 26 * pSum
+                    isShadow = abs(sr - tr) < tolerance && abs(sg - tg) < tolerance && abs(sb - tb) < tolerance
+                }
+            }
+            if !isShadow {
+                if difference[index] > entryThreshold { blob[index] = 1 }
+                if difference[index] > weakThreshold { weak[index] = 1 }
+            }
+        }
+        // Held props live within the person's own vertical extent, below the
+        // head: nothing is carried above the shoulders, and a ceiling fixture
+        // at head height otherwise sneaks in through the hair. A little slack
+        // below the feet keeps the band.
+        if bottom >= top {
+            let span = bottom - top
+            let minY = max(0, top + span / 8)
+            let maxY = min(height - 1, bottom + span / 12)
+            for y in 0..<height where y < minY || y > maxY {
+                for x in 0..<width {
+                    blob[y * width + x] = 0
+                    weak[y * width + x] = 0
+                }
+            }
+        }
+        if let others {
+            for index in 0..<count where others[index] != 0 {
+                blob[index] = 0
+                weak[index] = 0
+            }
+        }
+        // Open the strong blobs (one erosion: the tolerant difference already
+        // absorbs misalignment, and a chrome bar's shaded underside in front
+        // of a bright bench is only a few pixels wide), then grow them back.
+        var cleaned = Morphology.erode(blob, width: width, height: height)
+        cleaned = Morphology.dilate(cleaned, width: width, height: height)
+        cleaned = Morphology.dilate(cleaned, width: width, height: height)
+        // New prop pixels must be strongly different and reach the person
+        // through strong pixels alone.
+        var graph = cleaned
+        for index in 0..<count where person[index] != 0 { graph[index] = 1 }
+        let reachable = Morphology.componentsTouching(graph, anchor: person, width: width, height: height)
+        var props = [UInt8](repeating: 0, count: count)
+        for index in 0..<count where reachable[index] != 0 && person[index] == 0 { props[index] = 1 }
+        // Temporal carry: what was a prop last frame stays a prop while it is
+        // still at least weakly different nearby (a chrome bar in front of a
+        // white bench matches in places but never everywhere), allowing a few
+        // pixels of motion. Carried pixels never bridge new pixels in.
+        var weakNear = weak
+        for _ in 0..<2 { weakNear = Morphology.dilate(weakNear, width: width, height: height) }
+        if let previousProps {
+            var carried = previousProps
+            for _ in 0..<4 { carried = Morphology.dilate(carried, width: width, height: height) }
+            for index in 0..<count where carried[index] != 0 && weakNear[index] != 0 && person[index] == 0 {
+                props[index] = 1
+            }
+        }
+        // Drop islands: everything must touch the person, directly or through
+        // other props.
+        var bridge = props
+        for index in 0..<count where person[index] != 0 { bridge[index] = 1 }
+        let connected = Morphology.componentsTouching(bridge, anchor: person, width: width, height: height)
+        for index in 0..<count where connected[index] == 0 { props[index] = 0 }
+        // Expiry: a prop pixel's age is frames since it (or a neighbor) was
+        // strongly different. A component whose youngest pixel is older than
+        // `carryFrames` has been riding on weak differences alone for too
+        // long — a leak — and is dropped.
+        var age = [UInt8](repeating: 255, count: count)
+        if let previousAge {
+            // Min-filter the previous ages over the motion allowance.
+            var spread = previousAge
+            for _ in 0..<6 { spread = Morphology.minFilter(spread, width: width, height: height) }
+            for index in 0..<count { age[index] = spread[index] == 255 ? 255 : spread[index] &+ 1 }
+        }
+        for index in 0..<count where blob[index] != 0 { age[index] = 0 }
+        let expired = Morphology.componentsTooOld(props, age: age, maxAge: UInt8(clamping: carryFrames), width: width, height: height)
+        for index in 0..<count where expired[index] != 0 { props[index] = 0 }
+        previousAge = age
+        if let debugDump {
+            let stages: [(String, [UInt8])] = [
+                ("strong", blob), ("weak", weak), ("cleaned", cleaned), ("reachable", reachable),
+                ("props", props), ("person", person), ("others", others ?? []),
+            ]
+            for (name, stage) in stages where !stage.isEmpty {
+                var rgba = [UInt8](repeating: 255, count: count * 4)
+                for index in 0..<count where stage[index] == 0 {
+                    rgba[index * 4] = 0
+                    rgba[index * 4 + 1] = 0
+                    rgba[index * 4 + 2] = 0
+                }
+                try? writePNG(rgba: rgba, width: width, height: height,
+                              to: debugDump.directory.appendingPathComponent("\(debugDump.prefix)-\(name).png"))
+            }
+            self.debugDump = nil
+        }
+        props = Morphology.fillHoles(props, keepOpen: person, width: width, height: height)
+        previousProps = props
+        var out = mask
+        for index in 0..<count where props[index] != 0 && person[index] == 0 {
+            // Soft edge from the difference strength so the prop alpha is not a
+            // hard cut; filled holes carry no difference and come in opaque.
+            let strength = Int(difference[index])
+            let alpha = cleaned[index] != 0 ? min(255, max(0, (strength - Int(threshold)) * 8 + 160)) : 255
+            out[index] = max(out[index], UInt8(alpha))
+        }
+        return out
     }
 
     private func largestInstance(in observation: VNInstanceMaskObservation) throws -> Int? {

@@ -49,7 +49,7 @@ A 720×1280 @ 30 fps clip processes at roughly 0.06 s/frame on Apple silicon
 |------|---------|---------|
 | `--out-dir DIR` | next to the input | where the two movies go |
 | `--width W` | source width | downscale the processing/output frame |
-| `--subject person\|foreground\|people\|none` | `person` | how the subject is lifted: largest person instance, Vision subject-lift (keeps props like a barbell), every person, or no mask |
+| `--subject person\|held\|foreground\|people\|none` | `person` | how the subject is lifted; see below |
 | `--keep-background` | off | rotoscope the whole frame; background gets a 10 % marker share |
 | `--budget N` | 1200 | marker budget per frame |
 | `--face-quota F` | 0.3 | share of the budget inside the eye ellipse (rest is body) |
@@ -63,6 +63,38 @@ A 720×1280 @ 30 fps clip processes at roughly 0.06 s/frame on Apple silicon
 Frames where Vision finds no face spend the face share on the body; frames
 where the mask is empty fall back to rotoscoping the whole frame so nothing
 goes blank.
+
+## Subject modes
+
+- `person` (default): `VNGeneratePersonInstanceMaskRequest`, largest instance.
+  Robust, but held props (a barbell, a band) are only included when Vision
+  happens to consider them part of the person.
+- `held`: everything `person` does, plus held props recovered the way the 2017
+  paper assumed — against a clean background frame. For a handheld-but-still
+  shot the tool builds that frame itself: sampled frames are registered to the
+  first frame (subject blanked, `VNHomographicImageRegistrationRequest`
+  refined by a top-strip `VNTranslationalImageRegistrationRequest` and a
+  direct photometric search), and their per-pixel median is the plate. Per
+  frame, the plate is warped into place and anything that differs (with a
+  ±8 px misalignment-tolerant, shadow-rejecting comparison) **and is
+  connected to the person** becomes a prop: the barbell, its plates, a
+  resistance band. Strict entry / lenient stay: new prop pixels need a strong
+  difference chain to the person, while pixels that were props last frame
+  survive on half the threshold (a chrome bar in front of a white bench), and
+  components older than `carryFrames` without strong support expire. Other
+  people (`VNGeneratePersonSegmentationRequest` blobs not touching the
+  subject) are never props. Needs a mostly static camera.
+- `foreground`: `VNGenerateForegroundInstanceMaskRequest` (Photos' subject
+  lift). Includes props only in the frames Vision finds them salient — on the
+  test clip the barbell exists mid-squat and vanishes standing.
+- `people`: every person in frame (`VNGeneratePersonSegmentationRequest`).
+- `none`: no segmentation; whole frame is body tier, nothing removed.
+
+`held` extras: `--plate-threshold N` (difference to count as a prop, default
+48), `--plate-samples N` (median depth, default 48), `--no-registration`
+(trust the tripod), `--gray-edges` (paper-faithful watershed gradient instead
+of the per-channel color gradient the tool defaults to), `--verbose` (per-
+frame homography/refinement log).
 
 ## Tests
 

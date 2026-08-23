@@ -35,6 +35,11 @@ public struct EngineOptions {
     public var quotas = TierValues(face: 0.3, body: 0.7, background: 0.0)
     /// Manhattan suppression radius per focus tier.
     public var spacing = TierValues(face: 2, body: 4, background: 8)
+    /// Flood the watershed on the strongest per-channel Sobel magnitude instead
+    /// of the gray one, so a color boundary with little luma contrast (an
+    /// orange band on skin) still walls off its own basin. Off = paper/browser
+    /// behavior.
+    public var colorEdges = false
 
     public init() {}
 }
@@ -600,7 +605,21 @@ public enum Engine {
         let difference = absoluteDifference(gray, blurred)
         let scores = shiTomasiScores(difference: difference, width: width, height: height)
         let markers = selectMarkers(scores: scores, width: width, height: height, tiers: tiers, options: options)
-        let gradient = sobel(gray, width: width, height: height).magnitude
+        var gradient = sobel(gray, width: width, height: height).magnitude
+        if options.colorEdges {
+            for channel in 0..<3 {
+                var plane = [UInt8](repeating: 0, count: count)
+                var offset = channel
+                for index in 0..<count {
+                    plane[index] = rgba[offset]
+                    offset += 4
+                }
+                let magnitude = sobel(plane, width: width, height: height).magnitude
+                for index in 0..<count where magnitude[index] > gradient[index] {
+                    gradient[index] = magnitude[index]
+                }
+            }
+        }
         let barrier: [UInt8]? = subject.map { $0.map { $0 == 0 ? 1 : 0 } }
         let segmented = watershed(
             gradient: gradient, width: width, height: height, markers: markers.indices, barrier: barrier)
