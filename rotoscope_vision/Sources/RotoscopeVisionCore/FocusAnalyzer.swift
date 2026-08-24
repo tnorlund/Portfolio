@@ -45,6 +45,7 @@ public struct FrameFocus {
     public var warpedPlate: [UInt8]?
     public var pose: BodyPose?
     public var evidence: PropEvidenceResult?
+    public var trackResult: TrackEvidenceResult?
     public var msVision: Double
     public var msEvidence: Double
 }
@@ -72,6 +73,8 @@ public final class FocusAnalyzer {
     public var flow: OpticalFlow?
     public private(set) var poseDetector: PoseDetector
     public private(set) var soft: SoftEvidence
+    /// Feature-track substrate (created on first use in tracks mode).
+    public private(set) var tracks: TrackEvidence?
     /// Last frame's homography (frame → reference), for diagnostics.
     public private(set) var lastHomography = matrix_identity_float3x3
     public private(set) var previousHomography = matrix_identity_float3x3
@@ -85,6 +88,7 @@ public final class FocusAnalyzer {
     private var previousProps: [UInt8]?
     private var previousAge: [UInt8]?
     private var previousPerson: [UInt8]?
+    private var lastTrackResult: TrackEvidenceResult?
 
     private let context = CIContext(options: [.cacheIntermediates: false])
     private var maskTarget: CVPixelBuffer?
@@ -162,6 +166,7 @@ public final class FocusAnalyzer {
         var difference: [UInt8]? = nil
         var evidence: PropEvidenceResult? = nil
         var msEvidence = 0.0
+        lastTrackResult = nil
         if mode == .held, let plate {
             // Everyone else in the shot: never a prop, even when the bar
             // sweeps across them. Whole-frame person segmentation is blobby
@@ -189,7 +194,17 @@ public final class FocusAnalyzer {
             let (diff, warped) = try plateDifference(rgba: rgba, mask: mask, plate: plate)
             difference = diff
             let band = verticalBand(person: person)
-            if params.evidence == "soft" {
+            var trackResult: TrackEvidenceResult? = nil
+            if params.evidence == "tracks" {
+                if tracks == nil { tracks = TrackEvidence(width: width, height: height, params: params) }
+                tracks!.params = params
+                let gray = Engine.grayscale(rgba: rgba, count: count)
+                let gradient = Engine.sobel(gray, width: width, height: height)
+                trackResult = tracks!.compute(
+                    rgba: rgba, gray: gray, gradient: gradient, difference: diff, warpedPlate: warped,
+                    person: person, others: others, flow: flow)
+            }
+            if params.evidence == "soft" || (params.evidence == "tracks" && trackResult?.labeled == nil) {
                 soft.params = params
                 let result = soft.compute(
                     rgba: rgba, difference: diff, warpedPlate: warped, person: person, others: others,
@@ -201,8 +216,12 @@ public final class FocusAnalyzer {
                     rgba: rgba, difference: diff, warpedPlate: warped, person: person, others: others,
                     minY: band.minY, maxY: band.maxY)
             }
+            if let labeled = trackResult?.labeled {
+                props = labeled.props
+            }
             previousProps = props
             msEvidence = Date().timeIntervalSince(evidenceStart) * 1000
+            lastTrackResult = trackResult
             // Prop alpha: soft edge from the difference strength; asserted
             // interiors (disc, filled hole) come in opaque.
             for index in 0..<count where props[index] != 0 && person[index] == 0 {
@@ -241,7 +260,7 @@ public final class FocusAnalyzer {
         return FrameFocus(
             mask: mask, face: face, tiers: tiers, subjectPixels: subjectPixels, person: person, props: props,
             others: others, difference: difference, warpedPlate: lastWarpedPlate, pose: pose, evidence: evidence,
-            msVision: msVision, msEvidence: msEvidence)
+            trackResult: lastTrackResult, msVision: msVision, msEvidence: msEvidence)
     }
 
     /// Rows a held prop may occupy: below the head (nothing is carried above

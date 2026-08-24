@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import RotoscopeVisionCore
+import simd
 
 /// rotoscope-vision — run the best-feature rotoscope over a movie, with Apple
 /// Vision supplying the focus tiers (person/subject mask + eye landmarks) and
@@ -391,6 +392,48 @@ do {
                 m.paintTemporalDelta = MetricsMath.temporalDelta(current: frame.rgba, warpedPrevious: warped, mask: mask)
                 m.markerPersistence = MetricsMath.markerPersistence(advanced: seeds, current: frame.markers.indices, width: width, height: height)
             }
+            if let tr = focus.trackResult {
+                let ts = tr.trackerStats, cs = tr.classifierStats
+                m.trackCount = ts.live
+                m.trackNew = ts.new
+                m.trackLost = ts.newlyLost
+                m.trackRevived = ts.revived
+                m.trackFBError = Double(ts.medianFB)
+                m.trackLabelFlips = ts.live > 0 ? Double(cs.labelFlips) / Double(ts.live) : 0
+                m.staticTrackCount = cs.staticCount
+                m.subjectTrackCount = cs.subjectCount
+                m.attachedTrackCount = cs.attachedCount
+                m.staticPlateAgreement = Double(cs.staticPlateAgreement)
+                if let fit = cs.fit {
+                    m.bgFitResidual = Double(fit.residual)
+                    m.bgInlierFrac = Double(fit.inlierFrac)
+                    // Disagreement between the track consensus and the registrar at the frame centre.
+                    let c = SIMD2<Float>(Float(width) / 2, Float(height) / 2)
+                    let h = analyzer.lastHomography, hp = analyzer.previousHomography
+                    // registrar prediction: Ĥ_t⁻¹ · Ĥ_{t−1} · c  (translation-only approximation)
+                    let reg = SIMD2<Float>(c.x + hp.columns.2.x - h.columns.2.x, c.y + hp.columns.2.y - h.columns.2.y)
+                    m.regTrackDisagreePx = Double(simd_distance(fit.transform.apply(c), reg))
+                }
+                m.msTracker = tr.msTracker
+                m.msObjects = tr.msObjects
+                m.objectCount = tr.reports.count
+                m.objectAttached = tr.reports.filter { $0.status == "attached" }.count
+                m.objectOccluded = tr.reports.filter { $0.status == "occluded" }.count
+                m.objGeomResidual = tr.reports.compactMap { $0.geomResidual }
+                m.objRigidity = tr.reports.compactMap { $0.rigidity }
+                m.objInlierFrac = tr.reports.compactMap { $0.inlierFrac }
+                m.objPhotoResidual = tr.reports.compactMap { $0.photoResidual }
+                m.objColorDrift = tr.reports.compactMap { $0.colorDrift }
+                m.objLabelFlips = tr.reports.map { Double($0.labelFlips) }
+                m.objLiveTracks = tr.reports.map { Double($0.liveTracks) }
+                m.objArea = tr.reports.map { Double($0.area) }
+                m.objAreaDelta = tr.reports.compactMap { $0.areaDelta }
+                m.objVisible = tr.reports.map { Double($0.visible) }
+                let attached = tr.reports.filter { $0.status == "attached" || $0.status == "occluded" }
+                if !attached.isEmpty {
+                    m.objPersistence = Double(attached.filter { $0.visible == 1 }.count) / Double(attached.count)
+                }
+            }
             m.msTotal = Date().timeIntervalSince(frameStart) * 1000
             metrics.append(m)
             if let handle = metricsHandle {
@@ -404,7 +447,9 @@ do {
             // Contact sheet row for keyframes: source | focus | evidence | paint.
             if keyframeSet.contains(frameIndex) {
                 let evidenceTile: [UInt8]
-                if let e = focus.evidence {
+                if let tr = focus.trackResult {
+                    evidenceTile = tr.overlay
+                } else if let e = focus.evidence {
                     evidenceTile = ContactSheet.heatTile(e.posterior)
                 } else if let diff = focus.difference {
                     evidenceTile = ContactSheet.grayTile(diff)
@@ -427,6 +472,10 @@ do {
             try writePNG(
                 rgba: debugOverlay(rgba: rgba, width: width, height: height, focus: focus, markers: frame.markers, tiers: tiers),
                 width: width, height: height, to: stillsDir.appendingPathComponent("\(tag)-focus.png"))
+            if let tr = focus.trackResult {
+                try writePNG(rgba: tr.overlay, width: width, height: height,
+                             to: stillsDir.appendingPathComponent("\(tag)-tracks.png"))
+            }
             if let evidence = focus.evidence {
                 try writePNG(rgba: ContactSheet.heatTile(evidence.posterior), width: width, height: height,
                              to: stillsDir.appendingPathComponent("\(tag)-posterior.png"))
@@ -470,7 +519,7 @@ do {
         if let url = args.objective {
             objective = try JSONDecoder().decode(Objective.self, from: Data(contentsOf: url))
         } else {
-            objective = .standard
+            objective = args.params.evidence == "tracks" ? .tracks : .standard
         }
         summary.objective = objective.score(summary)
         try summary.json().write(to: metricsDir.appendingPathComponent("summary.json"), atomically: true, encoding: .utf8)
@@ -480,7 +529,12 @@ do {
         }
         let keys = ["bgResidualMedian", "bgFalseRate", "regAccepted", "maskTemporalIoU", "maskComponents", "propFlicker",
                     "propArea", "discCount", "discRadiusDelta", "poseBarAgreement", "shadowLikeInProps", "floorContactLeak",
-                    "paintPSNR", "paintBoundaryRecall", "paintTemporalDelta", "markerPersistence", "msTotal"]
+                    "paintPSNR", "paintBoundaryRecall", "paintTemporalDelta", "markerPersistence",
+                    "trackCount", "trackNew", "trackLost", "trackRevived", "trackFBError", "trackLabelFlips",
+                    "bgFitResidual", "bgInlierFrac", "regTrackDisagreePx", "staticTrackCount", "subjectTrackCount",
+                    "attachedTrackCount", "staticPlateAgreement", "objectCount", "objectAttached", "objGeomResidualMean",
+                    "objPhotoResidualMean", "objColorDriftMean", "objAreaDeltaMean", "objPersistence",
+                    "msTracker", "msObjects", "msTotal"]
         log(String(format: "objective %.3f", summary.objective ?? 0))
         for key in keys {
             if let s = summary.stats[key] {

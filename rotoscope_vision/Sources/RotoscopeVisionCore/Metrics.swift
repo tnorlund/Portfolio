@@ -54,6 +54,42 @@ public struct FrameMetrics: Codable {
     public var markerPersistence: Double? = nil
     public var markerCount: Int = 0
 
+    // Feature tracks
+    public var trackCount: Int? = nil
+    public var trackNew: Int? = nil
+    public var trackLost: Int? = nil
+    public var trackRevived: Int? = nil
+    public var trackFBError: Double? = nil
+    public var trackLabelFlips: Double? = nil
+    public var bgFitResidual: Double? = nil
+    public var bgInlierFrac: Double? = nil
+    public var regTrackDisagreePx: Double? = nil
+    public var staticTrackCount: Int? = nil
+    public var subjectTrackCount: Int? = nil
+    public var attachedTrackCount: Int? = nil
+    public var staticPlateAgreement: Double? = nil
+
+    // Objects
+    public var objectCount: Int? = nil
+    public var objectAttached: Int? = nil
+    public var objectOccluded: Int? = nil
+    public var objectIdChurn: Int? = nil
+    public var objectMerges: Int? = nil
+    public var objectSplits: Int? = nil
+    public var objGeomResidual: [Double] = []
+    public var objRigidity: [Double] = []
+    public var objInlierFrac: [Double] = []
+    public var objPhotoResidual: [Double] = []
+    public var objColorDrift: [Double] = []
+    public var objLabelFlips: [Double] = []
+    public var objLiveTracks: [Double] = []
+    public var objArea: [Double] = []
+    public var objAreaDelta: [Double] = []
+    public var objVisible: [Double] = []
+    public var objPersistence: Double? = nil
+    public var msTracker: Double = 0
+    public var msObjects: Double = 0
+
     // Motion & cost
     public var flowMeanPx: Double? = nil
     public var msVision: Double = 0
@@ -431,6 +467,29 @@ public struct Objective: Codable {
             RedLine(metric: "bgFalseRate", stat: "mean", maxIncrease: 0.005),
             RedLine(metric: "propFlicker", stat: "mean", maxIncrease: 0.5),
             RedLine(metric: "shadowLikeInProps", stat: "mean", maxIncrease: 0.05),
+        ])
+
+    /// Objective for `evidence == "tracks"`: shared mask terms plus the
+    /// per-object residuals; no disc/bar/floor terms.
+    public static let tracks = Objective(
+        terms: [
+            Term(metric: "bgFalseRate", stat: "mean", weight: 2.0, target: 0.0, scale: 0.01, higherIsBetter: false),
+            Term(metric: "propFlicker", stat: "mean", weight: 2.0, target: 0.0, scale: 1.0, higherIsBetter: false),
+            Term(metric: "maskTemporalIoU", stat: "mean", weight: 2.0, target: 1.0, scale: 0.1, higherIsBetter: true),
+            Term(metric: "shadowLikeInProps", stat: "mean", weight: 1.0, target: 0.0, scale: 0.1, higherIsBetter: false),
+            Term(metric: "maskComponents", stat: "mean", weight: 1.0, target: 1.0, scale: 1.0, higherIsBetter: false),
+            Term(metric: "objGeomResidualMean", stat: "mean", weight: 1.5, target: 0.0, scale: 2.0, higherIsBetter: false),
+            Term(metric: "objPhotoResidualMean", stat: "mean", weight: 1.0, target: 0.0, scale: 20.0, higherIsBetter: false),
+            Term(metric: "objColorDriftMean", stat: "mean", weight: 1.0, target: 0.0, scale: 0.2, higherIsBetter: false),
+            Term(metric: "objAreaDeltaMean", stat: "mean", weight: 1.0, target: 0.0, scale: 0.1, higherIsBetter: false),
+            Term(metric: "objPersistence", stat: "mean", weight: 1.5, target: 1.0, scale: 0.2, higherIsBetter: true),
+        ],
+        redLines: [
+            RedLine(metric: "bgFalseRate", stat: "mean", maxIncrease: 0.005),
+            RedLine(metric: "propFlicker", stat: "mean", maxIncrease: 0.5),
+            RedLine(metric: "shadowLikeInProps", stat: "mean", maxIncrease: 0.05),
+            RedLine(metric: "objGeomResidualMean", stat: "p95", maxIncrease: 1.0),
+            RedLine(metric: "trackFBError", stat: "p95", maxIncrease: 0.5),
         ])
 
     public func score(_ summary: MetricsSummary) -> Double {

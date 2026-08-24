@@ -172,6 +172,31 @@ public final class OpticalFlow {
         return out
     }
 
+    /// Backward flow vector at a sub-pixel position (bilinear, sign applied).
+    public func backwardVector(atX x: Float, y: Float) -> SIMD2<Float> {
+        guard available else { return .zero }
+        let cx = max(0, min(Float(width - 1), x)), cy = max(0, min(Float(height - 1), y))
+        let x0 = Int(cx.rounded(.down)), y0 = Int(cy.rounded(.down))
+        let x1 = min(width - 1, x0 + 1), y1 = min(height - 1, y0 + 1)
+        let fx = cx - Float(x0), fy = cy - Float(y0)
+        func at(_ xx: Int, _ yy: Int) -> SIMD2<Float> {
+            let i = yy * width + xx
+            return SIMD2<Float>(signX * dx[i], signY * dy[i])
+        }
+        let top = at(x0, y0) * (1 - fx) + at(x1, y0) * fx
+        let bottom = at(x0, y1) * (1 - fx) + at(x1, y1) * fx
+        return top * (1 - fy) + bottom * fy
+    }
+
+    /// Maps a previous-frame point to this frame by locally inverting the
+    /// backward field (two fixed-point iterations; exact for small motion).
+    public func forward(_ p: SIMD2<Float>) -> SIMD2<Float> {
+        guard available else { return p }
+        var q = p - backwardVector(atX: p.x, y: p.y)
+        q = p - backwardVector(atX: q.x, y: q.y)
+        return q
+    }
+
     /// Mean flow magnitude inside a mask (motion proxy for metrics).
     public func meanMagnitude(in mask: [UInt8]) -> Double {
         guard available else { return 0 }

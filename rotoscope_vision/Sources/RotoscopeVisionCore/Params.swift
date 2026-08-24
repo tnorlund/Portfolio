@@ -43,6 +43,37 @@ public struct Params: Codable, Equatable {
     // Optical flow
     public var flowAccuracy: String = "medium"
 
+    // Feature tracks (evidence == "tracks")
+    public var trackBudget: Int = 1500
+    public var trackSpacing: Int = 10
+    public var trackQuality: Double = 0.01
+    public var trackMinScore: Double = 1500
+    public var trackNewPerFrame: Int = 300
+    public var lkRadius: Int = 5
+    public var lkIterations: Int = 8
+    public var lkMinEigen: Double = 50
+    public var trackFBTolerance: Double = 1.0
+    public var trackSSDTolerance: Double = 30
+    public var staticTolerance: Double = 0.75
+    public var moveTolerance: Double = 3.0
+    public var motionWindow: Int = 15
+    public var labelHold: Int = 30
+    public var contactRadius: Double = 40
+    public var attachEnter: Double = 0.6
+    public var attachExit: Double = 0.4
+    public var rigidDrift: Double = 0.6
+    public var clusterLink: Double = 120
+    public var deformLink: Double = 40
+    public var chromaTolerance: Double = 0.06
+    public var minClusterTracks: Int = 4
+    public var rigidResidual: Double = 1.5
+    public var hullRadius: Double = 24
+    public var capsuleRadius: Double = 10
+    public var colorGate: Double = 0.3
+    public var templateDelay: Int = 10
+    public var templateRecapture: Double = 1.3
+    public var occlusionGrace: Int = 30
+
     // Engine (paint)
     public var markerBudget: Int = 1200
     public var blurRadius: Int = 3
@@ -68,7 +99,36 @@ public struct Params: Codable, Equatable {
 
     /// Meaning and range of every key, for humans and for the sweep script.
     public static let documentation: [String: String] = [
-        "evidence": "\"legacy\" (thresholds + carry + expiry) or \"soft\" (probabilistic fusion)",
+        "evidence": "\"legacy\" (thresholds + carry + expiry), \"soft\" (probabilistic fusion) or \"tracks\" (feature-track objects)",
+        "trackBudget": "tracks: maximum live feature tracks, 600–3000",
+        "trackSpacing": "tracks: detection cell / suppression radius, px, 6–16",
+        "trackQuality": "tracks: Shi–Tomasi threshold as a fraction of the frame maximum, 0.005–0.05",
+        "trackMinScore": "tracks: absolute Shi–Tomasi floor, 500–5000",
+        "trackNewPerFrame": "tracks: new features per frame, 50–600",
+        "lkRadius": "tracks: Lucas–Kanade window radius, 3–7",
+        "lkIterations": "tracks: Lucas–Kanade iterations, 4–16",
+        "lkMinEigen": "tracks: minimum texture eigenvalue for a refine, 10–200",
+        "trackFBTolerance": "tracks: forward–backward error to keep a track, px, 0.5–2",
+        "trackSSDTolerance": "tracks: mean template residual to keep a track, gray levels, 15–50",
+        "staticTolerance": "tracks: per-frame background-relative motion counted as static, px, 0.4–1.5",
+        "moveTolerance": "tracks: windowed displacement counted as moving, px, 2–6",
+        "motionWindow": "tracks: frames for the windowed displacement, 8–30",
+        "labelHold": "tracks: frames a label must hold before demotion, 10–60",
+        "contactRadius": "tracks: distance to the person mask that counts as contact, px, 20–80",
+        "attachEnter": "tracks: attach score to become attached, 0.4–0.8",
+        "attachExit": "tracks: attach score to be released, 0.2–0.6",
+        "rigidDrift": "tracks: pairwise distance std over the window for a rigid link, px, 0.3–1.5",
+        "clusterLink": "tracks: max distance for a rigid link, px, 60–300",
+        "deformLink": "tracks: max distance for a deformable link, px, 20–80",
+        "chromaTolerance": "tracks: rg-chromaticity distance for a deformable link, 0.03–0.12",
+        "minClusterTracks": "tracks: tracks needed to form an object, 3–8",
+        "rigidResidual": "tracks: inlier residual of the similarity fit, px, 1–3",
+        "hullRadius": "tracks: support disc radius around each track for template capture, px, 12–40",
+        "capsuleRadius": "tracks: support radius along rigid edges, px, 6–16",
+        "colorGate": "tracks: back-projection threshold for the colour gate, 0.15–0.5",
+        "templateDelay": "tracks: frames after attachment before the template is captured, 5–20",
+        "templateRecapture": "tracks: support gain that triggers re-capture, 1.1–2",
+        "occlusionGrace": "tracks: frames a lost track / occluded object survives, 10–60",
         "plateThreshold": "tolerant difference that counts as a prop, 24–80",
         "plateTolerance": "misalignment tolerance in half-res pixels, 2–8",
         "plateSamples": "frames sampled for the background median, 16–96",
