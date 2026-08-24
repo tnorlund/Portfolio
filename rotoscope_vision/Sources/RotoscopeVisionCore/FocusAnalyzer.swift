@@ -222,12 +222,17 @@ public final class FocusAnalyzer {
             previousProps = props
             msEvidence = Date().timeIntervalSince(evidenceStart) * 1000
             lastTrackResult = trackResult
-            // Prop alpha: soft edge from the difference strength; asserted
-            // interiors (disc, filled hole) come in opaque.
+            // Prop alpha. Tracks mode: the objects' own alphas (template or
+            // grown region). Otherwise a soft edge from the difference
+            // strength; asserted interiors (disc, filled hole) come in opaque.
+            if let labeled = trackResult?.labeled {
+                mask = labeled.mask(person: mask)
+            } else {
             for index in 0..<count where props[index] != 0 && person[index] == 0 {
                 let strength = Int(diff[index])
                 let alpha = min(255, max(160, (strength - Int(params.plateThreshold)) * 8 + 160))
                 mask[index] = max(mask[index], UInt8(alpha))
+            }
             }
             _ = visionMs
         }

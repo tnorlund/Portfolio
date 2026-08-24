@@ -45,6 +45,9 @@ public final class TrackedObject {
     public var kindStreak = 0
     public var template: RigidTemplate?
     public var templateSupport: Float = 0
+    /// Object transform at the frame the template was captured.
+    public var templateTransform: Similarity?
+    public var areaDelta: Float?
     public var mask: [UInt8]?
     public var lastArea = 0
     public var photoResidual: Float?
@@ -354,8 +357,9 @@ public final class ObjectClusters {
             if object.status == .attached || object.status == .occluded {
                 object.status = .occluded
                 object.occludedFrames += 1
+                // Hold the transform: extrapolating velocity for many frames
+                // flings the model far from where the object reappears.
                 object.previousTransform = object.transform
-                object.transform = object.predictedTransform
                 if object.occludedFrames > p.occlusionGrace { object.status = .retired }
             } else {
                 object.status = .retired

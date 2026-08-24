@@ -62,7 +62,7 @@ public struct Params: Codable, Equatable {
     public var attachEnter: Double = 0.6
     public var attachExit: Double = 0.4
     public var rigidDrift: Double = 1.0
-    public var clusterLink: Double = 220
+    public var clusterLink: Double = 120
     public var deformLink: Double = 40
     public var chromaTolerance: Double = 0.06
     public var minClusterTracks: Int = 6
@@ -72,6 +72,7 @@ public struct Params: Codable, Equatable {
     public var colorGate: Double = 0.3
     public var templateDelay: Int = 10
     public var templateRecapture: Double = 1.3
+    public var photoTolerance: Double = 40
     public var occlusionGrace: Int = 30
 
     // Engine (paint)
@@ -128,6 +129,7 @@ public struct Params: Codable, Equatable {
         "colorGate": "tracks: back-projection threshold for the colour gate, 0.15–0.5",
         "templateDelay": "tracks: frames after attachment before the template is captured, 5–20",
         "templateRecapture": "tracks: support gain that triggers re-capture, 1.1–2",
+        "photoTolerance": "tracks: max template photometric residual before the object is re-grown, 20–80",
         "occlusionGrace": "tracks: frames a lost track / occluded object survives, 10–60",
         "plateThreshold": "tolerant difference that counts as a prop, 24–80",
         "plateTolerance": "misalignment tolerance in half-res pixels, 2–8",
