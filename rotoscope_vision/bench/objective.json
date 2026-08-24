@@ -1,0 +1,18 @@
+{
+  "terms": [
+    { "metric": "bgFalseRate", "stat": "mean", "weight": 2.0, "target": 0.0, "scale": 0.01, "higherIsBetter": false },
+    { "metric": "propFlicker", "stat": "mean", "weight": 2.0, "target": 0.0, "scale": 1.0, "higherIsBetter": false },
+    { "metric": "maskTemporalIoU", "stat": "mean", "weight": 2.0, "target": 1.0, "scale": 0.1, "higherIsBetter": true },
+    { "metric": "shadowLikeInProps", "stat": "mean", "weight": 1.0, "target": 0.0, "scale": 0.1, "higherIsBetter": false },
+    { "metric": "floorContactLeak", "stat": "mean", "weight": 1.0, "target": 0.0, "scale": 0.05, "higherIsBetter": false },
+    { "metric": "discRadiusDelta", "stat": "mean", "weight": 1.0, "target": 0.0, "scale": 5.0, "higherIsBetter": false },
+    { "metric": "paintBoundaryRecall", "stat": "mean", "weight": 0.5, "target": 1.0, "scale": 0.3, "higherIsBetter": true },
+    { "metric": "paintTemporalDelta", "stat": "mean", "weight": 0.5, "target": 0.0, "scale": 12.0, "higherIsBetter": false },
+    { "metric": "maskComponents", "stat": "mean", "weight": 1.0, "target": 1.0, "scale": 1.0, "higherIsBetter": false }
+  ],
+  "redLines": [
+    { "metric": "bgFalseRate", "stat": "mean", "maxIncrease": 0.005 },
+    { "metric": "propFlicker", "stat": "mean", "maxIncrease": 0.5 },
+    { "metric": "shadowLikeInProps", "stat": "mean", "maxIncrease": 0.05 }
+  ]
+}

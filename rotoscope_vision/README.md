@@ -96,6 +96,22 @@ goes blank.
 of the per-channel color gradient the tool defaults to), `--verbose` (per-
 frame homography/refinement log).
 
+## Measuring a run
+
+Every tunable lives in `Params` (`--dump-params` prints the defaults with
+their meaning in `Params.documentation`; `--params p.json` loads a set).
+`--metrics DIR` writes per-frame `metrics.jsonl`, an aggregated
+`summary.json` with the objective from `bench/objective.json`, and
+`contact.png` (keyframes × source / focus / evidence / paint); `--baseline
+summary.json` prints deltas and red-line violations. `--evidence legacy`
+runs the threshold-and-carry pipeline; `soft` (default) fuses a logistic
+plate difference, a chromaticity shadow probability, the flow-warped
+previous posterior, a body-pose bar line, and tracked plate discs into one
+posterior and one decision. `scripts/sweep.py` does coordinate descent
+over `Params` on a short excerpt. See `PLAN.md` for the rationale and
+`ASSESSMENT.md` for the legacy-vs-soft numbers; `bench/` holds the
+committed baselines.
+
 ## Tests
 
 `Tests/RotoscopeVisionCoreTests` covers the engine with XCTest (needs Xcode).

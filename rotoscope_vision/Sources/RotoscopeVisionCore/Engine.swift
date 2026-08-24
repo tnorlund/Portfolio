@@ -61,6 +61,9 @@ public struct RotoscopeFrame {
     public var rgba: [UInt8]
     public var markers: Markers
     public var regionCount: Int
+    /// Basin label per pixel (0 = barrier) and the Rec. 601 gray, for metrics.
+    public var labels: [UInt32]
+    public var gray: [UInt8]
 }
 
 public enum Engine {
@@ -419,8 +422,11 @@ public enum Engine {
     }
 
     /// Tiered marker selection. `tiers` is a per-pixel `FocusTier` raw value.
+    /// `seeds` are marker positions carried from the previous frame (already
+    /// moved by optical flow); they are accepted first, within their tier's
+    /// quota, so basins keep their identity from frame to frame.
     public static func selectMarkers(
-        scores: [Float], width: Int, height: Int, tiers: [UInt8], options: EngineOptions
+        scores: [Float], width: Int, height: Int, tiers: [UInt8], options: EngineOptions, seeds: [Int] = []
     ) -> Markers {
         let count = width * height
         precondition(scores.count == count && tiers.count == count, "score/tier length mismatch")
@@ -431,6 +437,14 @@ public enum Engine {
         var blocked = [UInt8](repeating: 0, count: count)
         var markers: [Int] = []
         var counts = [0, 0, 0]
+
+        for seed in seeds where seed >= 0 && seed < count {
+            let tier = Int(tiers[seed])
+            if tier > 2 || quotas[tier] <= 0 || counts[tier] >= quotas[tier] || blocked[seed] != 0 { continue }
+            markers.append(seed)
+            counts[tier] += 1
+            blockDiamond(&blocked, index: seed, width: width, height: height, radius: spacings[tier])
+        }
 
         for tier in 0..<3 {
             if quotas[tier] <= 0 { continue }
@@ -589,7 +603,7 @@ public enum Engine {
     /// the foreground alpha.
     public static func process(
         rgba: [UInt8], width: Int, height: Int, tiers: [UInt8], alpha: [UInt8]?,
-        removeBackground: Bool, options: EngineOptions
+        removeBackground: Bool, options: EngineOptions, seeds: [Int] = []
     ) -> RotoscopeFrame {
         let count = width * height
         precondition(rgba.count == count * 4, "RGBA byte length mismatch")
@@ -604,7 +618,7 @@ public enum Engine {
             ?? boxBlur(gray, width: width, height: height, radius: blurRadius)
         let difference = absoluteDifference(gray, blurred)
         let scores = shiTomasiScores(difference: difference, width: width, height: height)
-        let markers = selectMarkers(scores: scores, width: width, height: height, tiers: tiers, options: options)
+        let markers = selectMarkers(scores: scores, width: width, height: height, tiers: tiers, options: options, seeds: seeds)
         var gradient = sobel(gray, width: width, height: height).magnitude
         if options.colorEdges {
             for channel in 0..<3 {
@@ -626,6 +640,7 @@ public enum Engine {
         let pixels = colorize(
             rgba: rgba, labels: segmented.labels, count: count, regionCount: segmented.regionCount,
             alpha: removeBackground ? (alpha ?? [UInt8](repeating: 255, count: count)) : nil)
-        return RotoscopeFrame(rgba: pixels, markers: markers, regionCount: segmented.regionCount)
+        return RotoscopeFrame(
+            rgba: pixels, markers: markers, regionCount: segmented.regionCount, labels: segmented.labels, gray: gray)
     }
 }

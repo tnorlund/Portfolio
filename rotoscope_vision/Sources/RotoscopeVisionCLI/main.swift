@@ -6,20 +6,23 @@ import RotoscopeVisionCore
 /// Vision supplying the focus tiers (person/subject mask + eye landmarks) and
 /// lifting the subject off the background.
 ///
-///   rotoscope-vision IMG_0974.mov [--out-dir DIR] [--width W] [--budget N]
-///       [--blur R] [--face-quota F] [--spacing FACE,BODY,BG]
-///       [--subject person|foreground|people|none] [--keep-background]
-///       [--matte white|black] [--max-frames N] [--stills DIR] [--stills-every N]
+///   rotoscope-vision IMG_0974.mov [--out-dir DIR] [--params p.json] [--evidence legacy|soft]
+///       [--subject person|held|foreground|people|none] [--keep-background]
+///       [--metrics DIR] [--keyframes 0,30,60] [--baseline summary.json] [--objective o.json]
+///       [--width W] [--matte white|black] [--max-frames N] [--stills DIR] [--stills-every N]
+///       [--no-mov] [--no-audio] [--no-registration] [--no-flow] [--verbose] [--dump-params]
 ///
 /// Writes `<name>-rotoscope.mov` (ProRes 4444 with alpha) and
 /// `<name>-rotoscope-preview.mp4` (H.264 over the matte), both with the source
-/// audio passed through.
+/// audio passed through. With `--metrics DIR` it also writes per-frame
+/// `metrics.jsonl`, `summary.json`, a `contact.png` of the keyframes, and a
+/// comparison against `--baseline`.
 
 struct Arguments {
     var input: URL
     var outDir: URL
     var width: Int?
-    var options = EngineOptions()
+    var params = Params()
     var subject: SubjectMode = .person
     var keepBackground = false
     var matte: (red: UInt8, green: UInt8, blue: UInt8) = (255, 255, 255)
@@ -28,20 +31,28 @@ struct Arguments {
     var stillsEvery = 30
     var skipMov = false
     var skipAudio = false
-    var plateThreshold: UInt8 = 48
-    var plateSamples = 48
     var noRegistration = false
+    var noFlow = false
     var verbose = false
+    var metricsDir: URL?
+    var keyframes: [Int] = [0, 30, 60, 90, 120, 150, 180]
+    var baseline: URL?
+    var objective: URL?
+    var dumpParams = false
 
     static func parse(_ argv: [String]) throws -> Arguments {
         var args = Array(argv.dropFirst())
+        if args.first == "--dump-params" {
+            var parsed = Arguments(input: URL(fileURLWithPath: "/dev/null"), outDir: URL(fileURLWithPath: "."))
+            parsed.dumpParams = true
+            return parsed
+        }
         guard let first = args.first, !first.hasPrefix("--") else {
-            throw UsageError("usage: rotoscope-vision <input.mov> [options]")
+            throw UsageError("usage: rotoscope-vision <input.mov> [options]   (or --dump-params)")
         }
         args.removeFirst()
         let input = URL(fileURLWithPath: first)
         var parsed = Arguments(input: input, outDir: input.deletingLastPathComponent())
-        parsed.options.colorEdges = true
         func value(_ flag: String) throws -> String {
             guard !args.isEmpty else { throw UsageError("\(flag) needs a value") }
             return args.removeFirst()
@@ -50,43 +61,54 @@ struct Arguments {
             let flag = args.removeFirst()
             switch flag {
             case "--out-dir": parsed.outDir = URL(fileURLWithPath: try value(flag), isDirectory: true)
+            case "--params": parsed.params = try Params.load(URL(fileURLWithPath: try value(flag)))
+            case "--evidence": parsed.params.evidence = try value(flag)
             case "--width": parsed.width = Int(try value(flag))
-            case "--budget": parsed.options.markerBudget = Int(try value(flag)) ?? parsed.options.markerBudget
-            case "--blur": parsed.options.blurRadius = Int(try value(flag)) ?? parsed.options.blurRadius
-            case "--face-quota":
-                let face = Double(try value(flag)) ?? 0.3
-                parsed.options.quotas = TierValues(face: face, body: 1 - face, background: 0)
+            case "--budget": parsed.params.markerBudget = Int(try value(flag)) ?? parsed.params.markerBudget
+            case "--blur": parsed.params.blurRadius = Int(try value(flag)) ?? parsed.params.blurRadius
+            case "--face-quota": parsed.params.faceQuota = Double(try value(flag)) ?? parsed.params.faceQuota
             case "--spacing":
                 let parts = try value(flag).split(separator: ",").compactMap { Double($0) }
                 if parts.count == 3 {
-                    parsed.options.spacing = TierValues(face: parts[0], body: parts[1], background: parts[2])
+                    parsed.params.spacingFace = parts[0]
+                    parsed.params.spacingBody = parts[1]
+                    parsed.params.spacingBackground = parts[2]
                 }
             case "--subject":
                 let raw = try value(flag)
                 guard let mode = SubjectMode(rawValue: raw) else { throw UsageError("unknown --subject \(raw)") }
                 parsed.subject = mode
             case "--keep-background": parsed.keepBackground = true
-            case "--matte":
-                parsed.matte = try value(flag) == "black" ? (0, 0, 0) : (255, 255, 255)
+            case "--matte": parsed.matte = try value(flag) == "black" ? (0, 0, 0) : (255, 255, 255)
             case "--max-frames": parsed.maxFrames = Int(try value(flag))
             case "--stills": parsed.stillsDir = URL(fileURLWithPath: try value(flag), isDirectory: true)
             case "--stills-every": parsed.stillsEvery = max(1, Int(try value(flag)) ?? 30)
             case "--no-mov": parsed.skipMov = true
             case "--no-audio": parsed.skipAudio = true
-            case "--gray-edges": parsed.options.colorEdges = false
-            case "--plate-threshold": parsed.plateThreshold = UInt8(clamping: Int(try value(flag)) ?? 48)
-            case "--plate-samples": parsed.plateSamples = max(3, Int(try value(flag)) ?? 48)
+            case "--gray-edges": parsed.params.colorEdges = false
+            case "--plate-threshold": parsed.params.plateThreshold = Double(try value(flag)) ?? parsed.params.plateThreshold
+            case "--plate-samples": parsed.params.plateSamples = max(3, Int(try value(flag)) ?? 48)
             case "--no-registration": parsed.noRegistration = true
+            case "--no-flow": parsed.noFlow = true
             case "--verbose": parsed.verbose = true
+            case "--metrics": parsed.metricsDir = URL(fileURLWithPath: try value(flag), isDirectory: true)
+            case "--keyframes": parsed.keyframes = try value(flag).split(separator: ",").compactMap { Int($0) }
+            case "--baseline": parsed.baseline = URL(fileURLWithPath: try value(flag))
+            case "--objective": parsed.objective = URL(fileURLWithPath: try value(flag))
             default: throw UsageError("unknown option \(flag)")
             }
         }
-        if parsed.keepBackground {
-            // Keep a small background share so the flood stays contained.
-            parsed.options.quotas = TierValues(
-                face: parsed.options.quotas.face, body: parsed.options.quotas.body, background: 0.1)
-        }
         return parsed
+    }
+
+    var engineOptions: EngineOptions {
+        var options = EngineOptions()
+        options.markerBudget = params.markerBudget
+        options.blurRadius = params.blurRadius
+        options.quotas = TierValues(face: params.faceQuota, body: 1 - params.faceQuota, background: keepBackground ? 0.1 : 0)
+        options.spacing = TierValues(face: params.spacingFace, body: params.spacingBody, background: params.spacingBackground)
+        options.colorEdges = params.colorEdges
+        return options
     }
 }
 
@@ -101,17 +123,26 @@ func log(_ message: String) {
 
 do {
     let args = try Arguments.parse(CommandLine.arguments)
+    if args.dumpParams {
+        print(try Params().json())
+        exit(0)
+    }
     let started = Date()
     let reader = try await FrameReader(url: args.input, targetWidth: args.width)
     let width = reader.width
     let height = reader.height
+    let count = width * height
     log("input \(args.input.lastPathComponent): \(width)×\(height) @ \(reader.frameRate) fps, \(String(format: "%.2f", reader.duration)) s (~\(reader.estimatedFrames) frames)")
-    log("subject \(args.subject.rawValue), budget \(args.options.markerBudget), blur \(args.options.blurRadius), background \(args.keepBackground ? "kept" : "removed")")
+    log("subject \(args.subject.rawValue), evidence \(args.params.evidence), budget \(args.params.markerBudget), background \(args.keepBackground ? "kept" : "removed")")
 
     let stem = args.input.deletingPathExtension().lastPathComponent
     try FileManager.default.createDirectory(at: args.outDir, withIntermediateDirectories: true)
     if let stillsDir = args.stillsDir {
         try FileManager.default.createDirectory(at: stillsDir, withIntermediateDirectories: true)
+    }
+    if let metricsDir = args.metricsDir {
+        try FileManager.default.createDirectory(at: metricsDir, withIntermediateDirectories: true)
+        try args.params.json().write(to: metricsDir.appendingPathComponent("params.json"), atomically: true, encoding: .utf8)
     }
     let hasAudio = reader.audioTrack != nil && !args.skipAudio
     let audioFormat = hasAudio ? reader.audioFormat : nil
@@ -127,17 +158,21 @@ do {
             url: args.outDir.appendingPathComponent("\(stem)-rotoscope-preview.mp4"), width: width,
             height: height, codec: .h264(matte: args.matte), audioFormat: audioFormat))
 
-    let analyzer = FocusAnalyzer(width: width, height: height, mode: args.subject)
+    let analyzer = FocusAnalyzer(width: width, height: height, mode: args.subject, params: args.params)
+    if !args.noFlow {
+        analyzer.flow = OpticalFlow(width: width, height: height, accuracy: args.params.flowAccuracy)
+    }
     if args.subject == .held {
         // Background plate for a handheld-but-still shot: every sampled frame is
-        // registered to the first frame (subject blanked) with Vision's
-        // homographic registration, warped into that reference space, and the
-        // per-pixel median of the aligned samples is the clean plate.
+        // registered to the first frame (subject blanked), warped into that
+        // reference space, and the per-pixel median of the aligned samples with
+        // the person cut out is the clean plate.
         let plateStarted = Date()
         let sampler = try await FrameReader(url: args.input, targetWidth: args.width)
         try sampler.start()
-        let stride = max(1, sampler.estimatedFrames / args.plateSamples)
+        let stride = max(1, sampler.estimatedFrames / args.params.plateSamples)
         let registrar = args.noRegistration ? nil : FrameRegistrar(width: width, height: height)
+        registrar?.stripHeight = args.params.stripHeight
         var samples: [[UInt8]] = []
         var sampled = 0
         var rejectedSamples = 0
@@ -147,12 +182,9 @@ do {
             if sampled % stride != 0 { continue }
             var rgba = rgbaBytes(from: buffer)
             let person = try analyzer.personMask(buffer)
-            // The subject never leaves the middle of the frame, so a plain
-            // median would keep a ghost of them there; cut the (dilated) person
-            // out of every sample so the median only ever sees background.
             var cut = person.map { $0 > 32 ? UInt8(1) : 0 }
             for _ in 0..<8 { cut = Morphology.dilate(cut, width: width, height: height) }
-            for index in 0..<(width * height) where cut[index] != 0 { rgba[index * 4 + 3] = 0 }
+            for index in 0..<count where cut[index] != 0 { rgba[index * 4 + 3] = 0 }
             guard let registrar else {
                 samples.append(rgba)
                 continue
@@ -162,11 +194,8 @@ do {
                 samples.append(rgba)
                 continue
             }
-            // Sparse samples: no frame-to-frame continuity to enforce, only
-            // the absolute plausibility bounds; a rejected sample is dropped.
             registrar.resetContinuity()
             registrar.maxJump = .greatestFiniteMagnitude
-            // Fill from the reference, shifted by the coarse strip translation.
             var fill = registrar.referencePixels
             if let coarse = try registrar.coarseTranslation(rgba: rgba, blank: cut), let pixels = fill {
                 fill = try registrar.warp(rgba: pixels, by: coarse.inverse)
@@ -175,17 +204,16 @@ do {
             if accepted { samples.append(try registrar.warp(rgba: rgba, by: homography)) } else { rejectedSamples += 1 }
         }
         registrar?.resetContinuity()
-        registrar?.maxJump = 40
+        registrar?.maxJump = Float(args.params.maxJump)
         analyzer.plate = BackgroundPlate.median(width: width, height: height, samples: samples)
-        analyzer.plateThreshold = args.plateThreshold
         analyzer.registrar = registrar
         log(String(format: "background plate: median of %d %@frames (every %d, %d rejected) in %.1fs", samples.count,
                    registrar == nil ? "" : "registered ", stride, rejectedSamples, Date().timeIntervalSince(plateStarted)))
         if let stillsDir = args.stillsDir, let plate = analyzer.plate {
-            try writePNG(rgba: plate.rgba, width: width, height: height,
-                         to: stillsDir.appendingPathComponent("plate.png"))
+            try writePNG(rgba: plate.rgba, width: width, height: height, to: stillsDir.appendingPathComponent("plate.png"))
         }
     }
+
     // Audio is interleaved with video as we go: AVAssetWriter holds a track
     // input once it runs ahead of a sibling track, so feeding audio only at the
     // end would deadlock the video input.
@@ -202,17 +230,38 @@ do {
             audioSamples += 1
             pendingAudio = audio?.next()
         }
-        // Audio exhausted: tell the writers so they stop waiting for it.
         for writer in writers { writer.finishAudio() }
     }
     if pendingAudio == nil { for writer in writers { writer.finishAudio() } }
+
     try reader.start()
     var frameIndex = 0
     var sessionStarted = false
     var facesSeen = 0
     var emptyMasks = 0
+    var metrics: [FrameMetrics] = []
+    var metricsHandle: FileHandle?
+    if let metricsDir = args.metricsDir {
+        let url = metricsDir.appendingPathComponent("metrics.jsonl")
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        metricsHandle = try FileHandle(forWritingTo: url)
+    }
+    let keyframeSet = Set(args.keyframes)
+    var contactRows: [[[UInt8]]] = []
+    let tileFactor = 4
+    // State for temporal metrics.
+    var previousMask: [UInt8]?
+    var previousProps: [UInt8]?
+    var previousPaint: [UInt8]?
+    var previousMarkers: [Int] = []
+    var previousArea = 0
+    var previousDiscRadius: Double?
+    var previousHomographyTx: Float = 0, previousHomographyTy: Float = 0
+    let metricsEncoder = JSONEncoder()
+
     while let (buffer, time) = try reader.next() {
         if let max = args.maxFrames, frameIndex >= max { break }
+        let frameStart = Date()
         if !sessionStarted {
             for writer in writers { try writer.start(at: time) }
             sessionStarted = true
@@ -224,28 +273,153 @@ do {
         let focus = try analyzer.analyze(buffer)
         if focus.face != nil { facesSeen += 1 }
         if focus.subjectPixels == 0 { emptyMasks += 1 }
-        // A frame with no subject keeps the whole frame as body so it is not blank.
         let tiers = focus.subjectPixels == 0 && !args.keepBackground
-            ? [UInt8](repeating: FocusTier.body.rawValue, count: width * height)
+            ? [UInt8](repeating: FocusTier.body.rawValue, count: count)
             : focus.tiers
         let alpha = focus.subjectPixels == 0 ? nil : focus.mask
-        // No detected face this frame: spend the face share on the body instead.
-        var options = args.options
+        var options = args.engineOptions
         if focus.face == nil {
-            options.quotas = TierValues(
-                face: 0, body: options.quotas.face + options.quotas.body, background: options.quotas.background)
+            options.quotas = TierValues(face: 0, body: options.quotas.face + options.quotas.body, background: options.quotas.background)
         }
+        // Markers from last frame, moved by flow, seed this frame's basins.
+        var seeds: [Int] = []
+        if args.params.propagateMarkers, let flow = analyzer.flow, flow.available, !previousMarkers.isEmpty {
+            seeds = flow.advance(indices: previousMarkers)
+        }
+        let paintStart = Date()
         let frame = Engine.process(
             rgba: rgba, width: width, height: height, tiers: tiers, alpha: alpha,
-            removeBackground: !args.keepBackground, options: options)
+            removeBackground: !args.keepBackground, options: options, seeds: seeds)
+        let msPaint = Date().timeIntervalSince(paintStart) * 1000
         do {
             for writer in writers { try writer.append(rgba: frame.rgba, at: time) }
         } catch {
-            let pendingTime = pendingAudio.map { CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp($0)) }
-            log("video append failed at frame \(frameIndex) t=\(CMTimeGetSeconds(time)) audioSamples=\(audioSamples) pendingAudio=\(String(describing: pendingTime))")
+            log("video append failed at frame \(frameIndex) t=\(CMTimeGetSeconds(time))")
             throw error
         }
         try pumpAudio(upTo: time, wait: false)
+
+        // ---------------- metrics ----------------
+        if args.metricsDir != nil {
+            let mask = focus.mask.map { $0 > 127 ? UInt8(1) : 0 }
+            let flow = analyzer.flow
+            let flowReady = (flow?.available ?? false) && frameIndex > 0
+            var m = FrameMetrics(frame: frameIndex, time: CMTimeGetSeconds(time))
+            m.poseFound = focus.pose == nil ? 0 : 1
+            m.paintRegionCount = frame.regionCount
+            m.markerCount = frame.markers.indices.count
+            m.msVision = focus.msVision
+            m.msEvidence = focus.msEvidence
+            m.msPaint = msPaint
+            // Registration & plate
+            if let diff = focus.difference {
+                var include = [UInt8](repeating: 1, count: count)
+                var dilated = mask
+                for index in 0..<count where focus.props[index] != 0 { dilated[index] = 1 }
+                for _ in 0..<6 { dilated = Morphology.dilate(dilated, width: width, height: height) }
+                for index in 0..<count where dilated[index] != 0 || (focus.others?[index] ?? 0) != 0 { include[index] = 0 }
+                let residual = MetricsMath.backgroundResidual(difference: diff, include: include, threshold: Int(args.params.plateThreshold))
+                m.bgResidualMedian = residual.median
+                m.bgFalseRate = residual.falseRate
+                m.regAccepted = analyzer.lastRegistrationAccepted ? 1 : 0
+                m.regRefinePx = Double(abs(analyzer.lastRefinement.dx) + abs(analyzer.lastRefinement.dy))
+                let h = analyzer.lastHomography
+                if frameIndex > 0 {
+                    m.regJumpPx = Double(max(abs(h.columns.2.x - previousHomographyTx), abs(h.columns.2.y - previousHomographyTy)))
+                }
+                previousHomographyTx = h.columns.2.x
+                previousHomographyTy = h.columns.2.y
+            }
+            // Mask
+            let (_, ratio, area) = MetricsMath.boundaryRatio(mask, width: width, height: height)
+            m.maskArea = area
+            m.maskBoundaryRatio = ratio
+            m.maskComponents = MetricsMath.components(mask, width: width, height: height)
+            m.maskHoles = MetricsMath.holes(mask, width: width, height: height)
+            var soft = 0
+            for index in 0..<count where focus.mask[index] > 16 && focus.mask[index] < 240 { soft += 1 }
+            m.maskSoftBand = area > 0 ? Double(soft) / Double(area) : 0
+            if previousArea > 0 { m.maskAreaDelta = Double(area - previousArea) / Double(previousArea) }
+            previousArea = area
+            if flowReady, let flow, let previousMask {
+                let warped = flow.warp(previousMask.map { $0 != 0 ? UInt8(255) : 0 }, fill: 0)
+                m.maskTemporalIoU = OpticalFlow.iou(warped, mask.map { $0 != 0 ? UInt8(255) : 0 })
+                m.flowMeanPx = flow.meanMagnitude(in: mask)
+            }
+            // Props
+            let props = focus.props
+            let (_, _, propArea) = MetricsMath.boundaryRatio(props, width: width, height: height)
+            m.propArea = propArea
+            m.propComponents = MetricsMath.components(props, width: width, height: height)
+            if flowReady, let flow, let previousProps {
+                let warped = flow.warp(previousProps, fill: 0)
+                let flicker = MetricsMath.propFlicker(current: props, warpedPrevious: warped, width: width, height: height)
+                m.propFlicker = flicker.events
+                m.propTrackedArea = flicker.trackedAreas
+            }
+            if let evidence = focus.evidence {
+                m.discCount = evidence.discs.count
+                m.discRadii = evidence.discs.map { $0.radius }
+                if let r = evidence.discs.map({ $0.radius }).max() {
+                    if let previousDiscRadius { m.discRadiusDelta = abs(r - previousDiscRadius) }
+                    previousDiscRadius = r
+                }
+            }
+            if let segment = focus.pose?.barSegment,
+                let fit = MetricsMath.barLine(props: props, segment: segment, width: width, height: height)
+            {
+                m.barLineResidual = fit.residual
+                m.barLineLength = fit.length
+                m.poseBarAgreement = fit.agreement
+            }
+            // Shadow
+            if let warped = focus.warpedPlate {
+                m.shadowLikeInProps = MetricsMath.shadowLike(props: props, rgba: rgba, warpedPlate: warped, params: args.params)
+            }
+            if let floorY = focus.pose?.floorY {
+                m.floorContactLeak = MetricsMath.floorLeak(props: props, floorY: floorY, width: width, height: height)
+            }
+            // Paint
+            m.paintPSNR = MetricsMath.psnr(painted: frame.rgba, source: rgba, mask: mask)
+            m.paintBoundaryRecall = MetricsMath.boundaryRecall(labels: frame.labels, gray: frame.gray, mask: mask, width: width, height: height, tau: 48)
+            var sizes = [Int](repeating: 0, count: frame.regionCount + 1)
+            for index in 0..<count { sizes[Int(frame.labels[index])] += 1 }
+            let sorted = sizes.dropFirst().filter { $0 > 0 }.sorted()
+            m.paintRegionP50 = sorted.isEmpty ? 0 : sorted[sorted.count / 2]
+            if flowReady, let flow, let previousPaint {
+                let warped = flow.warp(previousPaint, fill: 0)
+                m.paintTemporalDelta = MetricsMath.temporalDelta(current: frame.rgba, warpedPrevious: warped, mask: mask)
+                m.markerPersistence = MetricsMath.markerPersistence(advanced: seeds, current: frame.markers.indices, width: width, height: height)
+            }
+            m.msTotal = Date().timeIntervalSince(frameStart) * 1000
+            metrics.append(m)
+            if let handle = metricsHandle {
+                let data = try metricsEncoder.encode(m)
+                handle.write(data)
+                handle.write("\n".data(using: .utf8)!)
+            }
+            previousMask = mask
+            previousProps = props
+            previousPaint = frame.rgba
+            // Contact sheet row for keyframes: source | focus | evidence | paint.
+            if keyframeSet.contains(frameIndex) {
+                let evidenceTile: [UInt8]
+                if let e = focus.evidence {
+                    evidenceTile = ContactSheet.heatTile(e.posterior)
+                } else if let diff = focus.difference {
+                    evidenceTile = ContactSheet.grayTile(diff)
+                } else {
+                    evidenceTile = ContactSheet.grayTile(focus.mask)
+                }
+                let overlay = debugOverlay(rgba: rgba, width: width, height: height, focus: focus, markers: frame.markers, tiers: tiers)
+                let tiles = [rgba, overlay, evidenceTile, composite(rgba: frame.rgba, over: args.matte)].map {
+                    ContactSheet.downscale($0, width: width, height: height, factor: tileFactor).rgba
+                }
+                contactRows.append(tiles)
+            }
+        }
+        previousMarkers = frame.markers.indices
+
         if let stillsDir = args.stillsDir, frameIndex % args.stillsEvery == 0 {
             let tag = String(format: "%04d", frameIndex)
             try writePNG(rgba: composite(rgba: frame.rgba, over: args.matte), width: width, height: height,
@@ -253,25 +427,26 @@ do {
             try writePNG(
                 rgba: debugOverlay(rgba: rgba, width: width, height: height, focus: focus, markers: frame.markers, tiers: tiers),
                 width: width, height: height, to: stillsDir.appendingPathComponent("\(tag)-focus.png"))
-            if let warped = analyzer.lastWarpedPlate, let diff = analyzer.lastDifference {
-                try writePNG(rgba: warped, width: width, height: height,
-                             to: stillsDir.appendingPathComponent("\(tag)-plate.png"))
-                var gray = [UInt8](repeating: 255, count: width * height * 4)
-                for index in 0..<(width * height) {
-                    gray[index * 4] = diff[index]
-                    gray[index * 4 + 1] = diff[index]
-                    gray[index * 4 + 2] = diff[index]
-                }
-                try writePNG(rgba: gray, width: width, height: height,
+            if let evidence = focus.evidence {
+                try writePNG(rgba: ContactSheet.heatTile(evidence.posterior), width: width, height: height,
+                             to: stillsDir.appendingPathComponent("\(tag)-posterior.png"))
+                try writePNG(rgba: ContactSheet.heatTile(evidence.pStruct), width: width, height: height,
+                             to: stillsDir.appendingPathComponent("\(tag)-struct.png"))
+                try writePNG(rgba: ContactSheet.heatTile(evidence.pShadow), width: width, height: height,
+                             to: stillsDir.appendingPathComponent("\(tag)-shadow.png"))
+            }
+            if let diff = focus.difference {
+                try writePNG(rgba: ContactSheet.grayTile(diff), width: width, height: height,
                              to: stillsDir.appendingPathComponent("\(tag)-diff.png"))
             }
         }
-        if args.subject == .held, args.verbose {
+        if args.verbose, args.subject == .held {
             let h = analyzer.lastHomography
-            log(String(format: "  frame %d homography tx=%.1f ty=%.1f sx=%.3f sy=%.3f %@ refine=%d,%d subject=%d", frameIndex,
-                       h.columns.2.x, h.columns.2.y, h.columns.0.x, h.columns.1.y,
-                       analyzer.lastRegistrationAccepted ? "ok" : "REJECTED",
-                       analyzer.lastRefinement.dx, analyzer.lastRefinement.dy, focus.subjectPixels))
+            log(String(format: "  frame %d homography tx=%.1f ty=%.1f %@ refine=%d,%d props=%d discs=%d pose=%@", frameIndex,
+                       h.columns.2.x, h.columns.2.y, analyzer.lastRegistrationAccepted ? "ok" : "REJECTED",
+                       analyzer.lastRefinement.dx, analyzer.lastRefinement.dy,
+                       focus.props.reduce(0) { $0 + Int($1) }, focus.evidence?.discs.count ?? 0,
+                       focus.pose?.barSegment == nil ? "none" : "bar"))
         }
         frameIndex += 1
         if frameIndex % 10 == 0 || frameIndex == 1 {
@@ -287,10 +462,55 @@ do {
         log("audio: \(audioSamples) sample buffers passed through")
     }
     for writer in writers { try await writer.finish() }
+    metricsHandle?.closeFile()
+
+    if let metricsDir = args.metricsDir {
+        var summary = try MetricsSummary.build(from: metrics, params: args.params)
+        let objective: Objective
+        if let url = args.objective {
+            objective = try JSONDecoder().decode(Objective.self, from: Data(contentsOf: url))
+        } else {
+            objective = .standard
+        }
+        summary.objective = objective.score(summary)
+        try summary.json().write(to: metricsDir.appendingPathComponent("summary.json"), atomically: true, encoding: .utf8)
+        if !contactRows.isEmpty {
+            let sheet = ContactSheet.assemble(rows: contactRows, tileWidth: width / tileFactor, tileHeight: height / tileFactor)
+            try writePNG(rgba: sheet.rgba, width: sheet.width, height: sheet.height, to: metricsDir.appendingPathComponent("contact.png"))
+        }
+        let keys = ["bgResidualMedian", "bgFalseRate", "regAccepted", "maskTemporalIoU", "maskComponents", "propFlicker",
+                    "propArea", "discCount", "discRadiusDelta", "poseBarAgreement", "shadowLikeInProps", "floorContactLeak",
+                    "paintPSNR", "paintBoundaryRecall", "paintTemporalDelta", "markerPersistence", "msTotal"]
+        log(String(format: "objective %.3f", summary.objective ?? 0))
+        for key in keys {
+            if let s = summary.stats[key] {
+                log(String(format: "  %-22@ mean %9.4f  p95 %9.4f  max %9.4f  (n=%d)", key, s.mean, s.p95, s.max, s.count))
+            }
+        }
+        if let baselineURL = args.baseline {
+            let baseline = try JSONDecoder().decode(MetricsSummary.self, from: Data(contentsOf: baselineURL))
+            let baseScore = objective.score(baseline)
+            log(String(format: "baseline objective %.3f → candidate %.3f (%+.3f)", baseScore, summary.objective ?? 0, (summary.objective ?? 0) - baseScore))
+            for key in keys {
+                if let c = summary.stats[key], let b = baseline.stats[key] {
+                    log(String(format: "  %-22@ %9.4f → %9.4f  (%+.4f)", key, b.mean, c.mean, c.mean - b.mean))
+                }
+            }
+            let violations = objective.violations(candidate: summary, baseline: baseline)
+            if violations.isEmpty {
+                log("red lines: none crossed")
+            } else {
+                for v in violations { log("RED LINE: \(v)") }
+            }
+        }
+    }
     let elapsed = Date().timeIntervalSince(started)
     log(String(format: "done: %d frames in %.1fs (%.2fs/frame); face found in %d frames; empty subject in %d%@",
                frameIndex, elapsed, elapsed / Double(max(1, frameIndex)), facesSeen, emptyMasks,
                args.subject == .held ? "; registration rejected in \(analyzer.rejectedRegistrations)" : ""))
+    if let flow = analyzer.flow, flow.available {
+        log(String(format: "optical flow sign calibration IoU %.3f", flow.lastCalibrationIoU))
+    }
     for writer in writers { print(writer.url.path) }
 } catch {
     log("error: \(error)")
