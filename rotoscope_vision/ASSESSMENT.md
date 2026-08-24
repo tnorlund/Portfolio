@@ -133,6 +133,94 @@ shadow leakage without any regression on the red lines. The remaining
 defects are now specific, named, and each has a metric that will move when
 it is fixed.
 
+## Round two: identity over time (`--evidence tracks`)
+
+The soft pipeline still re-decided the props from pixels every frame, so
+anything decided per frame could flicker, and its bar-line and disc-fitter
+priors made it a barbell tool. Round two replaces the per-frame decision
+with **feature tracks that carry identity**: a Lucas–Kanade tracker over
+Shi–Tomasi corners (≈1000 live tracks, forward–backward error p95 0.016 px),
+a classifier that labels each track background / subject / moving / attached
+/ shadow-like from motion against a background-consensus similarity, strict
+plate agreement and NCC-vs-plate texture, and a clusterer that groups
+co-moving tracks into objects (rigid when a similarity fit explains them,
+deformable otherwise), attaches objects by contact plus co-motion with the
+subject, and expels tracks that keep disagreeing with an object's transform.
+Each attached object renders its own pixels: deformable ones are grown
+per frame by a crop watershed seeded from their tracks; rigid ones capture a
+template at their best-supported frame and render it through the tracked
+transform, falling back to growth when the template's photometric residual
+exceeds `photoTolerance`. Nothing in the path knows what a bar, disc or
+band is.
+
+### Numbers (full clip, 198 frames, `bench/baseline-soft.json` vs `bench/baseline-tracks.json`)
+
+| metric (mean) | soft | tracks | read |
+|---|---|---|---|
+| propFlicker (components appearing/vanishing per frame) | 2.34 | **1.81** | less phasing |
+| floorContactLeak | 0.023 | **0.008** | shadow under the feet mostly gone |
+| maskTemporalIoU | 0.925 | **0.931** | slightly steadier |
+| paintBoundaryRecall | 0.869 | 0.875 | unchanged |
+| bgFalseRate | 0.037 | 0.042 | within noise, no red line |
+| maskComponents | 2.29 | 7.23 | worse: hollow band + separate plates + fragments |
+| shadowLikeInProps | 0.037 | 0.078 | worse: grown regions catch some shadow at the plate rim |
+| propArea | 20.1k | 12.2k | smaller props: no hole fill, left plate often missing |
+| msTotal | 320 | 365 | tracker 34 ms + objects 26 ms |
+
+(`paintTemporalDelta` 95.7 in the soft baseline is the pre-fix value from a
+mis-warped RGBA compare; the corrected metric is ≈10.8 for both.)
+
+What the keyframes show (`contact.png`, tracks column = track overlay):
+the band is lifted with its interior **empty** on all seven keyframes and
+never disappears; the bar and right plate persist on five of seven; no
+bystander, rack or floor leaks after the occlusion gate; the left plate
+appears only where its rim yields enough corners (frames 90–120).
+
+### Why this is the right direction
+
+- **Identity is now measured, not hoped for.** `objectIdChurn`,
+  `objPersistence`, `objGeomResidual`, `objPhotoResidual`, `objColorDrift`
+  and `objAreaDelta` are per-object numbers that say whether the same thing
+  is being followed and whether its model still explains the pixels. The
+  soft pipeline had no equivalent — a plate that phased out simply produced
+  a lower propArea.
+- **Flicker fell without a prior.** propFlicker went 8.5 (legacy) → 2.3
+  (soft, with bar/disc priors) → 1.8 (tracks, no priors). The band's
+  interior is empty because nothing fills holes; that was a specific ask.
+- **The failures are all one class**: places with too few trackable
+  features (the dark left plate against the dark rack, the plate interior).
+  That is a feature-supply problem, addressable generically (multi-scale
+  detection, lower-contrast corners inside an object's hull, template
+  support from the object's own colour model) rather than with a disc
+  fitter.
+
+### What is not right yet
+
+1. **Left plate.** Two tracks in its region at frame 0; when it does form an
+   object it is a rigid one and renders as a clean disc (frame 90), so the
+   fix is feature supply, not modelling.
+2. **Right plate detaches during the descent** (frame 150: `comotion` −0.3
+   while `contactFrac` 0.7). Co-motion compares the object with the ten
+   nearest subject tracks, which at the plate's centroid are shoulder/head
+   tracks that move differently from the hands. Compare against the subject
+   tracks nearest the *contact point* instead.
+3. **Fragments.** maskComponents 7.2: small grown regions from 3–5-track
+   objects. A minimum rendered support (tracks × area) would remove most.
+4. **Rigidity chaining.** Anything that pauses beside the subject can
+   rigid-link for a window; expulsion now splits it after `outlierExpel`
+   frames, but the attach decision should also require the object's own
+   motion history to be non-trivial before it can ever render.
+
+### Verdict
+
+Tracks beat soft on the two metrics the user complained about (flicker,
+shadow under the feet) and on temporal stability, with zero
+category-specific code, and they expose the remaining defects as named
+per-object numbers. They lose on component count and prop area, which are
+the hole-fill and disc priors the soft path had. The direction holds;
+the next work is feature supply for low-contrast objects and the
+contact-point co-motion fix, both generic.
+
 ## Reproduce
 
 ```bash
@@ -142,4 +230,6 @@ $B ~/IMG_0974.mov --subject held --evidence legacy --metrics runs/legacy --out-d
 $B ~/IMG_0974.mov --subject held --evidence soft   --metrics runs/soft   --out-dir runs/soft   --no-mov \
    --baseline runs/legacy/summary.json --objective bench/objective.json
 python3 scripts/sweep.py ~/IMG_0974.mov --frames 60 --out runs/sweep --keys diffCenter,priorWeight,structWeight,smoothRadius
+$B ~/IMG_0974.mov --subject held --evidence tracks --metrics runs/tracks --out-dir runs/tracks --no-mov \
+   --baseline bench/baseline-tracks.json --stills runs/tracks --stills-every 30   # NNNN-tracks.csv/.png, NNNN-objects.json
 ```

@@ -107,7 +107,11 @@ summary.json` prints deltas and red-line violations. `--evidence legacy`
 runs the threshold-and-carry pipeline; `soft` (default) fuses a logistic
 plate difference, a chromaticity shadow probability, the flow-warped
 previous posterior, a body-pose bar line, and tracked plate discs into one
-posterior and one decision. `scripts/sweep.py` does coordinate descent
+posterior and one decision; `tracks` follows feature tracks over time,
+clusters co-moving ones into rigid or deformable objects attached to the
+subject, and renders each object from its own template or grown region
+(`--stills` then also writes `NNNN-tracks.csv/.png` and
+`NNNN-objects.json`). `scripts/sweep.py` does coordinate descent
 over `Params` on a short excerpt. See `PLAN.md` for the rationale and
 `ASSESSMENT.md` for the legacy-vs-soft numbers; `bench/` holds the
 committed baselines.
