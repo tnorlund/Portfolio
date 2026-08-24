@@ -47,7 +47,7 @@ public struct Params: Codable, Equatable {
     public var trackBudget: Int = 1500
     public var trackSpacing: Int = 10
     public var trackQuality: Double = 0.01
-    public var trackMinScore: Double = 1500
+    public var trackMinScore: Double = 400
     public var trackNewPerFrame: Int = 300
     public var lkRadius: Int = 5
     public var lkIterations: Int = 8
@@ -73,6 +73,7 @@ public struct Params: Codable, Equatable {
     public var templateDelay: Int = 10
     public var templateRecapture: Double = 1.3
     public var photoTolerance: Double = 40
+    public var outlierExpel: Int = 5
     public var occlusionGrace: Int = 30
 
     // Engine (paint)
@@ -104,7 +105,7 @@ public struct Params: Codable, Equatable {
         "trackBudget": "tracks: maximum live feature tracks, 600–3000",
         "trackSpacing": "tracks: detection cell / suppression radius, px, 6–16",
         "trackQuality": "tracks: Shi–Tomasi threshold as a fraction of the frame maximum, 0.005–0.05",
-        "trackMinScore": "tracks: absolute Shi–Tomasi floor, 500–5000",
+        "trackMinScore": "tracks: absolute Shi–Tomasi floor, 200–5000",
         "trackNewPerFrame": "tracks: new features per frame, 50–600",
         "lkRadius": "tracks: Lucas–Kanade window radius, 3–7",
         "lkIterations": "tracks: Lucas–Kanade iterations, 4–16",
@@ -129,6 +130,7 @@ public struct Params: Codable, Equatable {
         "colorGate": "tracks: back-projection threshold for the colour gate, 0.15–0.5",
         "templateDelay": "tracks: frames after attachment before the template is captured, 5–20",
         "templateRecapture": "tracks: support gain that triggers re-capture, 1.1–2",
+        "outlierExpel": "tracks: consecutive outlier frames before a track leaves its object, 3–15",
         "photoTolerance": "tracks: max template photometric residual before the object is re-grown, 20–80",
         "occlusionGrace": "tracks: frames a lost track / occluded object survives, 10–60",
         "plateThreshold": "tolerant difference that counts as a prop, 24–80",

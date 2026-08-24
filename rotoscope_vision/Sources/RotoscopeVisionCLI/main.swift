@@ -486,6 +486,9 @@ do {
                         csv += "\(t.objectID.map(String.init) ?? "")\n"
                     }
                     try csv.write(to: stillsDir.appendingPathComponent("\(tag)-tracks.csv"), atomically: true, encoding: .utf8)
+                    let encoder = JSONEncoder()
+                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                    try encoder.encode(tr.reports).write(to: stillsDir.appendingPathComponent("\(tag)-objects.json"))
                 }
             }
             if let evidence = focus.evidence {

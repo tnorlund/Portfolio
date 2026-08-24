@@ -256,14 +256,35 @@ public final class ObjectClusters {
                 object.inlierHistory.append(Float(inliers) / Float(from.count))
                 object.lastGeomResidual = fit.rms
                 object.lastInlierFrac = Float(inliers) / Float(from.count)
-                // Expel persistent outliers by re-anchoring their canonical point.
-                for (k, id) in fromIDs.enumerated() where !fit.inliers[k] {
+                // Outliers: a rigid object expels tracks that keep disagreeing
+                // with its transform (they belong to something else that
+                // merely paused beside it); a deformable object tolerates
+                // three times the residual before doing the same. Expelled
+                // tracks re-anchor so a later re-link starts clean.
+                let expelBound = Float(p.rigidResidual) * (object.kind == .rigid ? 1 : 3)
+                var expelled: [Int] = []
+                for (k, id) in fromIDs.enumerated() {
+                    let off = simd_distance(object.transform.apply(from[k]), to[k])
+                    if fit.inliers[k] && off <= expelBound {
+                        tracker.update(id: id) { $0.outlierStreak = 0 }
+                        continue
+                    }
+                    var streak = 0
+                    tracker.update(id: id) { $0.outlierStreak += 1; streak = $0.outlierStreak }
                     object.canonical[id] = object.transform.inverse.apply(to[k])
+                    if streak >= p.outlierExpel { expelled.append(id) }
                 }
+                for id in expelled {
+                    object.trackIDs.remove(id)
+                    object.canonical[id] = nil
+                    tracker.update(id: id) { $0.objectID = nil; $0.outlierStreak = 0 }
+                    stats.splits += 1
+                }
+                object.liveTracks = object.trackIDs.count
             } else if from.count < 3 {
                 object.previousTransform = object.transform
             }
-            for i in members {
+            for i in members where object.trackIDs.contains(candidates[i].id) {
                 let t = candidates[i]
                 if object.canonical[t.id] == nil {
                     object.canonical[t.id] = object.transform.inverse.apply(t.current)
@@ -308,7 +329,10 @@ public final class ObjectClusters {
             object.contactHistory.append(inContact >= min(2, members.count) ? 1 : 0)
             if object.contactHistory.count > window { object.contactHistory.removeFirst() }
             object.contactFrac = object.contactHistory.reduce(0, +) / Float(object.contactHistory.count)
-            var comotion: Float = 0
+            // Co-motion holds its last value while both are still: stillness
+            // is not evidence either way, and "both still = 1" would attach
+            // any bystander that paused beside the subject.
+            var comotion: Float = object.comotion * 0.95
             if motionCount > 0 {
                 objectMotion /= Float(motionCount)
                 // Subject tracks near the object's centroid.
@@ -328,13 +352,13 @@ public final class ObjectClusters {
                     let no = simd_length(objectMotion), ns = simd_length(subjectMotion)
                     if no > 0.5 && ns > 0.5 {
                         comotion = simd_dot(objectMotion, subjectMotion) / (no * ns) * min(1, no / ns, ns / no)
-                    } else if no <= 0.5 && ns <= 0.5 {
-                        comotion = 1  // both still
+                    } else if no > 0.5 || ns > 0.5 {
+                        comotion = 0  // one moves, the other does not
                     }
                 }
             }
             object.comotion = comotion
-            object.attachScore = 0.5 * object.contactFrac + 0.5 * max(0, comotion)
+            object.attachScore = 0.35 * object.contactFrac + 0.65 * max(0, comotion)
             switch object.status {
             case .candidate, .occluded:
                 if object.attachScore > Float(p.attachEnter) { object.status = .attached; object.belowExitFrames = 0 }

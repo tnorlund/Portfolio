@@ -66,7 +66,7 @@ public final class TrackEvidence {
         var byID: [Int: Track] = [:]
         for t in tracker.tracks where t.status == .live { byID[t.id] = t }
         var rendered = false
-        for object in clusters.objects where object.status == .attached || object.status == .occluded {
+        for object in clusters.objects where object.status == .attached || (object.status == .occluded && object.occludedFrames <= 5) {
             // Member points that agree with the object's transform.
             var points: [SIMD2<Float>] = []
             for id in object.trackIDs {

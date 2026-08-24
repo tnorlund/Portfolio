@@ -75,6 +75,8 @@ public struct Track {
     public var staticScore: Float = 0.5
     public var plateAgreement: Float = 0.5
     public var objectID: Int?
+    /// Consecutive frames this track disagreed with its object's transform.
+    public var outlierStreak = 0
     public var canonical: SIMD2<Float>?
     /// Frames the current label has been held (for hysteresis).
     public var labelAge = 0
