@@ -97,6 +97,33 @@ discs, and no shadow except the deep squat.
   here but will not give the boundary-length regularization the plan
   wanted for the soft alpha edge.
 
+## The optimizer loop, exercised once
+
+`scripts/sweep.py` on a 60-frame excerpt, four keys, 12 trials, ~6 min:
+
+| trial | change | objective | result |
+|---|---|---|---|
+| 0 | defaults | 3.901 | baseline |
+| 1–2 | diffCenter 28 / 34 | 3.14 / 3.62 | **blocked**: propFlicker 1.73 → 3.63 / 3.07 (red line) |
+| 3 | diffCenter 48 | 3.989 | accepted |
+| 4 | diffCenter 56 | 3.772 | rejected |
+| 5–6 | priorWeight 0.3 / 0.8 | 3.96 / 3.91 | rejected |
+| 7 | structWeight 0.4 | **4.052** | accepted |
+| 8–9 | structWeight 0.75 / 1.0 | 3.99 / 3.99 | rejected |
+| 10 | smoothRadius 0 | 3.27 | **blocked**: propFlicker 1.64 → 2.90 |
+| 11–12 | smoothRadius 1 / 3 | 3.85 / 4.00 | rejected |
+
+Validated on the full clip against `bench/baseline-soft.json`
+(`bench/params-sweep1.json`): objective 2.707 → **2.844**, propFlicker
+2.34 → 2.21, shadowLikeInProps 0.037 → 0.033, floorContactLeak 0.023 →
+0.015, maskTemporalIoU 0.925 → 0.931, 320 → 290 ms/frame, no red lines
+crossed. Two honest caveats the loop itself surfaced: propArea fell 20.1k →
+17.4k and discRadiusDelta rose 1.2 → 2.1 px, so the "improvement" trades a
+little plate coverage for less flicker — the objective cannot see lost true
+prop area because there is no ground truth yet. That is the strongest
+argument for labeling the eight keyframes next: without them the optimizer
+will happily shrink the props.
+
 ## Verdict
 
 Measurement-first is the right direction: it turned an argument about
