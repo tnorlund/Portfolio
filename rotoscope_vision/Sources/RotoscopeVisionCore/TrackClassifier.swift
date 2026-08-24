@@ -138,34 +138,77 @@ public final class TrackClassifier {
                 for k in 0..<n { comp = backgroundHistory[backgroundHistory.count - 1 - k] * comp }
                 windowed = simd_distance(comp.apply(t.positions[t.positions.count - 1 - n]), cur)
             }
-            // Plate agreement: does the tolerant difference say "background" here?
-            if let difference {
-                var sum = 0, m = 0
+            // Plate agreement: does the background plate explain the pixels
+            // under this feature? Tracks sit on real corners, so the test is
+            // strict — the frame's 3×3 patch against the warped plate within
+            // ±2 px of alignment slack (the pixel-mask tolerance of ±16 px
+            // would let a 12-px bar "match" the floor beside it).
+            if let plate = warpedPlate {
                 let cx = Int(cur.x.rounded()), cy = Int(cur.y.rounded())
-                for dy in -2...2 {
-                    let y = cy + dy
-                    if y < 0 || y >= height { continue }
-                    for dx in -2...2 {
-                        let x = cx + dx
-                        if x < 0 || x >= width { continue }
-                        sum += Int(difference[y * width + x]); m += 1
+                if cx >= 3 && cy >= 3 && cx < width - 3 && cy < height - 3 {
+                    var best = Int.max
+                    var valid = true
+                    for oy in -2...2 {
+                        for ox in -2...2 {
+                            var sum = 0
+                            for dy in -1...1 {
+                                for dx in -1...1 {
+                                    let f = ((cy + dy) * width + cx + dx) * 4
+                                    let g = ((cy + dy + oy) * width + cx + dx + ox) * 4
+                                    if plate[g + 3] == 0 { valid = false; continue }
+                                    let dr = abs(Int(rgba[f]) - Int(plate[g]))
+                                    let dg = abs(Int(rgba[f + 1]) - Int(plate[g + 1]))
+                                    let db = abs(Int(rgba[f + 2]) - Int(plate[g + 2]))
+                                    sum += max(dr, max(dg, db))
+                                }
+                            }
+                            best = min(best, sum)
+                        }
+                    }
+                    if valid {
+                        let agrees: Float = Double(best) / 9 < p.plateThreshold ? 1 : 0
+                        t.plateAgreement += 0.2 * (agrees - t.plateAgreement)
                     }
                 }
-                let agrees: Float = m > 0 && Double(sum) / Double(m) < p.plateThreshold ? 1 : 0
+            } else if let difference {
+                let idx2 = Int(cur.y.rounded()) * width + Int(cur.x.rounded())
+                let agrees: Float = Double(difference[idx2]) < p.plateThreshold ? 1 : 0
                 t.plateAgreement += 0.2 * (agrees - t.plateAgreement)
             }
-            // Shadow-likeness: darker than the plate with the plate's chroma.
+            // Shadow-likeness: a shadow has no texture of its own — the
+            // feature under it is the floor's, seen darker — so the frame
+            // patch correlates with the plate patch at the same spot. A prop
+            // replaces the background texture and does not.
             var shadowLike = false
-            if let plate = warpedPlate, plate[idx * 4 + 3] != 0 {
-                let fr = Float(rgba[idx * 4]), fg = Float(rgba[idx * 4 + 1]), fb = Float(rgba[idx * 4 + 2])
-                let pr = Float(plate[idx * 4]), pg = Float(plate[idx * 4 + 1]), pb = Float(plate[idx * 4 + 2])
-                let fSum = fr + fg + fb, pSum = pr + pg + pb
-                if pSum > 30 && fSum < pSum {
-                    let ratio = fSum / pSum
-                    if ratio >= Float(p.shadowMinRatio) && ratio <= Float(p.shadowMaxRatio) {
-                        let frame = ChromaSignature(r: fr / max(1, fSum), g: fg / max(1, fSum), luma: 0)
-                        let plateSig = ChromaSignature(r: pr / max(1, pSum), g: pg / max(1, pSum), luma: 0)
-                        shadowLike = frame.distance(to: plateSig) < Float(p.chromaTolerance)
+            if windowed > Float(p.moveTolerance), let plate = warpedPlate, plate[idx * 4 + 3] != 0 {
+                let cx = Int(cur.x.rounded()), cy = Int(cur.y.rounded())
+                if cx >= 5 && cy >= 5 && cx < width - 5 && cy < height - 5 {
+                    var fs: [Float] = [], ps: [Float] = []
+                    fs.reserveCapacity(121); ps.reserveCapacity(121)
+                    var darker = 0
+                    var valid = true
+                    for dy in -5...5 {
+                        for dx in -5...5 {
+                            let o = ((cy + dy) * width + cx + dx) * 4
+                            if plate[o + 3] == 0 { valid = false; break }
+                            let f = Float(Engine.rec601Gray(Int(rgba[o]), Int(rgba[o + 1]), Int(rgba[o + 2])))
+                            let g = Float(Engine.rec601Gray(Int(plate[o]), Int(plate[o + 1]), Int(plate[o + 2])))
+                            fs.append(f); ps.append(g)
+                            if f < g { darker += 1 }
+                        }
+                        if !valid { break }
+                    }
+                    if valid {
+                        let n = Float(fs.count)
+                        let mf = fs.reduce(0, +) / n, mp = ps.reduce(0, +) / n
+                        var cov: Float = 0, vf: Float = 0, vp: Float = 0
+                        for k in 0..<fs.count {
+                            let a = fs[k] - mf, b = ps[k] - mp
+                            cov += a * b; vf += a * a; vp += b * b
+                        }
+                        let ncc = cov / max(1e-3, (vf * vp).squareRoot())
+                        // Correlated with the background and mostly darker than it.
+                        shadowLike = ncc > 0.75 && darker * 3 >= fs.count * 2 && vp > 30 * n
                     }
                 }
             }
@@ -176,10 +219,12 @@ public final class TrackClassifier {
                 candidate = .subject
             } else if let others, others[idx] != 0 {
                 candidate = .other
-            } else if windowed > Float(p.moveTolerance) {
-                // Moving is decided by displacement alone. Provisional
-                // attachment (track level): recently in contact with the
-                // subject; object-level attachment refines this.
+            } else if windowed > Float(p.moveTolerance) && t.plateAgreement < 0.6 {
+                // Moving needs both cues: displacement against the background
+                // consensus, and the plate not explaining the pixel (a static
+                // corner drifting against a similarity-only camera model does
+                // not qualify). Provisional attachment (track level): recently
+                // in contact with the subject; object-level attachment refines.
                 let d = Float(distance[idx]) / 3
                 candidate = shadowLike ? .shadowLike : (d < Float(p.contactRadius) ? .attached : .moving)
             } else if wasMoving && t.plateAgreement < 0.3 {

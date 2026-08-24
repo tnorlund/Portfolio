@@ -127,6 +127,24 @@ public final class OpticalFlow {
         return out
     }
 
+    /// RGBA variant: warps a 4-byte-per-pixel image; uncovered pixels get alpha 0.
+    public func warpRGBA(_ image: [UInt8]) -> [UInt8] {
+        guard available else { return image }
+        var out = [UInt8](repeating: 0, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let index = y * width + x
+                let sx = Int((Float(x) + signX * dx[index]).rounded())
+                let sy = Int((Float(y) + signY * dy[index]).rounded())
+                if sx >= 0 && sx < width && sy >= 0 && sy < height {
+                    let s = (sy * width + sx) * 4, d = index * 4
+                    out[d] = image[s]; out[d + 1] = image[s + 1]; out[d + 2] = image[s + 2]; out[d + 3] = image[s + 3]
+                }
+            }
+        }
+        return out
+    }
+
     /// Float-field variant (probabilities).
     public func warp(_ field: [Float], fill: Float) -> [Float] {
         guard available else { return field }

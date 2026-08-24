@@ -388,7 +388,7 @@ do {
             let sorted = sizes.dropFirst().filter { $0 > 0 }.sorted()
             m.paintRegionP50 = sorted.isEmpty ? 0 : sorted[sorted.count / 2]
             if flowReady, let flow, let previousPaint {
-                let warped = flow.warp(previousPaint, fill: 0)
+                let warped = flow.warpRGBA(previousPaint)
                 m.paintTemporalDelta = MetricsMath.temporalDelta(current: frame.rgba, warpedPrevious: warped, mask: mask)
                 m.markerPersistence = MetricsMath.markerPersistence(advanced: seeds, current: frame.markers.indices, width: width, height: height)
             }
@@ -419,6 +419,9 @@ do {
                 m.objectCount = tr.reports.count
                 m.objectAttached = tr.reports.filter { $0.status == "attached" }.count
                 m.objectOccluded = tr.reports.filter { $0.status == "occluded" }.count
+                m.objectIdChurn = tr.clusterStats.newIDs
+                m.objectMerges = tr.clusterStats.merges
+                m.objectSplits = tr.clusterStats.splits
                 m.objGeomResidual = tr.reports.compactMap { $0.geomResidual }
                 m.objRigidity = tr.reports.compactMap { $0.rigidity }
                 m.objInlierFrac = tr.reports.compactMap { $0.inlierFrac }
@@ -475,6 +478,15 @@ do {
             if let tr = focus.trackResult {
                 try writePNG(rgba: tr.overlay, width: width, height: height,
                              to: stillsDir.appendingPathComponent("\(tag)-tracks.png"))
+                if let tracker = analyzer.tracks?.tracker {
+                    var csv = "id,x,y,label,status,age,static,plate,fb,ssd,object\n"
+                    for t in tracker.tracks {
+                        csv += "\(t.id),\(Int(t.current.x)),\(Int(t.current.y)),\(t.label),\(t.status),\(t.age),"
+                        csv += String(format: "%.2f,%.2f,%.2f,%.1f,", t.staticScore, t.plateAgreement, t.fbError, t.ssd)
+                        csv += "\(t.objectID.map(String.init) ?? "")\n"
+                    }
+                    try csv.write(to: stillsDir.appendingPathComponent("\(tag)-tracks.csv"), atomically: true, encoding: .utf8)
+                }
             }
             if let evidence = focus.evidence {
                 try writePNG(rgba: ContactSheet.heatTile(evidence.posterior), width: width, height: height,
@@ -532,7 +544,8 @@ do {
                     "paintPSNR", "paintBoundaryRecall", "paintTemporalDelta", "markerPersistence",
                     "trackCount", "trackNew", "trackLost", "trackRevived", "trackFBError", "trackLabelFlips",
                     "bgFitResidual", "bgInlierFrac", "regTrackDisagreePx", "staticTrackCount", "subjectTrackCount",
-                    "attachedTrackCount", "staticPlateAgreement", "objectCount", "objectAttached", "objGeomResidualMean",
+                    "attachedTrackCount", "staticPlateAgreement", "objectCount", "objectAttached", "objectOccluded",
+                    "objectIdChurn", "objGeomResidualMean", "objInlierFracMean", "objLiveTracksMean",
                     "objPhotoResidualMean", "objColorDriftMean", "objAreaDeltaMean", "objPersistence",
                     "msTracker", "msObjects", "msTotal"]
         log(String(format: "objective %.3f", summary.objective ?? 0))

@@ -135,10 +135,17 @@ public final class ObjectClusters {
         let p = params
         let window = max(5, min(p.motionWindow, 10))
 
-        // --- candidates: moving/attached, alive long enough ---
+        // --- candidates: moving/attached, alive long enough, and genuinely
+        // not explained by the plate. Nothing clusters before the motion
+        // window has history: with no history every track looks "moving" and
+        // the background would cluster into one giant rigid object.
         var candidates: [Track] = []
-        for t in tracker.tracks where t.status == .live && (t.label == .moving || t.label == .attached) && t.positions.count >= 5 {
-            candidates.append(t)
+        if frame >= p.motionWindow {
+            for t in tracker.tracks where t.status == .live && (t.label == .moving || t.label == .attached)
+                && t.positions.count >= 5 && t.plateAgreement < 0.6 && t.staticScore < 0.8
+            {
+                candidates.append(t)
+            }
         }
         var indexByID: [Int: Int] = [:]
         for (i, t) in candidates.enumerated() { indexByID[t.id] = i }
@@ -147,9 +154,19 @@ public final class ObjectClusters {
         var uf = UnionFind(candidates.count)
         var hasRigidPartner = [Bool](repeating: false, count: candidates.count)
         let link = Float(p.clusterLink)
+        // Rigidity is only evidence when things move: two tracks that both sat
+        // still over the window are trivially "rigid" with each other, and at
+        // the bottom of a squat that would chain the bar to anything static
+        // nearby. Require real displacement over the window from both.
+        var moved = [Bool](repeating: false, count: candidates.count)
         for i in 0..<candidates.count {
+            let t = candidates[i]
+            let n = min(window, t.positions.count - 1)
+            moved[i] = n >= 4 && simd_distance(t.current, t.positions[t.positions.count - 1 - n]) >= 2
+        }
+        for i in 0..<candidates.count where moved[i] {
             let a = candidates[i]
-            for j in (i + 1)..<candidates.count {
+            for j in (i + 1)..<candidates.count where moved[j] {
                 let b = candidates[j]
                 if simd_distance(a.current, b.current) > link { continue }
                 let n = min(window, a.positions.count, b.positions.count)
@@ -282,7 +299,10 @@ public final class ObjectClusters {
                     motionCount += 1
                 }
             }
-            object.contactHistory.append(Float(inContact) / Float(max(1, members.count)))
+            // Contact is a property of the whole object: a barbell touches the
+            // subject only at the hands, so "any member in contact" is the
+            // indicator, not the fraction of members.
+            object.contactHistory.append(inContact >= min(2, members.count) ? 1 : 0)
             if object.contactHistory.count > window { object.contactHistory.removeFirst() }
             object.contactFrac = object.contactHistory.reduce(0, +) / Float(object.contactHistory.count)
             var comotion: Float = 0
@@ -343,16 +363,36 @@ public final class ObjectClusters {
         }
         objects.removeAll { $0.status == .retired }
 
-        // Relabel tracks by their object's status.
+        // Dissolve objects the classifier now considers static: an object is
+        // only real while its tracks keep disagreeing with the plate.
+        for object in objects where object.status != .retired {
+            var agreeing = 0, total = 0
+            for id in object.trackIDs {
+                if let t = tracker.tracks.first(where: { $0.id == id }), t.status == .live {
+                    total += 1
+                    if t.plateAgreement > 0.7 && t.staticScore > 0.8 { agreeing += 1 }
+                }
+            }
+            if total >= 3 && agreeing * 2 > total { object.status = .retired }
+        }
+        objects.removeAll { $0.status == .retired }
+        // Relabel tracks by their object's status, but only tracks the
+        // classifier still calls moving: an object never overrides a static,
+        // subject, or other verdict.
         for object in objects {
             for id in object.trackIDs {
                 tracker.update(id: id) { t in
-                    if t.status == .live {
-                        let label: TrackLabel = object.status == .attached || object.status == .occluded ? .attached : .moving
-                        if t.labels[t.labels.count - 1] != label { object.labelFlips += 1 }
-                        t.labels[t.labels.count - 1] = label
+                    guard t.status == .live, t.label == .moving || t.label == .attached else {
+                        if t.status == .live { t.objectID = nil }
+                        return
                     }
+                    let label: TrackLabel = object.status == .attached || object.status == .occluded ? .attached : .moving
+                    if t.labels[t.labels.count - 1] != label { object.labelFlips += 1 }
+                    t.labels[t.labels.count - 1] = label
                 }
+            }
+            object.trackIDs = object.trackIDs.filter { id in
+                tracker.tracks.first(where: { $0.id == id })?.objectID == object.id
             }
         }
         stats.objects = objects.count
