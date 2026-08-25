@@ -106,7 +106,11 @@ public final class TrackEvidence {
         var byID: [Int: Track] = [:]
         for t in tracker.tracks where t.status == .live { byID[t.id] = t }
         var rendered = false
-        for object in clusters.objects where object.status == .attached || (object.status == .occluded && object.occludedFrames <= 5) {
+        // An occluded object is only carried through the gap once it has been
+        // confirmed as a real kind: an undecided object that vanishes was never
+        // modelled, so extrapolating its last mask just emits a fragment.
+        for object in clusters.objects where object.status == .attached
+            || (object.status == .occluded && object.occludedFrames <= 5 && object.kind != .undecided) {
             // Member points that agree with the object's transform.
             var points: [SIMD2<Float>] = []
             for id in object.trackIDs {
@@ -168,8 +172,28 @@ public final class TrackEvidence {
                 }
                 mask = alpha.map { $0 > 127 ? 1 : 0 }
             }
+            // Rigid objects are solid: bridge the speckle a patchy difference
+            // gate leaves in a dark plate so it renders as one disc instead of
+            // a shower of track-anchored fragments. Deformable objects (a
+            // stretching band) are left untouched so their interior stays open.
+            if object.kind == .rigid && params.closeIterations > 0 {
+                let closed = Morphology.close(mask, width: width, height: height, iterations: params.closeIterations)
+                for i in 0..<count where closed[i] != 0 && mask[i] == 0 { alpha[i] = 255 }
+                mask = closed
+            }
+            // Drop the speckle the close could not bridge: connected pieces of
+            // this object below minRenderArea are fragments, not the object.
+            if params.minRenderArea > 0 {
+                let filtered = Morphology.removeSmallComponents(mask, width: width, height: height, minArea: params.minRenderArea)
+                for i in 0..<count where mask[i] != 0 && filtered[i] == 0 { alpha[i] = 0 }
+                mask = filtered
+            }
             let area = mask.reduce(0) { $0 + Int($1) }
-            if area == 0 { continue }
+            // Minimum rendered support: a real prop (band, bar, plate) grows to
+            // thousands of pixels; a 3–5-track object grows a speck. Dropping
+            // sub-threshold masks removes the fragments that inflate
+            // maskComponents without touching any full-size object.
+            if area < params.minRenderArea { continue }
             rendered = true
             // Colour signature: reference EMA, drift vs this frame.
             var current = ChromaHistogram()

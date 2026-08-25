@@ -213,6 +213,60 @@ public enum Morphology {
         return out
     }
 
+    /// Binary morphological close (dilate then erode, `iterations` each). Bridges
+    /// gaps up to `2·iterations` px wide without enlarging the outer boundary,
+    /// so a speckled solid region (a dark plate whose interior fell below the
+    /// difference gate) becomes one connected blob. Returns a 0/1 mask.
+    public static func close(_ mask: [UInt8], width: Int, height: Int, iterations: Int) -> [UInt8] {
+        guard iterations > 0 else { return mask.map { $0 != 0 ? 1 : 0 } }
+        var m = mask
+        for _ in 0..<iterations { m = dilate(m, width: width, height: height) }
+        for _ in 0..<iterations { m = erode(m, width: width, height: height) }
+        return m
+    }
+
+    /// Drops 8-connected components smaller than `minArea`, keeping the rest.
+    /// Returns a 0/1 mask.
+    public static func removeSmallComponents(
+        _ mask: [UInt8], width: Int, height: Int, minArea: Int
+    ) -> [UInt8] {
+        let count = width * height
+        var label = [Int32](repeating: 0, count: count)
+        var out = [UInt8](repeating: 0, count: count)
+        var stack: [Int] = []
+        var component: [Int] = []
+        var next: Int32 = 0
+        for start in 0..<count where mask[start] != 0 && label[start] == 0 {
+            next += 1
+            stack.removeAll(keepingCapacity: true)
+            component.removeAll(keepingCapacity: true)
+            stack.append(start)
+            label[start] = next
+            while let index = stack.popLast() {
+                component.append(index)
+                let y = index / width
+                let x = index - y * width
+                for dy in -1...1 {
+                    let ny = y + dy
+                    if ny < 0 || ny >= height { continue }
+                    for dx in -1...1 {
+                        let nx = x + dx
+                        if nx < 0 || nx >= width { continue }
+                        let neighbor = ny * width + nx
+                        if mask[neighbor] != 0 && label[neighbor] == 0 {
+                            label[neighbor] = next
+                            stack.append(neighbor)
+                        }
+                    }
+                }
+            }
+            if component.count >= minArea {
+                for index in component { out[index] = 1 }
+            }
+        }
+        return out
+    }
+
     /// Direct photometric refinement of the plate alignment: the integer
     /// translation (full-resolution pixels, multiples of 4) within ±`range`
     /// quarter-res steps that minimizes the robust mean channel difference
