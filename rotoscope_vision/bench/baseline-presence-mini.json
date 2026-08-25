@@ -1,0 +1,596 @@
+{
+  "frames" : 198,
+  "objective" : 0.9395573911274323,
+  "params" : {
+    "attachEnter" : 0.6,
+    "attachExit" : 0.4,
+    "barHalfWidth" : 9,
+    "blurRadius" : 3,
+    "capsuleRadius" : 10,
+    "carryDilate" : 4,
+    "carryFrames" : 90,
+    "chromaTolerance" : 0.06,
+    "closeIterations" : 2,
+    "clusterLink" : 120,
+    "colorEdges" : true,
+    "colorGate" : 0.3,
+    "contactRadius" : 40,
+    "decisionThreshold" : 0.5,
+    "deformLink" : 40,
+    "diffCenter" : 40,
+    "diffWidth" : 10,
+    "discSmoothing" : 0.6,
+    "entryMargin" : 0.16666666666666666,
+    "evidence" : "tracks",
+    "faceQuota" : 0.3,
+    "flowAccuracy" : "medium",
+    "footSlack" : 0.08333333333333333,
+    "headExclusion" : 0.125,
+    "hullRadius" : 24,
+    "labelHold" : 30,
+    "lkIterations" : 8,
+    "lkMinEigen" : 50,
+    "lkRadius" : 5,
+    "markerBudget" : 1200,
+    "maxJump" : 40,
+    "minClusterTracks" : 6,
+    "minRenderArea" : 400,
+    "motionWindow" : 15,
+    "moveTolerance" : 4,
+    "occlusionGrace" : 30,
+    "outlierExpel" : 5,
+    "photoTolerance" : 40,
+    "plateSamples" : 48,
+    "plateThreshold" : 48,
+    "plateTolerance" : 4,
+    "priorDecay" : 0.92,
+    "priorWeight" : 0.6,
+    "propagateMarkers" : true,
+    "refineRange" : 10,
+    "rigidDrift" : 1,
+    "rigidResidual" : 1.5,
+    "shadowChromaTolerance" : 26,
+    "shadowMaxRatio" : 0.97,
+    "shadowMinRatio" : 0.45,
+    "shadowStrength" : 0.85,
+    "smoothRadius" : 2,
+    "spacingBackground" : 8,
+    "spacingBody" : 4,
+    "spacingFace" : 2,
+    "staticTolerance" : 0.75,
+    "stripHeight" : 120,
+    "structWeight" : 0.75,
+    "templateDelay" : 10,
+    "templateRecapture" : 1.3,
+    "trackBudget" : 1500,
+    "trackDiscs" : true,
+    "trackFBTolerance" : 1,
+    "trackMinScore" : 400,
+    "trackNewPerFrame" : 300,
+    "trackQuality" : 0.01,
+    "trackSSDTolerance" : 30,
+    "trackSpacing" : 10,
+    "trackSupplyScore" : 80,
+    "weakRatio" : 0.5
+  },
+  "stats" : {
+    "attachedTrackCount" : {
+      "count" : 198,
+      "max" : 206,
+      "mean" : 122.52525252525253,
+      "min" : 0,
+      "p95" : 195
+    },
+    "bandRecall" : {
+      "count" : 198,
+      "max" : 1,
+      "mean" : 0.8579401071827903,
+      "min" : 0.1728799672265465,
+      "p95" : 0.9984247834077186
+    },
+    "bandTruth" : {
+      "count" : 198,
+      "max" : 6768,
+      "mean" : 4690.257575757576,
+      "min" : 1886,
+      "p95" : 6635
+    },
+    "barLineLength" : {
+      "count" : 195,
+      "max" : 768.7063778612101,
+      "mean" : 362.1902367748978,
+      "min" : 38.639032889713604,
+      "p95" : 750.2143877894213
+    },
+    "barLineResidual" : {
+      "count" : 195,
+      "max" : 34.838431362631894,
+      "mean" : 27.798198440994714,
+      "min" : 2.185541685367123,
+      "p95" : 34.289533910996106
+    },
+    "bgFalseRate" : {
+      "count" : 198,
+      "max" : 0.09751528870456261,
+      "mean" : 0.036059261499186084,
+      "min" : 0.00809295007838277,
+      "p95" : 0.06884994175579795
+    },
+    "bgFitResidual" : {
+      "count" : 197,
+      "max" : 1.0019038915634155,
+      "mean" : 0.6650827899197032,
+      "min" : 0.3843401074409485,
+      "p95" : 0.8818647265434265
+    },
+    "bgInlierFrac" : {
+      "count" : 197,
+      "max" : 0.9981933236122131,
+      "mean" : 0.9148542073172361,
+      "min" : 0.7745097875595093,
+      "p95" : 0.9895833134651184
+    },
+    "bgResidualMedian" : {
+      "count" : 198,
+      "max" : 4,
+      "mean" : 1.696969696969697,
+      "min" : 1,
+      "p95" : 2
+    },
+    "discCount" : {
+      "count" : 198,
+      "max" : 1,
+      "mean" : 0.045454545454545456,
+      "min" : 0,
+      "p95" : 0
+    },
+    "discRadiiMean" : {
+      "count" : 9,
+      "max" : 61.51477811837497,
+      "mean" : 61.51477811837497,
+      "min" : 61.51477811837497,
+      "p95" : 61.51477811837497
+    },
+    "discRadiusDelta" : {
+      "count" : 8,
+      "max" : 0,
+      "mean" : 0,
+      "min" : 0,
+      "p95" : 0
+    },
+    "floorContactLeak" : {
+      "count" : 198,
+      "max" : 0.6591523895401262,
+      "mean" : 0.05611779580563386,
+      "min" : 0,
+      "p95" : 0.19322165114728715
+    },
+    "flowMeanPx" : {
+      "count" : 197,
+      "max" : 2.3080274276504413,
+      "mean" : 1.2215062314549872,
+      "min" : 0.19575869596658382,
+      "p95" : 2.191953670001861
+    },
+    "markerCount" : {
+      "count" : 198,
+      "max" : 1200,
+      "mean" : 973.2323232323232,
+      "min" : 924,
+      "p95" : 1045
+    },
+    "markerPersistence" : {
+      "count" : 197,
+      "max" : 0.9908536585365854,
+      "mean" : 0.9362450313218201,
+      "min" : 0.705,
+      "p95" : 0.9857868020304569
+    },
+    "maskArea" : {
+      "count" : 198,
+      "max" : 176951,
+      "mean" : 152111.94444444444,
+      "min" : 112323,
+      "p95" : 173453
+    },
+    "maskAreaDelta" : {
+      "count" : 197,
+      "max" : 0.10456721475118275,
+      "mean" : -0.0012189367792102032,
+      "min" : -0.1020683268765275,
+      "p95" : 0.04581214808650082
+    },
+    "maskBoundaryRatio" : {
+      "count" : 198,
+      "max" : 15.222792772932085,
+      "mean" : 10.731632967398113,
+      "min" : 7.767719535665876,
+      "p95" : 14.899783114238168
+    },
+    "maskComponents" : {
+      "count" : 198,
+      "max" : 11,
+      "mean" : 4.252525252525253,
+      "min" : 1,
+      "p95" : 8
+    },
+    "maskHoles" : {
+      "count" : 198,
+      "max" : 49,
+      "mean" : 9.707070707070708,
+      "min" : 0,
+      "p95" : 20
+    },
+    "maskSoftBand" : {
+      "count" : 198,
+      "max" : 0.517080206191074,
+      "mean" : 0.2813394515659304,
+      "min" : 0.20709659932990018,
+      "p95" : 0.42019952936930977
+    },
+    "maskTemporalIoU" : {
+      "count" : 197,
+      "max" : 0.9887340886351939,
+      "mean" : 0.9277030066067026,
+      "min" : 0.7996859551500968,
+      "p95" : 0.969865665476829
+    },
+    "msEvidence" : {
+      "count" : 198,
+      "max" : 232.94603824615479,
+      "mean" : 154.50105643031574,
+      "min" : 92.69702434539795,
+      "p95" : 171.20003700256348
+    },
+    "msObjects" : {
+      "count" : 198,
+      "max" : 34.69204902648926,
+      "mean" : 17.07754291669287,
+      "min" : 5.649924278259277,
+      "p95" : 29.811978340148926
+    },
+    "msPaint" : {
+      "count" : 198,
+      "max" : 21.65699005126953,
+      "mean" : 18.922963527717975,
+      "min" : 17.405033111572266,
+      "p95" : 19.486069679260254
+    },
+    "msTotal" : {
+      "count" : 198,
+      "max" : 935.3759288787842,
+      "mean" : 309.02633161255807,
+      "min" : 230.34095764160156,
+      "p95" : 327.42106914520264
+    },
+    "msTracker" : {
+      "count" : 198,
+      "max" : 36.34905815124512,
+      "mean" : 27.266981625797772,
+      "min" : 16.69597625732422,
+      "p95" : 30.047059059143066
+    },
+    "msVision" : {
+      "count" : 198,
+      "max" : 660.8819961547852,
+      "mean" : 100.42262558985239,
+      "min" : 80.58011531829834,
+      "p95" : 101.80914402008057
+    },
+    "objAreaMean" : {
+      "count" : 183,
+      "max" : 8340.25,
+      "mean" : 4881.533333257513,
+      "min" : 0,
+      "p95" : 7987.625
+    },
+    "objColorDriftMean" : {
+      "count" : 181,
+      "max" : 0.5925085842609406,
+      "mean" : 0.18012442760833908,
+      "min" : 0.08284700910250346,
+      "p95" : 0.2876490274444222
+    },
+    "objGeomResidualMean" : {
+      "count" : 182,
+      "max" : 0.7145141631364822,
+      "mean" : 0.5226468971055698,
+      "min" : 0.2571942259867986,
+      "p95" : 0.6163124548537391
+    },
+    "objInlierFracMean" : {
+      "count" : 182,
+      "max" : 1,
+      "mean" : 0.9047744517786381,
+      "min" : 0.6569429089625677,
+      "p95" : 0.9680567809513637
+    },
+    "objLabelFlipsMean" : {
+      "count" : 183,
+      "max" : 84,
+      "mean" : 33.21715412699019,
+      "min" : 2,
+      "p95" : 66.25
+    },
+    "objLiveTracksMean" : {
+      "count" : 183,
+      "max" : 27.125,
+      "mean" : 11.135883272768519,
+      "min" : 1.4166666666666667,
+      "p95" : 19.285714285714285
+    },
+    "objPersistence" : {
+      "count" : 182,
+      "max" : 1,
+      "mean" : 0.4309323612895046,
+      "min" : 0.09090909090909091,
+      "p95" : 1
+    },
+    "objPhotoResidualMean" : {
+      "count" : 171,
+      "max" : 56.414005517959595,
+      "mean" : 23.965443906519145,
+      "min" : 6.183250904083252,
+      "p95" : 56.02974057197571
+    },
+    "objRigidityMean" : {
+      "count" : 182,
+      "max" : 0.7145141631364822,
+      "mean" : 0.5226468971055698,
+      "min" : 0.2571942259867986,
+      "p95" : 0.6163124548537391
+    },
+    "objVisibleMean" : {
+      "count" : 183,
+      "max" : 1,
+      "mean" : 0.5442104647022679,
+      "min" : 0.16666666666666666,
+      "p95" : 1
+    },
+    "objectAttached" : {
+      "count" : 198,
+      "max" : 6,
+      "mean" : 2.01010101010101,
+      "min" : 0,
+      "p95" : 4
+    },
+    "objectCount" : {
+      "count" : 198,
+      "max" : 14,
+      "mean" : 6.7727272727272725,
+      "min" : 0,
+      "p95" : 12
+    },
+    "objectIdChurn" : {
+      "count" : 198,
+      "max" : 3,
+      "mean" : 0.35353535353535354,
+      "min" : 0,
+      "p95" : 1
+    },
+    "objectMerges" : {
+      "count" : 198,
+      "max" : 0,
+      "mean" : 0,
+      "min" : 0,
+      "p95" : 0
+    },
+    "objectOccluded" : {
+      "count" : 198,
+      "max" : 10,
+      "mean" : 3.419191919191919,
+      "min" : 0,
+      "p95" : 9
+    },
+    "objectSplits" : {
+      "count" : 198,
+      "max" : 3,
+      "mean" : 0.15151515151515152,
+      "min" : 0,
+      "p95" : 1
+    },
+    "paintBoundaryRecall" : {
+      "count" : 198,
+      "max" : 0.9353049907578558,
+      "mean" : 0.8563967493569384,
+      "min" : 0.7435699091084896,
+      "p95" : 0.9063793349507635
+    },
+    "paintPSNR" : {
+      "count" : 198,
+      "max" : 24.691789333255993,
+      "mean" : 22.648054948828722,
+      "min" : 17.364978407489048,
+      "p95" : 23.944741312036225
+    },
+    "paintRegionCount" : {
+      "count" : 198,
+      "max" : 1200,
+      "mean" : 973.2323232323232,
+      "min" : 924,
+      "p95" : 1045
+    },
+    "paintRegionP50" : {
+      "count" : 198,
+      "max" : 33,
+      "mean" : 26.32323232323232,
+      "min" : 11,
+      "p95" : 31
+    },
+    "paintTemporalDelta" : {
+      "count" : 197,
+      "max" : 18.048521748080724,
+      "mean" : 10.751934404016108,
+      "min" : 3.9030893205133457,
+      "p95" : 15.699396015345075
+    },
+    "plateRecallLeft" : {
+      "count" : 196,
+      "max" : 0.9857832618025751,
+      "mean" : 0.15010808491492753,
+      "min" : 0,
+      "p95" : 0.7568409343715239
+    },
+    "plateRecallRight" : {
+      "count" : 198,
+      "max" : 0.9991542709317944,
+      "mean" : 0.7384618793413829,
+      "min" : 0,
+      "p95" : 0.9956028368794326
+    },
+    "plateTruthLeft" : {
+      "count" : 198,
+      "max" : 23258,
+      "mean" : 9864.080808080807,
+      "min" : 614,
+      "p95" : 21913
+    },
+    "plateTruthRight" : {
+      "count" : 198,
+      "max" : 20850,
+      "mean" : 10366.4898989899,
+      "min" : 2469,
+      "p95" : 20419
+    },
+    "poseBarAgreement" : {
+      "count" : 195,
+      "max" : 44.95285938485845,
+      "mean" : 28.54853078599777,
+      "min" : 11.743158717078845,
+      "p95" : 31.3276214145402
+    },
+    "poseFound" : {
+      "count" : 198,
+      "max" : 1,
+      "mean" : 1,
+      "min" : 1,
+      "p95" : 1
+    },
+    "propArea" : {
+      "count" : 198,
+      "max" : 48555,
+      "mean" : 21414.439393939392,
+      "min" : 15,
+      "p95" : 45826
+    },
+    "propComponents" : {
+      "count" : 198,
+      "max" : 14,
+      "mean" : 2.676767676767677,
+      "min" : 1,
+      "p95" : 5
+    },
+    "propFlicker" : {
+      "count" : 197,
+      "max" : 6,
+      "mean" : 0.8730964467005076,
+      "min" : 0,
+      "p95" : 4
+    },
+    "propTrackedAreaMean" : {
+      "count" : 195,
+      "max" : 24709,
+      "mean" : 11746.853028083024,
+      "min" : 189,
+      "p95" : 24060
+    },
+    "regAccepted" : {
+      "count" : 198,
+      "max" : 1,
+      "mean" : 0.7222222222222222,
+      "min" : 0,
+      "p95" : 1
+    },
+    "regJumpPx" : {
+      "count" : 197,
+      "max" : 101.96772766113281,
+      "mean" : 13.140361022828195,
+      "min" : 0,
+      "p95" : 35.27234649658203
+    },
+    "regRefinePx" : {
+      "count" : 198,
+      "max" : 68,
+      "mean" : 16.606060606060606,
+      "min" : 0,
+      "p95" : 48
+    },
+    "regTrackDisagreePx" : {
+      "count" : 197,
+      "max" : 110.62625885009766,
+      "mean" : 14.897075629703284,
+      "min" : 0.13379165530204773,
+      "p95" : 40.05826950073242
+    },
+    "shadowLikeInProps" : {
+      "count" : 198,
+      "max" : 0.26129740687558073,
+      "mean" : 0.0868309847605604,
+      "min" : 0,
+      "p95" : 0.24449055820709692
+    },
+    "staticPlateAgreement" : {
+      "count" : 198,
+      "max" : 0.9218702912330627,
+      "mean" : 0.8599014848169654,
+      "min" : 0.5588439106941223,
+      "p95" : 0.9171690940856934
+    },
+    "staticTrackCount" : {
+      "count" : 198,
+      "max" : 1143,
+      "mean" : 880.5858585858585,
+      "min" : 294,
+      "p95" : 1116
+    },
+    "subjectTrackCount" : {
+      "count" : 198,
+      "max" : 268,
+      "mean" : 173.41919191919192,
+      "min" : 6,
+      "p95" : 258
+    },
+    "trackCount" : {
+      "count" : 198,
+      "max" : 1523,
+      "mean" : 1252.489898989899,
+      "min" : 300,
+      "p95" : 1505
+    },
+    "trackFBError" : {
+      "count" : 198,
+      "max" : 0.018824176862835884,
+      "mean" : 0.011262546037088591,
+      "min" : 0,
+      "p95" : 0.015954360365867615
+    },
+    "trackLabelFlips" : {
+      "count" : 198,
+      "max" : 0.052,
+      "mean" : 0.009831843533835373,
+      "min" : 0,
+      "p95" : 0.02040816326530612
+    },
+    "trackLost" : {
+      "count" : 198,
+      "max" : 204,
+      "mean" : 94.1969696969697,
+      "min" : 0,
+      "p95" : 162
+    },
+    "trackNew" : {
+      "count" : 198,
+      "max" : 300,
+      "mean" : 42.54545454545455,
+      "min" : 0,
+      "p95" : 88
+    },
+    "trackRevived" : {
+      "count" : 198,
+      "max" : 108,
+      "mean" : 59.32828282828283,
+      "min" : 0,
+      "p95" : 95
+    }
+  }
+}
