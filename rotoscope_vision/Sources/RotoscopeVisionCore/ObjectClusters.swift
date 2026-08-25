@@ -513,7 +513,21 @@ public final class ObjectClusters {
         // --- objects not seen this frame: occlusion / retirement ---
         for object in objects where !assigned.contains(object.id) && object.status != .retired {
             object.lostTracks = object.trackIDs.count
-            if object.status == .attached || object.status == .occluded {
+            // A rigid object whose template still explains the pixels under the
+            // held transform is not gone — its corners were merely lost against a
+            // low-contrast background. Keep it attached (it renders its template)
+            // so its lost tracks can revive inside it, instead of retiring a
+            // still-visible plate. The photometric residual from last frame's
+            // render is the evidence; once it exceeds photoTolerance (the object
+            // has moved out from under the frozen template) it occludes normally.
+            let templateHolds = object.kind == .rigid && object.template != nil
+                && (object.photoResidual ?? 999) < Float(p.photoTolerance)
+            if templateHolds && (object.status == .attached || object.status == .occluded) {
+                object.status = .attached
+                object.previousTransform = object.transform
+                object.occludedFrames = 0
+                object.attachPath = "template"
+            } else if object.status == .attached || object.status == .occluded {
                 object.status = .occluded
                 object.occludedFrames += 1
                 // Hold the transform: extrapolating velocity for many frames
