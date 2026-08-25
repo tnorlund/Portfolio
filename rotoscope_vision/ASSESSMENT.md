@@ -377,6 +377,26 @@ stop-and-write-up rule it is deferred in favour of J and K, which are
 self-contained and where K is the largest bucket (~147 frames). A future
 session should implement the pre-roll with per-frame flow buffering.
 
+### J — band in the deep squat (premise invalidated on this run)
+
+The charter's J assumes "the deformable [band] object loses tracks as the band
+foreshortens." On this machine's run that is not what happens: a deformable
+object exists only on frames **111–148** (`-objects.json` across the clip), so
+during the entire band-missing window 83–100 there is **no band object at
+all** — nothing with a learned histogram to revive. The band is covered on
+80–92 and 101+ purely because Vision's person segmentation swallows it, and it
+is missing on 83–84, 88, 93–100 exactly where Vision drops the foreshortened
+band. So "revive the object on chroma back-projection" has no object to act on.
+
+The real cause is the same class as the left plate: the band, compressed and
+thin at the bottom of the squat, does not yield enough distinct orange tracks
+to cluster into a deformable object (the plate/subject tracks nearby dominate
+that region), so no object forms and the person-seg gap is left uncovered. A
+chroma-persistence layer that re-adds a recently-covered colour region when the
+person mask drops it would recover it, but that is a new mechanism, not the
+charter's object-revival, and it risks bgFalseRate. J is therefore folded into
+the feature-supply work rather than done as specified; K is taken next.
+
 ## Reproduce
 
 ```bash
