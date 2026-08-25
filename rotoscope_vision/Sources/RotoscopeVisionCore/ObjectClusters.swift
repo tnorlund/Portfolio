@@ -480,7 +480,32 @@ public final class ObjectClusters {
                 if object.contactHistory.count > window { object.contactHistory.removeFirst() }
                 object.contactFrac = object.contactHistory.reduce(0, +) / Float(object.contactHistory.count)
                 object.comotion = 0
-                object.attachScore = 0.35 * object.contactFrac  // appearance attach path added next step
+                // Appearance attach: a coherent, foreign, in-contact cluster
+                // that has persisted is attached without any motion. foreignFrac
+                // (all members foreign here) guards against a half-motion blob;
+                // persistence stops a one-frame cluster from attaching.
+                let foreignFrac = Float(members.filter { fcands[$0].label == .foreign }.count) / Float(members.count)
+                // The tracks already disagreed with the plate for foreignHold
+                // frames to be foreign at all, so the object only needs a few
+                // frames of its own to prove it is not a one-frame fluke.
+                let persistence = min(1, Float(frame - object.born) / 3)
+                object.attachScore = object.contactFrac * foreignFrac * persistence
+                switch object.status {
+                case .candidate, .occluded:
+                    if object.attachScore >= Float(p.attachEnter) {
+                        object.status = .attached; object.belowExitFrames = 0; object.attachPath = "appearance"
+                    } else if object.status == .occluded {
+                        object.status = .attached
+                    }
+                case .attached:
+                    if object.attachScore < Float(p.attachExit) {
+                        object.belowExitFrames += 1
+                        if object.belowExitFrames >= p.labelHold { object.status = .candidate }
+                    } else {
+                        object.belowExitFrames = 0
+                    }
+                case .retired: break
+                }
                 object.occludedFrames = 0
             }
         }
