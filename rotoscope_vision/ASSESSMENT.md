@@ -221,11 +221,95 @@ the hole-fill and disc priors the soft path had. The direction holds;
 the next work is feature supply for low-contrast objects and the
 contact-point co-motion fix, both generic.
 
+## Round three (Mini): contact-point co-motion, feature supply, minimum support
+
+Continued on the Mac Mini (macOS 26.x). First lesson of the machine: Apple
+Vision's output is deterministic back-to-back (two runs of one binary are
+byte-identical) but **drifts across builds and time** — the same baseline code
+gave propFlicker 2.27 when `bench/baseline-tracks-mini.json` was captured and
+1.72 an hour later. So a delta read by comparing an old `runs/` dir to a new
+one is contaminated by drift, not the code change. Every number below is
+therefore from a **single back-to-back sequence** in one session: the
+baseline, B, C and D binaries run one after another on the full clip. The
+committed `bench/baseline-tracks-mini.json` is used only for the red-line gate.
+
+| metric (mean) | baseline | B | C | D (final) | baseline→D |
+|---|---|---|---|---|---|
+| propFlicker | 1.72 | 2.39 | 2.48 | **0.87** | ↓ 49 % |
+| maskComponents | 7.71 | 10.66 | 10.17 | **4.25** | ↓ 45 % |
+| propArea | 12.2k | 14.2k | 19.8k | **21.4k** | ↑ 75 % |
+| objectAttached | 1.30 | 1.46 | 2.15 | 2.01 | ↑ |
+| objPersistence | 0.345 | 0.437 | 0.412 | 0.431 | ↑ |
+| objPhotoResidual | 33.7 | 31.8 | 24.2 | 24.0 | ↓ (better fits) |
+| bgFalseRate | 0.043 | 0.041 | 0.037 | 0.036 | ↓ (no red line) |
+| maskTemporalIoU | 0.931 | 0.925 | 0.919 | 0.928 | ≈ |
+| shadowLikeInProps | 0.115 | 0.086 | 0.086 | 0.087 | ↓ 24 % |
+| floorContactLeak | 0.013 | 0.017 | 0.049 | 0.056 | ↑ (worse) |
+| msTotal | 263 | 269 | 273 | 300 | +37 ms |
+
+**B — contact-point co-motion** (`ObjectClusters`). Co-motion ranked subject
+tracks by distance to the object's centroid, so a barbell was compared against
+the shoulder/head tracks nearest its middle rather than the hands that carry
+it. Now it ranks by distance to the members in contact with the subject. This
+attaches more of the real props (objectAttached, objPersistence, propArea all
+up) but, on its own, trades flicker and components up (2.39, 10.66) because the
+extra attached objects grow fragmented regions — a cost D removes. The frame-90
+background debris disappears and the left plate is recovered where B had
+neither.
+
+**C — feature supply inside attached objects' hulls** (partial). A second,
+lower-threshold Shi–Tomasi pass confined to attached objects' hulls feeds
+low-contrast objects the corners the global floor misses. propArea +39 % with
+bgFalseRate *falling* — the charter's C gate met. But the "left plate on ≥5/7
+keyframes" target was not: it reaches 2/7. The left plate is geometrically
+isolated (the body occludes the bar between it and the right plate), so the bar
+object's hull never dilates far enough to seed it; supply reinforces it only
+once it has independently formed. A global lower threshold *would* reach it but
+raised bgFalseRate and lowered propArea (background corners cluster into false
+objects), so it was rejected — the charter's warning confirmed.
+
+**D — minimum rendered support.** Three gates on emergent properties (no
+category prior): carry an occluded object through the gap only once it has a
+confirmed rigid/deformable kind; morphological-close a *rigid* object's mask so
+a dark plate's difference-gated speckle becomes one disc (the deformable band
+is left hollow, per the charter); drop connected components below
+`minRenderArea`. maskComponents 10.2→4.25 and propFlicker 2.48→0.87 while
+propArea is preserved — the shattered plate is now a solid disc and the
+per-frame speckle is gone. The ~4 remaining components are the real props
+(person + band + bar + plate), not fragments: raising `minRenderArea` to 800
+does not lower the count.
+
+**E — object-level shadow rejection** (not met, reverted). The charter's
+prescribed NCC-vs-plate texture test was applied per pixel inside the grown
+mask, then (after it was undone by D's rigid close) as a final pass on each
+object's mask. It reduced floorContactLeak ~0.012 and shadowLikeInProps ~0.015
+but could not approach the ≤0.04 target and left the keyframes visually
+unchanged, because the dominant shadow is the deep-squat/left-plate-edge cast
+shadow on flat dark floor and at the frame edge — exactly where the test has no
+textured, in-bounds plate to correlate against (the same limitation the Round
+one assessment flagged for the chromaticity test). It also destabilised
+propFlicker. Reverted; `floorContactLeak` 0.056 remains the round's open
+defect. A height/floor-plane gate (ankles → floor line) is the likely fix, but
+it is a scene prior beyond the NCC approach the milestone specified.
+
+**Verdict.** The mask is substantially better than the Round-two baseline on
+this machine: half the flicker, half the components, three-quarters more true
+prop area (the left plate and both plates now render solid), better object
+fits, and lower background leak — all with zero bar/disc/band knowledge. The
+one regression is shadow/floor leakage under the props (floorContactLeak,
+shadowLikeInProps flat), which E could not remove with the texture test alone.
+
+Final render: `~/IMG_0974-rotoscope.mov` (+ `-preview.mp4`), default params,
+`--evidence tracks`, HEAD of `claude/rotoscope-vision-metrics`.
+
 ## Reproduce
 
 ```bash
 cd rotoscope_vision && swift build -c release
 B=.build/release/rotoscope-vision
+# Round three: judge a change by running two binaries BACK TO BACK (Vision drifts across builds)
+$B ~/IMG_0974.mov --subject held --evidence tracks --metrics runs/tracks --out-dir runs/tracks --no-mov \
+   --stills runs/tracks --stills-every 30 --baseline bench/baseline-tracks-mini.json
 $B ~/IMG_0974.mov --subject held --evidence legacy --metrics runs/legacy --out-dir runs/legacy --no-mov
 $B ~/IMG_0974.mov --subject held --evidence soft   --metrics runs/soft   --out-dir runs/soft   --no-mov \
    --baseline runs/legacy/summary.json --objective bench/objective.json
