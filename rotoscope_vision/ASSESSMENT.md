@@ -335,6 +335,48 @@ object is gone. Fix order by frames recoverable is the charter's I → J → K,
 except the left-plate isolation (cause 2) is the largest single bucket (~147
 frames) and the hardest.
 
+### I — clip-start warm-up (attempted; deferred as disproportionate)
+
+Diagnosed on the data, not theorised. At frame 5 the tracker already holds 73
+tracks on the right plate and 60 on the left (`0005-tracks.csv`); they are not
+missing for lack of detection. Their `plateAgreement` is 0.20–0.40 — they
+plainly disagree with the background plate — versus 0.6–0.74 for the true
+background beside them, so appearance *can* tell them apart. They are labelled
+`background` only because they are not **moving**: the person holds the bar
+still through frames 0–23, so the classifier's motion cue never fires and the
+`else` branch defaults an unknown track to background.
+
+The trouble is that three successive gates are all motion-gated, and the clip
+start has no motion to give them:
+1. **Candidacy** requires `label ∈ {moving, attached}` — a still prop is
+   `background`, excluded.
+2. **Clustering** is gated `frame ≥ motionWindow` and rigid links require both
+   tracks to have moved ≥ 2 px (the guard that stops the whole static
+   background clustering into one object — CONTEXT).
+3. **Attachment** is `0.35·contactFrac + 0.65·max(0,comotion)`; with no motion
+   `comotion = 0`, so `attachScore ≤ 0.35 < attachEnter (0.6)` — even a formed
+   object would not attach, so it would not render.
+
+Relaxing 1–3 to admit still, plate-disagreeing tracks was ruled out: it
+re-opens exactly the "static background becomes an object" failure the CONTEXT
+warns about, and the attachment gate still blocks rendering. The only correct
+fix is the charter's first option — a **backward/lookahead warm-up**: run the
+tracker forward past the first motion (~frame 30), let the plate object form
+with real motion, then back-project it onto frames 0–W (each member track's
+`position(at:k)` is known from frame 0, so a read-only `grow` covers the
+plate). Design sketched and mostly written (`TrackEvidence.retroObjectAlphas`,
+a startup buffer in the main loop). It was **not shipped** because it needs a
+fixed-lag output: the main loop consumes each frame's mask immediately into
+paint → video → ~20 temporal metric state vars, and the shared `OpticalFlow`
+object is advanced by `analyze`, so a naive W-frame buffer computes every
+flow-based metric (propFlicker, maskTemporalIoU, paintTemporalDelta — including
+a red line) against the wrong frame's flow field unless the flow field is also
+buffered per frame. That is a large, correctness-fraught change to the whole
+pipeline for the smallest bucket (~28 frames), so per the charter's
+stop-and-write-up rule it is deferred in favour of J and K, which are
+self-contained and where K is the largest bucket (~147 frames). A future
+session should implement the pre-roll with per-frame flow buffering.
+
 ## Reproduce
 
 ```bash
