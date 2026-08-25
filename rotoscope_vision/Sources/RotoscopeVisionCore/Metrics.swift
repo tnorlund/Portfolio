@@ -74,6 +74,7 @@ public struct FrameMetrics: Codable {
     public var staticTrackCount: Int? = nil
     public var subjectTrackCount: Int? = nil
     public var attachedTrackCount: Int? = nil
+    public var foreignTrackCount: Int? = nil
     public var staticPlateAgreement: Double? = nil
 
     // Objects

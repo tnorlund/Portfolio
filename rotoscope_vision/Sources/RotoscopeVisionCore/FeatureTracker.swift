@@ -10,6 +10,10 @@ public enum TrackLabel: UInt8, Codable {
     case shadowLike
     /// Moving, not subject, not yet assigned to an attached object.
     case moving
+    /// Static but plainly not the background: its plate agreement has stayed
+    /// low for a while, it is not a person, and it is not a shadow. A held-still
+    /// prop reads as foreign so an object can form without waiting for motion.
+    case foreign
 }
 
 public enum TrackStatus: Equatable {
@@ -77,6 +81,9 @@ public struct Track {
     public var objectID: Int?
     /// Consecutive frames this track disagreed with its object's transform.
     public var outlierStreak = 0
+    /// Consecutive frames this track's EMA plate agreement stayed below the
+    /// foreign threshold (it has not looked like the background).
+    public var foreignStreak = 0
     public var canonical: SIMD2<Float>?
     /// Frames the current label has been held (for hysteresis).
     public var labelAge = 0

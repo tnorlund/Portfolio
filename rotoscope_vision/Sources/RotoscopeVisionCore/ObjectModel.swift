@@ -194,6 +194,7 @@ public struct ObjectReport: Codable {
     public var areaDelta: Double?
     public var visible: Int
     public var attachScore: Double
+    public var attachPath: String
     public var contactFrac: Double
     public var comotion: Double
     public var scale: Double

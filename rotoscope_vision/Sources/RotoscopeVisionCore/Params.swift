@@ -67,6 +67,8 @@ public struct Params: Codable, Equatable {
     public var deformLink: Double = 40
     public var chromaTolerance: Double = 0.06
     public var minClusterTracks: Int = 6
+    public var foreignAgreement: Double = 0.45
+    public var foreignHold: Int = 10
     public var rigidResidual: Double = 1.5
     public var hullRadius: Double = 24
     public var capsuleRadius: Double = 10
@@ -153,6 +155,8 @@ public struct Params: Codable, Equatable {
         deformLink = try dbl(.deformLink, d.deformLink)
         chromaTolerance = try dbl(.chromaTolerance, d.chromaTolerance)
         minClusterTracks = try int(.minClusterTracks, d.minClusterTracks)
+        foreignAgreement = try dbl(.foreignAgreement, d.foreignAgreement)
+        foreignHold = try int(.foreignHold, d.foreignHold)
         rigidResidual = try dbl(.rigidResidual, d.rigidResidual)
         hullRadius = try dbl(.hullRadius, d.hullRadius)
         capsuleRadius = try dbl(.capsuleRadius, d.capsuleRadius)
@@ -211,6 +215,8 @@ public struct Params: Codable, Equatable {
         "deformLink": "tracks: max distance for a deformable link, px, 20–80",
         "chromaTolerance": "tracks: rg-chromaticity distance for a deformable link, 0.03–0.12",
         "minClusterTracks": "tracks: tracks needed to form an object, 3–8",
+        "foreignAgreement": "tracks: EMA plate agreement below which a static track counts as foreign (not background), 0.3–0.6",
+        "foreignHold": "tracks: frames a track's plate agreement must stay below foreignAgreement before it is labelled foreign, 5–20",
         "rigidResidual": "tracks: inlier residual of the similarity fit, px, 1–3",
         "hullRadius": "tracks: support disc radius around each track for template capture, px, 12–40",
         "capsuleRadius": "tracks: support radius along rigid edges, px, 6–16",

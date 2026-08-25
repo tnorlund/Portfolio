@@ -15,6 +15,7 @@ public struct ClassifierStats {
     public var movingCount = 0
     public var attachedCount = 0
     public var shadowCount = 0
+    public var foreignCount = 0
     public var labelFlips = 0
     public var staticPlateAgreement: Float = 0
     public var fit: BackgroundFit?
@@ -175,12 +176,19 @@ public final class TrackClassifier {
                 let agrees: Float = Double(difference[idx2]) < p.plateThreshold ? 1 : 0
                 t.plateAgreement += 0.2 * (agrees - t.plateAgreement)
             }
+            // Foreign streak: how long this track's plate agreement has stayed
+            // below the foreign threshold. Background pixels are in the plate
+            // median and agree by construction, so this only climbs on things
+            // absent from it — the props.
+            if t.plateAgreement < Float(p.foreignAgreement) { t.foreignStreak += 1 } else { t.foreignStreak = 0 }
+            let foreignish = t.foreignStreak >= p.foreignHold && t.plateAgreement < Float(p.foreignAgreement)
             // Shadow-likeness: a shadow has no texture of its own — the
             // feature under it is the floor's, seen darker — so the frame
             // patch correlates with the plate patch at the same spot. A prop
-            // replaces the background texture and does not.
+            // replaces the background texture and does not. Run it for a foreign
+            // candidate too (a static shadow would otherwise read as foreign).
             var shadowLike = false
-            if windowed > Float(p.moveTolerance), let plate = warpedPlate, plate[idx * 4 + 3] != 0 {
+            if (windowed > Float(p.moveTolerance) || foreignish), let plate = warpedPlate, plate[idx * 4 + 3] != 0 {
                 let cx = Int(cur.x.rounded()), cy = Int(cur.y.rounded())
                 if cx >= 5 && cy >= 5 && cx < width - 5 && cy < height - 5 {
                     var fs: [Float] = [], ps: [Float] = []
@@ -230,6 +238,16 @@ public final class TrackClassifier {
             } else if wasMoving && t.plateAgreement < 0.3 {
                 // Paused prop: still differs from the plate, keep its label.
                 candidate = t.label
+            } else if foreignish && !shadowLike && !wasMoving {
+                // Foreign: static, but plainly not the background and not a
+                // shadow. Lets an object form from a held-still prop without any
+                // motion cue; the background never reaches here (it agrees with
+                // the plate it was built from). Only a promotion from
+                // background/unknown — a moving or attached track (a prop
+                // disagrees with the plate, so its foreign streak climbs too) is
+                // never demoted to foreign, which would pull it out of its
+                // object when it pauses.
+                candidate = .foreign
             } else if t.staticScore > 0.8 || t.plateAgreement > 0.6 {
                 candidate = .background
             } else {
@@ -269,6 +287,7 @@ public final class TrackClassifier {
             case .moving: stats.movingCount += 1
             case .attached: stats.attachedCount += 1
             case .shadowLike: stats.shadowCount += 1
+            case .foreign: stats.foreignCount += 1
             case .unknown: break
             }
         }

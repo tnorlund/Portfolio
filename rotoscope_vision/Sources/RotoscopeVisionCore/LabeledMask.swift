@@ -72,6 +72,7 @@ public enum TrackTile {
         case .attached: return (251, 140, 0)
         case .shadowLike: return (255, 214, 0)
         case .moving: return (229, 57, 53)
+        case .foreign: return (0, 200, 120)
         }
     }
 

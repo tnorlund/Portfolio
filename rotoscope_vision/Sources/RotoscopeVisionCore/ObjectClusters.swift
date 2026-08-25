@@ -48,6 +48,12 @@ public final class TrackedObject {
     /// Object transform at the frame the template was captured.
     public var templateTransform: Similarity?
     public var areaDelta: Float?
+    /// Born from foreign (static, non-background) tracks with no motion; managed
+    /// by the foreign pass and attached only by appearance, never matched by
+    /// motion clustering. Cleared once it earns a motion-based attach.
+    public var appearanceOnly = false
+    /// How this object last became attached: "motion", "appearance", or "" .
+    public var attachPath = ""
     public var mask: [UInt8]?
     public var lastArea = 0
     public var photoResidual: Float?
@@ -141,7 +147,9 @@ public final class ObjectClusters {
         // --- candidates: moving/attached, alive long enough, and genuinely
         // not explained by the plate. Nothing clusters before the motion
         // window has history: with no history every track looks "moving" and
-        // the background would cluster into one giant rigid object.
+        // the background would cluster into one giant rigid object. Foreign
+        // (static, non-background) tracks form their own objects in a separate
+        // pass below, so motion clustering is untouched by them.
         var candidates: [Track] = []
         if frame >= p.motionWindow {
             for t in tracker.tracks where t.status == .live && (t.label == .moving || t.label == .attached)
@@ -216,7 +224,10 @@ public final class ObjectClusters {
             let ids = Set(members.map { candidates[$0].id })
             var best: TrackedObject?
             var bestOverlap = 0
-            for object in objects where object.status != .retired && !assigned.contains(object.id) {
+            // Foreign (appearance-only) objects are never matched by a motion
+            // cluster: a foreign prop that starts moving forms a fresh motion
+            // object rather than inheriting the static one's state.
+            for object in objects where object.status != .retired && !assigned.contains(object.id) && !object.appearanceOnly {
                 let overlap = object.trackIDs.intersection(ids).count
                 if overlap > bestOverlap { bestOverlap = overlap; best = object }
             }
@@ -393,6 +404,87 @@ public final class ObjectClusters {
             object.occludedFrames = 0
         }
 
+        // --- foreign pass: objects from static, non-background tracks ---
+        // Foreign tracks (persistently disagree with the plate, not moving, not
+        // a person or shadow) cluster by proximity and colour into their own
+        // appearance-only objects, entirely separate from the motion objects
+        // above. In this step they form but do not attach — with no motion the
+        // score stays below attachEnter; the appearance attach path comes next.
+        if frame >= p.foreignHold {
+            var fcands: [Track] = []
+            for t in tracker.tracks where t.status == .live && t.label == .foreign
+                && t.positions.count >= 5 && t.plateAgreement < 0.6 {
+                fcands.append(t)
+            }
+            var fuf = UnionFind(fcands.count)
+            for i in 0..<fcands.count {
+                let a = fcands[i]
+                for j in (i + 1)..<fcands.count {
+                    let b = fcands[j]
+                    if simd_distance(a.current, b.current) > Float(p.deformLink) { continue }
+                    if a.chroma.distance(to: b.chroma) > Float(p.chromaTolerance) { continue }
+                    fuf.union(i, j)
+                }
+            }
+            var fclusters: [Int: [Int]] = [:]
+            for i in 0..<fcands.count { fclusters[fuf.find(i), default: []].append(i) }
+            for members in fclusters.values where members.count >= max(3, minRigid - 1) {
+                let ids = Set(members.map { fcands[$0].id })
+                var best: TrackedObject?
+                var bestOverlap = 0
+                for object in objects where object.appearanceOnly && object.status != .retired && !assigned.contains(object.id) {
+                    let overlap = object.trackIDs.intersection(ids).count
+                    if overlap > bestOverlap { bestOverlap = overlap; best = object }
+                }
+                let object: TrackedObject
+                if let best, bestOverlap * 2 >= min(ids.count, max(1, best.trackIDs.count)) {
+                    object = best
+                } else {
+                    object = TrackedObject(id: nextID, born: frame)
+                    object.appearanceOnly = true
+                    object.kind = .deformable
+                    nextID += 1
+                    objects.append(object)
+                    stats.newIDs += 1
+                }
+                assigned.insert(object.id)
+                object.lastSeen = frame
+                for id in ids {
+                    for other in objects where other !== object && other.trackIDs.contains(id) {
+                        other.trackIDs.remove(id); other.canonical[id] = nil
+                    }
+                }
+                object.trackIDs = ids
+                object.liveTracks = ids.count
+                var fromP: [SIMD2<Float>] = [], toP: [SIMD2<Float>] = []
+                for i in members {
+                    let t = fcands[i]
+                    if let c = object.canonical[t.id] { fromP.append(c); toP.append(t.current) }
+                }
+                if fromP.count >= 3, let fit = Similarity.fitRobust(from: fromP, to: toP, threshold: Float(p.rigidResidual)) {
+                    object.previousTransform = object.transform
+                    object.transform = fit.transform
+                }
+                for i in members {
+                    let t = fcands[i]
+                    if object.canonical[t.id] == nil { object.canonical[t.id] = object.transform.inverse.apply(t.current) }
+                    tracker.update(id: t.id) { $0.objectID = object.id }
+                }
+                var inContact = 0
+                for i in members {
+                    let t = fcands[i]
+                    let didx = Int(t.current.y.rounded()) * width + Int(t.current.x.rounded())
+                    if didx >= 0 && didx < distance.count && Float(distance[didx]) / 3 < Float(p.contactRadius) { inContact += 1 }
+                }
+                object.contactHistory.append(inContact >= min(2, members.count) ? 1 : 0)
+                if object.contactHistory.count > window { object.contactHistory.removeFirst() }
+                object.contactFrac = object.contactHistory.reduce(0, +) / Float(object.contactHistory.count)
+                object.comotion = 0
+                object.attachScore = 0.35 * object.contactFrac  // appearance attach path added next step
+                object.occludedFrames = 0
+            }
+        }
+
         // --- objects not seen this frame: occlusion / retirement ---
         for object in objects where !assigned.contains(object.id) && object.status != .retired {
             object.lostTracks = object.trackIDs.count
@@ -423,16 +515,20 @@ public final class ObjectClusters {
         }
         objects.removeAll { $0.status == .retired }
         // Relabel tracks by their object's status, but only tracks the
-        // classifier still calls moving: an object never overrides a static,
-        // subject, or other verdict.
+        // classifier still calls moving, attached, or foreign: an object never
+        // overrides a static, subject, or other verdict.
         for object in objects {
             for id in object.trackIDs {
                 tracker.update(id: id) { t in
-                    guard t.status == .live, t.label == .moving || t.label == .attached else {
+                    guard t.status == .live, t.label == .moving || t.label == .attached || t.label == .foreign else {
                         if t.status == .live { t.objectID = nil }
                         return
                     }
-                    let label: TrackLabel = object.status == .attached || object.status == .occluded ? .attached : .moving
+                    // Attached objects promote their members; a candidate object
+                    // leaves a foreign member foreign (it is not moving) and a
+                    // moving member moving.
+                    let label: TrackLabel = object.status == .attached || object.status == .occluded
+                        ? .attached : (t.label == .foreign ? .foreign : .moving)
                     if t.labels[t.labels.count - 1] != label { object.labelFlips += 1 }
                     t.labels[t.labels.count - 1] = label
                 }
@@ -456,6 +552,7 @@ public final class ObjectClusters {
                 inlierFrac: o.lastInlierFrac.map(Double.init), photoResidual: o.photoResidual.map(Double.init),
                 colorDrift: o.colorDrift.map(Double.init), labelFlips: o.labelFlips, area: o.lastArea,
                 areaDelta: nil, visible: o.status == .occluded ? 0 : 1, attachScore: Double(o.attachScore),
+                attachPath: o.appearanceOnly ? "appearance" : o.attachPath,
                 contactFrac: Double(o.contactFrac), comotion: Double(o.comotion), scale: Double(o.transform.scale),
                 angle: Double(o.transform.angle), tx: Double(o.transform.tx), ty: Double(o.transform.ty))
         }

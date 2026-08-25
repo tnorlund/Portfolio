@@ -413,6 +413,7 @@ do {
                 m.staticTrackCount = cs.staticCount
                 m.subjectTrackCount = cs.subjectCount
                 m.attachedTrackCount = cs.attachedCount
+                m.foreignTrackCount = cs.foreignCount
                 m.staticPlateAgreement = Double(cs.staticPlateAgreement)
                 if let fit = cs.fit {
                     m.bgFitResidual = Double(fit.residual)
@@ -576,7 +577,7 @@ do {
                     "paintPSNR", "paintBoundaryRecall", "paintTemporalDelta", "markerPersistence",
                     "trackCount", "trackNew", "trackLost", "trackRevived", "trackFBError", "trackLabelFlips",
                     "bgFitResidual", "bgInlierFrac", "regTrackDisagreePx", "staticTrackCount", "subjectTrackCount",
-                    "attachedTrackCount", "staticPlateAgreement", "objectCount", "objectAttached", "objectOccluded",
+                    "attachedTrackCount", "foreignTrackCount", "staticPlateAgreement", "objectCount", "objectAttached", "objectOccluded",
                     "objectIdChurn", "objGeomResidualMean", "objInlierFracMean", "objLiveTracksMean",
                     "objPhotoResidualMean", "objColorDriftMean", "objAreaDeltaMean", "objPersistence",
                     "msTracker", "msObjects", "msTotal"]
