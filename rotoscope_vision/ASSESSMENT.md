@@ -302,11 +302,48 @@ shadowLikeInProps flat), which E could not remove with the texture test alone.
 Final render: `~/IMG_0974-rotoscope.mov` (+ `-preview.mp4`), default params,
 `--evidence tracks`, HEAD of `claude/rotoscope-vision-metrics`.
 
+## Round four (Mini): presence — H diagnosis (cause → frames)
+
+Phase two replaced the seven-keyframe contact sheet with `Presence.swift` (an
+evaluation-only truth proxy: the band is orange, the plates are dark discs
+beyond the hands along the pose bar line) and `scripts/presence.py`, which
+lists every frame where the mask covers < 50 % of an object's truth. The
+sheet had hidden all of this. Baseline (`bench/baseline-presence-mini.json`):
+
+| object | mean recall | missing | frames |
+|---|---|---|---|
+| band | 0.858 | 21 | 17–19, 22, 24, 83–84, 88, 93–100, 192, 194–197 |
+| right plate | 0.738 | 42 | 4–23, 45–50, 57–61, 124–134 |
+| left plate | 0.150 | 163 | 0–80, 82, 87, 112, 114, 118–122, 125–197 |
+
+Reading the worst frames' `-presence.png` (R band truth, G plate truth, B
+mask; magenta/cyan = covered) with `-objects.json` and `-tracks.csv`, every
+missing frame falls into one of three causes:
+
+| # | cause | objects × frames | count | why | milestone |
+|---|---|---|---|---|---|
+| 1 | **No object exists yet** — nothing is tracked in the first `motionWindow` (15) frames, so no object of any kind has formed (`-objects.json` is empty on frames 0–15). | left plate 0–15; right plate 4–15 | ~28 | tracker warm-up | **I** |
+| 2 | **No object ever forms for the left plate** — an object exists (bar + right plate) but the left plate never gets its own: the body occludes the bar between the two plates so it is not rigidly linked in-frame, and a dark rim on a dark rack yields too few corners to cluster alone. Recovered only 83–120, where it is low, visible and moving. | left plate 16–80, 125–197 | ~147 | isolation | **K** |
+| 3 | **Object attached, then loses its tracks → occluded past `occlusionGrace` → no longer rendered** while the object is still on screen. Right plate: the low-contrast plate at chest height (45–61) and through the descent (124–134) sheds its corners; the object goes occluded and the grace window expires. Band: it is covered on most frames only because Vision's person segmentation swallows it — where Vision drops it (start 17–24, deep-squat foreshortening 83–100, end 192–197) the deformable band object has also lost its tracks, so nothing covers it. | right plate 16–23, 45–61, 124–134; band 17–24, 83–100, 192–197 | ~55 | track loss / Vision-seg gap | **J** (band), **I/K** (plates) |
+
+Key confirmations from the stills: at f60 both plates are pure green (truth
+present, mask absent) though the bar object is attached — the plate objects
+have gone occluded and retired; at f8 the whole `-objects.json` is empty and
+only the band (magenta, via person-seg) is covered; at f96 the plates are cyan
+(covered) but the band is red — Vision drops the foreshortened band and its
+object is gone. Fix order by frames recoverable is the charter's I → J → K,
+except the left-plate isolation (cause 2) is the largest single bucket (~147
+frames) and the hardest.
+
 ## Reproduce
 
 ```bash
 cd rotoscope_vision && swift build -c release
 B=.build/release/rotoscope-vision
+# Phase two: presence is the truth. Run, then list missing frames per object:
+$B ~/IMG_0974.mov --subject held --evidence tracks --metrics runs/presence --out-dir runs/presence \
+   --no-mov --stills runs/presence --stills-every 1 --baseline bench/baseline-presence-mini.json
+python3 scripts/presence.py runs/presence/metrics.jsonl   # NNNN-presence.png: R band, G plate, B mask
 # Round three: judge a change by running two binaries BACK TO BACK (Vision drifts across builds)
 $B ~/IMG_0974.mov --subject held --evidence tracks --metrics runs/tracks --out-dir runs/tracks --no-mov \
    --stills runs/tracks --stills-every 30 --baseline bench/baseline-tracks-mini.json
