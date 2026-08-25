@@ -563,7 +563,7 @@ do {
         if let url = args.objective {
             objective = try JSONDecoder().decode(Objective.self, from: Data(contentsOf: url))
         } else {
-            objective = args.params.evidence == "tracks" ? .tracks : .standard
+            objective = args.params.evidence == "tracks" ? .presence : .standard
         }
         summary.objective = objective.score(summary)
         try summary.json().write(to: metricsDir.appendingPathComponent("summary.json"), atomically: true, encoding: .utf8)

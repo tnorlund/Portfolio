@@ -453,7 +453,35 @@ public struct Objective: Codable {
     public struct RedLine: Codable {
         public var metric: String
         public var stat: String
-        public var maxIncrease: Double
+        /// A rise beyond this is a violation (use for "lower is better" metrics).
+        public var maxIncrease: Double = .infinity
+        /// A drop beyond this is a violation (use for recalls and IoUs).
+        public var maxDecrease: Double = .infinity
+
+        public init(metric: String, stat: String, maxIncrease: Double = .infinity, maxDecrease: Double = .infinity) {
+            self.metric = metric
+            self.stat = stat
+            self.maxIncrease = maxIncrease
+            self.maxDecrease = maxDecrease
+        }
+
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            metric = try c.decode(String.self, forKey: .metric)
+            stat = try c.decode(String.self, forKey: .stat)
+            maxIncrease = try c.decodeIfPresent(Double.self, forKey: .maxIncrease) ?? .infinity
+            maxDecrease = try c.decodeIfPresent(Double.self, forKey: .maxDecrease) ?? .infinity
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(metric, forKey: .metric)
+            try c.encode(stat, forKey: .stat)
+            if maxIncrease.isFinite { try c.encode(maxIncrease, forKey: .maxIncrease) }
+            if maxDecrease.isFinite { try c.encode(maxDecrease, forKey: .maxDecrease) }
+        }
+
+        private enum CodingKeys: String, CodingKey { case metric, stat, maxIncrease, maxDecrease }
     }
     public var terms: [Term]
     public var redLines: [RedLine]
@@ -499,6 +527,31 @@ public struct Objective: Codable {
             RedLine(metric: "trackFBError", stat: "p95", maxIncrease: 0.5),
         ])
 
+    /// The presence objective: the three held-object recalls (evaluation
+    /// truth proxy, see Presence.swift) carry most of the weight, with the
+    /// stability terms kept so a recall gain cannot be bought with flicker
+    /// or background leakage. Red lines forbid trading one object for another.
+    public static let presence = Objective(
+        terms: [
+            Term(metric: "bandRecall", stat: "mean", weight: 4.0, target: 1.0, scale: 0.1, higherIsBetter: true),
+            Term(metric: "plateRecallLeft", stat: "mean", weight: 4.0, target: 1.0, scale: 0.1, higherIsBetter: true),
+            Term(metric: "plateRecallRight", stat: "mean", weight: 4.0, target: 1.0, scale: 0.1, higherIsBetter: true),
+            Term(metric: "bgFalseRate", stat: "mean", weight: 3.0, target: 0.0, scale: 0.01, higherIsBetter: false),
+            Term(metric: "propFlicker", stat: "mean", weight: 2.0, target: 0.0, scale: 1.0, higherIsBetter: false),
+            Term(metric: "maskTemporalIoU", stat: "mean", weight: 2.0, target: 1.0, scale: 0.1, higherIsBetter: true),
+            Term(metric: "shadowLikeInProps", stat: "mean", weight: 1.0, target: 0.0, scale: 0.1, higherIsBetter: false),
+            Term(metric: "floorContactLeak", stat: "mean", weight: 1.0, target: 0.0, scale: 0.05, higherIsBetter: false),
+            Term(metric: "maskComponents", stat: "mean", weight: 1.0, target: 1.0, scale: 1.0, higherIsBetter: false),
+        ],
+        redLines: [
+            RedLine(metric: "bgFalseRate", stat: "mean", maxIncrease: 0.005),
+            RedLine(metric: "propFlicker", stat: "mean", maxIncrease: 0.5),
+            RedLine(metric: "shadowLikeInProps", stat: "mean", maxIncrease: 0.05),
+            RedLine(metric: "bandRecall", stat: "mean", maxDecrease: 0.02),
+            RedLine(metric: "plateRecallLeft", stat: "mean", maxDecrease: 0.02),
+            RedLine(metric: "plateRecallRight", stat: "mean", maxDecrease: 0.02),
+        ])
+
     public func score(_ summary: MetricsSummary) -> Double {
         var total = 0.0
         for term in terms {
@@ -526,6 +579,9 @@ public struct Objective: Codable {
             let bv = line.stat == "p95" ? b.p95 : line.stat == "max" ? b.max : b.mean
             if cv - bv > line.maxIncrease {
                 out.append(String(format: "%@.%@ rose %.4f → %.4f (limit +%.4f)", line.metric, line.stat, bv, cv, line.maxIncrease))
+            }
+            if bv - cv > line.maxDecrease {
+                out.append(String(format: "%@.%@ fell %.4f → %.4f (limit -%.4f)", line.metric, line.stat, bv, cv, line.maxDecrease))
             }
         }
         return out

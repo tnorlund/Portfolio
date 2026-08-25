@@ -55,6 +55,42 @@ write up if one cannot be met after a reasonable attempt, and move on.
 | F | Update `ASSESSMENT.md` with a "Round three (Mini)" table: baseline-mini → after each of B–E; render `~/IMG_0974-rotoscope.mov` + preview with the final params. | table + videos; push |
 | G | If B–E all hold: **M4** from PLAN.md — `bench/objective-tracks.json`, sweep keys for the tracks params, then delete legacy/soft code paths and their params. | tracks beats soft on propFlicker, shadowLikeInProps, maskTemporalIoU with equal bgFalseRate |
 
+## Phase two: presence (added 2026-08-25)
+
+`Presence.swift` (evaluation only) now grades the mask per frame against a
+truth proxy for each held object; `scripts/presence.py runs/x/metrics.jsonl`
+lists the frames where the band / left plate / right plate are missing
+(recall < 0.5). `Objective.presence` is the default objective in tracks
+mode: the three recalls carry most of the weight and are red-lined (no
+recall may drop > 0.02 vs the baseline). **These lists are the truth now;
+the contact sheet only samples every 30th frame and hid all of this.**
+
+Baseline on this machine (`runs/presence` when you re-run it; commit it as
+`bench/baseline-presence-mini.json`): band missing 21/198 (17–19, 22, 24,
+83–84, 88, 93–100, 192, 194–197; mean recall 0.86); right plate missing 42
+(4–23, 45–50, 57–61, 124–134; 0.74); left plate missing 163 (0–80, 82, 87,
+112, 114, 118–122, 125–197; 0.15).
+
+Key fact learned: the band is in the output on most frames because Vision's
+person segmentation includes it, not because the tracks found it. The
+missing band frames are exactly where Vision drops it and the track object
+does not catch it. Look at `NNNN-presence.png` (R truth band, G truth
+plates, B mask) on the worst frames before theorising.
+
+| # | Work | Proof (full clip, back-to-back binaries) |
+|---|---|---|
+| H | Commit `bench/baseline-presence-mini.json`. Then, per object, open the worst frames' `-presence.png` + `-objects.json` + `-tracks.csv` and write in ASSESSMENT.md *why* each is missing (no object / object not attached / object attached but not rendered / rendered but wrong place). Three or four causes will cover everything; fix in order of frames recovered. | a table of cause → frames |
+| I | **Clip start (frames 4–23, both plates; 17–24 band).** Nothing is tracked yet in the first `motionWindow` frames, so no object can exist. Generic options: run the tracker warm-up over the first N frames *backwards* (seed from frame N, propagate to 0) or let objects form from `plateAgreement` alone before motion is available. | plates present from frame ≤ 5; bandRecall on 17–24 > 0.5 |
+| J | **Band during the deep squat (93–100).** Vision drops it, the deformable object loses tracks as the band foreshortens. Candidates: revive from the object's colour histogram (already learned) when tracks die; keep the object alive on chroma back-projection for `occlusionGrace` frames. | bandRecall > 0.5 on 83–100; no bgFalseRate change |
+| K | **Left plate (0–80, 125–197).** Still the isolation problem. If C's hull seeding cannot reach it, try seeding supply along the *rigid object's extrapolated extent*: a rigid object's template edge that ends at the person boundary continues on the other side — grow the supply mask by mirroring the object's canonical extent through the occluder. Generic (any rigid object partially occluded by the subject). | plateRecallLeft > 0.5 on ≥ 60 % of frames |
+| L | Re-render `~/IMG_0974-rotoscope.mov` + preview, ASSESSMENT.md "Round four" with the before/after missing-frame lists, push. | |
+
+Rules from phase one still apply: no category priors in `Sources/` (the
+truth proxy in `Presence.swift` is the *only* place allowed to know what a
+band or plate looks like, and it must never be read by the mask path),
+codex review before every commit, numbers + why in every message, push
+immediately.
+
 ## No-touch
 
 - Anything outside `rotoscope_vision/`.
