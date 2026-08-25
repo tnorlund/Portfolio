@@ -38,6 +38,7 @@ enum Scratch {
         var difference: [UInt8]
         var others: [UInt8]
         var warpedPlate: [UInt8]?
+        var rgba: [UInt8]
         var dx: [Int16]
         var dy: [Int16]
         var side: Side
@@ -57,6 +58,7 @@ enum Scratch {
         let warped = data.warpedPlate ?? []
         withUnsafeBytes(of: UInt32(warped.count).littleEndian) { blob.append(contentsOf: $0) }
         blob.append(contentsOf: warped)
+        blob.append(contentsOf: data.rgba)
         data.dx.withUnsafeBytes { blob.append(contentsOf: $0) }
         data.dy.withUnsafeBytes { blob.append(contentsOf: $0) }
         try blob.write(to: url(dir, frame, "bin"))
@@ -86,6 +88,7 @@ enum Scratch {
             let warpedCount = raw.loadUnaligned(fromByteOffset: offset, as: UInt32.self).littleEndian
             offset += 4
             let warped: [UInt8]? = warpedCount > 0 ? try plane(Int(warpedCount)) : nil
+            let rgba = try plane(count * 4)
             func shorts(_ n: Int) throws -> [Int16] {
                 let bytes = n * 2
                 guard offset + bytes <= raw.count else { throw UsageError("scratch \(frame) truncated") }
@@ -97,7 +100,7 @@ enum Scratch {
             let dx = try shorts(count)
             let dy = try shorts(count)
             return Frame(mask: mask, person: person, props: props, difference: difference, others: others,
-                         warpedPlate: warped, dx: dx, dy: dy, side: side)
+                         warpedPlate: warped, rgba: rgba, dx: dx, dy: dy, side: side)
         }
     }
 

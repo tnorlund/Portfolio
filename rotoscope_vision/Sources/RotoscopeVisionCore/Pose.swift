@@ -23,6 +23,9 @@ public struct BodyPose {
 
     public struct Segment {
         public var x0: Double, y0: Double, x1: Double, y1: Double
+        public init(x0: Double, y0: Double, x1: Double, y1: Double) {
+            self.x0 = x0; self.y0 = y0; self.x1 = x1; self.y1 = y1
+        }
         public var length: Double { hypot(x1 - x0, y1 - y0) }
         /// Signed distance of a point to the infinite line (px) and its
         /// parameter along the segment (0…1 inside).

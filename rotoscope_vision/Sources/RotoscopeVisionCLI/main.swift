@@ -41,6 +41,7 @@ struct Arguments {
     var objective: URL?
     var dumpParams = false
     var twoPass = false
+    var propagateOnly = false
     var scratchDir: URL?
 
     static func parse(_ argv: [String]) throws -> Arguments {
@@ -99,6 +100,7 @@ struct Arguments {
             case "--baseline": parsed.baseline = URL(fileURLWithPath: try value(flag))
             case "--objective": parsed.objective = URL(fileURLWithPath: try value(flag))
             case "--two-pass": parsed.twoPass = true
+            case "--propagate-only": parsed.twoPass = true; parsed.propagateOnly = true
             case "--scratch": parsed.scratchDir = URL(fileURLWithPath: try value(flag), isDirectory: true)
             case "--propagate-max-gap": parsed.params.propagateMaxGap = Int(try value(flag)) ?? parsed.params.propagateMaxGap
             default: throw UsageError("unknown option \(flag)")
@@ -156,6 +158,14 @@ do {
         : args.scratchDir
     if let scratchDir {
         try FileManager.default.createDirectory(at: scratchDir, withIntermediateDirectories: true)
+    }
+    // Propagate-only: reuse an existing scratch store (pass 1 is identical for
+    // every maxGap) and just run pass 2/3.
+    if args.propagateOnly, let scratchDir, let metricsDir = args.metricsDir {
+        let jsons = (try? FileManager.default.contentsOfDirectory(atPath: scratchDir.path).filter { $0.hasSuffix(".json") }) ?? []
+        let out = metricsDir.appendingPathComponent(String(format: "metrics_prop_%d.jsonl", args.params.propagateMaxGap))
+        try Propagate.run(scratchDir: scratchDir, out: out, frames: jsons.count, params: args.params, log: { log($0) })
+        exit(0)
     }
     let hasAudio = reader.audioTrack != nil && !args.skipAudio
     let audioFormat = hasAudio ? reader.audioFormat : nil
@@ -487,7 +497,7 @@ do {
                     mask: focus.mask, person: focus.person, props: focus.props.map { $0 != 0 ? 255 : 0 },
                     difference: focus.difference ?? [UInt8](repeating: 0, count: count),
                     others: focus.others ?? [UInt8](repeating: 0, count: count),
-                    warpedPlate: focus.warpedPlate,
+                    warpedPlate: focus.warpedPlate, rgba: rgba,
                     dx: signed.2 ? fixed(signed.0) : [Int16](repeating: 0, count: count),
                     dy: signed.2 ? fixed(signed.1) : [Int16](repeating: 0, count: count),
                     side: side))
@@ -591,6 +601,10 @@ do {
     if let scratchDir {
         let bytes = Scratch.size(scratchDir)
         log(String(format: "scratch: %d frames, %.2f GB at %@", frameIndex, Double(bytes) / 1e9, scratchDir.path))
+        if args.params.propagateMaxGap > 0, let metricsDir = args.metricsDir {
+            let out = metricsDir.appendingPathComponent("metrics_prop.jsonl")
+            try Propagate.run(scratchDir: scratchDir, out: out, frames: frameIndex, params: args.params, log: log)
+        }
     }
     if sessionStarted {
         try pumpAudio(upTo: nil, wait: true)
