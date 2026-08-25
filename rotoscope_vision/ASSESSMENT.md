@@ -397,6 +397,47 @@ person mask drops it would recover it, but that is a new mechanism, not the
 charter's object-revival, and it risks bgFalseRate. J is therefore folded into
 the feature-supply work rather than done as specified; K is taken next.
 
+### K — left-plate axis extension (attempted; reverted, backfired)
+
+Implemented the charter's mechanism: for a rigid object, PCA its member cloud,
+and when elongated (`l1/l2 ≥ 3`) stamp the supply mask along the principal axis
+past the visible span by `axisExtend`× the span, to reach the occluded
+continuation. Measured back-to-back it made every target worse:
+`plateRecallLeft` 0.150 → **0.013** (it destroyed even the 83–120 recovery the
+baseline had), `plateRecallRight` 0.738 → 0.650, `propArea` 21.4k → 15.9k,
+`bgFalseRate` 0.036 → 0.041 (against a +0.005 red line). Two mechanisms fail:
+the extended axis is a long, wide swath, so the low-threshold supply pass floods
+the tracker with weak corners that hit `trackBudget` and degrade the real rigid
+fits; and the PCA axis of a big plate disc plus a short visible bar stub points
+in a noise direction, not down the bar, so the extension seeds the wrong place.
+Reverted.
+
+The deeper reason K is hard is the same as I: the left plate only forms its own
+object on 83–120, when it is low, visible and **moving**; on 0–80 and 125–197
+it is held still against the rack, and — exactly as in I — candidacy,
+clustering and attachment are all motion-gated, so no amount of feature supply
+makes a still, isolated plate into an attached object. Reaching it needs the
+motion that only exists elsewhere in time (lookahead), or a motion-independent
+attach path, neither of which is a supply tweak.
+
+### Phase two synthesis
+
+The presence proxy exposed that the round-three mask, though strong on the
+metrics it was built for (flicker, components, area, fits), lifts a held prop
+only while that prop **moves distinctly**. The three remaining failure classes —
+clip-start plates (I), foreshortened deep-squat band (J), isolated static left
+plate (K) — are one problem: a held prop that is stationary, occluded, or
+too compressed to yield distinct motion cannot become an attached object,
+because candidacy, clustering and attachment each require motion. Two generic
+fixes would address all three, and both are larger than a milestone-sized
+change: a **fixed-lag lookahead** that borrows an object's later motion and
+back-projects it (with per-frame flow buffering), and a **motion-independent
+attach path** for a plate-disagreeing, in-contact, temporally-persistent track
+cluster (guarded hard on `plateAgreement` and `bgFalseRate` to avoid the static
+background clustering the CONTEXT warns about). No presence recall was improved
+this phase without a red-line regression; the round-three mask is unchanged and
+remains the shipped state.
+
 ## Reproduce
 
 ```bash
