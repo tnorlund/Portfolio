@@ -40,6 +40,8 @@ struct Arguments {
     var baseline: URL?
     var objective: URL?
     var dumpParams = false
+    var twoPass = false
+    var scratchDir: URL?
 
     static func parse(_ argv: [String]) throws -> Arguments {
         var args = Array(argv.dropFirst())
@@ -96,6 +98,9 @@ struct Arguments {
             case "--keyframes": parsed.keyframes = try value(flag).split(separator: ",").compactMap { Int($0) }
             case "--baseline": parsed.baseline = URL(fileURLWithPath: try value(flag))
             case "--objective": parsed.objective = URL(fileURLWithPath: try value(flag))
+            case "--two-pass": parsed.twoPass = true
+            case "--scratch": parsed.scratchDir = URL(fileURLWithPath: try value(flag), isDirectory: true)
+            case "--propagate-max-gap": parsed.params.propagateMaxGap = Int(try value(flag)) ?? parsed.params.propagateMaxGap
             default: throw UsageError("unknown option \(flag)")
             }
         }
@@ -144,6 +149,13 @@ do {
     if let metricsDir = args.metricsDir {
         try FileManager.default.createDirectory(at: metricsDir, withIntermediateDirectories: true)
         try args.params.json().write(to: metricsDir.appendingPathComponent("params.json"), atomically: true, encoding: .utf8)
+    }
+    // Two-pass scratch dir (default under the metrics/out dir; git-ignored).
+    let scratchDir: URL? = args.twoPass
+        ? (args.scratchDir ?? (args.metricsDir ?? args.outDir).appendingPathComponent("scratch", isDirectory: true))
+        : args.scratchDir
+    if let scratchDir {
+        try FileManager.default.createDirectory(at: scratchDir, withIntermediateDirectories: true)
     }
     let hasAudio = reader.audioTrack != nil && !args.skipAudio
     let audioFormat = hasAudio ? reader.audioFormat : nil
@@ -455,6 +467,31 @@ do {
                 handle.write(data)
                 handle.write("\n".data(using: .utf8)!)
             }
+            // Pass-1 scratch store for the two-pass pipeline (git-ignored). The
+            // pass-1 output above is unchanged; this only records what passes
+            // 2/3 need so they never re-run Vision. Disabled propagation
+            // (propagateMaxGap 0) leaves the single-pass output as the result.
+            if let scratchDir {
+                let signed = analyzer.flow?.signedField() ?? ([], [], false)
+                func fixed(_ a: [Float]) -> [Int16] { a.map { Int16(max(-32000, min(32000, ($0 * 16).rounded()))) } }
+                let side = Scratch.Side(
+                    frame: frameIndex, width: width, height: height,
+                    signX: 1, signY: 1, flowAvailable: signed.2, subjectPixels: focus.subjectPixels,
+                    faceCenterX: focus.face?.centerX, faceCenterY: focus.face?.centerY,
+                    faceRadiusX: focus.face?.radiusX, faceRadiusY: focus.face?.radiusY,
+                    poseFloorY: focus.pose?.floorY,
+                    barX0: focus.pose?.barSegment?.x0, barY0: focus.pose?.barSegment?.y0,
+                    barX1: focus.pose?.barSegment?.x1, barY1: focus.pose?.barSegment?.y1,
+                    metrics: m)
+                try Scratch.write(scratchDir, frame: frameIndex, data: Scratch.Frame(
+                    mask: focus.mask, person: focus.person, props: focus.props.map { $0 != 0 ? 255 : 0 },
+                    difference: focus.difference ?? [UInt8](repeating: 0, count: count),
+                    others: focus.others ?? [UInt8](repeating: 0, count: count),
+                    warpedPlate: focus.warpedPlate,
+                    dx: signed.2 ? fixed(signed.0) : [Int16](repeating: 0, count: count),
+                    dy: signed.2 ? fixed(signed.1) : [Int16](repeating: 0, count: count),
+                    side: side))
+            }
             previousMask = mask
             previousProps = props
             previousPaint = frame.rgba
@@ -551,6 +588,10 @@ do {
         }
     }
     for writer in writers { writer.finishVideo() }
+    if let scratchDir {
+        let bytes = Scratch.size(scratchDir)
+        log(String(format: "scratch: %d frames, %.2f GB at %@", frameIndex, Double(bytes) / 1e9, scratchDir.path))
+    }
     if sessionStarted {
         try pumpAudio(upTo: nil, wait: true)
         log("audio: \(audioSamples) sample buffers passed through")

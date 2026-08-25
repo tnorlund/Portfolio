@@ -109,6 +109,27 @@ public final class OpticalFlow {
         calibrated = true
     }
 
+    /// The backward field with the calibrated signs already applied, for the
+    /// two-pass scratch store (so passes 2/3 need no sign bookkeeping).
+    public func signedField() -> (dx: [Float], dy: [Float], available: Bool) {
+        guard available else { return ([], [], false) }
+        var sx = [Float](repeating: 0, count: dx.count)
+        var sy = [Float](repeating: 0, count: dy.count)
+        for i in dx.indices { sx[i] = signX * dx[i]; sy[i] = signY * dy[i] }
+        return (sx, sy, true)
+    }
+
+    /// Inject a pre-computed signed backward field (from the scratch store); the
+    /// signs are already baked in, so signX = signY = 1.
+    public func load(dx signedDX: [Float], dy signedDY: [Float], available flag: Bool) {
+        dx = signedDX
+        dy = signedDY
+        signX = 1
+        signY = 1
+        available = flag
+        calibrated = true
+    }
+
     /// Warps an 8-bit field from the previous frame into the current one
     /// (nearest neighbor; `fill` where the source falls outside the frame).
     public func warp(_ field: [UInt8], fill: UInt8) -> [UInt8] {

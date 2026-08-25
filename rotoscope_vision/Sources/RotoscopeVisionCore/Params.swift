@@ -80,6 +80,8 @@ public struct Params: Codable, Equatable {
     public var occlusionGrace: Int = 30
     public var minRenderArea: Int = 400
     public var closeIterations: Int = 2
+    public var propagateMaxGap: Int = 0
+    public var propagatePhotoTolerance: Double = 40
 
     // Engine (paint)
     public var markerBudget: Int = 1200
@@ -168,6 +170,8 @@ public struct Params: Codable, Equatable {
         occlusionGrace = try int(.occlusionGrace, d.occlusionGrace)
         minRenderArea = try int(.minRenderArea, d.minRenderArea)
         closeIterations = try int(.closeIterations, d.closeIterations)
+        propagateMaxGap = try int(.propagateMaxGap, d.propagateMaxGap)
+        propagatePhotoTolerance = try dbl(.propagatePhotoTolerance, d.propagatePhotoTolerance)
         markerBudget = try int(.markerBudget, d.markerBudget)
         blurRadius = try int(.blurRadius, d.blurRadius)
         faceQuota = try dbl(.faceQuota, d.faceQuota)
@@ -226,6 +230,8 @@ public struct Params: Codable, Equatable {
         "outlierExpel": "tracks: consecutive outlier frames before a track leaves its object, 3–15",
         "photoTolerance": "tracks: max template photometric residual before the object is re-grown, 20–80",
         "occlusionGrace": "tracks: frames a lost track / occluded object survives, 10–60",
+        "propagateMaxGap": "two-pass: max frames a held-object label is carried across a gap by flow; 0 disables propagation (byte-identical to single-pass), 0–200",
+        "propagatePhotoTolerance": "two-pass: max mean colour residual under a propagated label before it is dropped, 20–80",
         "minRenderArea": "tracks: smallest rendered object area, px; below it the object is dropped as a fragment, 0–1500",
         "closeIterations": "tracks: morphological-close iterations on a rigid object's mask to bridge speckle, 0–4",
         "plateThreshold": "tolerant difference that counts as a prop, 24–80",
