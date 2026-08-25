@@ -268,3 +268,6 @@ backups/
 logs/
 .local-qa-out/
 .row_backfill_cache/
+
+# rotoscope-vision measurement runs (large; see CHARTER.md)
+rotoscope_vision/runs/
