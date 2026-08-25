@@ -316,6 +316,23 @@ sheet had hidden all of this. Baseline (`bench/baseline-presence-mini.json`):
 | right plate | 0.738 | 42 | 4–23, 45–50, 57–61, 124–134 |
 | left plate | 0.150 | 163 | 0–80, 82, 87, 112, 114, 118–122, 125–197 |
 
+**Outcome (before → after, full clip).** No milestone shipped a Sources
+change: I needs a fixed-lag lookahead (deferred as disproportionate), J's
+premise did not hold on this run, and K backfired and was reverted. So the
+recalls are unchanged from the round-three mask — stated honestly rather than
+buried:
+
+| object | baseline recall | after phase two | missing frames (unchanged) |
+|---|---|---|---|
+| band | 0.858 | 0.858 | 17–19, 22, 24, 83–84, 88, 93–100, 192, 194–197 |
+| right plate | 0.738 | 0.738 | 4–23, 45–50, 57–61, 124–134 |
+| left plate | 0.150 | 0.150 | 0–80, 82, 87, 112, 114, 118–122, 125–197 |
+
+Phase two's deliverable is therefore the diagnosis and three well-characterised
+negative results, not a recall gain. `~/IMG_0974-rotoscope.mov` re-rendered from
+the unchanged mask. What the phase established: the remaining gap is a single
+motion-gated problem (below), and the fixes are larger than a milestone.
+
 Reading the worst frames' `-presence.png` (R band truth, G plate truth, B
 mask; magenta/cyan = covered) with `-objects.json` and `-tracks.csv`, every
 missing frame falls into one of three causes:
