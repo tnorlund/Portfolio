@@ -91,6 +91,66 @@ band or plate looks like, and it must never be read by the mask path),
 codex review before every commit, numbers + why in every message, push
 immediately.
 
+## Phase three: motion-independent attachment (added 2026-08-25)
+
+Round four proved the ceiling: candidacy, clustering and attachment are all
+motion-gated, so a held object that is stationary (clip start), occluded
+between its visible parts (left plate), or too compressed to have its own
+motion (band in the squat) can never become an attached object — however
+clearly it disagrees with the background plate and touches the subject. The
+goal restated without motion: **an attached object is a coherent cluster of
+tracks that is not background (disagrees with the plate), is not another
+person, touches the subject, and persists.** Motion becomes corroborating
+evidence, not the gate. Still no category priors.
+
+Design (each step is generic; the barbell/band only test it):
+
+1. **Foreign cue in `TrackClassifier`.** A track is *foreign* when its EMA
+   `plateAgreement` stays < `foreignAgreement` (new param, ~0.45) for
+   `foreignHold` frames (~10) and it is not person-core or `others`. Static
+   foreign tracks keep the label `.background` today; add `.foreign` (static,
+   not background) as a label with the same hysteresis as the others.
+   Background that was in the plate median agrees with the plate by
+   construction, so this cannot fire on the rack or floor.
+2. **Candidacy in `ObjectClusters`**: candidates = moving ∨ attached ∨
+   foreign. Clustering may start at frame ≥ `foreignHold` for foreign-only
+   clusters (the `motionWindow` warm-up stays for motion-based ones).
+3. **Links between two foreign tracks do not require motion** (the "both
+   moved ≥ 2 px" guard exists to stop the static background clustering; foreign
+   tracks are not background). Keep `rigidDrift` distance stability over the
+   window and `clusterLink` range.
+4. **Appearance attachment path.** `attachScore = max(motionScore,
+   appearanceScore)` with `appearanceScore = contactFrac × foreignFrac ×
+   persistence`, where foreignFrac = fraction of members that are foreign,
+   persistence = min(1, age / motionWindow). Same `attachEnter/attachExit`
+   and hold. Log which path attached (`ObjectReport.attachPath`).
+5. **Object-level co-rigid merge.** Two attached/candidate objects whose
+   relative transform is stable over the window (drift < `rigidDrift`, both
+   foreign-dominated) merge into one object even beyond `clusterLink` — a
+   rigid thing seen in two pieces around an occluder is one thing. Identity
+   keeps the older id.
+6. **Do not retire a rigid object whose template still explains the pixels.**
+   Occlusion today is "tracks gone"; if the template's photometric residual
+   under the held transform stays < `photoTolerance`, keep it attached and
+   re-seed tracks inside it (cause 3).
+
+| # | Work | Proof (full clip, back-to-back binaries, vs `bench/baseline-presence-mini.json`) |
+|---|---|---|
+| M | Steps 1–2 (foreign label, candidacy). Add `foreignTrackCount` to metrics. | on frames 0–23 the plate tracks are `.foreign` in `-tracks.csv`; `objects.json` non-empty from frame ≤ `foreignHold`; bgFalseRate unchanged |
+| N | Steps 3–4 (foreign links, appearance attachment). | plateRecallRight missing frames 4–23 and 45–61 recovered (recall > 0.5); band 17–24 recovered; bgFalseRate red line holds; propFlicker not worse |
+| O | Step 6 (template-keeps-object). | right plate 124–134 recovered; objectOccluded down |
+| P | Step 5 (co-rigid merge). | plateRecallLeft > 0.5 on ≥ 60 % of frames |
+| Q | Band in the squat (83–100): with foreign candidacy the band's own tracks (orange on dark floor disagree with the plate) should form a deformable object before Vision drops it. Verify; if not, say why. | bandRecall > 0.5 on 83–100 |
+| R | Round five in ASSESSMENT.md with the before/after missing-frame lists per object; re-render `~/IMG_0974-rotoscope.mov` + preview; push. | |
+
+Guard rails for this phase: the danger is false objects — a still bystander
+(handled by `others`), someone's bag on the floor beside the subject that was
+absent from the plate median, a shadow (no texture of its own; the NCC
+shadow test already exists — apply it to foreign candidacy). Watch
+`bgFalseRate`, `maskComponents` and the frame-0/30/60 stills for anything
+that is not the person, the bar, the plates, or the band. If a step recovers
+frames but adds a false object, it does not ship; write it up.
+
 ## No-touch
 
 - Anything outside `rotoscope_vision/`.
