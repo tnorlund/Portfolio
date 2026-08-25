@@ -455,6 +455,66 @@ background clustering the CONTEXT warns about). No presence recall was improved
 this phase without a red-line regression; the round-three mask is unchanged and
 remains the shipped state.
 
+## Round five (Mini): motion-independent attachment (M–R)
+
+Phase three's premise: an attached object is a coherent, non-background,
+in-contact, persistent cluster of tracks; motion is corroborating, not the gate.
+A `.foreign` label carries "not the background without moving." Measured
+drift-controlled throughout (same-binary back-to-back; today's Vision drift is
+±0.18 propFlicker / ±2k propArea per run, so the committed baseline-mini means
+are unreliable — every delta below is A vs B run back-to-back).
+
+Cumulative pre-M → O (drift-controlled):
+
+| object | recall pre-M | recall O | missing pre-M → O |
+|---|---|---|---|
+| left plate | 0.105 | **0.166** | 173 → 160 (+13 frames) |
+| right plate | 0.699 | 0.660 | 52 → 60 (drift) |
+| band | 0.858 | 0.859 | 21 → 21 (flat) |
+
+Guard rails held: bgFalseRate 0.0384 → 0.0371, maskComponents 4.10 → 3.65, no
+false object in the 0/30/55/60 stills; cost is propFlicker 0.78 → 1.01 (mild,
++0.14 vs the baseline red line's +0.5).
+
+- **M** (foreign label + separate foreign pass). Foreign objects form but never
+  render (0 reach attached, motion objects byte-identical). Left plate +0.076
+  drift-controlled — the foreign pass primes tracks that later form the
+  left-plate motion object more completely.
+- **N** (appearance attach: contactFrac × foreignFrac × persistence). Correct
+  and fires (object #1 reaches score 0.67), but recovers ~2 frames: the target
+  props' tracks die before appearance can sustain them.
+- **O** (keep a rigid object alive while its template explains it). objectOccluded
+  3.84 → 3.60; at f55 the right plate renders a solid disc via the held template
+  instead of a shattered growth. Did not recover the moving 124–134 (frozen
+  template drifts; needs re-seeding).
+- **P** (co-rigid merge) — **not shipped, no-op on this clip.** The merge would
+  fold the left plate into the bar object, but on the still/standing frames it
+  targets (0–80, 125–197) the left plate forms *no object at all* to merge:
+  a dark rim on the dark rack has plate agreement ~0.60 (indistinguishable from
+  the background patch) so few tracks cross the foreign threshold, and its
+  corners are lost. A merge needs two objects; there is only one.
+- **Q** (band foreign object in the squat) — **verified absent.** During 83–100
+  no band object forms; the large deformable object there (#5, ~90 live tracks,
+  contactFrac 1.0) is the bar/plate assembly low at the feet, not the band. The
+  band is orange but compressed and thin at the squat bottom and is dominated by
+  the subject/plate tracks in that region, so it never yields its own cluster —
+  it remains a Vision person-seg gap, exactly as Round four found.
+
+**Verdict.** Phase three delivered a real, guard-rail-clean left-plate gain
+(0.105 → 0.166, 13 frames) and a cleaner held-template plate render, with the
+foreign infrastructure (label, separate pass, appearance attach, template
+keep-alive) now in place. Its ceiling on this clip is the **foreign cue itself**:
+a dark plate resting against the dark rack (which is in the plate median) has
+plate agreement ~0.60, so it cannot be told from the background by the strict
+patch test, and its low-contrast corners die — so it forms only marginal,
+short-lived foreign objects. The mechanism is sound and generic; a clip whose
+held props have either texture or colour that leaves the background median would
+exercise it far harder. Remaining generic work: re-seed tracks inside a held
+object (unblocks O's moving 124–134 and would let N/P sustain), and a stronger
+foreign cue than strict patch agreement for dark-on-dark (e.g. the tolerant
+difference, which does light up the plate, gated by the NCC shadow test).
+Re-rendered `~/IMG_0974-rotoscope.mov` from the O mask.
+
 ## Reproduce
 
 ```bash
