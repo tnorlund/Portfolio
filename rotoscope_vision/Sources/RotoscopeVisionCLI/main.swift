@@ -380,6 +380,16 @@ do {
             if let floorY = focus.pose?.floorY {
                 m.floorContactLeak = MetricsMath.floorLeak(props: props, floorY: floorY, width: width, height: height)
             }
+            // Presence of each held object (truth proxy; evaluation only)
+            let presence = Presence.evaluate(
+                rgba: rgba, difference: focus.difference, person: focus.person, mask: mask, pose: focus.pose,
+                width: width, height: height, threshold: Int(args.params.plateThreshold))
+            m.bandTruth = presence.bandTruth
+            m.bandRecall = presence.bandRecall
+            m.plateTruthLeft = presence.plateTruthLeft
+            m.plateTruthRight = presence.plateTruthRight
+            m.plateRecallLeft = presence.plateRecallLeft
+            m.plateRecallRight = presence.plateRecallRight
             // Paint
             m.paintPSNR = MetricsMath.psnr(painted: frame.rgba, source: rgba, mask: mask)
             m.paintBoundaryRecall = MetricsMath.boundaryRecall(labels: frame.labels, gray: frame.gray, mask: mask, width: width, height: height, tau: 48)
@@ -475,6 +485,25 @@ do {
             try writePNG(
                 rgba: debugOverlay(rgba: rgba, width: width, height: height, focus: focus, markers: frame.markers, tiers: tiers),
                 width: width, height: height, to: stillsDir.appendingPathComponent("\(tag)-focus.png"))
+            // Presence truth proxy: R = band truth, G = plate truth, B = mask, dim source under it.
+            do {
+                let personMask = focus.person
+                let band = Presence.bandTruth(rgba: rgba, person: personMask, width: width, height: height)
+                let plates = focus.difference.flatMap {
+                    Presence.plateTruth(rgba: rgba, difference: $0, person: personMask, bar: focus.pose?.barSegment,
+                                        width: width, height: height, threshold: Int(args.params.plateThreshold))
+                }
+                var out = rgba
+                for i in 0..<count {
+                    let o = i * 4
+                    out[o] = UInt8(Int(out[o]) / 3); out[o + 1] = UInt8(Int(out[o + 1]) / 3); out[o + 2] = UInt8(Int(out[o + 2]) / 3)
+                    if band[i] != 0 { out[o] = 255 }
+                    if let plates, plates.left[i] != 0 || plates.right[i] != 0 { out[o + 1] = 255 }
+                    if focus.mask[i] > 127 { out[o + 2] = 255 }
+                    out[o + 3] = 255
+                }
+                try writePNG(rgba: out, width: width, height: height, to: stillsDir.appendingPathComponent("\(tag)-presence.png"))
+            }
             if let tr = focus.trackResult {
                 try writePNG(rgba: tr.overlay, width: width, height: height,
                              to: stillsDir.appendingPathComponent("\(tag)-tracks.png"))

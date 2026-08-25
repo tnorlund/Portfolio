@@ -44,6 +44,13 @@ public struct FrameMetrics: Codable {
     // Shadow
     public var shadowLikeInProps: Double? = nil
     public var floorContactLeak: Double? = nil
+    // Presence (evaluation-only truth proxy, see Presence.swift)
+    public var bandTruth: Int = 0
+    public var bandRecall: Double? = nil
+    public var plateTruthLeft: Int = 0
+    public var plateTruthRight: Int = 0
+    public var plateRecallLeft: Double? = nil
+    public var plateRecallRight: Double? = nil
 
     // Paint
     public var paintPSNR: Double = 0
