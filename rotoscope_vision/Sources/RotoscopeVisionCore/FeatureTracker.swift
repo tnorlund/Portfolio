@@ -150,7 +150,8 @@ public final class FeatureTracker {
     /// track; `detectMask` (1 = allowed) restricts where new features spawn.
     public func step(
         gray: [UInt8], gradient: Engine.Gradient, rgba: [UInt8],
-        forward: (SIMD2<Float>) -> SIMD2<Float>, predict: (Track) -> SIMD2<Float>?, detectMask: [UInt8]?
+        forward: (SIMD2<Float>) -> SIMD2<Float>, predict: (Track) -> SIMD2<Float>?, detectMask: [UInt8]?,
+        supplyMask: [UInt8]? = nil
     ) {
         frame += 1
         var stats = TrackStepStats()
@@ -251,9 +252,36 @@ public final class FeatureTracker {
         // Re-detection where density dropped.
         let detectStart = Date()
         let liveCount = tracks.reduce(0) { $0 + ($1.status == .live ? 1 : 0) }
-        if liveCount < params.trackBudget {
-            stats.new = detect(gray: gray, rgba: rgba, radius: radius, room: params.trackBudget - liveCount, detectMask: detectMask)
-            stats.live += stats.new
+        let needMain = liveCount < params.trackBudget
+        if needMain || supplyMask != nil {
+            let scores = Engine.shiTomasiScores(difference: gray, width: width, height: height)
+            var frameMax: Float = 0
+            for s in scores where s > frameMax { frameMax = s }
+            if needMain {
+                let added = detect(
+                    scores: scores, frameMax: frameMax, gray: gray, rgba: rgba, radius: radius,
+                    room: params.trackBudget - liveCount, minScore: Float(params.trackMinScore),
+                    useQualityGate: true, allowMask: detectMask)
+                stats.new += added
+                stats.live += added
+            }
+            // Second pass: a lower Shi–Tomasi floor confined to attached
+            // objects' hulls, so a low-contrast object (a dark plate on a dark
+            // rack) picks up enough corners to be tracked and clustered where
+            // the global threshold finds none. Runs after the main pass so it
+            // only fills cells the main pass left empty, and inherits the same
+            // trackBudget cap.
+            if let supplyMask {
+                let live = tracks.reduce(0) { $0 + ($1.status == .live ? 1 : 0) }
+                if live < params.trackBudget {
+                    let added = detect(
+                        scores: scores, frameMax: frameMax, gray: gray, rgba: rgba, radius: radius,
+                        room: params.trackBudget - live, minScore: Float(params.trackSupplyScore),
+                        useQualityGate: false, allowMask: supplyMask)
+                    stats.new += added
+                    stats.live += added
+                }
+            }
         }
         stats.msDetect = Date().timeIntervalSince(detectStart) * 1000
         tracks.removeAll { $0.status == .retired }
@@ -266,9 +294,14 @@ public final class FeatureTracker {
         p.x >= 0 && p.y >= 0 && p.x < Float(width) && p.y < Float(height)
     }
 
-    /// Shi–Tomasi maxima in cells that hold no live track.
-    private func detect(gray: [UInt8], rgba: [UInt8], radius: Int, room: Int, detectMask: [UInt8]?) -> Int {
-        let scores = Engine.shiTomasiScores(difference: gray, width: width, height: height)
+    /// Shi–Tomasi maxima in cells that hold no live track. `useQualityGate`
+    /// applies the relative `trackQuality * frameMax` floor on top of
+    /// `minScore`; the supply pass drops it so low-contrast corners inside an
+    /// object hull are eligible. `allowMask` (1 = allowed) confines detection.
+    private func detect(
+        scores: [Float], frameMax: Float, gray: [UInt8], rgba: [UInt8], radius: Int, room: Int,
+        minScore: Float, useQualityGate: Bool, allowMask: [UInt8]?
+    ) -> Int {
         let spacing = max(4, params.trackSpacing)
         let cellsX = (width + spacing - 1) / spacing
         let cellsY = (height + spacing - 1) / spacing
@@ -284,9 +317,7 @@ public final class FeatureTracker {
                 }
             }
         }
-        var frameMax: Float = 0
-        for s in scores where s > frameMax { frameMax = s }
-        let threshold = max(Float(params.trackMinScore), Float(params.trackQuality) * frameMax)
+        let threshold = useQualityGate ? max(minScore, Float(params.trackQuality) * frameMax) : minScore
         var candidates: [(index: Int, score: Float)] = []
         scores.withUnsafeBufferPointer { s in
             for y in 3..<(height - 3) {
@@ -294,7 +325,7 @@ public final class FeatureTracker {
                     let index = y * width + x
                     if s[index] < threshold { continue }
                     if occupied[(y / spacing) * cellsX + x / spacing] != 0 { continue }
-                    if let detectMask, detectMask[index] == 0 { continue }
+                    if let allowMask, allowMask[index] == 0 { continue }
                     if Engine.isLocalMaximum(s, index, width) { candidates.append((index, s[index])) }
                 }
             }

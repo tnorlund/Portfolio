@@ -36,6 +36,39 @@ public final class TrackEvidence {
         self.clusters = ObjectClusters(width: width, height: height, params: params)
     }
 
+    /// 1 within `hullRadius` of any member of an attached/occluded object,
+    /// else 0; nil when no object is attached (nothing to supply).
+    private func supplyMask(hullRadius: Int) -> [UInt8]? {
+        let active = clusters.objects.filter { $0.status == .attached || $0.status == .occluded }
+        if active.isEmpty { return nil }
+        var positions: [SIMD2<Float>] = []
+        for object in active {
+            for id in object.trackIDs {
+                if let t = tracker.tracks.first(where: { $0.id == id }), t.status == .live {
+                    positions.append(t.current)
+                }
+            }
+        }
+        if positions.isEmpty { return nil }
+        let r = max(1, hullRadius)
+        let r2 = r * r
+        var mask = [UInt8](repeating: 0, count: width * height)
+        for p in positions {
+            let cx = Int(p.x.rounded()), cy = Int(p.y.rounded())
+            for dy in -r...r {
+                let y = cy + dy
+                if y < 0 || y >= height { continue }
+                let row = y * width
+                for dx in -r...r {
+                    if dx * dx + dy * dy > r2 { continue }
+                    let x = cx + dx
+                    if x >= 0 && x < width { mask[row + x] = 1 }
+                }
+            }
+        }
+        return mask
+    }
+
     // swiftlint:disable:next function_body_length
     public func compute(
         rgba: [UInt8], gray: [UInt8], gradient: Engine.Gradient, difference: [UInt8]?, warpedPlate: [UInt8]?,
@@ -49,9 +82,16 @@ public final class TrackEvidence {
         let trackStart = Date()
         let forward: (SIMD2<Float>) -> SIMD2<Float> = { p in flow?.forward(p) ?? p }
         let clusters = self.clusters
+        // Supply mask: cells within hullRadius of the members of last frame's
+        // attached/occluded objects. A second, lower-threshold detection pass
+        // there feeds low-contrast objects (a dark plate on a dark rack) the
+        // corners the global Shi–Tomasi floor misses. Built from the previous
+        // frame's objects, which is why nothing is supplied until an object
+        // has first attached on its own evidence.
+        let supplyMask = supplyMask(hullRadius: Int(params.hullRadius.rounded()))
         tracker.step(
             gray: gray, gradient: gradient, rgba: rgba, forward: forward,
-            predict: { clusters.predict($0) }, detectMask: nil)
+            predict: { clusters.predict($0) }, detectMask: nil, supplyMask: supplyMask)
         classifier.classify(
             tracker: tracker, frame: frame, rgba: rgba, difference: difference, warpedPlate: warpedPlate,
             person: person, others: others, registrarPrediction: nil)

@@ -48,6 +48,7 @@ public struct Params: Codable, Equatable {
     public var trackSpacing: Int = 10
     public var trackQuality: Double = 0.01
     public var trackMinScore: Double = 400
+    public var trackSupplyScore: Double = 80
     public var trackNewPerFrame: Int = 300
     public var lkRadius: Int = 5
     public var lkIterations: Int = 8
@@ -88,6 +89,87 @@ public struct Params: Codable, Equatable {
 
     public init() {}
 
+    /// Lenient decode: a key missing from the JSON falls back to its default,
+    /// so a baseline or params file written before a new tunable existed stays
+    /// loadable (and comparable) after the tunable is added.
+    // swiftlint:disable:next function_body_length
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Params()
+        func str(_ k: CodingKeys, _ v: String) throws -> String { try c.decodeIfPresent(String.self, forKey: k) ?? v }
+        func dbl(_ k: CodingKeys, _ v: Double) throws -> Double { try c.decodeIfPresent(Double.self, forKey: k) ?? v }
+        func int(_ k: CodingKeys, _ v: Int) throws -> Int { try c.decodeIfPresent(Int.self, forKey: k) ?? v }
+        func bool(_ k: CodingKeys, _ v: Bool) throws -> Bool { try c.decodeIfPresent(Bool.self, forKey: k) ?? v }
+        evidence = try str(.evidence, d.evidence)
+        plateThreshold = try dbl(.plateThreshold, d.plateThreshold)
+        plateTolerance = try int(.plateTolerance, d.plateTolerance)
+        plateSamples = try int(.plateSamples, d.plateSamples)
+        entryMargin = try dbl(.entryMargin, d.entryMargin)
+        weakRatio = try dbl(.weakRatio, d.weakRatio)
+        carryFrames = try int(.carryFrames, d.carryFrames)
+        carryDilate = try int(.carryDilate, d.carryDilate)
+        diffCenter = try dbl(.diffCenter, d.diffCenter)
+        diffWidth = try dbl(.diffWidth, d.diffWidth)
+        priorWeight = try dbl(.priorWeight, d.priorWeight)
+        priorDecay = try dbl(.priorDecay, d.priorDecay)
+        structWeight = try dbl(.structWeight, d.structWeight)
+        barHalfWidth = try dbl(.barHalfWidth, d.barHalfWidth)
+        shadowStrength = try dbl(.shadowStrength, d.shadowStrength)
+        shadowMinRatio = try dbl(.shadowMinRatio, d.shadowMinRatio)
+        shadowMaxRatio = try dbl(.shadowMaxRatio, d.shadowMaxRatio)
+        shadowChromaTolerance = try dbl(.shadowChromaTolerance, d.shadowChromaTolerance)
+        smoothRadius = try int(.smoothRadius, d.smoothRadius)
+        decisionThreshold = try dbl(.decisionThreshold, d.decisionThreshold)
+        trackDiscs = try bool(.trackDiscs, d.trackDiscs)
+        discSmoothing = try dbl(.discSmoothing, d.discSmoothing)
+        headExclusion = try dbl(.headExclusion, d.headExclusion)
+        footSlack = try dbl(.footSlack, d.footSlack)
+        stripHeight = try int(.stripHeight, d.stripHeight)
+        refineRange = try int(.refineRange, d.refineRange)
+        maxJump = try dbl(.maxJump, d.maxJump)
+        flowAccuracy = try str(.flowAccuracy, d.flowAccuracy)
+        trackBudget = try int(.trackBudget, d.trackBudget)
+        trackSpacing = try int(.trackSpacing, d.trackSpacing)
+        trackQuality = try dbl(.trackQuality, d.trackQuality)
+        trackMinScore = try dbl(.trackMinScore, d.trackMinScore)
+        trackSupplyScore = try dbl(.trackSupplyScore, d.trackSupplyScore)
+        trackNewPerFrame = try int(.trackNewPerFrame, d.trackNewPerFrame)
+        lkRadius = try int(.lkRadius, d.lkRadius)
+        lkIterations = try int(.lkIterations, d.lkIterations)
+        lkMinEigen = try dbl(.lkMinEigen, d.lkMinEigen)
+        trackFBTolerance = try dbl(.trackFBTolerance, d.trackFBTolerance)
+        trackSSDTolerance = try dbl(.trackSSDTolerance, d.trackSSDTolerance)
+        staticTolerance = try dbl(.staticTolerance, d.staticTolerance)
+        moveTolerance = try dbl(.moveTolerance, d.moveTolerance)
+        motionWindow = try int(.motionWindow, d.motionWindow)
+        labelHold = try int(.labelHold, d.labelHold)
+        contactRadius = try dbl(.contactRadius, d.contactRadius)
+        attachEnter = try dbl(.attachEnter, d.attachEnter)
+        attachExit = try dbl(.attachExit, d.attachExit)
+        rigidDrift = try dbl(.rigidDrift, d.rigidDrift)
+        clusterLink = try dbl(.clusterLink, d.clusterLink)
+        deformLink = try dbl(.deformLink, d.deformLink)
+        chromaTolerance = try dbl(.chromaTolerance, d.chromaTolerance)
+        minClusterTracks = try int(.minClusterTracks, d.minClusterTracks)
+        rigidResidual = try dbl(.rigidResidual, d.rigidResidual)
+        hullRadius = try dbl(.hullRadius, d.hullRadius)
+        capsuleRadius = try dbl(.capsuleRadius, d.capsuleRadius)
+        colorGate = try dbl(.colorGate, d.colorGate)
+        templateDelay = try int(.templateDelay, d.templateDelay)
+        templateRecapture = try dbl(.templateRecapture, d.templateRecapture)
+        photoTolerance = try dbl(.photoTolerance, d.photoTolerance)
+        outlierExpel = try int(.outlierExpel, d.outlierExpel)
+        occlusionGrace = try int(.occlusionGrace, d.occlusionGrace)
+        markerBudget = try int(.markerBudget, d.markerBudget)
+        blurRadius = try int(.blurRadius, d.blurRadius)
+        faceQuota = try dbl(.faceQuota, d.faceQuota)
+        spacingFace = try dbl(.spacingFace, d.spacingFace)
+        spacingBody = try dbl(.spacingBody, d.spacingBody)
+        spacingBackground = try dbl(.spacingBackground, d.spacingBackground)
+        colorEdges = try bool(.colorEdges, d.colorEdges)
+        propagateMarkers = try bool(.propagateMarkers, d.propagateMarkers)
+    }
+
     public static func load(_ url: URL) throws -> Params {
         let data = try Data(contentsOf: url)
         return try JSONDecoder().decode(Params.self, from: data)
@@ -106,6 +188,7 @@ public struct Params: Codable, Equatable {
         "trackSpacing": "tracks: detection cell / suppression radius, px, 6–16",
         "trackQuality": "tracks: Shi–Tomasi threshold as a fraction of the frame maximum, 0.005–0.05",
         "trackMinScore": "tracks: absolute Shi–Tomasi floor, 200–5000",
+        "trackSupplyScore": "tracks: lower Shi–Tomasi floor for the second detection pass inside attached objects' hulls, 20–400",
         "trackNewPerFrame": "tracks: new features per frame, 50–600",
         "lkRadius": "tracks: Lucas–Kanade window radius, 3–7",
         "lkIterations": "tracks: Lucas–Kanade iterations, 4–16",
