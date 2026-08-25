@@ -314,10 +314,17 @@ public final class ObjectClusters {
             var inContact = 0
             var objectMotion = SIMD2<Float>(0, 0)
             var motionCount = 0
+            // Positions of the members that actually touch the subject; the
+            // co-motion comparison uses the subject tracks nearest these, not
+            // the object's centroid.
+            var contactPoints: [SIMD2<Float>] = []
             for i in members {
                 let t = candidates[i]
                 let idx = Int(t.current.y.rounded()) * width + Int(t.current.x.rounded())
-                if idx >= 0 && idx < distance.count && Float(distance[idx]) / 3 < Float(p.contactRadius) { inContact += 1 }
+                if idx >= 0 && idx < distance.count && Float(distance[idx]) / 3 < Float(p.contactRadius) {
+                    inContact += 1
+                    contactPoints.append(t.current)
+                }
                 if t.positions.count >= 11 {
                     objectMotion += t.current - t.positions[t.positions.count - 11]
                     motionCount += 1
@@ -335,15 +342,26 @@ public final class ObjectClusters {
             var comotion: Float = object.comotion * 0.95
             if motionCount > 0 {
                 objectMotion /= Float(motionCount)
-                // Subject tracks near the object's centroid.
-                var centroid = SIMD2<Float>(0, 0)
-                for i in members { centroid += candidates[i].current }
-                centroid /= Float(members.count)
+                // Reference points for "which part of the subject is this
+                // moving with": the members in contact when there are any,
+                // else the centroid. A barbell touches the subject at the
+                // hands, so its contact members' nearest subject tracks are
+                // the wrists — which track the descent — not the shoulders and
+                // head nearest the object's centroid.
+                var references = contactPoints
+                if references.isEmpty {
+                    var centroid = SIMD2<Float>(0, 0)
+                    for i in members { centroid += candidates[i].current }
+                    centroid /= Float(members.count)
+                    references = [centroid]
+                }
                 var subjectMotion = SIMD2<Float>(0, 0)
                 var subjectCount = 0
                 var nearest: [(Float, SIMD2<Float>)] = []
                 for t in tracker.tracks where t.status == .live && t.label == .subject && t.positions.count >= 11 {
-                    nearest.append((simd_distance(t.current, centroid), t.current - t.positions[t.positions.count - 11]))
+                    var d = Float.greatestFiniteMagnitude
+                    for r in references { d = min(d, simd_distance(t.current, r)) }
+                    nearest.append((d, t.current - t.positions[t.positions.count - 11]))
                 }
                 nearest.sort { $0.0 < $1.0 }
                 for (_, v) in nearest.prefix(10) { subjectMotion += v; subjectCount += 1 }
