@@ -151,6 +151,70 @@ shadow test already exists — apply it to foreign candidacy). Watch
 that is not the person, the bar, the plates, or the band. If a step recovers
 frames but adds a false object, it does not ship; write it up.
 
+## Phase four: flow propagation across gaps (added 2026-08-25)
+
+Rounds three to five made bad frames a little better one at a time. The
+presence lists say the failures are *gaps between good frames*: the left
+plate is present on 90–120 and missing on 0–80 and 125–197 (it rests while
+missing — zero motion); the band is missing for 8 frames (93–100) between
+frames that have it; the right plate for 10 (124–134). Optical flow cannot
+find any of these, but it can **carry a label we already established across
+frames that do not contradict it**. Dense flow is computed every frame
+already (`OpticalFlow`: `warp(_:fill:)` warps the previous frame's field into
+the current one, `warpRGBA` does the same for colour, `backwardVector` /
+`forward` give the vectors). It is used only to seed tracks and to carry an
+occluded alpha for 5 frames. This phase lets it bridge real gaps, in both
+directions, with a verifier as the gate. Offline two-pass processing is fine.
+
+Design — generic, no object identity required:
+
+1. **Propagated layer** = the non-person part of the final mask:
+   `mask ∧ ¬dilate(person, 2)`. Whatever the pipeline (tracks *or* Vision's
+   person segmentation) put outside the person is a held-object label. This
+   deliberately includes the band on the frames where only Vision had it.
+   The person mask itself is never propagated (Vision is reliable there).
+2. **Pass 1** (today's pipeline) additionally stores per frame to a scratch
+   directory (`--scratch DIR`, default `runs/<name>/scratch`): the final
+   `mask` alpha, `person`, `difference`, the pose JSON, and the forward flow
+   field (Float16 or Int16 fixed-point ×16 to halve the size; ~2 GB for the
+   clip is acceptable, it is git-ignored). Frames are re-read from the movie
+   in later passes, never stored.
+3. **Pass 2 — propagate.** For each frame t and each connected component C
+   of the propagated layer at t (area ≥ `minRenderArea`), warp C **forward**
+   frame by frame with the stored flow (`warp`), and **backward** by gather:
+   `C_{t-1}(p) = C_t(p + flow_{t-1→t}(p))` (bilinear). At every step verify:
+   warp the *colour* along with the label (`warpRGBA` / the same gather) and
+   compute the mean max-channel residual between the warped colour and the
+   actual frame inside the warped label; stop when it exceeds
+   `propagatePhotoTolerance` (~`photoTolerance`), when the warped area falls
+   below `minRenderArea`, when it enters `others`, or after
+   `propagateMaxGap` frames (param; the left plate needs ≥ 90 backward).
+   Pixels under the person mask at the destination frame are dropped (the
+   person occludes). Skip steps whose destination already covers ≥ 90 % of
+   the warped label (nothing to add). The result per frame is the union of
+   the original layer and every verified propagation reaching it; when
+   forward and backward propagations overlap, take the max.
+4. **Pass 3 — render + metrics** from the propagated masks: the existing
+   writers and `FrameMetrics` (presence included) run over the final masks,
+   so every number is about what is in the video.
+5. Still nothing category-specific: this is "held-object labels persist
+   through frames that do not contradict them". Shadows and floor leaks
+   that exist today will propagate too where verification passes — watch
+   `floorContactLeak`, `shadowLikeInProps`, `bgFalseRate` and stills every
+   15 frames (`--stills-every 15`), and cap with `propagateMaxGap` if needed.
+
+| # | Work | Proof (full clip, vs `bench/baseline-presence-mini.json` and the current single-pass run back-to-back) |
+|---|---|---|
+| S | Scratch store + `--two-pass` plumbing with propagation *disabled* (`propagateMaxGap 0`). | pass-3 output and every metric byte-identical to single-pass; `swift build` clean; scratch size logged |
+| T | Propagation with verification (steps 3–4). Try `propagateMaxGap` 30 / 90 / 150 and report all three. | left plate recall ≥ 0.6 (missing ≤ 80 frames); band missing frames 83–100 recovered; right plate 124–134 recovered; bgFalseRate red line holds; no new false objects in the every-15 stills; report floorContactLeak/shadowLikeInProps honestly |
+| U | If T ships: make `--two-pass` the default in tracks mode; ASSESSMENT.md "Round six" with the before/after missing-frame lists and the three maxGap results; re-render `~/IMG_0974-rotoscope.mov` + preview; push. | |
+
+Process for this phase: `codex review` is broken on this machine — push
+after every milestone regardless and say in the commit message that the
+diff is self-reviewed; the MacBook session reviews from there. Keep every
+proof same-binary back-to-back (Vision drift), and quote the presence lists
+verbatim in every commit message.
+
 ## No-touch
 
 - Anything outside `rotoscope_vision/`.
