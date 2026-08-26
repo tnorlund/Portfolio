@@ -9,8 +9,10 @@ import RotoscopeVisionCore
 /// and write `metrics_prop.jsonl`. Nothing here re-runs Vision; frames come from
 /// the pass-1 scratch. No object identity, no category prior.
 enum Propagate {
-    static func run(scratchDir: URL, out: URL, frames n: Int, params: Params, log: (String) -> Void) throws {
+    static func run(scratchDir: URL, out: URL, frames n: Int, params: Params,
+                    stillsDir: URL? = nil, stillsEvery: Int = 15, log: (String) -> Void) throws {
         guard n > 0 else { return }
+        let debug = ProcessInfo.processInfo.environment["PROP_DEBUG"] != nil
         let s0 = try Scratch.read(scratchDir, frame: 0)
         let width = s0.side.width, height = s0.side.height, count = width * height
         let maxGap = params.propagateMaxGap
@@ -53,74 +55,95 @@ enum Propagate {
         func makeColor(_ f: Int) -> [UInt8] { rgba[f] }
         var color = (0..<n).map { makeColor($0) }
 
-        @inline(__always) func sample(_ img: [UInt8], _ x: Int, _ y: Int, _ c: Int) -> Int {
-            Int(img[(y * width + x) * 4 + c])
-        }
-        @inline(__always) func colourOK(_ carried: [UInt8], _ actual: [UInt8], _ i: Int) -> Bool {
-            let dr = abs(Int(carried[i * 4]) - Int(actual[i * 4]))
-            let dg = abs(Int(carried[i * 4 + 1]) - Int(actual[i * 4 + 1]))
-            let db = abs(Int(carried[i * 4 + 2]) - Int(actual[i * 4 + 2]))
-            return Float(max(dr, max(dg, db))) <= tol
+        let diffFloor = Int(params.plateThreshold) / 3
+        // Warp a whole component (given its list of (dst-in-dstFrame, src-in-
+        // srcFrame) pixel pairs) and add it to result[dstFrame] as ONE unit,
+        // only if the component's MEAN colour residual (origin colour vs the
+        // destination frame) is within tolerance, MOST of it still differs from
+        // the background plate, it is not already ~covered, and it is inside the
+        // age cap. Per-component gating keeps props whole — no per-pixel speckle.
+        func commit(_ dests: [(dst: Int, src: Int)], into dstFrame: Int, from srcFrame: Int) {
+            if dests.count < params.minRenderArea { return }
+            var sumResid = 0.0, diffPass = 0, covered = 0, maxAge: Int32 = 0
+            for (dst, src) in dests {
+                let dr = abs(Int(color[srcFrame][src * 4]) - Int(rgba[dstFrame][dst * 4]))
+                let dg = abs(Int(color[srcFrame][src * 4 + 1]) - Int(rgba[dstFrame][dst * 4 + 1]))
+                let db = abs(Int(color[srcFrame][src * 4 + 2]) - Int(rgba[dstFrame][dst * 4 + 2]))
+                sumResid += Double(max(dr, max(dg, db)))
+                if Int(difference[dstFrame][dst]) >= diffFloor { diffPass += 1 }
+                if result[dstFrame][dst] != 0 { covered += 1 }
+                maxAge = max(maxAge, age[srcFrame][src])
+            }
+            let area = Double(dests.count)
+            // Debug: why a large left-side component (the left plate) stops.
+            if debug && dests.count > 1500 {
+                var cx = 0.0; for (dst, _) in dests { cx += Double(dst % width) }; cx /= area
+                if cx < Double(width) / 3 {
+                    let reason: String
+                    if maxAge + 1 > Int32(maxGap) { reason = "age \(maxAge + 1)>maxGap" }
+                    else if sumResid / area > Double(tol) { reason = "resid" }
+                    else if Double(diffPass) / area < 0.3 { reason = "diffFrac" }
+                    else if Double(covered) / area >= 0.9 { reason = "covered" }
+                    else { reason = "OK" }
+                    log(String(format: "  left-comp %d->%d cx%.0f area%.0f meanResid%.1f diffFrac%.2f cover%.2f age%d %@",
+                               srcFrame, dstFrame, cx, area, sumResid / area, Double(diffPass) / area, Double(covered) / area, maxAge + 1, reason))
+                }
+            }
+            if maxAge + 1 > Int32(maxGap) { return }
+            if sumResid / area > Double(tol) { return }
+            // Some of the component must still disagree with the plate. A third
+            // is enough: a dark plate's interior matches the dark rack behind it,
+            // only its rim differs, but it is still the plate.
+            if Double(diffPass) / area < 0.3 { return }
+            if Double(covered) / area >= 0.9 { return }
+            for (dst, src) in dests where result[dstFrame][dst] == 0 {
+                result[dstFrame][dst] = 1
+                age[dstFrame][dst] = maxAge + 1
+                color[dstFrame][dst * 4] = color[srcFrame][src * 4]
+                color[dstFrame][dst * 4 + 1] = color[srcFrame][src * 4 + 1]
+                color[dstFrame][dst * 4 + 2] = color[srcFrame][src * 4 + 2]
+            }
         }
 
-        // Forward sweep: gather result[t-1] into t through flow[t].
+        // Forward sweep: gather each component of result[t-1] into t (a
+        // destination q in t maps back to q + flow[t](q) in t-1).
         for t in 1..<n where avail[t] {
             let dx = fdx[t], dy = fdy[t]
-            let prevR = result[t - 1], prevA = age[t - 1], prevC = color[t - 1]
-            let src = rgba[t - 1]
+            let (lab, areas) = MetricsMath.labelComponents(result[t - 1], width: width, height: height)
+            var members: [Int32: [(dst: Int, src: Int)]] = [:]
             for y in 0..<height {
                 for x in 0..<width {
-                    let i = y * width + x
-                    if result[t][i] != 0 { continue }
-                    if person[t][i] != 0 || others[t][i] != 0 { continue }
-                    // A held object still differs from the background plate where
-                    // it lands; a shadow or background match does not.
-                    if Int(difference[t][i]) < Int(params.plateThreshold) / 3 { continue }
-                    let sx = Int((Float(x) + dx[i]).rounded()), sy = Int((Float(y) + dy[i]).rounded())
+                    let q = y * width + x
+                    if person[t][q] != 0 || others[t][q] != 0 { continue }
+                    let sx = Int((Float(x) + dx[q]).rounded()), sy = Int((Float(y) + dy[q]).rounded())
                     if sx < 0 || sx >= width || sy < 0 || sy >= height { continue }
-                    let j = sy * width + sx
-                    if prevR[j] == 0 { continue }
-                    let a = prevA[j] + 1
-                    if a > Int32(maxGap) { continue }
-                    // Carried colour = origin colour from the previous frame's carrier.
-                    var carriedPix = [UInt8](repeating: 0, count: 4)
-                    carriedPix[0] = prevC[j * 4]; carriedPix[1] = prevC[j * 4 + 1]; carriedPix[2] = prevC[j * 4 + 2]
-                    let dr = abs(Int(carriedPix[0]) - Int(rgba[t][i * 4]))
-                    let dg = abs(Int(carriedPix[1]) - Int(rgba[t][i * 4 + 1]))
-                    let db = abs(Int(carriedPix[2]) - Int(rgba[t][i * 4 + 2]))
-                    if Float(max(dr, max(dg, db))) > tol { continue }
-                    _ = src
-                    result[t][i] = 1
-                    age[t][i] = a
-                    color[t][i * 4] = carriedPix[0]; color[t][i * 4 + 1] = carriedPix[1]; color[t][i * 4 + 2] = carriedPix[2]
+                    let src = sy * width + sx
+                    let c = lab[src]
+                    if c <= 0 || areas[Int(c)] < params.minRenderArea { continue }
+                    members[c, default: []].append((q, src))
                 }
             }
+            for (_, dests) in members { commit(dests, into: t, from: t - 1) }
         }
-        // Backward sweep: scatter result[t] into t-1 through flow[t].
+        // Backward sweep: scatter each component of result[t] into t-1 (a source
+        // pixel p in t maps to p + flow[t](p) in t-1).
         for t in stride(from: n - 1, through: 1, by: -1) where avail[t] {
             let dx = fdx[t], dy = fdy[t]
+            let (lab, areas) = MetricsMath.labelComponents(result[t], width: width, height: height)
+            var members: [Int32: [(dst: Int, src: Int)]] = [:]
             for y in 0..<height {
                 for x in 0..<width {
-                    let i = y * width + x
-                    if result[t][i] == 0 { continue }
-                    let a = age[t][i] + 1
-                    if a > Int32(maxGap) { continue }
-                    let dxp = Int((Float(x) + dx[i]).rounded()), dyp = Int((Float(y) + dy[i]).rounded())
-                    if dxp < 0 || dxp >= width || dyp < 0 || dyp >= height { continue }
-                    let d = dyp * width + dxp
-                    if result[t - 1][d] != 0 { continue }
+                    let p = y * width + x
+                    let c = lab[p]
+                    if c <= 0 || areas[Int(c)] < params.minRenderArea { continue }
+                    let dpx = Int((Float(x) + dx[p]).rounded()), dpy = Int((Float(y) + dy[p]).rounded())
+                    if dpx < 0 || dpx >= width || dpy < 0 || dpy >= height { continue }
+                    let d = dpy * width + dpx
                     if person[t - 1][d] != 0 || others[t - 1][d] != 0 { continue }
-                    if Int(difference[t - 1][d]) < Int(params.plateThreshold) / 3 { continue }
-                    let dr = abs(Int(color[t][i * 4]) - Int(rgba[t - 1][d * 4]))
-                    let dg = abs(Int(color[t][i * 4 + 1]) - Int(rgba[t - 1][d * 4 + 1]))
-                    let db = abs(Int(color[t][i * 4 + 2]) - Int(rgba[t - 1][d * 4 + 2]))
-                    if Float(max(dr, max(dg, db))) > tol { continue }
-                    result[t - 1][d] = 1
-                    age[t - 1][d] = a
-                    color[t - 1][d * 4] = color[t][i * 4]; color[t - 1][d * 4 + 1] = color[t][i * 4 + 1]
-                    color[t - 1][d * 4 + 2] = color[t][i * 4 + 2]
+                    members[c, default: []].append((d, p))
                 }
             }
+            for (_, dests) in members { commit(dests, into: t - 1, from: t) }
         }
 
         // Drop propagated components below minRenderArea (per frame).
@@ -139,14 +162,18 @@ enum Propagate {
             let props = result[f]
             var maskProp = sf.mask
             for i in 0..<count where props[i] != 0 { maskProp[i] = 255 }
+            // Pass 1 binarises the mask at >127 before every mask metric; match
+            // it exactly (the raw alpha's soft edge would otherwise read as many
+            // phantom components and over-cover the truth).
+            let maskBin = maskProp.map { $0 > 127 ? UInt8(1) : 0 }
             var m = side.metrics
-            m.maskComponents = MetricsMath.components(maskProp, width: width, height: height)
+            m.maskComponents = MetricsMath.components(maskBin, width: width, height: height)
             let (_, _, propArea) = MetricsMath.boundaryRatio(props.map { $0 != 0 ? 255 : 0 }, width: width, height: height)
             m.propArea = propArea
             m.propComponents = MetricsMath.components(props, width: width, height: height)
             // Presence recall on the propagated mask.
             let band = Presence.bandTruth(rgba: sf.rgba, person: sf.person, width: width, height: height)
-            let b = Presence.recall(truth: band, mask: maskProp, minimum: 300)
+            let b = Presence.recall(truth: band, mask: maskBin, minimum: 300)
             m.bandTruth = b.count; m.bandRecall = b.recall
             var bar: BodyPose.Segment? = nil
             if let x0 = side.barX0, let y0 = side.barY0, let x1 = side.barX1, let y1 = side.barY1 {
@@ -154,8 +181,8 @@ enum Propagate {
             }
             if let plates = Presence.plateTruth(rgba: sf.rgba, difference: sf.difference, person: sf.person, bar: bar,
                                                 width: width, height: height, threshold: Int(params.plateThreshold)) {
-                let l = Presence.recall(truth: plates.left, mask: maskProp, minimum: 800)
-                let r = Presence.recall(truth: plates.right, mask: maskProp, minimum: 800)
+                let l = Presence.recall(truth: plates.left, mask: maskBin, minimum: 800)
+                let r = Presence.recall(truth: plates.right, mask: maskBin, minimum: 800)
                 m.plateTruthLeft = l.count; m.plateRecallLeft = l.recall
                 m.plateTruthRight = r.count; m.plateRecallRight = r.recall
             } else {
@@ -190,7 +217,21 @@ enum Propagate {
             }
             prevProps = props
             lines.append(try enc.encode(m)); lines.append(0x0A)
-            _ = sample
+            // Every-15 still: dim source, GREEN original prop, RED propagated
+            // addition, BLUE person — a false object is a red blob off the props.
+            if let stillsDir, f % stillsEvery == 0 {
+                var img = sf.rgba
+                for i in 0..<count {
+                    let o = i * 4
+                    img[o] = UInt8(Int(img[o]) / 3); img[o + 1] = UInt8(Int(img[o + 1]) / 3); img[o + 2] = UInt8(Int(img[o + 2]) / 3)
+                    if sf.person[i] != 0 { img[o + 2] = 255 }
+                    if layer[f][i] != 0 { img[o + 1] = 255 }        // original prop
+                    if props[i] != 0 && layer[f][i] == 0 { img[o] = 255 }  // propagated addition
+                    img[o + 3] = 255
+                }
+                try writePNG(rgba: img, width: width, height: height,
+                             to: stillsDir.appendingPathComponent(String(format: "%04d-prop%d.png", f, maxGap)))
+            }
         }
         try lines.write(to: out)
         log("propagation: maxGap \(maxGap) -> \(out.lastPathComponent)")

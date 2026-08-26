@@ -164,7 +164,8 @@ do {
     if args.propagateOnly, let scratchDir, let metricsDir = args.metricsDir {
         let jsons = (try? FileManager.default.contentsOfDirectory(atPath: scratchDir.path).filter { $0.hasSuffix(".json") }) ?? []
         let out = metricsDir.appendingPathComponent(String(format: "metrics_prop_%d.jsonl", args.params.propagateMaxGap))
-        try Propagate.run(scratchDir: scratchDir, out: out, frames: jsons.count, params: args.params, log: { log($0) })
+        try Propagate.run(scratchDir: scratchDir, out: out, frames: jsons.count, params: args.params,
+                          stillsDir: args.stillsDir, stillsEvery: args.stillsEvery, log: { log($0) })
         exit(0)
     }
     let hasAudio = reader.audioTrack != nil && !args.skipAudio
