@@ -1,3 +1,4 @@
+import CoreMedia
 import Foundation
 import RotoscopeVisionCore
 
@@ -9,8 +10,18 @@ import RotoscopeVisionCore
 /// and write `metrics_prop.jsonl`. Nothing here re-runs Vision; frames come from
 /// the pass-1 scratch. No object identity, no category prior.
 enum Propagate {
+    struct RenderTarget {
+        var dir: URL
+        var stem: String
+        var matte: (red: UInt8, green: UInt8, blue: UInt8)
+        var options: EngineOptions
+        var removeBackground: Bool
+        var skipMov: Bool
+    }
+
     static func run(scratchDir: URL, out: URL, frames n: Int, params: Params,
-                    stillsDir: URL? = nil, stillsEvery: Int = 15, log: (String) -> Void) throws {
+                    stillsDir: URL? = nil, stillsEvery: Int = 15, render: RenderTarget? = nil,
+                    log: (String) -> Void) async throws {
         guard n > 0 else { return }
         let debug = ProcessInfo.processInfo.environment["PROP_DEBUG"] != nil
         let s0 = try Scratch.read(scratchDir, frame: 0)
@@ -152,7 +163,20 @@ enum Propagate {
         }
 
         // Pass 3: recompute the presence + guard-rail metrics from the
-        // propagated masks and write metrics_prop.jsonl.
+        // propagated masks and write metrics_prop.jsonl (and, if asked, the
+        // rotoscoped video painted from the propagated masks).
+        var writers: [FrameWriter] = []
+        if let r = render {
+            if !r.skipMov {
+                writers.append(try FrameWriter(
+                    url: r.dir.appendingPathComponent("\(r.stem)-rotoscope.mov"), width: width, height: height,
+                    codec: .proRes4444, audioFormat: nil))
+            }
+            writers.append(try FrameWriter(
+                url: r.dir.appendingPathComponent("\(r.stem)-rotoscope-preview.mp4"), width: width, height: height,
+                codec: .h264(matte: r.matte), audioFormat: nil))
+        }
+        var writersStarted = false
         let enc = JSONEncoder()
         var lines = Data()
         var prevProps: [UInt8]?
@@ -232,7 +256,37 @@ enum Propagate {
                 try writePNG(rgba: img, width: width, height: height,
                              to: stillsDir.appendingPathComponent(String(format: "%04d-prop%d.png", f, maxGap)))
             }
+            // Re-render the rotoscoped frame from the propagated mask.
+            if let r = render {
+                var tiers = [UInt8](repeating: FocusTier.background.rawValue, count: count)
+                let hasFace = side.faceCenterX != nil
+                for y in 0..<height {
+                    for x in 0..<width {
+                        let i = y * width + x
+                        if maskBin[i] == 0 { continue }
+                        var tier = FocusTier.body
+                        if hasFace, let cx = side.faceCenterX, let cy = side.faceCenterY,
+                           let rx = side.faceRadiusX, let ry = side.faceRadiusY {
+                            let nx = (Double(x) + 0.5) / Double(width), ny = (Double(y) + 0.5) / Double(height)
+                            let fx = (nx - cx) / max(0.0001, rx), fy = (ny - cy) / max(0.0001, ry)
+                            if fx * fx + fy * fy <= 1 { tier = .face }
+                        }
+                        tiers[i] = tier.rawValue
+                    }
+                }
+                var options = r.options
+                if !hasFace {
+                    options.quotas = TierValues(face: 0, body: r.options.quotas.face + r.options.quotas.body, background: r.options.quotas.background)
+                }
+                let painted = Engine.process(rgba: sf.rgba, width: width, height: height, tiers: tiers,
+                                             alpha: maskProp, removeBackground: r.removeBackground, options: options)
+                let time = CMTime(seconds: side.metrics.time, preferredTimescale: 600)
+                if !writersStarted { for w in writers { try w.start(at: time) }; writersStarted = true }
+                for w in writers { try w.append(rgba: painted.rgba, at: time) }
+            }
         }
+        for w in writers { w.finishVideo() }
+        for w in writers { try await w.finish() }
         try lines.write(to: out)
         log("propagation: maxGap \(maxGap) -> \(out.lastPathComponent)")
     }

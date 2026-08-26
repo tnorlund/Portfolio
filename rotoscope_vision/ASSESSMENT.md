@@ -515,11 +515,64 @@ foreign cue than strict patch agreement for dark-on-dark (e.g. the tolerant
 difference, which does light up the plate, gated by the NCC shadow test).
 Re-rendered `~/IMG_0974-rotoscope.mov` from the O mask.
 
+## Round six (Mini): flow propagation across gaps (S–U)
+
+The presence lists said the failures are *gaps between good frames*, and optical
+flow — already computed every frame — can carry a label we established across
+frames that do not contradict it. Phase four is an offline two-pass pipeline:
+pass 1 runs today's tracker and stores per-frame scratch (mask, person, props,
+difference, others, warpedPlate, rgba, signed flow, pose, face, metrics; ~3.1 GB,
+git-ignored); pass 2 propagates the non-person layer across gaps; pass 3
+recomputes the metrics and repaints the video from the propagated masks. No
+object identity, no category prior. **Two-pass is now the default in tracks
+mode** (`--single-pass` opts out).
+
+Propagation is **per-component**: the non-person layer is split into connected
+components and each is warped as a unit — forward by gather, backward by scatter
+— and added only if its **mean** colour residual is within tolerance, ≥ 30 % of
+it still differs from the background plate, it is not already ≥ 90 % covered, and
+it is within `propagateMaxGap`. (An earlier per-pixel version fragmented every
+prop into ~30 blobs — `maskComponents` 32 — and its band 1.0 was inflated by
+leak covering the orange region; per-component fixed both.)
+
+Before → after (single-pass → default two-pass, `propagateMaxGap` 90; 30/90/150
+are near-identical because verification stops a run before the age cap binds):
+
+| object | recall | missing frames |
+|---|---|---|
+| right plate | 0.660 → **0.812** | 60 → 32 (5–16, 123–130, 165–176 remain) |
+| band | 0.859 → **0.871** | 21 → 17 (24, 83–84, 88, 93–100, 192, 194–197 remain) |
+| left plate | 0.166 → **0.292** | 160 → 140 |
+
+Guard rails hold: `maskComponents` 3.65 → 3.55 (within 1 — the propagation
+*completes* props, it does not add objects), `bgFalseRate` 0.0371 → 0.0335; the
+every-15 stills show the propagated (red) label completing the real plates and
+bar with no red blob on the background or the bystanders. Honest costs: the
+plate's rim shadow rides along with it, so `shadowLikeInProps` 0.078 → 0.134 and
+`floorContactLeak` 0.0076 → 0.015.
+
+What still fails, and why: the **left plate never reaches its resting frames**
+(0–84). Instrumented, the backward chain from frame 85 reaches 85 and is then
+rejected at 85→84 on the difference gate — only 0.29 of the disc still differs
+from the plate (`< 0.30`), while its colour residual (5.4) is well inside
+tolerance. At frame 84 the lifter stands and the plate settles against the dark
+rack, which is *in* the background-plate median, so the disc is
+indistinguishable from the background there — the same dark-on-dark limit that
+capped phases two and three. The **band's deep-squat gap (93–100)** also stays:
+there the band is inside Vision's person mask on the bordering frames, so it is
+not in the non-person layer to seed a propagation. Both are honest limits of
+"carry a held-object label through frames that do not contradict it," not tuning
+failures. `~/IMG_0974-rotoscope.mov` re-rendered from the propagated masks.
+
 ## Reproduce
 
 ```bash
 cd rotoscope_vision && swift build -c release
 B=.build/release/rotoscope-vision
+# Phase four: two-pass is default in tracks mode. Sweep maxGap on one scratch:
+$B ~/IMG_0974.mov --subject held --evidence tracks --metrics runs/x --out-dir runs/x   # writes scratch + propagated video
+for g in 30 90 150; do $B ~/IMG_0974.mov --propagate-only --propagate-max-gap $g --scratch runs/x/scratch --metrics runs/x --out-dir runs/x --no-mov; done
+python3 scripts/presence.py runs/x/metrics_prop_90.jsonl
 # Phase two: presence is the truth. Run, then list missing frames per object:
 $B ~/IMG_0974.mov --subject held --evidence tracks --metrics runs/presence --out-dir runs/presence \
    --no-mov --stills runs/presence --stills-every 1 --baseline bench/baseline-presence-mini.json

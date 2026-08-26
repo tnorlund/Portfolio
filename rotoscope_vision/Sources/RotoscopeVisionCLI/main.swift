@@ -41,6 +41,7 @@ struct Arguments {
     var objective: URL?
     var dumpParams = false
     var twoPass = false
+    var singlePass = false
     var propagateOnly = false
     var scratchDir: URL?
 
@@ -100,11 +101,21 @@ struct Arguments {
             case "--baseline": parsed.baseline = URL(fileURLWithPath: try value(flag))
             case "--objective": parsed.objective = URL(fileURLWithPath: try value(flag))
             case "--two-pass": parsed.twoPass = true
+            case "--single-pass": parsed.singlePass = true
             case "--propagate-only": parsed.twoPass = true; parsed.propagateOnly = true
             case "--scratch": parsed.scratchDir = URL(fileURLWithPath: try value(flag), isDirectory: true)
             case "--propagate-max-gap": parsed.params.propagateMaxGap = Int(try value(flag)) ?? parsed.params.propagateMaxGap
             default: throw UsageError("unknown option \(flag)")
             }
+        }
+        // Two-pass flow propagation is the default in tracks mode (a bounded
+        // gap-bridge); --single-pass opts out. Default the gap to 90 (the left
+        // plate's backward reach) when propagation is on but no gap was set.
+        if parsed.params.evidence == "tracks" && !parsed.singlePass && !parsed.propagateOnly {
+            parsed.twoPass = true
+        }
+        if parsed.twoPass && !parsed.propagateOnly && parsed.params.propagateMaxGap == 0 {
+            parsed.params.propagateMaxGap = 90
         }
         return parsed
     }
@@ -164,23 +175,27 @@ do {
     if args.propagateOnly, let scratchDir, let metricsDir = args.metricsDir {
         let jsons = (try? FileManager.default.contentsOfDirectory(atPath: scratchDir.path).filter { $0.hasSuffix(".json") }) ?? []
         let out = metricsDir.appendingPathComponent(String(format: "metrics_prop_%d.jsonl", args.params.propagateMaxGap))
-        try Propagate.run(scratchDir: scratchDir, out: out, frames: jsons.count, params: args.params,
-                          stillsDir: args.stillsDir, stillsEvery: args.stillsEvery, log: { log($0) })
+        try await Propagate.run(scratchDir: scratchDir, out: out, frames: jsons.count, params: args.params,
+                                stillsDir: args.stillsDir, stillsEvery: args.stillsEvery, log: { log($0) })
         exit(0)
     }
     let hasAudio = reader.audioTrack != nil && !args.skipAudio
     let audioFormat = hasAudio ? reader.audioFormat : nil
     var writers: [FrameWriter] = []
-    if !args.skipMov {
+    // In two-pass mode the video is painted from the PROPAGATED masks by pass 3,
+    // so pass 1 writes no video (only scratch + the pass-1 metrics baseline).
+    if !args.twoPass {
+        if !args.skipMov {
+            writers.append(
+                try FrameWriter(
+                    url: args.outDir.appendingPathComponent("\(stem)-rotoscope.mov"), width: width, height: height,
+                    codec: .proRes4444, audioFormat: audioFormat))
+        }
         writers.append(
             try FrameWriter(
-                url: args.outDir.appendingPathComponent("\(stem)-rotoscope.mov"), width: width, height: height,
-                codec: .proRes4444, audioFormat: audioFormat))
+                url: args.outDir.appendingPathComponent("\(stem)-rotoscope-preview.mp4"), width: width,
+                height: height, codec: .h264(matte: args.matte), audioFormat: audioFormat))
     }
-    writers.append(
-        try FrameWriter(
-            url: args.outDir.appendingPathComponent("\(stem)-rotoscope-preview.mp4"), width: width,
-            height: height, codec: .h264(matte: args.matte), audioFormat: audioFormat))
 
     let analyzer = FocusAnalyzer(width: width, height: height, mode: args.subject, params: args.params)
     if !args.noFlow {
@@ -602,9 +617,16 @@ do {
     if let scratchDir {
         let bytes = Scratch.size(scratchDir)
         log(String(format: "scratch: %d frames, %.2f GB at %@", frameIndex, Double(bytes) / 1e9, scratchDir.path))
-        if args.params.propagateMaxGap > 0, let metricsDir = args.metricsDir {
-            let out = metricsDir.appendingPathComponent("metrics_prop.jsonl")
-            try Propagate.run(scratchDir: scratchDir, out: out, frames: frameIndex, params: args.params, log: log)
+        if args.params.propagateMaxGap > 0 {
+            let out = (args.metricsDir ?? scratchDir).appendingPathComponent("metrics_prop.jsonl")
+            // Two-pass default: paint the output video from the propagated masks.
+            let render = args.twoPass
+                ? Propagate.RenderTarget(dir: args.outDir, stem: stem, matte: args.matte,
+                                         options: args.engineOptions, removeBackground: !args.keepBackground,
+                                         skipMov: args.skipMov)
+                : nil
+            try await Propagate.run(scratchDir: scratchDir, out: out, frames: frameIndex, params: args.params,
+                                    stillsDir: args.stillsDir, stillsEvery: args.stillsEvery, render: render, log: log)
         }
     }
     if sessionStarted {
