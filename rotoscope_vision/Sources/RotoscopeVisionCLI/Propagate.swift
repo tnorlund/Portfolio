@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreMedia
 import Foundation
 import RotoscopeVisionCore
@@ -16,13 +17,18 @@ enum Propagate {
         var matte: (red: UInt8, green: UInt8, blue: UInt8)
         var options: EngineOptions
         var removeBackground: Bool
+        var keepBackground: Bool
         var skipMov: Bool
+        var audioAsset: AVAsset?
+        var audioTrack: AVAssetTrack?
+        var audioFormat: CMFormatDescription?
     }
 
+    @discardableResult
     static func run(scratchDir: URL, out: URL, frames n: Int, params: Params,
                     stillsDir: URL? = nil, stillsEvery: Int = 15, render: RenderTarget? = nil,
-                    log: (String) -> Void) async throws {
-        guard n > 0 else { return }
+                    log: (String) -> Void) async throws -> [FrameMetrics] {
+        guard n > 0 else { return [] }
         let debug = ProcessInfo.processInfo.environment["PROP_DEBUG"] != nil
         let s0 = try Scratch.read(scratchDir, frame: 0)
         let width = s0.side.width, height = s0.side.height, count = width * height
@@ -165,20 +171,24 @@ enum Propagate {
         // Pass 3: recompute the presence + guard-rail metrics from the
         // propagated masks and write metrics_prop.jsonl (and, if asked, the
         // rotoscoped video painted from the propagated masks).
-        var writers: [FrameWriter] = []
+        // Video-only writers; source audio is muxed in afterwards. Interleaving
+        // audio during these rapid appends deadlocks the proRes muxer.
+        var writers: [(w: FrameWriter, url: URL)] = []
         if let r = render {
             if !r.skipMov {
-                writers.append(try FrameWriter(
-                    url: r.dir.appendingPathComponent("\(r.stem)-rotoscope.mov"), width: width, height: height,
-                    codec: .proRes4444, audioFormat: nil))
+                let u = r.dir.appendingPathComponent("\(r.stem)-rotoscope.mov")
+                writers.append((try FrameWriter(url: u, width: width, height: height, codec: .proRes4444, audioFormat: nil), u))
             }
-            writers.append(try FrameWriter(
-                url: r.dir.appendingPathComponent("\(r.stem)-rotoscope-preview.mp4"), width: width, height: height,
-                codec: .h264(matte: r.matte), audioFormat: nil))
+            let pu = r.dir.appendingPathComponent("\(r.stem)-rotoscope-preview.mp4")
+            writers.append((try FrameWriter(url: pu, width: width, height: height, codec: .h264(matte: r.matte), audioFormat: nil), pu))
         }
         var writersStarted = false
+        // Flow-advanced markers seed the paint each frame, like pass 1.
+        let flow = OpticalFlow(width: width, height: height, accuracy: params.flowAccuracy)
+        var previousMarkers: [Int] = []
         let enc = JSONEncoder()
         var lines = Data()
+        var outMetrics: [FrameMetrics] = []
         var prevProps: [UInt8]?
         for f in 0..<n {
             guard let side = sides[f] else { continue }
@@ -240,7 +250,6 @@ enum Propagate {
                 m.propFlicker = MetricsMath.propFlicker(current: props, warpedPrevious: warped, width: width, height: height).events
             }
             prevProps = props
-            lines.append(try enc.encode(m)); lines.append(0x0A)
             // Every-15 still: dim source, GREEN original prop, RED propagated
             // addition, BLUE person — a false object is a red blob off the props.
             if let stillsDir, f % stillsEvery == 0 {
@@ -258,36 +267,93 @@ enum Propagate {
             }
             // Re-render the rotoscoped frame from the propagated mask.
             if let r = render {
-                var tiers = [UInt8](repeating: FocusTier.background.rawValue, count: count)
+                flow.load(dx: fdx[f], dy: fdy[f], available: avail[f])
+                // Empty-subject fallback, exactly as pass 1: paint the whole
+                // frame as body so the output is not transparent.
+                let emptySubject = side.subjectPixels == 0 && !r.keepBackground
+                var tiers = [UInt8](repeating: emptySubject ? FocusTier.body.rawValue : FocusTier.background.rawValue, count: count)
                 let hasFace = side.faceCenterX != nil
-                for y in 0..<height {
-                    for x in 0..<width {
-                        let i = y * width + x
-                        if maskBin[i] == 0 { continue }
-                        var tier = FocusTier.body
-                        if hasFace, let cx = side.faceCenterX, let cy = side.faceCenterY,
-                           let rx = side.faceRadiusX, let ry = side.faceRadiusY {
-                            let nx = (Double(x) + 0.5) / Double(width), ny = (Double(y) + 0.5) / Double(height)
-                            let fx = (nx - cx) / max(0.0001, rx), fy = (ny - cy) / max(0.0001, ry)
-                            if fx * fx + fy * fy <= 1 { tier = .face }
+                if !emptySubject {
+                    for y in 0..<height {
+                        for x in 0..<width {
+                            let i = y * width + x
+                            if maskBin[i] == 0 { continue }
+                            var tier = FocusTier.body
+                            if hasFace, let cx = side.faceCenterX, let cy = side.faceCenterY,
+                               let rx = side.faceRadiusX, let ry = side.faceRadiusY {
+                                let nx = (Double(x) + 0.5) / Double(width), ny = (Double(y) + 0.5) / Double(height)
+                                let fx = (nx - cx) / max(0.0001, rx), fy = (ny - cy) / max(0.0001, ry)
+                                if fx * fx + fy * fy <= 1 { tier = .face }
+                            }
+                            tiers[i] = tier.rawValue
                         }
-                        tiers[i] = tier.rawValue
                     }
                 }
                 var options = r.options
                 if !hasFace {
                     options.quotas = TierValues(face: 0, body: r.options.quotas.face + r.options.quotas.body, background: r.options.quotas.background)
                 }
+                // Flow-advanced markers from the previous painted frame, like pass 1.
+                var seeds: [Int] = []
+                if params.propagateMarkers && flow.available && !previousMarkers.isEmpty {
+                    seeds = flow.advance(indices: previousMarkers)
+                }
                 let painted = Engine.process(rgba: sf.rgba, width: width, height: height, tiers: tiers,
-                                             alpha: maskProp, removeBackground: r.removeBackground, options: options)
+                                             alpha: emptySubject ? nil : maskProp, removeBackground: r.removeBackground,
+                                             options: options, seeds: seeds)
+                if f > 0 && flow.available {
+                    m.markerPersistence = MetricsMath.markerPersistence(
+                        advanced: seeds, current: painted.markers.indices, width: width, height: height)
+                }
                 let time = CMTime(seconds: side.metrics.time, preferredTimescale: 600)
-                if !writersStarted { for w in writers { try w.start(at: time) }; writersStarted = true }
-                for w in writers { try w.append(rgba: painted.rgba, at: time) }
+                if !writersStarted { for e in writers { try e.w.start(at: time) }; writersStarted = true }
+                for e in writers { try e.w.append(rgba: painted.rgba, at: time) }
+                previousMarkers = painted.markers.indices
             }
+            lines.append(try enc.encode(m)); lines.append(0x0A)
+            outMetrics.append(m)
         }
-        for w in writers { w.finishVideo() }
-        for w in writers { try await w.finish() }
+        for e in writers { e.w.finishVideo() }
+        for e in writers { e.w.finishAudio() }
+        for e in writers { try await e.w.finish() }
+        // Mux the source audio into each rendered file (interleaving during the
+        // rapid video appends above deadlocks the proRes muxer, so do it here).
+        if let r = render, let asset = r.audioAsset, let track = r.audioTrack {
+            for e in writers { try await muxAudio(video: e.url, audioAsset: asset, audioTrack: track) }
+        }
         try lines.write(to: out)
         log("propagation: maxGap \(maxGap) -> \(out.lastPathComponent)")
+        return outMetrics
+    }
+
+    /// Combine a rendered video-only file's video with the source audio track,
+    /// in place, by a passthrough export (no re-encode).
+    static func muxAudio(video: URL, audioAsset: AVAsset, audioTrack: AVAssetTrack) async throws {
+        let videoAsset = AVURLAsset(url: video)
+        guard let vTrack = try await videoAsset.loadTracks(withMediaType: .video).first else { return }
+        let vDur = try await videoAsset.load(.duration)
+        let aDur = try await audioAsset.load(.duration)
+        let comp = AVMutableComposition()
+        guard let cv = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { return }
+        try cv.insertTimeRange(CMTimeRange(start: .zero, duration: vDur), of: vTrack, at: .zero)
+        if let ca = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            try? ca.insertTimeRange(CMTimeRange(start: .zero, duration: CMTimeMinimum(vDur, aDur)), of: audioTrack, at: .zero)
+        }
+        let fileType: AVFileType = video.pathExtension.lowercased() == "mp4" ? .mp4 : .mov
+        guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetPassthrough) else { return }
+        let tmp = video.deletingLastPathComponent().appendingPathComponent("._mux-\(video.lastPathComponent)")
+        try? FileManager.default.removeItem(at: tmp)
+        export.outputURL = tmp
+        export.outputFileType = fileType
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            export.exportAsynchronously { cont.resume() }
+        }
+        if export.status == .completed {
+            try? FileManager.default.removeItem(at: video)
+            try FileManager.default.moveItem(at: tmp, to: video)
+        } else {
+            try? FileManager.default.removeItem(at: tmp)
+            throw RotoscopeVisionError.video("audio mux failed for \(video.lastPathComponent): \(export.error?.localizedDescription ?? "unknown")")
+        }
     }
 }

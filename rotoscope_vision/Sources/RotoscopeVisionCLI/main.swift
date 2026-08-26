@@ -163,9 +163,14 @@ do {
         try FileManager.default.createDirectory(at: metricsDir, withIntermediateDirectories: true)
         try args.params.json().write(to: metricsDir.appendingPathComponent("params.json"), atomically: true, encoding: .utf8)
     }
-    // Two-pass scratch dir (default under the metrics/out dir; git-ignored).
+    // Two-pass scratch dir: under --scratch or the metrics dir when given, else a
+    // temp dir deleted at the end (so a plain --evidence tracks run does not drop
+    // 3 GB into the output directory). git-ignored either way.
+    let scratchIsTemp = args.twoPass && args.scratchDir == nil && args.metricsDir == nil
     let scratchDir: URL? = args.twoPass
-        ? (args.scratchDir ?? (args.metricsDir ?? args.outDir).appendingPathComponent("scratch", isDirectory: true))
+        ? (args.scratchDir ?? args.metricsDir?.appendingPathComponent("scratch", isDirectory: true)
+            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("rotoscope-scratch-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true))
         : args.scratchDir
     if let scratchDir {
         try FileManager.default.createDirectory(at: scratchDir, withIntermediateDirectories: true)
@@ -339,7 +344,9 @@ do {
         try pumpAudio(upTo: time, wait: false)
 
         // ---------------- metrics ----------------
-        if args.metricsDir != nil {
+        // Also runs when only a scratch dir is set (two-pass without --metrics):
+        // pass 2/3 need the pass-1 metrics stored in the scratch.
+        if args.metricsDir != nil || scratchDir != nil {
             let mask = focus.mask.map { $0 > 127 ? UInt8(1) : 0 }
             let flow = analyzer.flow
             let flowReady = (flow?.available ?? false) && frameIndex > 0
@@ -619,15 +626,23 @@ do {
         log(String(format: "scratch: %d frames, %.2f GB at %@", frameIndex, Double(bytes) / 1e9, scratchDir.path))
         if args.params.propagateMaxGap > 0 {
             let out = (args.metricsDir ?? scratchDir).appendingPathComponent("metrics_prop.jsonl")
-            // Two-pass default: paint the output video from the propagated masks.
+            // Two-pass default: paint the output video from the propagated masks,
+            // muxing the source audio (pass 1 wrote no video in two-pass mode).
             let render = args.twoPass
                 ? Propagate.RenderTarget(dir: args.outDir, stem: stem, matte: args.matte,
                                          options: args.engineOptions, removeBackground: !args.keepBackground,
-                                         skipMov: args.skipMov)
+                                         keepBackground: args.keepBackground, skipMov: args.skipMov,
+                                         audioAsset: hasAudio ? reader.asset : nil, audioTrack: reader.audioTrack,
+                                         audioFormat: audioFormat)
                 : nil
-            try await Propagate.run(scratchDir: scratchDir, out: out, frames: frameIndex, params: args.params,
-                                    stillsDir: args.stillsDir, stillsEvery: args.stillsEvery, render: render, log: log)
+            // The reported summary/red-lines must describe the movie, so use the
+            // pass-3 metrics when two-pass runs, not the pass-1 baseline.
+            let propMetrics = try await Propagate.run(
+                scratchDir: scratchDir, out: out, frames: frameIndex, params: args.params,
+                stillsDir: args.stillsDir, stillsEvery: args.stillsEvery, render: render, log: log)
+            if args.twoPass && !propMetrics.isEmpty { metrics = propMetrics }
         }
+        if scratchIsTemp { try? FileManager.default.removeItem(at: scratchDir) }
     }
     if sessionStarted {
         try pumpAudio(upTo: nil, wait: true)
