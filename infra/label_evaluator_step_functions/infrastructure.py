@@ -1,9 +1,9 @@
 """
 Pulumi infrastructure for Label Evaluator Step Function.
 
-The workflow has two phases:
-1. Pattern Learning (per-merchant): unified_pattern_builder Lambda
-2. Per-Receipt Validation (parallel): unified_receipt_evaluator Lambda
+The workflow evaluates receipts in parallel via unified_receipt_evaluator.
+Merchant-pattern precompute is gone; the evaluator loads patterns from
+S3 when present and continues when they are missing.
 """
 
 import json
@@ -488,53 +488,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
         unified_evaluator_lambda = unified_docker_image.lambda_function
 
         # ============================================================
-        # Container Lambda: unified_pattern_builder
-        # Combines LearnLineItemPatterns and BuildMerchantPatterns
-        # ============================================================
-        unified_pattern_builder_config = {
-            "role_arn": lambda_role.arn,
-            "timeout": 900,  # 15 minutes (Lambda max)
-            "memory_size": 10240,
-            "tags": {"environment": stack},
-            "ephemeral_storage": 512,
-            "environment": {
-                "BATCH_BUCKET": self.batch_bucket.bucket,
-                "DYNAMODB_TABLE_NAME": dynamodb_table_name,
-                # OpenRouter LLM provider
-                "OPENROUTER_API_KEY": openrouter_api_key,
-                "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "openai/gpt-oss-120b",
-                "LLM_STRICT_STRUCTURED_OUTPUT": "true",
-                "LLM_STRUCTURED_OUTPUT_RETRIES": "3",
-                **tracing_env,
-            },
-        }
-
-        unified_pattern_builder_docker_image = CodeBuildDockerImage(
-            f"{name}-upb-img",
-            dockerfile_path=(
-                "infra/label_evaluator_step_functions/lambdas/"
-                "Dockerfile.unified_pattern_builder"
-            ),
-            build_context_path=".",
-            source_paths=[
-                "receipt_dynamo",
-                "receipt_chroma",
-                "receipt_places",
-                "receipt_agent",
-                "infra/label_evaluator_step_functions/lambdas",
-            ],
-            lambda_function_name=f"{name}-unified-pattern-builder",
-            lambda_config=unified_pattern_builder_config,
-            platform="linux/arm64",
-            opts=ResourceOptions(parent=self, depends_on=[lambda_role]),
-        )
-
-        unified_pattern_builder_lambda = (
-            unified_pattern_builder_docker_image.lambda_function
-        )
-
-        # ============================================================
         # Viz-Cache Builder Lambda (replaces LangSmith export + EMR)
         # ============================================================
         build_viz_cache_lambda = None
@@ -658,7 +611,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
             list_all_receipts_lambda.arn,
             final_aggregate_lambda.arn,
             unified_evaluator_lambda.arn,
-            unified_pattern_builder_lambda.arn,
         ]
 
         if build_viz_cache_lambda:
@@ -801,24 +753,23 @@ class LabelEvaluatorStepFunction(ComponentResource):
             )
         )
 
-        # Base Lambda ARNs (indices 0-3) + batch bucket (4)
+        # Base Lambda ARNs (indices 0-2) + batch bucket (3)
         base_outputs = [
             list_all_receipts_lambda.arn,  # 0
             unified_evaluator_lambda.arn,  # 1
-            unified_pattern_builder_lambda.arn,  # 2
-            final_aggregate_lambda.arn,  # 3
-            self.batch_bucket.bucket,  # 4
+            final_aggregate_lambda.arn,  # 2
+            self.batch_bucket.bucket,  # 3
         ]
 
-        # Add EMR outputs if enabled (indices 5-9)
+        # Add EMR outputs if enabled (indices 4-8)
         if self.emr_enabled:
             base_outputs.extend(
                 [
-                    self.emr_application_id,  # 5
-                    self.emr_job_execution_role_arn,  # 6
-                    self.langsmith_export_bucket,  # 7
-                    self.analytics_output_bucket,  # 8
-                    self.spark_artifacts_bucket,  # 9
+                    self.emr_application_id,  # 4
+                    self.emr_job_execution_role_arn,  # 5
+                    self.langsmith_export_bucket,  # 6
+                    self.analytics_output_bucket,  # 7
+                    self.spark_artifacts_bucket,  # 8
                 ]
             )
 
@@ -833,7 +784,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
         def build_emr_config(args):
             """Build EmrConfig from resolved outputs."""
-            emr_base_idx = 5
+            emr_base_idx = 4
             return EmrConfig(
                 application_id=(
                     args[emr_base_idx] if self.emr_enabled else None
@@ -854,7 +805,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
 
         def build_viz_cache_config(args):
             """Build VizCacheConfig from resolved outputs."""
-            viz_base_idx = 10 if self.emr_enabled else 5
+            viz_base_idx = 9 if self.emr_enabled else 4
             if self.viz_cache_enabled and len(args) > viz_base_idx:
                 return VizCacheConfig(
                     cache_bucket=args[viz_base_idx],
@@ -873,11 +824,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                     lambdas=LambdaArns(
                         list_all_receipts=args[0],
                         unified_evaluator=args[1],
-                        unified_pattern_builder=args[2],
-                        final_aggregate=args[3],
+                        final_aggregate=args[2],
                     ),
                     runtime=RuntimeConfig(
-                        batch_bucket=args[4],
+                        batch_bucket=args[3],
                     ),
                     emr=build_emr_config(args),
                     viz_cache=build_viz_cache_config(args),
@@ -899,9 +849,6 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 "batch_bucket_name": self.batch_bucket.bucket,
                 "list_all_receipts_lambda_arn": list_all_receipts_lambda.arn,
                 "unified_evaluator_lambda_arn": unified_evaluator_lambda.arn,
-                "unified_pattern_builder_lambda_arn": (
-                    unified_pattern_builder_lambda.arn
-                ),
                 "final_aggregate_lambda_arn": final_aggregate_lambda.arn,
             }
         )

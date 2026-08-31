@@ -14,7 +14,6 @@ The Lambda can be invoked directly with:
 
 Architecture:
 - Container Lambda with all receipt_* packages
-- Reuses geometry and record-building utilities from combine_receipts
 - Uses enhanced compactor for cleanup of deleted receipts
 """
 
@@ -234,7 +233,8 @@ class MergeReceiptLambda(ComponentResource):
             lambda_config=lambda_config,
             platform="linux/arm64",
             opts=ResourceOptions(
-                parent=self, depends_on=[lambda_role, dynamodb_policy, s3_policy]
+                parent=self,
+                depends_on=[lambda_role, dynamodb_policy, s3_policy],
             ),
         )
 
