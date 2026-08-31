@@ -5,8 +5,9 @@ save — only the line poller did)."""
 from dataclasses import dataclass
 from unittest.mock import MagicMock
 
-from receipt_chroma.embedding.openai import mark_words_embedded
 from receipt_dynamo.constants import EmbeddingStatus
+
+from receipt_embeddings.openai import mark_words_embedded
 
 
 @dataclass

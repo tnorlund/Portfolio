@@ -143,6 +143,17 @@ def test_swift_section_expectations_match_the_live_python_assigner() -> None:
     )
 
 
+def test_section_and_structure_generators_are_byte_stable() -> None:
+    """Two back-to-back regenerations of the relocated formatting surface
+    must produce identical bytes (Round B behavior-identity gate).
+    """
+    import generate_receipt_structure_parity as structure
+    import generate_section_parity as sections
+
+    assert sections.generate() == sections.generate()
+    assert structure.generate() == structure.generate()
+
+
 def test_swift_golden_ocr_copy_is_byte_identical() -> None:
     """The Swift package's copy of the golden OCR words is not a fork."""
     generator = _generator()

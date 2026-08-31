@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from receipt_chroma.embedding.formatting import (
+from receipt_embeddings.formatting import (
     build_receipt_rows,
     detect_price_column,
     is_amount_text,

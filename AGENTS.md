@@ -7,8 +7,9 @@ this file only covers environment mechanics.
 ## Environment
 
 - Python 3.13 venv at `.venv/` (created by `.cursor/install.sh`) with the same editable
-  package set as CI's `repository-tests` job: `receipt_dynamo`, `receipt_dynamo_stream`,
-  `receipt_chroma`, `receipt_places`, `receipt_agent`, `receipt_upload`. Activate with
+  package set as CI's `repository-tests` job: `receipt_dynamo`, `receipt_embeddings`,
+  `receipt_dynamo_stream`, `receipt_chroma`, `receipt_places`, `receipt_agent`,
+  `receipt_upload`. Activate with
   `source .venv/bin/activate`. NOT installed (heavy extras — PySpark, torch, CoreML):
   `receipt_langsmith`, `receipt_layoutlm`, `receipt_logo`; run
   `pip install -e "<package>[test]"` yourself before working on those.

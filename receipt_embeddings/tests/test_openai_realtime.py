@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from receipt_chroma.embedding.openai.realtime import embed_texts
+from receipt_embeddings.openai.realtime import embed_texts
 
 
 class TestEmbedTexts:

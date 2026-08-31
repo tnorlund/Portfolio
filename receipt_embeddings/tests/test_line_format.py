@@ -2,7 +2,7 @@
 
 import pytest
 
-from receipt_chroma.embedding.formatting.line_format import (
+from receipt_embeddings.formatting.line_format import (
     format_line_context_embedding_input,
     format_row_embedding_input,
     format_visual_row,

@@ -5,7 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, mock_open, patch
 
-from receipt_chroma.embedding.openai.submit import (
+from receipt_embeddings.openai.submit import (
     add_batch_summary,
     create_batch_summary,
     submit_openai_batch,
