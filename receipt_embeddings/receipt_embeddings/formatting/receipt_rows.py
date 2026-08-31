@@ -7,12 +7,13 @@ from datetime import datetime, timezone
 from statistics import median
 from typing import Protocol
 
-from receipt_chroma.embedding.formatting.line_format import (
+from receipt_dynamo.entities import ReceiptRow
+
+from receipt_embeddings.formatting.line_format import (
     LineLike,
     get_primary_line_id,
     group_lines_into_visual_rows,
 )
-from receipt_dynamo.entities import ReceiptRow
 
 _AMOUNT_RE = re.compile(
     r"^(?:\()?[-+]?\$?(?:\d+|\d{1,3}(?:,\d{3})+)\.\d{2}-?(?:\))?$"
