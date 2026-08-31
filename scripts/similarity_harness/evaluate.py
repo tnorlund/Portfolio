@@ -271,6 +271,16 @@ def evaluate_fixture(
     missing_request_unit_samples = 0
     merchant_matches = 0
     merchant_total = 0
+    # Known-truth merchant names (from the golden-set manifest), when the
+    # fixture carries them. Cherry-picked from the grok entrant's
+    # merchant_truth_agreement metric.
+    merchant_truths = {
+        str(receipt["key"]): str(receipt["merchant_truth"])
+        for receipt in fixture["receipts"]
+        if receipt.get("merchant_truth")
+    }
+    merchant_truth_matches = 0
+    merchant_truth_total = 0
     tier_matches = 0
     expected_tiers: list[str] = []
     actual_tiers: list[str] = []
@@ -327,6 +337,10 @@ def evaluate_fixture(
             expected_tiers.append(expected_tier)
             actual_tiers.append(actual_tier)
             tier_matches += expected_tier == actual_tier
+            truth = merchant_truths.get(str(query["receipt_key"]))
+            if truth is not None:
+                merchant_truth_total += 1
+                merchant_truth_matches += actual.get("merchant_name") == truth
         elif family == SECTION_FAMILY:
             inputs = query["inputs"]
             actual = derive_section_vote(
@@ -414,6 +428,15 @@ def evaluate_fixture(
             "merchant_tier_decision_agreement_percent": round(
                 tier_agreement, 6
             ),
+            "merchant_truth_agreement_percent": (
+                round(
+                    _percentage(merchant_truth_matches, merchant_truth_total),
+                    6,
+                )
+                if merchant_truth_total
+                else None
+            ),
+            "merchant_truth_sample_count": merchant_truth_total,
             "merchant_tier_distribution": {
                 "actual_percent": actual_distribution,
                 "delta_percentage_points": distribution_delta,

@@ -341,7 +341,8 @@ def build_offline_bootstrap(
         image_id = str(receipt["image_id"])
         receipt_id = int(receipt["receipt_id"])
         key = receipt_key(image_id, receipt_id)
-        merchant_name = str(receipt.get("merchant_name") or "")
+        merchant_truth = str(receipt.get("merchant_name") or "")
+        merchant_name = merchant_truth
         if not merchant_name:
             # Repeated groups make the retrieval fixture exercise positive
             # decisions without pretending these are real merchant labels.
@@ -387,14 +388,15 @@ def build_offline_bootstrap(
                 },
             )
         )
-        receipt_rows.append(
-            {
-                "cohort": str(receipt.get("cohort") or "bootstrap"),
-                "image_id": image_id,
-                "key": key,
-                "receipt_id": receipt_id,
-            }
-        )
+        receipt_row = {
+            "cohort": str(receipt.get("cohort") or "bootstrap"),
+            "image_id": image_id,
+            "key": key,
+            "receipt_id": receipt_id,
+        }
+        if merchant_truth:
+            receipt_row["merchant_truth"] = merchant_truth
+        receipt_rows.append(receipt_row)
 
     corpus = line_items + word_items
     backend = FakeVectorIndex(corpus)
@@ -966,6 +968,9 @@ def _capture_receipt(
         "key": key,
         "receipt_id": receipt_id,
     }
+    merchant_truth = str(receipt.get("merchant_name") or "")
+    if merchant_truth:
+        receipt_row["merchant_truth"] = merchant_truth
     return queries, corpus, receipt_row
 
 

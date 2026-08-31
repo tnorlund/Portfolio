@@ -212,6 +212,38 @@ def test_chroma_self_parity_is_one() -> None:
 
 
 @pytest.mark.unit
+def test_merchant_truth_agreement_scores_known_truth_receipts() -> None:
+    fixture = load_fixture(GOLDEN_FIXTURE)
+    truth_count = sum(
+        1 for receipt in fixture["receipts"] if receipt.get("merchant_truth")
+    )
+    assert truth_count > 0
+
+    scorecard = evaluate_fixture(
+        fixture,
+        CapturedChromaReplay(fixture),
+        backend_name="chroma",
+    )
+    metrics = scorecard["metrics"]
+
+    assert metrics["merchant_truth_sample_count"] == truth_count
+    agreement = metrics["merchant_truth_agreement_percent"]
+    assert isinstance(agreement, float)
+    assert 0.0 <= agreement <= 100.0
+
+    stripped = copy.deepcopy(fixture)
+    for receipt in stripped["receipts"]:
+        receipt.pop("merchant_truth", None)
+    scorecard = evaluate_fixture(
+        stripped,
+        CapturedChromaReplay(stripped),
+        backend_name="chroma",
+    )
+    assert scorecard["metrics"]["merchant_truth_agreement_percent"] is None
+    assert scorecard["metrics"]["merchant_truth_sample_count"] == 0
+
+
+@pytest.mark.unit
 def test_section_vote_matches_cosine_weighted_runtime_semantics() -> None:
     neighbors = [
         ScoredItem(
