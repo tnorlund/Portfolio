@@ -43,12 +43,47 @@ After selection: the winning code recaptures fixtures ONCE as the canonical
 reference set (four capture runs at different times differ slightly; only the
 blessed set is committed).
 
-## Round B — receipt_embeddings relocation (on winner A)
+## Round B — receipt_embeddings relocation (on merged Round A winner)
 
-Relocate `receipt_chroma.embedding.{formatting,openai}` into
-`receipt_embeddings`; regenerate Swift parity fixtures in the same PR.
-Gates: swift-ci byte-diff green; zero `chromadb` imports in the package;
-relocated formatting tests pass; no behavior change (fixture-diff empty).
+Relocate `receipt_chroma.embedding.formatting` and
+`receipt_chroma.embedding.openai` into the `receipt_embeddings` package that
+Round A created, leaving **back-compat shims** at the old import paths so
+every existing consumer keeps working; regenerate the Swift parity fixtures
+in the same PR.
+
+Scope details:
+- Prefer `git mv` so history follows the files.
+- `receipt_chroma.embedding.formatting` / `.openai` become thin re-export
+  shims (`from receipt_embeddings.… import *` plus explicit `__all__`) — the
+  30+ cross-package importers must not change in this round.
+- Swift parity: `receipt_ocr_swift/Scripts/generate_section_parity.py` and
+  `generate_receipt_structure_parity.py` import the formatting surface; run
+  them against the relocated code and regenerate the parity fixtures in-PR
+  (CI byte-diffs fixtures regenerated from live Python — the anti-drift gate).
+
+**Rubric (pre-committed):**
+1. Relocation complete: both subpackages live in `receipt_embeddings`; zero
+   `chromadb` imports anywhere in `receipt_embeddings`.
+2. Shim completeness: every existing `receipt_chroma.embedding.{formatting,openai}`
+   import site resolves unchanged; the full `receipt_chroma` test suite stays
+   green; `receipt_upload` and `receipt_agent` suites unaffected.
+3. Behavior identity: a test proves old-path and new-path modules are the
+   same objects (or produce byte-identical outputs on fixed inputs); Swift
+   parity fixtures regenerated twice are byte-identical.
+4. **Documented reproducibility (hard requirement — Round A lesson)**: your
+   verify commands must pass verbatim from a fresh checkout; an undocumented
+   install/PYTHONPATH step is a failed rubric item, not a footnote.
+5. Lean diff: moves, shims, fixture regen, and tests — no opportunistic
+   refactors.
+6. Final commit is `BAKEOFF_DONE.md` (self-report per rubric item + verify
+   commands + not-verified-locally list). The judge's watcher keys on it —
+   never commit it early.
+
+Round-A-earned standing amendments (apply this round onward): graceful
+degradation is scored wherever code touches live systems; any test double
+must carry contract tests pinning it to the real dependency's validation
+semantics; "green in my environment" claims that don't reproduce from a
+fresh checkout score as failures.
 
 ## Round C+E1 — the engine (on winner B; judge creates dev indexes first)
 
