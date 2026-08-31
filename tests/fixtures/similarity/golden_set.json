@@ -1,0 +1,579 @@
+{
+  "dim": 16,
+  "n_receipts": 81,
+  "receipts": [
+    {
+      "image_id": "b50ba18b-7511-4a85-87cd-74aa5e147e10",
+      "local_only": false,
+      "merchant": "Amazon Fresh",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "165b9d15-9fa1-4a3c-a568-1b4e98170ab5",
+      "local_only": false,
+      "merchant": "Costco Wholesale",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "5cef2e7e-baad-4c29-9e5f-6a3d5ec20885",
+      "local_only": false,
+      "merchant": "Costco Wholesale",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "659623a5-5989-4e61-b153-9cda1331cc8e",
+      "local_only": false,
+      "merchant": "Gelson's Westlake Village",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "2360d36e-8211-46c4-9bc8-106766d80038",
+      "local_only": false,
+      "merchant": "In-N-Out Burger",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "6b4b3394-cb57-4ce6-9782-751563165946",
+      "local_only": false,
+      "merchant": "In-N-Out Burger",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "1f68d3a7-6835-4e4d-845c-bab6c4eb8280",
+      "local_only": false,
+      "merchant": "Roast & Rice Asian Fusion",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "abb331f5-5fdb-4868-9e63-331a385dc012",
+      "local_only": false,
+      "merchant": "Smith's",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "887079fa-bb3e-480a-8202-e759afe63f1a",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "c2bb8fff-fc28-4c2d-ab98-13300c3b4c2e",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "c2c5aadf-58e8-4276-95ae-0f46039946da",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "5dcf582e-cdfe-40f8-89f4-53b1cf3fc893",
+      "local_only": false,
+      "merchant": "TRADER JOE'S",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "6d820865-13fd-4b9f-b2e0-6b81e6a2fff2",
+      "local_only": false,
+      "merchant": "Target",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "7ca97b51-7369-4321-bd01-0211f2bf2557",
+      "local_only": false,
+      "merchant": "Target",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "1bfb07b7-aefd-4579-b721-df597471b96b",
+      "local_only": false,
+      "merchant": "The Home Depot",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "879b0fa6-c951-461b-a937-1bee74190b0a",
+      "local_only": false,
+      "merchant": "The Home Depot",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "ccfbeaca-6f40-4e9f-ba5e-6a30a643f0aa",
+      "local_only": false,
+      "merchant": "The Home Depot",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "291cfd80-5b29-428e-b650-5e4505c4cbd7",
+      "local_only": false,
+      "merchant": "The Stand - American Classics Redefined",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "84bf7d03-b76f-419a-8579-cdea86fbb374",
+      "local_only": false,
+      "merchant": "Trader Joe's",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "01024cab-3c61-4aac-b1ec-e9ce56947fe3",
+      "local_only": false,
+      "merchant": "Twin Peaks",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "6f2f1d08-af1e-4716-a26c-dea4c065ab62",
+      "local_only": false,
+      "merchant": "Vons",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "78e5a740-8f66-495c-b4d3-2e1c40498995",
+      "local_only": false,
+      "merchant": "Vons",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "758cbedf-f1dd-4466-98ec-faf86e82d422",
+      "local_only": false,
+      "merchant": "Wild Fork",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "9ed1103e-0b4e-4089-8fa4-6f29b6dc198b",
+      "local_only": false,
+      "merchant": "Wild Fork",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "fb588a3b-49ab-4ee7-accd-f1953b7378c3",
+      "local_only": false,
+      "merchant": "Wild Fork Meat & Seafood Market - Thousand Oaks",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "a7fef2ca-b84d-5405-a0f5-cbefe598a2dc",
+      "local_only": true,
+      "merchant": "Whole Foods Market",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "0951426f-b7f9-5435-8569-7319cf0db1f4",
+      "local_only": true,
+      "merchant": "The Coffee Press",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "cf8e3a6e-0947-4a3d-9bc0-7ce3894c9912",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "4d0bdfd5-4d5f-4c01-8f20-7f21090ab361",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "f1844265-90f3-4c5c-81a0-5944f1c6fe9a",
+      "local_only": false,
+      "merchant": "Trader Joe's",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "b4c2a475-d739-4a42-afbf-6b5e06443ba1",
+      "local_only": false,
+      "merchant": "Amazon Fresh",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "63243f38-61e2-4079-9c08-490825a7aff7",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 2,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "8d089201-9f33-42ec-bad8-a2482777c958",
+      "local_only": false,
+      "merchant": "Gelson's Westlake Village",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "49d8fde2-7ffd-4913-a9c0-6731e74fa147",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "9cf39343-8eb3-4fdb-bcea-843d6388b8d2",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "723f944b-6173-5bde-bb1b-0a0b17f0679d",
+      "local_only": true,
+      "merchant": "Regal Green Valley",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "a3740b65-b573-59ea-9d0e-ce8f66f7d729",
+      "local_only": true,
+      "merchant": "TRADER JOE'S",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "e5fbe965-386c-5017-a0aa-b90597571d45",
+      "local_only": true,
+      "merchant": "Tropical Smoothie Cafe",
+      "receipt_id": 1,
+      "source": "line_items_golden"
+    },
+    {
+      "image_id": "acd734d1-e4c9-5c64-9345-c12a05c92142",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "4ffcb72e-3f90-5318-9f3c-be59ea3cc723",
+      "local_only": false,
+      "merchant": "Trader Joe's",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "76fd78ad-8f3b-5e69-ab6b-73bb512ae1ac",
+      "local_only": false,
+      "merchant": "Costco Wholesale",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "b82b22fc-6258-5c4c-93ea-272d56d1a675",
+      "local_only": false,
+      "merchant": "Vons",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "4fc348e2-083d-5ce4-b3b2-afe85648fa09",
+      "local_only": false,
+      "merchant": "Target",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "8e5f93c6-4295-5538-a4c2-5fc942da01d9",
+      "local_only": false,
+      "merchant": "In-N-Out Burger",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "6463e1b8-42bf-53ce-8ea5-e494feb2c5df",
+      "local_only": false,
+      "merchant": "The Home Depot",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "55d4400d-bc77-577f-9655-452ba30520c2",
+      "local_only": false,
+      "merchant": "Amazon Fresh",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "79fa5935-aec3-568a-a89e-fea1c909fa80",
+      "local_only": false,
+      "merchant": "Gelson's Westlake Village",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "9268b1f0-6bbf-5261-9a60-8f3ebcaefb97",
+      "local_only": false,
+      "merchant": "Wild Fork",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "bc1cc59a-53b0-5098-8663-677fa7b9439a",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "b0953140-3449-5078-a288-ae5162f49798",
+      "local_only": false,
+      "merchant": "Trader Joe's",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "9eba7b9e-5d85-5c88-b0f1-beb807e19d36",
+      "local_only": false,
+      "merchant": "Costco Wholesale",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "263f96f5-ad23-5691-aedb-caf1fb771d81",
+      "local_only": false,
+      "merchant": "Vons",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "f75e96cc-b692-5005-9e0a-24bf62dbe41d",
+      "local_only": false,
+      "merchant": "Target",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "cce2549d-4b58-5ac3-bc25-9c4d4334026c",
+      "local_only": false,
+      "merchant": "In-N-Out Burger",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "97aa75b3-3438-5924-9cd2-238961b9d97b",
+      "local_only": false,
+      "merchant": "The Home Depot",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "9cfdeee6-a262-5c50-999f-b6c4b93d5f05",
+      "local_only": false,
+      "merchant": "Amazon Fresh",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "a87b14aa-9f75-5d28-8230-6002ae364077",
+      "local_only": false,
+      "merchant": "Gelson's Westlake Village",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "c47a9f0c-5c95-5b6e-8594-316d60e5ee16",
+      "local_only": false,
+      "merchant": "Wild Fork",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "dec3b131-3f7b-5709-9cd4-81802a253721",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "a4c8bdea-ce03-5d99-bf92-920336f1febf",
+      "local_only": false,
+      "merchant": "Trader Joe's",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "9680b049-77f4-5cb7-b071-6bd99b41ca3a",
+      "local_only": false,
+      "merchant": "Costco Wholesale",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "7c10ad61-d4f4-5888-831d-d8b1bd9437e5",
+      "local_only": false,
+      "merchant": "Vons",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "aa56395e-d55f-54c2-b03c-98a240bf538d",
+      "local_only": false,
+      "merchant": "Target",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "f6455ec5-e314-57e3-9c8f-0b9a5f0cf10f",
+      "local_only": false,
+      "merchant": "In-N-Out Burger",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "cc950888-dd22-52cc-a17d-d5f90c90be46",
+      "local_only": false,
+      "merchant": "The Home Depot",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "66aaebf0-5ea9-5b20-8298-8d680d997ec1",
+      "local_only": false,
+      "merchant": "Amazon Fresh",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "5c765759-eb46-5800-8d96-4a925521f702",
+      "local_only": false,
+      "merchant": "Gelson's Westlake Village",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "a058c7e4-0cf6-51d4-8142-af6e7e4b0c03",
+      "local_only": false,
+      "merchant": "Wild Fork",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "a39dc1ce-efc2-57e6-9f53-52e2bceb10e9",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "191d403d-24ab-57d1-9efc-3af8e3c78d08",
+      "local_only": false,
+      "merchant": "Trader Joe's",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "282bed64-9e10-5344-a7d9-96615e37bfee",
+      "local_only": false,
+      "merchant": "Costco Wholesale",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "6658a315-5e10-5ab5-9305-ccac58240245",
+      "local_only": false,
+      "merchant": "Vons",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "f3cf03f3-57be-5d3c-8ba9-d49938073ed8",
+      "local_only": false,
+      "merchant": "Target",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "c129bda6-cf67-51bd-ba8c-bbe2ac42121e",
+      "local_only": false,
+      "merchant": "In-N-Out Burger",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "6eeb99b3-6a67-537c-84cf-71b97aa552a1",
+      "local_only": false,
+      "merchant": "The Home Depot",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "31d3468f-830d-565f-9fa1-bf49c007bb04",
+      "local_only": false,
+      "merchant": "Amazon Fresh",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "91bec559-3a50-5210-80a4-3c6e058c2cc7",
+      "local_only": false,
+      "merchant": "Gelson's Westlake Village",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "bfc80c62-cae6-5704-b90f-577b89f739b4",
+      "local_only": false,
+      "merchant": "Wild Fork",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "20632ea9-d3a0-5407-b456-c79370ec5206",
+      "local_only": false,
+      "merchant": "Sprouts Farmers Market",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "f402dffe-7dbd-5a8a-97d8-59a994c2963f",
+      "local_only": false,
+      "merchant": "Trader Joe's",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    },
+    {
+      "image_id": "8578cb35-65d7-5df0-9911-0f57e89e313c",
+      "local_only": false,
+      "merchant": "Costco Wholesale",
+      "receipt_id": 1,
+      "source": "may26_batch"
+    }
+  ],
+  "schema_version": 1,
+  "seed": 26,
+  "sources": {
+    "line_items_golden": 38,
+    "may26_batch": 43
+  }
+}
