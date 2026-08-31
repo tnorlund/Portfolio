@@ -110,6 +110,15 @@ class FakeVectorIndex:
         if not 1 <= top_k <= _MAX_TOP_K:
             raise ValueError(f"top_k must be between 1 and {_MAX_TOP_K}")
 
+        # Same contract as build_chroma_where: filters are flat equality
+        # predicates; where-operator syntax never reaches a backend.
+        for filter_key in filters or ():
+            if filter_key.startswith("$"):
+                raise ValueError(
+                    f"filters are flat equality predicates; operator key "
+                    f"{filter_key!r} belongs to the adapter, not the caller"
+                )
+
         query = _as_vector(vector, name="query vector")
         if self._dimension is not None and query.size != self._dimension:
             raise ValueError(

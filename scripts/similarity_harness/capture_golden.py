@@ -52,7 +52,13 @@ from scripts.similarity_harness.common import (
     write_fixture,
 )
 
-from receipt_embeddings import ScoredItem, VectorItem  # noqa: E402
+from receipt_embeddings import build_chroma_where  # noqa: E402
+from receipt_embeddings import ensure_get_ids_within_quota  # noqa: E402
+from receipt_embeddings import (  # noqa: E402
+    ScoredItem,
+    VectorItem,
+    ensure_query_embeddings_within_quota,
+)
 from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
 
 DEFAULT_FIXTURE = (
@@ -614,9 +620,11 @@ class _LiveCaptureSource:
     def get(
         self, key: str, index: str
     ) -> tuple[list[float], dict[str, object]]:
+        ids_batch = [key]
+        ensure_get_ids_within_quota(ids_batch)
         result = self._chroma.get(
             collection_name=self._collection(index),
-            ids=[key],
+            ids=ids_batch,
             include=["embeddings", "metadatas"],
         )
         raw_ids = result.get("ids")
@@ -636,12 +644,19 @@ class _LiveCaptureSource:
         vector: Sequence[float],
         index: str,
         top_k: int,
+        filters: Mapping[str, Any] | None = None,
     ) -> tuple[list[ScoredItem], dict[str, list[float]], float]:
+        # The capture issues one embedding per call; the quota guard pins
+        # that against Chroma Cloud's 20-embedding NumQueryEmbeddings cap.
+        query_embeddings = [[float(value) for value in vector]]
+        ensure_query_embeddings_within_quota(query_embeddings)
+        where = build_chroma_where(filters)
         started = time.perf_counter()
         result = self._chroma.query(
             collection_name=self._collection(index),
-            query_embeddings=[[float(value) for value in vector]],
+            query_embeddings=query_embeddings,
             n_results=top_k,
+            where=where,
             include=["embeddings", "metadatas", "distances"],
         )
         latency_ms = (time.perf_counter() - started) * 1000.0
