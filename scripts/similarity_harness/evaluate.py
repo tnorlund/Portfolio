@@ -19,6 +19,19 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPOSITORY_ROOT))
 sys.path.insert(0, str(REPOSITORY_ROOT / "receipt_embeddings"))
 
+# With the repo root on sys.path, the OUTER receipt_embeddings/ directory
+# can already be cached as an empty namespace package that shadows the
+# real package one level down. Evict any such stub before importing.
+_cached = sys.modules.get("receipt_embeddings")
+if _cached is not None and getattr(_cached, "__file__", None) is None:
+    for _name in [
+        name
+        for name in list(sys.modules)
+        if name == "receipt_embeddings"
+        or name.startswith("receipt_embeddings.")
+    ]:
+        del sys.modules[_name]
+
 from scripts.similarity_harness.common import DEFAULT_RECALL_K  # noqa: E402
 from scripts.similarity_harness.common import (
     MERCHANT_FAMILY,
