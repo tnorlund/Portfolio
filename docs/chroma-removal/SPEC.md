@@ -31,6 +31,10 @@ Why this is smaller than it looks (verified empirically by the mapping agents):
   figures freeze (two start lying and need copy edits).
 - PR #1400 (compaction Lambda right-sizing) was never merged — the 10GB Lambda
   and both paid VPC interface endpoints are still live. This removal supersedes it.
+- End state: the AWS footprint becomes **fully serverless** — deleting the VPC
+  removes the NAT instance, the account's last always-on compute; every
+  remaining service bills per-request/per-job. (The Macs stay as deliberate
+  on-prem OCR/CI workers.)
 
 ## 2. Goals / non-goals
 
