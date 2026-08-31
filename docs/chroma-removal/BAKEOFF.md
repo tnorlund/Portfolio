@@ -85,19 +85,64 @@ must carry contract tests pinning it to the real dependency's validation
 semantics; "green in my environment" claims that don't reproduce from a
 fresh checkout score as failures.
 
-## Round C+E1 — the engine (on winner B; judge creates dev indexes first)
+## Round C+E1 — the engine (on merged Round B winner)
 
-Per the original engine card:
-1. Embedding-item entities (SPEC §3.1) + accessors in receipt_dynamo style.
-2. Embed-and-put writer: OpenAI realtime → BatchWriteItem, idempotent.
-3. Backfill script (golden receipts → dev), re-run writes nothing.
-4. Merchant resolution behind `VECTOR_BACKEND` (default chroma), retrieval via
-   VectorSearchClient only; thresholds/tier logic unchanged (SPEC §3.5a).
+**Judge-provisioned facts (do NOT create/alter/delete vector indexes — ever):**
+The dev table `ReceiptsTable-dc5be22` carries two live vector indexes, created
+2026-08-31 (spec §3.2 amendment: distinct vector attribute names per item type
+so each index sparsely selects its own items):
 
-Gates — phase 1 (all four, offline): recall@10 ≥ 0.9; merchant agreement
-≥ 98%; tier distribution ±5%; unit suite green.
-Phase 2 (top two, sequential on dev, judge-wiped): backfill → `--backend
-dynamo` → latency/cost recorded.
+| Index | Vector attr | Dims | Distance | Inline filter | Projection (INCLUDE) |
+|---|---|---|---|---|---|
+| `line-embeddings` | `line_vector` | 1536 | COSINE | `section_type` (S) | text, merchant_name, place_id, image_id, receipt_id, line_id, row_line_ids, section_type |
+| `word-embeddings` | `word_vector` | 1536 | COSINE | `label_status` (S) | text, merchant_name, image_id, receipt_id, line_id, word_id, label_status |
+
+Environment: boto3 ≥ 1.43.64 required for `SearchVectors`/`VectorIndexUpdates`
+(judge grading env has 1.43.84). Indexing is **asynchronous** after a write —
+never assume read-after-write searchability. `SearchVectors` returns ≤ 100
+results; filters are equality-only. Canonical similarity fixtures are S3-hosted
+(see `tests/fixtures/similarity/CANONICAL_POINTER.md`; sha256-verified loader).
+
+**Deliverables:**
+1. Embedding-item entities per SPEC §3.1 — `RECEIPT_LINE_EMBEDDING` /
+   `RECEIPT_WORD_EMBEDDING`: SK under the `RECEIPT#` prefix, `TYPE` set,
+   vector attrs named exactly `line_vector` / `word_vector`, **no GSI1–4
+   keys**, filter/projection attrs per the table above. Accessors in
+   receipt_dynamo house style.
+2. Embed-and-put writer in `receipt_embeddings`: OpenAI realtime →
+   BatchWriteItem; idempotent (re-run writes nothing); per-item failures
+   skip-and-report, never abort the batch.
+3. Backfill script: golden receipts (+ `--extra-receipts` / `--limit`,
+   Round A conventions) → dev embedding items; safe to re-run; ends with a
+   written/skipped report and a searchability wait (poll until a sampled
+   SearchVectors returns the new items, bounded, reported).
+4. `DynamoVectorSearchClient` implementing the Round A `VectorSearchClient`
+   protocol over `SearchVectors` — `evaluate.py --backend dynamo` becomes
+   real. Service quotas as constants with contract tests pinning the fake
+   (Round A standing amendment).
+5. Merchant resolution behind `VECTOR_BACKEND=dynamodb|chroma` (default
+   `chroma`): retrieval swapped via VectorSearchClient only; thresholds,
+   tier logic, and corroboration gating byte-for-byte unchanged (SPEC §3.5a).
+
+**Write discipline (hard rules):** dev table only; writes limited to embedding
+items (`…#EMBEDDING` SKs) for golden/extras receipts; never delete or modify
+non-embedding items; nothing touches prod; OpenAI spend capped by embedding
+only what the backfill scope needs (reuse stored Chroma vectors where your
+design can — an OpenAI-free backfill is a scored plus).
+
+**Gates — phase 1 (all four, offline/free):** unit suite green from a fresh
+checkout with documented steps; fake-backend parity vs the canonical fixtures:
+recall@10 ≥ 0.85 overall (the canonical set's own offline-replay ceiling is
+≈0.87 — corpus truncation), merchant agreement ≥ 98% vs fixture decisions;
+graceful-degradation tests (missing vector, throttle, absent receipt).
+**Phase 2 (judge-run, sequential, dev):** entrant's backfill (judge-capped
+scope) → `evaluate.py --backend dynamo` vs canonical fixtures → recall@10,
+merchant agreement, tier deltas, p50/p95 latency, cost estimate, idempotency
+proof (second backfill run writes nothing). Judge wipes embedding items
+between candidates.
+
+Live behavior weighs heaviest this round (Round A lesson): a clean skip-report
+run that misses a recall target beats a crash with perfect offline numbers.
 
 ## Later rounds
 
