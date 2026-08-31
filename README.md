@@ -191,7 +191,6 @@ Detailed documentation is available in the [`docs/`](docs/) directory:
 
 - [System Architecture](docs/architecture/overview.md)
 - [Testing Strategy](docs/development/TESTING_STRATEGY.md)
-- [ChromaDB Package and Deployed Flow](receipt_chroma/README.md)
 
 ## 🏗 Infrastructure
 

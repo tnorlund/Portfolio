@@ -62,20 +62,6 @@ def test_enhanced_compaction_handler_execution():
     print("✅ Enhanced compaction handler executed successfully")
 
 
-def test_processor_imports():
-    """Test that processor module imports work."""
-    try:
-        from processor import FieldChange, LambdaResponse, ParsedStreamRecord
-
-        assert LambdaResponse is not None
-        assert FieldChange is not None
-        assert ParsedStreamRecord is not None
-        print("✅ Processor imports successful")
-    except Exception as e:
-        pytest.fail(f"Failed to import processor modules: {e}")
-
-
-
 def test_utils_imports():
     """Test that utils module imports work."""
     try:

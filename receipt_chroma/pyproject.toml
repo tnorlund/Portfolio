@@ -9,7 +9,6 @@ authors = [
   { name="Tyler Norlund", email="tnorlund@icloud.com" },
 ]
 description = "A Python interface for accessing ChromaDB for receipt vector storage and retrieval"
-readme = "README.md"
 requires-python = ">=3.13,<3.14"
 classifiers = [
     "Programming Language :: Python :: 3",
