@@ -1,132 +1,196 @@
-# Round A rubric self-report
+# Round B rubric self-report — receipt_embeddings relocation
 
-Implementation commit: `001380380`
+Branch `bakeoff/B/claude`, base `7a2aadfb3` (merged Round A winner).
+Implementation commits: `cef986c35` (relocation + shims + deps),
+`85d4d8ffe` (identity/guard tests), `4eb8e544c` (CI install wiring).
 
-All implementation and verification ran offline. No `CHROMA_CLOUD_*`
-credentials were present, so no live capture was attempted. The committed
-fixture identifies itself as `canonical: false` and `backend:
-offline_bootstrap`. The live capture command is guarded to the `receipt_dev`
-database and `ReceiptsTable-dc5be22`, uses read APIs only, and is reserved for
-the winner's single post-selection canonical capture.
+All verification ran offline against the local checkout; nothing touched dev
+or prod tables, no vector index was created or altered, nothing was pushed.
 
-## 1. Fixture coverage
+## Environment for every verify command below
 
-Addressed by `tests/fixtures/similarity/golden.json` and schema enforcement in
-`scripts/similarity_harness/common.py`. The committed fixture contains 81
-receipts and 243 queries: 81 merchant-resolution queries, 81 word-neighbor
-queries, and 81 section-verifier queries. Every receipt has all three families.
-Word queries contain exactly 30 ranked IDs and distances. Merchant records
-contain neighbors, matched or not-found decisions, and phone/address/text tier
-outcomes. Section records contain predicted sections and agree, disagree, or
-abstain votes.
-
-Verify with:
+From a fresh checkout of this branch, at the repo root (macOS,
+Homebrew `python3.13`; the repo's CI Python minor):
 
 ```bash
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k committed_fixture_covers
+python3.13 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install -e receipt_dynamo
+.venv/bin/pip install --no-deps -e receipt_embeddings -e receipt_dynamo_stream \
+  -e receipt_chroma -e receipt_places -e receipt_agent -e receipt_upload
+.venv/bin/pip install numpy "openai>=2.8.1,<3.0.0" boto3 chromadb Pillow \
+  pillow-avif-plugin langsmith langgraph "langchain-core>=0.3.0" \
+  "langchain-openai>=0.2.0" httpx pydantic pydantic-settings structlog \
+  requests tenacity segno python-barcode
+.venv/bin/pip install pytest pytest-asyncio pytest-mock pytest-cov \
+  pytest-xdist pytest-timeout pytest-rerunfailures moto responses
 ```
 
-## 2. Metrics match the specification
+(Local siblings are installed `--no-deps` because they are unpublished —
+the same pattern the CI matrix jobs use.) The full sequence, including every
+command below, was executed verbatim against a fresh `git clone` of this
+branch before this file was committed.
 
-Addressed by `scripts/similarity_harness/evaluate.py`. Its deterministic JSON
-scorecard reports recall@k overall and by query family, merchant agreement,
-merchant tier-decision agreement, expected and actual tier distributions with
-percentage-point deltas, section-vote agreement, p50/p95 latency, read request
-units per query, and estimated USD per query. The scorecard also evaluates the
-0.90 recall, 98 percent merchant agreement, 5 percentage-point tier, and 100 ms
-DynamoDB p95 gates.
+## 1. Relocation complete; zero chromadb imports
 
-Verify with:
+`receipt_chroma.embedding.formatting` and `.openai` now live at
+`receipt_embeddings/receipt_embeddings/{formatting,openai}` (moved with
+`git mv`; git records 8 of the 10 files as renames at 99–100% similarity —
+the two `__init__.py` files pair with the shims left at the old paths).
+`receipt_embeddings` imports no chromadb anywhere, enforced permanently by
+an AST-scan test.
 
 ```bash
-.venv/bin/python scripts/similarity_harness/evaluate.py \
-  --backend fake --out fake-scorecard.json
+# exits 0 iff no chromadb import exists (Round A's quotas.py mentions
+# chromadb in comments; imports are what the rubric bans, and the AST test
+# below checks them structurally)
+test -z "$(grep -rnE '^[[:space:]]*(import chromadb|from chromadb)' receipt_embeddings/receipt_embeddings || true)"
+cd receipt_embeddings && ../.venv/bin/python -m pytest tests/test_no_chromadb.py -q
 ```
 
-## 3. Determinism
+## 2. Shim completeness; suites green
 
-Addressed by canonical JSON serialization, sorted receipt/corpus/query output,
-fixed vector and distance rounding, a self-checking content SHA-256, and the
-absence of timestamps from fixtures and scorecards. Semantic recapture
-comparison ignores latency and permits only the documented `1e-6` distance and
-`1e-7` vector tolerances. Offline bootstrap captures were byte-identical in the
-final gate run, and repeated fake evaluations were identical.
+The old paths are star-re-export shims with explicit `__all__`, plus
+`sys.modules` aliases so *submodule* imports
+(`receipt_chroma.embedding.formatting.line_format`, `.openai.realtime`, …)
+resolve to the identical relocated module objects. Zero importer files
+changed: every one of the 30+ cross-package import sites (infra lambdas,
+receipt_upload, receipt_agent, scripts, Swift parity generators,
+receipt_chroma internals, tests) still imports the old paths.
 
-Verify with:
+Suite results in the environment above (also reproduced with venvs built
+exactly like the `receipt_chroma` and `receipt_embeddings` CI matrix jobs):
+
+- `receipt_chroma`: **580 passed, 7 skipped**, 1 pre-existing failure
+  (`test_public_api.py::test_external_runtime_callers_use_public_facades`) —
+  it fails *identically on the merge-base* because Round A's
+  `scripts/similarity_harness/capture_golden.py:1031` imports a banned
+  internal module, and the latest `main` CI run's `Python (receipt_chroma)`
+  job is red for the same reason. Not caused by, and per the standing
+  don't-touch-prior-winners rule not fixed by, this round. The command
+  carries CI's own `--reruns 1 --reruns-delay 2` because
+  `test_delta_merging.py::test_merge_multiple_deltas` (untouched compaction
+  code) is load-sensitive — main.yml's comment documents exactly this
+  moto-S3/Chroma-lock flake class as the reason those flags exist; see §6.
+- `receipt_embeddings`: 54 passed (includes the CI-style
+  `--cov --cov-report=xml` run).
+- `receipt_upload`: green, with 4 files `--ignore`d that fail *collection on
+  the merge-base too* in a local checkout (they import the repo-root `infra`
+  package, which only resolves in the CI job's environment; that CI job is
+  green on `main`).
+- `receipt_agent`: 387 passed, 22 skipped.
 
 ```bash
-.venv/bin/python scripts/similarity_harness/capture_golden.py \
-  --offline-bootstrap --out first.json
-.venv/bin/python scripts/similarity_harness/capture_golden.py \
-  --offline-bootstrap --compare-to first.json --out second.json
-cmp first.json second.json
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k 'deterministic or pure_given_fixture'
+cd receipt_chroma && ../.venv/bin/python -m pytest tests -q -n auto --timeout=120 \
+  --reruns 1 --reruns-delay 2 \
+  --deselect tests/unit/test_public_api.py::test_external_runtime_callers_use_public_facades
+cd receipt_embeddings && ../.venv/bin/python -m pytest tests -q -n auto --timeout=120
+cd receipt_upload && ../.venv/bin/python -m pytest tests -q -n auto --timeout=180 \
+  -m "not end_to_end and not slow and not performance and not unused_in_production" \
+  --ignore=tests/test_line_item_boundary_extension.py \
+  --ignore=tests/test_line_item_reocr_trigger.py \
+  --ignore=tests/test_line_item_worker_consistency.py \
+  --ignore=tests/test_section_assignment_evaluation.py
+cd receipt_agent && ../.venv/bin/python -m pytest tests -q -n auto --timeout=120 \
+  -m "not end_to_end and not slow and not performance and not unused_in_production"
 ```
 
-## 4. Chroma self-parity sanity
+(Each `cd` is from the repo root.) Because the shims import
+`receipt_embeddings`, the CI matrix jobs that install `receipt_chroma`
+editable now install `receipt_embeddings` too, and `receipt_embeddings` got
+its own install case (its new `receipt-dynamo` dependency is unpublished, so
+the default `pip install -e pkg[test]` resolve would reach for PyPI and
+fail) — commit `4eb8e544c`, the minimum CI wiring for the relocation.
 
-Addressed by the offline `CapturedChromaReplay` backend. It replays the
-captured Chroma answer through the same `VectorSearchClient` path used by other
-backends. The final run produced neighbor recall@10 of 1.0 for every family,
-100 percent merchant agreement, 100 percent tier-decision agreement, and 100
-percent section-vote agreement. This is intentionally a fixture self-parity
-check and does not contact Chroma Cloud.
+## 3. Behavior identity
 
-Verify with:
+`receipt_chroma/tests/unit/test_embedding_relocation_shims.py` asserts, for
+all 8 submodules, `import_module(old) is import_module(new)` — the same
+module object, the strongest form of "old path is new path" — and that both
+shim packages re-export every `__all__` name as the identical object. The
+pre-existing `test_public_api.py` identity assertions
+(`build_receipt_rows is internal_build_receipt_rows`, …) also still pass
+through the shims.
+
+Swift parity: both generators were run against the relocated code **twice**;
+the two runs are byte-identical, and the output is byte-identical to the
+fixtures already committed on `main` (`git diff` clean) — the relocation
+provably changed no formatting behavior, so the fixture files carry no diff
+in this PR.
 
 ```bash
-.venv/bin/python scripts/similarity_harness/evaluate.py \
-  --backend chroma --out chroma-scorecard.json
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k chroma_self_parity
+cd receipt_chroma && ../.venv/bin/python -m pytest tests/unit/test_embedding_relocation_shims.py -q
+cd ..
+.venv/bin/python receipt_ocr_swift/Scripts/generate_section_parity.py
+.venv/bin/python receipt_ocr_swift/Scripts/generate_receipt_structure_parity.py
+cp receipt_ocr_swift/Tests/ReceiptOCRCoreTests/Fixtures/section_assignment_parity_expected.json /tmp/section.run1.json
+cp receipt_ocr_swift/Tests/ReceiptOCRCoreTests/Fixtures/receipt_structure_parity_expected.json /tmp/structure.run1.json
+.venv/bin/python receipt_ocr_swift/Scripts/generate_section_parity.py
+.venv/bin/python receipt_ocr_swift/Scripts/generate_receipt_structure_parity.py
+cmp receipt_ocr_swift/Tests/ReceiptOCRCoreTests/Fixtures/section_assignment_parity_expected.json /tmp/section.run1.json
+cmp receipt_ocr_swift/Tests/ReceiptOCRCoreTests/Fixtures/receipt_structure_parity_expected.json /tmp/structure.run1.json
+git diff --exit-code receipt_ocr_swift/Tests/ReceiptOCRCoreTests/Fixtures/
 ```
 
-## 5. Interface minimalism
-
-Addressed by `receipt_embeddings/vector_client.py`. The runtime-checkable
-`VectorSearchClient` protocol exposes only `search()` and `get_vector()`.
-`FakeVectorIndex` implements exact NumPy cosine nearest-neighbor search,
-equality filters, a stable key tie-break, defensive copies, and the 100-result
-limit. Fake, Chroma replay, and future DynamoDB clients are selected without
-changing evaluation consumer logic. Optional latency and request-unit
-telemetry is discovered by the harness and is not part of the consumer
-protocol.
-
-Verify with:
+swift-ci's existing Python parity leg was also reproduced with its exact
+venv recipe:
 
 ```bash
-.venv/bin/pytest receipt_embeddings/tests/test_fake_index.py -q
+python3 -m venv .venv-parity
+.venv-parity/bin/pip install --no-deps -e receipt_dynamo -e receipt_upload
+.venv-parity/bin/pip install boto3 Pillow
+.venv-parity/bin/python receipt_ocr_swift/Scripts/generate_line_items_parity.py --check
 ```
 
-## 6. Runtime
+## 4. Documented reproducibility
 
-Addressed by the offline runtime regression test and compact deterministic
-fixture. In the final gate run, two 81-receipt captures completed in 0.12 and
-0.14 seconds. Fake and Chroma-replay evaluations completed in 0.11 and 0.10
-seconds. The test enforces capture below 15 minutes and evaluation below one
-minute. Live timing remains to be recorded during the judge-authorized blessed
-capture because credentials were unavailable and a live run was forbidden.
+The environment block above plus every command in §§1–3 and §5 were run
+verbatim, in order, in a fresh `git clone` of this branch before this file
+was committed (single scripted pass, exit 0). No undocumented PYTHONPATH,
+no undocumented installs; the two documented deviations (one deselect, four
+ignores) are pre-existing on the merge-base and explained inline.
 
-Verify with:
+## 5. Lean diff
+
+17 files, +277/−64 (before this report): the 10 moved files (8 tracked as
+renames; intra-package import paths rewritten, plus the import re-grouping
+isort itself demands for the moved files in the receipt_embeddings CI lint
+context), 2 shim `__init__.py`s, 2 pyproject dependency declarations
+(`receipt_embeddings` ← openai + receipt-dynamo; `receipt_chroma` ←
+receipt-embeddings), the minimum main.yml install wiring, and 2 test files.
+No importer was touched, no refactors, no fixture churn. Lint verified with
+the exact CI commands:
 
 ```bash
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k runtime_limits
+.venv/bin/pip install "black==26.5.1" "isort==8.0.1"
+.venv/bin/black --check --line-length=79 receipt_embeddings
+.venv/bin/isort --check-only --profile=black --line-length=79 receipt_embeddings
+.venv/bin/black --check --line-length=79 receipt_chroma
+.venv/bin/isort --check-only --profile=black --line-length=79 receipt_chroma
 ```
 
-## Final offline gate
+## 6. Not verified locally
 
-The exact CI-style command passed 35 tests. Focused package coverage was 100
-percent, above the enforced 95 percent threshold. Black, isort, strict mypy,
-Python-version consistency, wheel construction, fixture comparison, and both
-offline evaluator backends also passed.
-
-```bash
-cd receipt_embeddings
-../.venv/bin/python -m pytest tests -n auto --timeout=120 --tb=short \
-  --maxfail=5 --reruns 1 --reruns-delay 2 \
-  -m 'not end_to_end and not slow and not performance and not unused_in_production' \
-  --cov --cov-report=xml
-```
+- **swift-ci on a GitHub runner** (swift build + `swift test` + its parity
+  regeneration step): this machine has no full Xcode toolchain. The
+  Python side of the gate — both generators against relocated code, twice,
+  byte-identical, matching committed fixtures — is verified above; no Swift
+  source or fixture byte changed, so the Swift tests see identical inputs.
+- **The `receipt_upload` CI job's `import infra` resolution** and the four
+  test files behind it (pre-existing local-environment gap, detailed in §2).
+- **The pre-existing `receipt_chroma` CI red on `main`** (capture_golden
+  facade violation) remains red here for the same single test; fixing it
+  means editing Round A's file, which the standing rules reserve.
+- **Live OpenAI/DynamoDB behavior** of the relocated `openai` subpackage:
+  exercised only through the existing unit suites (which mock both), same
+  as before the move.
+- **The `test_merge_multiple_deltas` flake is not deterministically
+  attributable**: single-shot runs of that one test intermittently fail
+  under load on this machine (`total_merged` 0 or 1 of 2; errors swallowed
+  into per-run results by design). It exercises compaction/delta code this
+  round does not touch, slows to 100% pass when a real logger is attached,
+  and CI's `--reruns 1` exists precisely for this flake class per the
+  main.yml comment. An interleaved 10×-each base-vs-branch sample under
+  identical quiet conditions was 10/10 green on both sides (the observed
+  failures coincided with heavy parallel pip installs on this machine), but
+  an exhaustive flake-rate equivalence proof was not attempted.
