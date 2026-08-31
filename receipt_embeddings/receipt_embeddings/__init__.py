@@ -1,5 +1,7 @@
 """Backend-neutral receipt embedding interfaces."""
 
+from receipt_embeddings.chroma_client import ChromaVectorSearchClient
+from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 from receipt_embeddings.quotas import (
     MAX_GET_LIMIT,
     MAX_QUERY_EMBEDDINGS_PER_CALL,
@@ -13,8 +15,20 @@ from receipt_embeddings.vector_client import (
     VectorItem,
     VectorSearchClient,
 )
+from receipt_embeddings.writer import (
+    EmbeddingWriteFailure,
+    EmbeddingWriter,
+    EmbeddingWriteReport,
+    EmbeddingWriteRequest,
+)
 
 __all__ = [
+    "ChromaVectorSearchClient",
+    "DynamoVectorSearchClient",
+    "EmbeddingWriteFailure",
+    "EmbeddingWriteReport",
+    "EmbeddingWriteRequest",
+    "EmbeddingWriter",
     "FilterValue",
     "MAX_GET_LIMIT",
     "MAX_QUERY_EMBEDDINGS_PER_CALL",
