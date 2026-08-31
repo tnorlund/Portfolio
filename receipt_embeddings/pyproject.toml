@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "receipt_embeddings"
+version = "0.1.0"
+description = "Backend-agnostic vector search interface for receipt embeddings"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [
+    {name = "Receipt Embeddings Contributors"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+# The core interface is dependency-free by design: consumers depend on the
+# protocol, not on any vector engine. chromadb must NEVER appear here.
+dependencies = []
+keywords = ["embeddings", "vector-search", "receipts"]
+
+[project.optional-dependencies]
+# numpy is needed only by receipt_embeddings.testing (the exact-NN fake).
+testing = [
+  "numpy>=1.26.0,<3.0.0",
+]
+test = [
+  "receipt_embeddings[testing]",
+  "pytest>=7.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["receipt_embeddings"]
+
+[tool.black]
+line-length = 79
+target-version = ["py313"]
+
+[tool.isort]
+profile = "black"
+line_length = 79
