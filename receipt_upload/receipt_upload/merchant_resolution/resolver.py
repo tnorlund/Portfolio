@@ -41,6 +41,11 @@ from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
+from receipt_upload.merchant_resolution.vector_retrieval import (
+    LINES_VECTOR_INDEX,
+    build_lines_search_client,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -1340,23 +1345,23 @@ class MerchantResolver:
                 return MerchantResult()
 
         try:
-            # Query ChromaDB by embedding similarity
-            results = lines_client.query(
-                collection_name="lines",
-                query_embeddings=[embedding],
-                n_results=20,
-                include=["metadatas", "distances", "documents"],
+            # Query the configured vector backend by embedding similarity.
+            # Retrieval (and only retrieval) goes through the
+            # VectorSearchClient seam; every threshold below is untouched.
+            search_client = build_lines_search_client(lines_client)
+            scored_items = search_client.search(
+                embedding, LINES_VECTOR_INDEX, 20
             )
 
-            if not results or not results.get("metadatas"):
+            if not scored_items:
                 return MerchantResult()
 
             # Process results and compute confidence with metadata comparison
             matches: List[SimilarityMatch] = []
-            metadatas = results.get("metadatas", [[]])[0]
-            distances = results.get("distances", [[]])[0]
 
-            for metadata, distance in zip(metadatas, distances):
+            for scored_item in scored_items:
+                metadata = scored_item.metadata
+                distance = scored_item.distance
                 # Skip current receipt
                 meta_image_id = metadata.get("image_id")
                 meta_receipt_id = metadata.get("receipt_id")
