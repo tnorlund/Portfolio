@@ -44,6 +44,7 @@ if [[ ! -x .venv/bin/python ]]; then
 fi
 source .venv/bin/activate
 pip install --upgrade --quiet pip wheel
+pip install -e receipt_embeddings
 pip install -e receipt_dynamo
 pip install --no-deps -e receipt_dynamo_stream
 pip install --no-deps -e receipt_chroma

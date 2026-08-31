@@ -2,6 +2,7 @@
   "pythonVersion": "3.13",
   "root": ".",
   "include": [
+    "receipt_embeddings",
     "receipt_dynamo",
     "receipt_upload",
     "infra",
