@@ -143,6 +143,10 @@ from receipt_dynamo.entities.receipt_letter import (  # noqa: F401
 )
 from receipt_dynamo.entities.receipt_line import ReceiptLine  # noqa: F401
 from receipt_dynamo.entities.receipt_line import item_to_receipt_line
+from receipt_dynamo.entities.receipt_line_embedding import (
+    ReceiptLineEmbedding,
+    item_to_receipt_line_embedding,
+)
 from receipt_dynamo.entities.receipt_line_item import (
     ReceiptLineItem,
     item_to_receipt_line_item,
@@ -203,6 +207,10 @@ from receipt_dynamo.entities.receipt_validation_summary import (  # noqa: F401
 )
 from receipt_dynamo.entities.receipt_word import ReceiptWord  # noqa: F401
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
+from receipt_dynamo.entities.receipt_word_embedding import (
+    ReceiptWordEmbedding,
+    item_to_receipt_word_embedding,
+)
 from receipt_dynamo.entities.receipt_word_label import (  # noqa: F401
     ReceiptWordLabel,
     item_to_receipt_word_label,
@@ -307,6 +315,7 @@ __all__ = [
     "ReceiptLabelAnalysis",
     "ReceiptLetter",
     "ReceiptLine",
+    "ReceiptLineEmbedding",
     "ReceiptLineItem",
     "ReceiptLineItemAnalysis",
     "ReceiptMetadata",
@@ -318,6 +327,7 @@ __all__ = [
     "ReceiptValidationResult",
     "ReceiptValidationSummary",
     "ReceiptWord",
+    "ReceiptWordEmbedding",
     "ReceiptWordLabel",
     "ReceiptWordLabelSpatialAnalysis",
     "SpatialRelationship",
@@ -360,6 +370,7 @@ __all__ = [
     "item_to_receipt_label_analysis",
     "item_to_receipt_letter",
     "item_to_receipt_line",
+    "item_to_receipt_line_embedding",
     "item_to_receipt_line_item",
     "item_to_receipt_line_item_analysis",
     "item_to_receipt_metadata",
@@ -372,6 +383,7 @@ __all__ = [
     "item_to_receipt_validation_result",
     "item_to_receipt_validation_summary",
     "item_to_receipt_word",
+    "item_to_receipt_word_embedding",
     "item_to_receipt_word_label",
     "item_to_receipt_word_label_spatial_analysis",
     "item_to_word",

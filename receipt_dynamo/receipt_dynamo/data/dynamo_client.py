@@ -41,6 +41,7 @@ from receipt_dynamo.data._receipt_field import _ReceiptField
 from receipt_dynamo.data._receipt_label_analysis import _ReceiptLabelAnalysis
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
 from receipt_dynamo.data._receipt_line import _ReceiptLine
+from receipt_dynamo.data._receipt_line_embedding import _ReceiptLineEmbedding
 from receipt_dynamo.data._receipt_line_item import _ReceiptLineItem
 from receipt_dynamo.data._receipt_line_item_analysis import (
     _ReceiptLineItemAnalysis,
@@ -63,6 +64,7 @@ from receipt_dynamo.data._receipt_validation_summary import (
     _ReceiptValidationSummary,
 )
 from receipt_dynamo.data._receipt_word import _ReceiptWord
+from receipt_dynamo.data._receipt_word_embedding import _ReceiptWordEmbedding
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 from receipt_dynamo.data._receipt_word_label_spatial_analysis import (
     _ReceiptWordLabelSpatialAnalysis,
@@ -125,9 +127,11 @@ class DynamoClient(
     _MerchantTruth,
     _MerchantTruthGate,
     _OCRJob,
+    _ReceiptLineEmbedding,
     _ReceiptLineItem,
     _ReceiptRow,
     _ReceiptSection,
+    _ReceiptWordEmbedding,
     _OCRRoutingDecision,
     _AIUsageMetric,
     _CompactionLock,
