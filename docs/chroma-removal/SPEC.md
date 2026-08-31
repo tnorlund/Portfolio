@@ -79,12 +79,13 @@ reads remain possible) and lets the existing delete/merge sweeps find them by SK
 prefix. TTL/delete of a receipt partition removes its vectors from the index
 automatically.
 
-### 3.2 Indexes (2 of the 5 allowed)
+### 3.2 Indexes (3 of the 5 allowed)
 
 | Index | Vector attr on | Distance | Partition key | Inline filters | Projection |
 |---|---|---|---|---|---|
 | `lines-vectors` | line embedding items | COSINE | **none** (corpus-wide queries dominate: merchant resolution, semantic search) | `section_type` (equality) | INCLUDE: text, merchant_name, place_id, image_id/receipt_id/line_id, section_type |
 | `words-vectors` | word embedding items | COSINE | **none** | `label_status` (equality) | INCLUDE: text, label fields (flattened), merchant_name, ids |
+| `label-evidence` | (word, label, verdict) evidence items — §3.7 | COSINE | **none** | `label`, `verdict` (equality) | INCLUDE: text, merchant_name, ids, validated_by/at, confidence |
 
 Constraints that shaped this (see research doc): distance function and INCLUDE
 projections are **immutable** after creation — get them right first; filters are
@@ -188,14 +189,50 @@ and result depth (300→100).
 Context: word labeling is LayoutLM first-guess + human/Claude confirmation via
 MCP tools. LayoutLM does not cover line items, so the items region has no model
 assist — and the Chroma tool that should have provided similarity evidence has
-been silently dead. The words vector index restores this properly:
+been silently dead. The core question the tool must answer, both polarities:
+*"what similar words have this label, or have been proven NOT to have it — and
+why?"*
 
-- New MCP tool (working name `similar_labeled_words`): given a word, SearchVectors
-  top-k with `label_status = validated`, post-filter by candidate label, return
-  scored evidence for/against — what `validate_word_similarity` always claimed
-  to do. Serves the confirm-labels workflow directly.
+**Semantics note (pre-filter vs post-filter).** Chroma's intended behavior
+filtered *inside* the ANN search: top-k among words carrying label X. A
+post-filter design (top-100 by `label_status`, check label arrays in code)
+approximates this but thins out for rare labels and especially for the sparse
+INVALID polarity — the nearest 100 validated words may carry little evidence
+about label X even when strong evidence exists further out.
+
+**Design: a dedicated label-evidence index (recommended).** One embedding item
+per **(word, label, verdict)** assertion:
+
+```
+SK      = …#WORD#{id}#LABEL#{label}#EVIDENCE
+label   = "GRAND_TOTAL"            ← inline filter (equality)
+verdict = "VALID" | "INVALID"      ← inline filter (equality)
+vector  = the word's embedding (duplicated per assertion)
+projection: word text, merchant_name, image/receipt/line/word ids,
+            validated_by, validated_at, confidence
+```
+
+`SearchVectors(label = X, verdict = VALID)` and `(label = X, verdict = INVALID)`
+each return exact pre-filtered nearest neighbors — full parity with Chroma's
+intended semantics using only equality filters, and the "why" arrives in the
+projection with provenance. Write hook is the existing validation event: the
+MCP confirm/reject action creates or flips the evidence item (and re-verdicts
+rewrite it). Costs: vector duplication per assertion (most words carry 0–1
+labels; ~20KB each — pennies), one PutItem per validation event, and a third
+index slot (lines, words-general, label-evidence — 3 of 5; words-general may
+prove redundant once evidence exists and can be dropped later, since index
+deletion is cheap while INCLUDE projections are not editable).
+
+Deliverables:
+- New MCP tool (working name `similar_labeled_words`): both polarities against
+  the evidence index, scored evidence with provenance — what
+  `validate_word_similarity` always claimed to do. Serves the confirm-labels
+  workflow directly.
+- Backfill: one evidence item per existing VALID/INVALID ReceiptWordLabel
+  (DynamoDB is already authoritative for these; ~pennies of write cost).
 - The ingest-side semantic PRODUCT_NAME proposer (already a live VECTOR
-  consumer) ports as-is and closes part of the PRODUCT_NAME-at-ingest gap.
+  consumer) ports to the evidence index (`verdict = VALID`) and closes part of
+  the PRODUCT_NAME-at-ingest gap.
 - Tier-1 auto-validation at ingest is rebuilt only after the MCP tool proves
   hit-rate in the human loop — measured adoption first, automation second.
 
