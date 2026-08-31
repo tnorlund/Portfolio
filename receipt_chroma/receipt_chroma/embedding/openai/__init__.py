@@ -1,34 +1,14 @@
-"""OpenAI batch API orchestration module.
+"""Back-compat shim: this package moved to ``receipt_embeddings.openai``.
 
-This module provides functionality for submitting, polling, and handling
-OpenAI batch embedding jobs.
+Existing ``receipt_chroma.embedding.openai`` imports (including its
+submodules) keep resolving to the relocated modules; new code should import
+from ``receipt_embeddings.openai`` (docs/chroma-removal/SPEC.md §6 F).
 """
 
-from receipt_chroma.embedding.openai.batch_status import (
-    handle_batch_status,
-    map_openai_to_dynamo_status,
-    mark_items_for_retry,
-    mark_words_embedded,
-    process_error_file,
-    process_partial_results,
-    should_retry_batch,
-)
-from receipt_chroma.embedding.openai.helpers import (
-    get_unique_receipt_and_image_ids,
-)
-from receipt_chroma.embedding.openai.poll import (
-    download_openai_batch_result,
-    get_openai_batch_status,
-    list_pending_line_embedding_batches,
-    list_pending_word_embedding_batches,
-)
-from receipt_chroma.embedding.openai.realtime import embed_texts
-from receipt_chroma.embedding.openai.submit import (
-    add_batch_summary,
-    create_batch_summary,
-    submit_openai_batch,
-    upload_to_openai,
-)
+import sys
+from importlib import import_module
+
+from receipt_embeddings.openai import *  # noqa: F401,F403
 
 __all__ = [
     "handle_batch_status",
@@ -49,3 +29,18 @@ __all__ = [
     "upload_to_openai",
     "embed_texts",
 ]
+
+# Alias the relocated submodules so imports of
+# ``receipt_chroma.embedding.openai.<submodule>`` resolve to the very same
+# module objects as ``receipt_embeddings.openai.<submodule>``.
+batch_status = import_module("receipt_embeddings.openai.batch_status")
+helpers = import_module("receipt_embeddings.openai.helpers")
+poll = import_module("receipt_embeddings.openai.poll")
+realtime = import_module("receipt_embeddings.openai.realtime")
+submit = import_module("receipt_embeddings.openai.submit")
+
+sys.modules[__name__ + ".batch_status"] = batch_status
+sys.modules[__name__ + ".helpers"] = helpers
+sys.modules[__name__ + ".poll"] = poll
+sys.modules[__name__ + ".realtime"] = realtime
+sys.modules[__name__ + ".submit"] = submit

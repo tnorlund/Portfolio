@@ -1,33 +1,14 @@
-"""Formatting utilities for embedding context.
+"""Back-compat shim: this package moved to ``receipt_embeddings.formatting``.
 
-This module provides functions for formatting line and word context
-for embedding operations, including row-based line embeddings.
+Existing ``receipt_chroma.embedding.formatting`` imports (including its
+submodules) keep resolving to the relocated modules; new code should import
+from ``receipt_embeddings.formatting`` (docs/chroma-removal/SPEC.md §6 F).
 """
 
-from receipt_chroma.embedding.formatting.line_format import (
-    LineLike,
-    format_line_context_embedding_input,
-    format_row_embedding_input,
-    format_visual_row,
-    get_primary_line_id,
-    get_row_embedding_inputs,
-    group_lines_into_visual_rows,
-    parse_prev_next_from_formatted,
-)
-from receipt_chroma.embedding.formatting.receipt_rows import (
-    GROUPING_VERSION,
-    LabelAmountPair,
-    PriceColumn,
-    WordLike,
-    build_receipt_rows,
-    detect_price_column,
-    is_amount_text,
-    pair_row_label_amount,
-)
-from receipt_chroma.embedding.formatting.word_format import (
-    format_word_context_embedding_input,
-    get_word_neighbors,
-)
+import sys
+from importlib import import_module
+
+from receipt_embeddings.formatting import *  # noqa: F401,F403
 
 __all__ = [
     # Line formatting (row-based)
@@ -53,3 +34,14 @@ __all__ = [
     "format_word_context_embedding_input",
     "get_word_neighbors",
 ]
+
+# Alias the relocated submodules so imports of
+# ``receipt_chroma.embedding.formatting.<submodule>`` resolve to the very
+# same module objects as ``receipt_embeddings.formatting.<submodule>``.
+line_format = import_module("receipt_embeddings.formatting.line_format")
+receipt_rows = import_module("receipt_embeddings.formatting.receipt_rows")
+word_format = import_module("receipt_embeddings.formatting.word_format")
+
+sys.modules[__name__ + ".line_format"] = line_format
+sys.modules[__name__ + ".receipt_rows"] = receipt_rows
+sys.modules[__name__ + ".word_format"] = word_format
