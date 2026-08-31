@@ -138,13 +138,201 @@ Namespace `portfolio`, per stack:
 **No GitHub secrets** — only AWS_* + PULUMI_ACCESS_TOKEN in .github/.
 
 Client construction: `receipt_chroma/data/chroma_client.py:474-529`
-(Cloud → Persistent → Ephemeral fallback). Quotas: `embedding/cloud_upsert.py:60`
-UPSERT_BATCH_SIZE=250, [tail pending from agent].
+(Cloud → Persistent → Ephemeral fallback).
 
-## 4. Consumer fringe: 14 Dockerfiles, ~13 Pulumi components
+Quota/retry constants:
+- `embedding/cloud_upsert.py:60` UPSERT_BATCH_SIZE=250 (:62 documents Cloud quotas); :92
+  _THROTTLE_ERRORS=(RateLimitError, QuotaError); :536-570 per-record retry on batch
+  rejection, :570 rate_limited_abort drop counter; :676 batch clamp max(1,min(batch,250))
+- `data/chroma_client.py:169-207` _retry_with_backoff, MAX_RETRIES=4, MAX_DELAY=8.0s
+  (applied :657-690, 739-744, 796, 832)
+- `compaction/dual_write.py:60-108` CloudConfig.from_env() — None when
+  CHROMA_CLOUD_ENABLED != "true"; ValueError if enabled without api_key/tenant/database
+- Compaction tuning defaults HEARTBEAT_INTERVAL=60s / LOCK_DURATION=16min
+  (`embedding_step_functions/.../compaction.py:50-53`); Pulumi overrides to 30s/3min on the
+  compaction Lambda (`chromadb_compaction/components/lambda_functions.py:178-180`)
 
-[pending from agent]
+## 4. Consumer fringe: 14 Dockerfiles / Pulumi components
 
-## 5. Deletion cross-references / exports
+14 Dockerfiles `COPY receipt_chroma/`, each paired with a source_paths entry; pairing
+asserted by `infra/components/test_docker_package_contexts.py:11-80` (CHROMA_IMAGE_CONTEXTS,
+14 entries) — never run in CI, won't block, but goes stale.
 
-[pending from agent]
+| Component | source_paths | Verdict |
+|---|---|---|
+| chromadb_compaction | components/docker_image.py:103 | delete |
+| embedding_step_functions | components/docker_image.py:104 | delete compact + normalize-batches lambdas |
+| combine_receipts | infrastructure.py:391 | edit, ~30 lines |
+| routes/word_similarity_cache_generator | infra.py:217 | **delete component** |
+| routes/address_similarity_cache_generator | infra.py:205 | **delete component** |
+| label_refresh_lambda | infrastructure.py:204 | **delete component** (aligns with pipeline-consolidation plan) |
+| merge_receipt_lambda | infrastructure.py:228 | edit args+IAM, drop Step 11 (lambdas/merge_receipt.py:414-447) |
+| resegment_receipt_lambda | infrastructure.py:202 | edit args+IAM, drop _embed_outputs (:1239-1281, callers :1650,:1874) |
+| upload_images | infra.py:636 | edit; loses ingest embedding (container_ocr/handler/handler.py:444-473, ocr_processor.py:1387-1417) — **replaced by DDB vector write in new design** |
+| mcp_server_lambda | infrastructure.py:272 | cheapest — 4/60 tools gated at :75-82, already degrades (:6743-6749) |
+| qa_agent_step_functions | infrastructure.py:319 | **product decision** — guts semantic search (new design: port to SearchVectors) |
+| fix_place_lambda | infrastructure.py:217 | edit; Tier-3 fallback only (lambdas/fix_place.py:150-169), dev already defaults `tiered` |
+| label_evaluator — unified | infrastructure.py:477 | already Optional=None (:77-78), already degrades (:1024-1027) |
+| label_evaluator — pattern_builder | infrastructure.py:522 | **dead weight: no chroma env vars, no chroma calls, 10240MB Lambda (:498)** |
+
+False positive: `routes/label_validation_viz_cache/` — "chroma" is a LangSmith trace-name
+label only (lambdas/cache_generator.py:158, :341-342, :461-467). No Pulumi change; its
+Tier-1 dashboard panel will silently render zeros post-removal.
+
+Reclaimable ephemeral_storage=10240 (all chroma-justified): word_similarity infra.py:224,
+address_similarity infra.py:212, merge_receipt infrastructure.py:211, resegment
+infrastructure.py:211, label_evaluator infrastructure.py:441, qa_agent infrastructure.py:295;
+upload_images at 4096 (infra.py:571).
+
+### CI touchpoints — .github/workflows/main.yml
+
+No job builds a chroma image; CodeBuild is triggered by `pulumi up` in deploy (:392-399,
+the only Pulumi deploy, prod only).
+- :42-49 py_compile over all infra/**/*.py
+- :62-68 pytest infra/tests/test_compaction_lock_config.py — only CI step exercising infra tests
+- :79 python-tests matrix entry receipt_chroma
+- :107-113 that leg's install — note bare `chromadb` install **ignores the <1.6.0 pin** in receipt_chroma/pyproject.toml:26
+- :136,:140 receipt_upload leg installs receipt_chroma editable + chromadb
+- :151,:155 receipt_agent leg, same
+- :184-186 lint: pip install -e receipt_chroma[lint], black/isort --check over receipt_chroma/
+- :191 --reruns 1 justified in-comment by "ChromaDB lock contention under pytest-xdist"
+- :194-198 cd receipt_chroma && pytest tests -n auto
+- :230,:234 repository-tests installs --no-deps -e receipt_chroma + chromadb
+- :263-265 pytest tests scripts/test_*.py — collects tests/test_receipt_mcp_lazy_chroma.py
+  (stubs the module :59-78) and scripts/test_qa_{agent,enhanced,marquee_questions}.py
+  (real `from receipt_chroma import ChromaClient`)
+- :377-433 deploy job: the only Pulumi deploy (pulumi up --yes on tnorlund/portfolio/prod) —
+  what triggers every chroma CodeBuild image build
+- **Not covered by any job**: infra/chromadb_compaction/tests/, lambdas/tests/,
+  infra/components/test_docker_package_contexts.py (despite infra/pyproject.toml:131)
+
+Delete-with-no-other-edits → **red**: lambda-syntax, python-tests
+(receipt_chroma|receipt_upload|receipt_agent), repository-tests, deploy.
+**Green**: python-tests (receipt_dynamo|receipt_dynamo_stream|receipt_places|receipt_langsmith),
+typescript-tests, browser-tests, swift-ci.yml. **Skip**: smoke-tests (needs deploy).
+
+No chroma GitHub secrets/variables — only AWS_* (:371-372,:457-458) and
+PULUMI_ACCESS_TOKEN (:384,:399,:433,:459).
+
+## 5. Cross-references / exports that break on deletion
+
+### A. Import-time — fails `pulumi preview` before any resource diffing
+
+1. `infra/chromadb_buckets.py` — module-scope import by `__main__.py:132`,
+   `routes/word_similarity_cache_generator/infra.py:10`,
+   `routes/address_similarity_cache_generator/infra.py:11`; calls pulumi.export at import (:27-28).
+2. `routes/address_similarity_cache_generator/infra.py:288-290` self-instantiates at import,
+   exports cache_bucket_name (:296) → consumed by `routes/address_similarity/infra.py:12`,
+   reached via `api_gateway.py:7`. Deleting the file breaks GET /address_similarity at
+   preview time, not deploy time.
+3. `embedding_step_functions/infrastructure.py:16-18` imports ChromaDBBuckets from
+   chromadb_compaction at module scope — fallback branch :71-78 unreachable since
+   `__main__.py:208` always passes buckets. Remove import in the same change.
+4. Four `require_secret("CHROMA_CLOUD_API_KEY")` calls: fix_place_lambda/infrastructure.py:47,
+   label_refresh_lambda/infrastructure.py:40, mcp_server_lambda/infrastructure.py:42,
+   qa_agent_step_functions/infrastructure.py:42. **Strip before removing the config key**,
+   or both stacks fail preview.
+5. `embedding_step_functions/unified_embedding/handlers/__init__.py:8-15` eagerly imports
+   compaction → `from chromadb.errors import NotFoundError` (compaction.py:18) + module-level
+   DynamoClient (:47) — forces chromadb into every container Lambda's cold start.
+6. Module-scope `os.environ["CHROMADB_BUCKET"]` (KeyError at import):
+   routes/word_similarity_cache_generator/lambdas/index.py:34,
+   routes/address_similarity_cache_generator/lambdas/index.py:21.
+
+### B. Required-kwarg TypeErrors — exactly four
+
+| Component | Params | Caller |
+|---|---|---|
+| merge_receipt_lambda/infrastructure.py:69-70,:260-261 | bucket name + arn | __main__.py:1264-1265 |
+| resegment_receipt_lambda/infrastructure.py:42-43,:244-245 | bucket name + arn | __main__.py:1279-1280 |
+| routes/word_similarity_cache_generator/infra.py:36,:303 | bucket name | __main__.py:296-297 |
+| routes/address_similarity_cache_generator/infra.py:38,:276 | bucket name | self (infra.py:288) |
+
+Safe to just drop the kwarg (already Optional=None):
+label_evaluator_step_functions/infrastructure.py:77-78 (caller __main__.py:1393-1394),
+upload_images/infra.py:64 (caller __main__.py:346).
+
+### C. Stack exports — __main__.py:1086-1110
+
+`chromadb_bucket_name` (exported TWICE — also chromadb_buckets.py:27),
+`chromadb_lines_queue_url`, `chromadb_words_queue_url`, `stream_processor_function_arn`,
+`enhanced_compaction_function_arn`, `embedding_chromadb_bucket_name`,
+`embedding_chromadb_bucket_arn`. Verify no `pulumi stack output` consumer (Swift worker
+config loader, scripts) reads these before dropping.
+
+### D. Must relocate, not delete — inside chromadb_compaction, tagged Project=ChromaDB, zero chroma code
+
+- `chromadb-{stack}-summary-updater` (components/lambda_functions.py:440-477) + ESM :480-488
+- `chromadb-{stack}-line-item-updater` (:612-670) + ESM :723-734 + two inline RolePolicies
+  (trigger-reocr invoke, OCR-queue send, :675-721)
+- summary_queue/summary_dlq (sqs_queues.py:222,:206); line_item_queue/line_item_dlq (:259,:245)
+- upload_images consumes summary_queue_url/arn — __main__.py:352-353 →
+  upload_images/infra.py:399,480-481,587. Its post-re-OCR summary recompute breaks despite
+  having nothing to do with vectors.
+
+### E. Runtime signature breaks (Python, not Pulumi)
+
+- `create_qa_graph(chroma_client=...)` required — receipt_agent/agents/question_answering/graph.py:854-857
+- `create_receipt_place_finder_graph(chroma_client=...)` required, docstring claims
+  None-tolerant — agents/place_finder/graph.py:404-417 (verify)
+- `MerchantResolvingEmbeddingProcessor(chromadb_bucket=...)` required —
+  receipt_upload/merchant_resolution/embedding_processor.py:1439
+- merge_receipt.py:139-140 returns an error **dict** (not exception) when CHROMADB_BUCKET
+  unset — delete the guard, not just the env var, or every merge refuses
+- resegment_receipt.py:1806 — os.environ["CHROMADB_BUCKET"] inside handler, KeyError at invoke
+- upload_images/container_ocr/handler/handler.py:446 — bracket access, KeyError; :380 uses .get(...,"")
+
+### F. The receipt_chroma split problem
+
+`receipt_chroma.embedding.openai` and `.embedding.formatting` contain **no chromadb imports**
+(only embedding/delta/producer.py:18,97,108 does). Four surviving embedding container
+Lambdas + submit_openai.py:23-30 + submit_words_openai.py:19-22 import OpenAI-batch and
+text-layout helpers from there — those images keep chromadb purely to reach non-vector code
+until the two subpackages are relocated. `embedding/formatting/__init__.py:32-55` is the
+surface the Swift port mirrors (SectionAssignment.swift:5), so **Swift parity fixtures are
+downstream of that move** (anti-drift CI gate applies).
+
+### G. Dead code, free to delete
+
+- infra/chromadb_compaction/lambdas/processor/ — only importer is uncollected test_lambda_imports.py:68
+- embedding_step_functions/unified_embedding/utils/dual_chroma_client.py — zero importers
+  (live DualChromaClient is unrelated: receipt_agent/clients/factory.py:125)
+- embedding_step_functions/simple_lambdas/{prepare_chunk_groups,prepare_merge_pairs,split_into_chunks,create_chunk_groups}/ —
+  not wired to any Pulumi resource (absent from zip_configs); all four read CHROMADB_BUCKET
+- infra/components/test_docker_package_contexts.py — never run in CI; goes stale the moment
+  any Dockerfile drops COPY receipt_chroma/
+- embedding_step_functions/.../tests/test_close_chromadb_client.py + standalone_test_close_client.py
+- embedding_step_functions/components/monitoring.py:269-345,:464-540 — superseded _create_*
+  widget builders, never called
+- infra/chromadb_compaction/tests/conftest.py.bak — stray backup
+- Orphaned metric/trace emitters once compaction goes: unified_embedding/utils/metrics.py:362-365
+  (track_chromadb_operation), utils/tracing.py:309-312,372-382, utils/circuit_breaker.py:381-416
+  (chromadb_circuit_breaker, protect_chromadb_call); dashboard widget monitoring.py:653-658
+- Docs: infra/fix_chromadb_buckets.md, infra/README_CHROMADB_METRICS.md,
+  infra/VALIDATION_PIPELINE_CHROMADB_MIGRATION.md, infra/chromadb_compaction/{README.md,
+  README_stream_processor.md,QUEUE_STRATEGY.md,get_chromadb_metrics.sh},
+  infra/embedding_step_functions/{MEMORY_OPTIMIZATION.md,MIGRATION_COMPLETE_SUMMARY.md,
+  WORD_INGEST_MIGRATION_GUIDE.md,WORKFLOW_STEPS_REFERENCE.md}, receipt_chroma/README.md
+  (linked from README.md:194); prose refs CLAUDE.md:422,633, AGENTS.md:11,
+  pull_request_template.md:21
+
+⚠️ **Sequencing note that outranks the list**: `aliases=[self._legacy_container_lambda_urn(name)]`
+at `embedding_step_functions/components/lambda_functions.py:459,465-476` — deleting a
+container Lambda must drop its legacy-URN alias in the same change, or Pulumi may attempt
+adopt-then-delete on a resource that no longer exists.
+
+## Agent's closing summary (teardown rules)
+
+- **Pure delete**: infra/chromadb_compaction/ (minus two updaters + two queues),
+  infra/chromadb_buckets.py, routes/word_similarity_cache_generator/,
+  routes/address_similarity_cache_generator/, label_refresh_lambda/,
+  embedding-compact + embedding-normalize-batches Lambdas.
+- **Relocate first** or non-vector production breaks: summary-updater, line-item-updater,
+  summary_queue, line_item_queue; prune-not-delete CHROMADB_RELEVANT_FIELDS
+  (receipt_dynamo_stream/change_detection/detector.py:9-36).
+- **Keep the NAT** until upload_images is un-VPC'd (__main__.py:340).
+- **Order-of-operations**: strip the four require_secret calls BEFORE removing the Pulumi
+  config key; relocate receipt_chroma.embedding.{openai,formatting} BEFORE dropping
+  receipt_chroma from the four surviving embedding images.
+- **Corrections**: PR #1400 unmerged (compaction Lambda still 10240MB/10240MB, paid
+  interface endpoints live); no ECS Chroma service exists.
