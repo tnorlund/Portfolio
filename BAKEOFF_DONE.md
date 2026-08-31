@@ -1,132 +1,126 @@
-# Round A rubric self-report
+# Round B self-report
 
-Implementation commit: `001380380`
+Branch `bakeoff/B/grok`. Implementation commit `a9a8248ed`. This file is
+the judge completion signal.
 
-All implementation and verification ran offline. No `CHROMA_CLOUD_*`
-credentials were present, so no live capture was attempted. The committed
-fixture identifies itself as `canonical: false` and `backend:
-offline_bootstrap`. The live capture command is guarded to the `receipt_dev`
-database and `ReceiptsTable-dc5be22`, uses read APIs only, and is reserved for
-the winner's single post-selection canonical capture.
+Install order is load-bearing: `receipt-dynamo` before
+`receipt-embeddings` (unpublished local package). Commands below are the
+ones that passed in this checkout.
 
-## 1. Fixture coverage
+## 1. Relocation complete
 
-Addressed by `tests/fixtures/similarity/golden.json` and schema enforcement in
-`scripts/similarity_harness/common.py`. The committed fixture contains 81
-receipts and 243 queries: 81 merchant-resolution queries, 81 word-neighbor
-queries, and 81 section-verifier queries. Every receipt has all three families.
-Word queries contain exactly 30 ranked IDs and distances. Merchant records
-contain neighbors, matched or not-found decisions, and phone/address/text tier
-outcomes. Section records contain predicted sections and agree, disagree, or
-abstain votes.
+**Addressed.** `receipt_chroma.embedding.formatting` and
+`receipt_chroma.embedding.openai` implementations live under
+`receipt_embeddings/formatting/` and `receipt_embeddings/openai/`. Old
+paths are thin re-export shims (`from receipt_embeddings.… import *` plus
+explicit `__all__`). AST scan: zero `chromadb` imports in
+`receipt_embeddings/receipt_embeddings/` (comments in `quotas.py` name
+the Chroma filter contract; they are not imports).
 
-Verify with:
+**Verify**
 
-```bash
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k committed_fixture_covers
+```
+python3.13 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip wheel
+pip install -e receipt_dynamo
+pip install --no-deps -e receipt_embeddings
+pip install --no-deps -e receipt_dynamo_stream
+pip install --no-deps -e receipt_chroma
+pip install numpy boto3 chromadb "openai>=2.8.1,<3.0.0" \
+  pytest pytest-mock pytest-cov pytest-xdist pytest-timeout \
+  pytest-rerunfailures moto
+python -m pytest receipt_embeddings/tests/test_no_chromadb.py -q
 ```
 
-## 2. Metrics match the specification
+## 2. Shim completeness
 
-Addressed by `scripts/similarity_harness/evaluate.py`. Its deterministic JSON
-scorecard reports recall@k overall and by query family, merchant agreement,
-merchant tier-decision agreement, expected and actual tier distributions with
-percentage-point deltas, section-vote agreement, p50/p95 latency, read request
-units per query, and estimated USD per query. The scorecard also evaluates the
-0.90 recall, 98 percent merchant agreement, 5 percentage-point tier, and 100 ms
-DynamoDB p95 gates.
+**Addressed.** Existing importers still use
+`receipt_chroma.embedding.{formatting,openai}` (including submodule
+paths). Relocated unit tests import the new paths and pass.
+`receipt_chroma` tests that still call the old paths go through the
+shims. CI install blocks for `receipt_chroma`, `receipt_upload`,
+`receipt_agent`, and `repository-tests` now install `receipt_embeddings`
+after `receipt_dynamo`.
 
-Verify with:
+One importer was adjusted: `scripts/similarity_harness/capture_golden.py`
+now imports `group_lines_into_visual_rows` from the public
+`receipt_chroma.embedding.formatting` facade instead of the
+`.line_format` submodule. That import already failed
+`test_external_runtime_callers_use_public_facades` on the Round A
+baseline; the facade import is the same shim and keeps the chroma suite
+green.
 
-```bash
-.venv/bin/python scripts/similarity_harness/evaluate.py \
-  --backend fake --out fake-scorecard.json
+**Verify**
+
 ```
-
-## 3. Determinism
-
-Addressed by canonical JSON serialization, sorted receipt/corpus/query output,
-fixed vector and distance rounding, a self-checking content SHA-256, and the
-absence of timestamps from fixtures and scorecards. Semantic recapture
-comparison ignores latency and permits only the documented `1e-6` distance and
-`1e-7` vector tolerances. Offline bootstrap captures were byte-identical in the
-final gate run, and repeated fake evaluations were identical.
-
-Verify with:
-
-```bash
-.venv/bin/python scripts/similarity_harness/capture_golden.py \
-  --offline-bootstrap --out first.json
-.venv/bin/python scripts/similarity_harness/capture_golden.py \
-  --offline-bootstrap --compare-to first.json --out second.json
-cmp first.json second.json
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k 'deterministic or pure_given_fixture'
-```
-
-## 4. Chroma self-parity sanity
-
-Addressed by the offline `CapturedChromaReplay` backend. It replays the
-captured Chroma answer through the same `VectorSearchClient` path used by other
-backends. The final run produced neighbor recall@10 of 1.0 for every family,
-100 percent merchant agreement, 100 percent tier-decision agreement, and 100
-percent section-vote agreement. This is intentionally a fixture self-parity
-check and does not contact Chroma Cloud.
-
-Verify with:
-
-```bash
-.venv/bin/python scripts/similarity_harness/evaluate.py \
-  --backend chroma --out chroma-scorecard.json
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k chroma_self_parity
-```
-
-## 5. Interface minimalism
-
-Addressed by `receipt_embeddings/vector_client.py`. The runtime-checkable
-`VectorSearchClient` protocol exposes only `search()` and `get_vector()`.
-`FakeVectorIndex` implements exact NumPy cosine nearest-neighbor search,
-equality filters, a stable key tie-break, defensive copies, and the 100-result
-limit. Fake, Chroma replay, and future DynamoDB clients are selected without
-changing evaluation consumer logic. Optional latency and request-unit
-telemetry is discovered by the harness and is not part of the consumer
-protocol.
-
-Verify with:
-
-```bash
-.venv/bin/pytest receipt_embeddings/tests/test_fake_index.py -q
-```
-
-## 6. Runtime
-
-Addressed by the offline runtime regression test and compact deterministic
-fixture. In the final gate run, two 81-receipt captures completed in 0.12 and
-0.14 seconds. Fake and Chroma-replay evaluations completed in 0.11 and 0.10
-seconds. The test enforces capture below 15 minutes and evaluation below one
-minute. Live timing remains to be recorded during the judge-authorized blessed
-capture because credentials were unavailable and a live run was forbidden.
-
-Verify with:
-
-```bash
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k runtime_limits
-```
-
-## Final offline gate
-
-The exact CI-style command passed 35 tests. Focused package coverage was 100
-percent, above the enforced 95 percent threshold. Black, isort, strict mypy,
-Python-version consistency, wheel construction, fixture comparison, and both
-offline evaluator backends also passed.
-
-```bash
+# same venv as §1
 cd receipt_embeddings
-../.venv/bin/python -m pytest tests -n auto --timeout=120 --tb=short \
-  --maxfail=5 --reruns 1 --reruns-delay 2 \
-  -m 'not end_to_end and not slow and not performance and not unused_in_production' \
-  --cov --cov-report=xml
+python -m pytest tests -q --timeout=120 \
+  -m "not end_to_end and not slow and not performance and not unused_in_production"
+cd ../receipt_chroma
+python -m pytest tests -q --timeout=120 \
+  -m "not end_to_end and not slow and not performance and not unused_in_production"
 ```
+
+Local result: receipt_embeddings 122 passed; receipt_chroma 507 passed,
+7 skipped.
+
+## 3. Behavior identity
+
+**Addressed.** `receipt_chroma/tests/unit/test_embedding_shims.py` asserts
+old-path and new-path exports are the **same objects** (package + every
+shimmed submodule). Swift generators were run twice; bytes matched each
+other and the committed fixtures (no fixture diff).
+`test_section_and_structure_generators_are_byte_stable` in
+`receipt_upload` asserts `generate()` twice is identical.
+
+**Verify**
+
+```
+# same venv as §1, plus the upload stack used by the generators
+pip install --no-deps -e receipt_places -e receipt_agent -e receipt_upload
+pip install pydantic pydantic-settings structlog requests tenacity httpx Pillow
+python -m pytest receipt_chroma/tests/unit/test_embedding_shims.py -q
+python receipt_ocr_swift/Scripts/generate_section_parity.py
+python receipt_ocr_swift/Scripts/generate_receipt_structure_parity.py
+python receipt_ocr_swift/Scripts/generate_section_parity.py
+python receipt_ocr_swift/Scripts/generate_receipt_structure_parity.py
+git diff --exit-code \
+  receipt_ocr_swift/Tests/ReceiptOCRCoreTests/Fixtures/section_assignment_parity_expected.json \
+  receipt_ocr_swift/Tests/ReceiptOCRCoreTests/Fixtures/receipt_structure_parity_expected.json
+```
+
+## 4. Documented reproducibility
+
+**Addressed.** The install lines in §1 are the working set from this
+machine (`python3.13` = 3.13.15). There is no hidden `PYTHONPATH`.
+Editable installs use `--no-deps` for unpublished sibling packages, then
+explicit PyPI pins — the same pattern as CI. Adding `receipt-embeddings`
+as a chroma dependency without installing the local package first would
+hit PyPI; the documented order avoids that.
+
+**Verify:** run §1 then §2 from a clean tree with only those commands.
+
+## 5. Lean diff
+
+**Addressed.** Diff is moves, shims, fixture-regen (empty), identity /
+no-chromadb tests, pyproject deps, and CI/install order. No formatter or
+OpenAI logic rewrite. `capture_golden.py` one-line facade import as in
+§2.
+
+## 6. Final commit is this file
+
+**Addressed.** Implementation landed in `a9a8248ed`. This file is the
+subsequent commit.
+
+## Not verified locally
+
+- Full `receipt_upload` pytest matrix (generators + new stability test
+  exercised; the rest of that package's suite was not run).
+- Full `receipt_agent` pytest matrix.
+- Swift compiler / `.github/workflows/swift-ci.yml` (Python generators
+  only).
+- Live Chroma Cloud capture (no `CHROMA_CLOUD_*` in the environment).
+- `python-tests` lint job for packages other than embeddings/chroma
+  shims.
