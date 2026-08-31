@@ -201,6 +201,20 @@ def test_main_reports_written_and_skipped(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
+def test_main_absent_receipt_skips_and_reports(monkeypatch, tmp_path):
+    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+    reports = {
+        f"{IMAGE_ID}#00001": EntityNotFoundError("receipt does not exist"),
+    }
+    exit_code, report = _run_main(monkeypatch, tmp_path, reports)
+
+    assert exit_code == 0
+    assert report["receipts_processed"] == 0
+    assert report["receipt_skip_reasons"] == {"receipt_not_found": 1}
+
+
+@pytest.mark.unit
 def test_main_rerun_shape_writes_nothing(monkeypatch, tmp_path):
     """An all-existing run reports zero writes (idempotency evidence)."""
 
