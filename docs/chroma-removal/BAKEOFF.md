@@ -174,3 +174,14 @@ Shared with all entrants equally; discovered during the judge's smoke test:
   this Mac; expect in-region Lambda latency to be far lower.
 - Index creation required the SearchSchema attribute in `AttributeDefinitions`
   (judge-handled; informational).
+
+## Round C gate calibration (judge ruling, 2026-08-31)
+
+The offline fake-replay **merchant agreement ceiling against the canonical
+fixtures is 91.86%** — verified identical on pre-Round-C main, so it is
+fixture/fake-determined (near-tie place_id flips on ~1e-6-distance duplicate
+chain headers, plus one casing artifact; merchant-IDENTITY agreement is
+98.8%). Phase-1 merchant gate is therefore: **≥ 91% on fake replay AND no
+regression vs main's replay of the same fixtures.** The ≥ 98% bar applies to
+the phase-2 populated-index dynamo evaluation. Recall@10 ≥ 0.85 unchanged.
+Do not modify Round A fixtures or the fake to chase the offline number.
