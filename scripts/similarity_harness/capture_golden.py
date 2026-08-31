@@ -151,9 +151,40 @@ def _default_receipts() -> list[dict[str, Any]]:
     )
 
 
-def _load_manifest(path: Path | None) -> list[dict[str, Any]]:
+def _load_extra_receipts(path: Path) -> list[dict[str, Any]]:
+    """Load a top-up list of ``{image_id, receipt_id}`` objects."""
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError("extra receipts must be a JSON array")
+    receipts: list[dict[str, Any]] = []
+    for position, value in enumerate(payload):
+        if not isinstance(value, dict):
+            raise ValueError(f"extra receipt {position} must be an object")
+        image_id = str(value.get("image_id") or "")
+        receipt_id = value.get("receipt_id")
+        if not image_id or not isinstance(receipt_id, int):
+            raise ValueError(
+                f"extra receipt {position} needs image_id and receipt_id"
+            )
+        receipts.append(
+            {
+                "cohort": str(value.get("cohort") or "extra"),
+                "image_id": image_id,
+                "merchant_name": str(
+                    value.get("merchant_name") or value.get("merchant") or ""
+                ),
+                "receipt_id": receipt_id,
+            }
+        )
+    return receipts
+
+
+def _load_manifest(
+    path: Path | None, *, extra_path: Path | None = None
+) -> list[dict[str, Any]]:
     if path is None:
-        return _default_receipts()
+        return _merge_receipt_sets(_default_receipts(), extra_path)
     payload = json.loads(path.read_text(encoding="utf-8"))
     values = payload.get("receipts") if isinstance(payload, dict) else payload
     if not isinstance(values, list):
@@ -184,12 +215,28 @@ def _load_manifest(path: Path | None) -> list[dict[str, Any]]:
     ]
     if len(keys) != len(set(keys)):
         raise ValueError("manifest contains duplicate receipts")
-    if len(receipts) < MIN_RECEIPTS:
-        raise ValueError(
-            f"manifest contains {len(receipts)} receipts; need {MIN_RECEIPTS}"
-        )
+    return _merge_receipt_sets(receipts, extra_path)
+
+
+def _merge_receipt_sets(
+    receipts: Sequence[Mapping[str, Any]], extra_path: Path | None
+) -> list[dict[str, Any]]:
+    """Top up a receipt set, dropping extras that duplicate existing keys."""
+
+    merged = [dict(value) for value in receipts]
+    if extra_path is not None:
+        seen = {
+            receipt_key(str(value["image_id"]), int(value["receipt_id"]))
+            for value in merged
+        }
+        for value in _load_extra_receipts(extra_path):
+            key = receipt_key(str(value["image_id"]), int(value["receipt_id"]))
+            if key in seen:
+                continue
+            merged.append(value)
+            seen.add(key)
     return sorted(
-        receipts,
+        merged,
         key=lambda value: receipt_key(
             str(value["image_id"]), int(value["receipt_id"])
         ),
@@ -1116,6 +1163,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--distance-tolerance", type=float, default=1e-6)
     parser.add_argument("--vector-tolerance", type=float, default=1e-7)
+    parser.add_argument(
+        "--min-receipts",
+        type=int,
+        default=MIN_RECEIPTS,
+        help="fail if fewer receipts survive the run (rubric floor: 40)",
+    )
+    parser.add_argument(
+        "--extra-receipts",
+        type=Path,
+        help="JSON file of [{image_id, receipt_id}] to top up the golden "
+        "set (e.g. the May-26 known-merchant batch)",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="cap the number of receipts processed (judge cost control)",
+    )
+    parser.add_argument(
+        "--allow-under-floor",
+        action="store_true",
+        help="permit a capture smaller than --min-receipts (required to "
+        "pass --limit below the floor)",
+    )
     return parser
 
 
@@ -1123,7 +1193,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.canonical and args.offline_bootstrap:
         raise SystemExit("an offline bootstrap can never be canonical")
-    receipts = _load_manifest(args.manifest)
+    if args.min_receipts < 0:
+        raise SystemExit("--min-receipts must not be negative")
+    if args.limit is not None and args.limit < 1:
+        raise SystemExit("--limit must be at least 1")
+    if (
+        args.limit is not None
+        and args.limit < args.min_receipts
+        and not args.allow_under_floor
+    ):
+        raise SystemExit(
+            f"--limit {args.limit} is below --min-receipts "
+            f"{args.min_receipts}; pass --allow-under-floor to accept a "
+            "smaller capture"
+        )
+    receipts = _load_manifest(args.manifest, extra_path=args.extra_receipts)
+    if args.limit is not None:
+        receipts = receipts[: args.limit]
     skips: list[dict[str, str]] = []
     if args.offline_bootstrap:
         fixture = build_offline_bootstrap(receipts)
@@ -1139,10 +1225,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     _print_skip_report(skips)
     captured = len(fixture["receipts"])
-    if captured < MIN_RECEIPTS:
+    if captured < args.min_receipts and not args.allow_under_floor:
         print(
             f"ERROR: captured {captured} receipts, below the "
-            f"{MIN_RECEIPTS}-receipt floor "
+            f"{args.min_receipts}-receipt floor "
             f"({len(skips)} skipped); no fixture written",
             file=sys.stderr,
         )
