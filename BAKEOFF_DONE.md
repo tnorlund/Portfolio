@@ -1,7 +1,8 @@
 # Round C+E1 self-report
 
-Branch `bakeoff/C/grok`. Implementation commit `7b0af66f5`. This file is
-the judge completion signal.
+Branch `bakeoff/C/grok`. Implementation commits `7b0af66f5` (engine) and
+`e125a3ff4` (shared-table key scoping). This file is the judge
+completion signal.
 
 No vector indexes were created, altered, or deleted. No prod table writes.
 Live backfill was not executed here (no AWS in this environment).
@@ -19,6 +20,7 @@ Live backfill was not executed here (no AWS in this environment).
 - filter/projection attrs: `section_type` (lines), `label_status` (words),
   plus INCLUDE fields from the judge table
 - accessors: get / list-from-receipt / idempotent batch-put
+  (`written_keys` / `skipped_keys` are this-call only)
 
 **Verify**
 
@@ -39,8 +41,9 @@ python -m pytest tests/unit/test_receipt_line_embedding.py \
 
 **Addressed.** `receipt_embeddings/writer.py`: OpenAI realtime via
 `embed_texts_checked` (rejects non-1536 dim) then
-`put_embedding_items`. Existing keys are skipped. A failed item is
-recorded and the rest of the batch continues.
+`put_embedding_items`. Existing keys are skipped and named on
+`skipped_keys`. A failed item is recorded and the rest of the batch
+continues. Reports cover this call's keys only.
 
 **Verify**
 
@@ -59,7 +62,12 @@ python -m pytest tests/test_writer.py -q
   `ReceiptsTable-dc5be22`
 - `--dry-run` does not construct a Dynamo client
 - live path: embed → idempotent put → bounded SearchVectors wait
+  (one this-run sample per index type, each probed with its own vector)
 - writes embedding items only (`#EMBEDDING` SKs)
+- **shared-table smoke-test:** written/skipped/searchable are keyed to
+  *this run's* SKs (`written_keys` / `skipped_keys`). Extra SearchVectors
+  neighbors from other entrants are ignored. No table-wide embedding
+  counts. Graded runs are sequential on a wiped table.
 
 **Verify**
 
@@ -74,7 +82,8 @@ Judge phase 2 (not run here):
 
 ```
 python scripts/backfill_embedding_items.py --limit 2 --allow-under-floor
-# re-run should report written=0 for the same receipts
+# re-run: written=0 and skipped_keys == the first run's written_keys
+# (do not compare against table-wide embedding counts)
 ```
 
 ## 4. DynamoVectorSearchClient / evaluate.py --backend dynamo
@@ -135,7 +144,7 @@ python scripts/similarity_harness/evaluate.py --backend fake --out /tmp/scorecar
 Local result: **recall@10 = 1.0**, **merchant agreement = 100%** (ceilings
 on the small bootstrap set; canonical S3 set's fake ceiling is ≈0.87).
 
-Full embeddings suite: **70 passed**.
+Full embeddings suite: **74 passed**.
 
 ```
 cd receipt_embeddings
@@ -149,7 +158,8 @@ python -m pytest tests -q --timeout=120 \
   credentials / no canonical `golden.json` downloaded).
 - Live backfill onto `ReceiptsTable-dc5be22` (would require OpenAI or
   Chroma vectors; indexes left untouched).
-- Idempotent second live backfill (`written=0`).
+- Idempotent second live backfill (`written=0`,
+  `skipped_keys` matching the first run's `written_keys`).
 - Full `receipt_upload` pytest matrix (VECTOR_BACKEND unit tests covered
   via importlib in `receipt_embeddings`).
 - Canonical fixture download
