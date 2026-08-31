@@ -101,6 +101,7 @@ class DockerImageComponent(ComponentResource):
             source_paths=[
                 "receipt_dynamo",
                 "receipt_agent",
+                "receipt_embeddings",
                 "receipt_chroma",
                 "receipt_places",
             ],  # Include packages used by embedding lambdas

@@ -44,8 +44,8 @@ if [[ ! -x .venv/bin/python ]]; then
 fi
 source .venv/bin/activate
 pip install --upgrade --quiet pip wheel
-pip install -e receipt_embeddings
 pip install -e receipt_dynamo
+pip install --no-deps -e receipt_embeddings
 pip install --no-deps -e receipt_dynamo_stream
 pip install --no-deps -e receipt_chroma
 pip install --no-deps -e receipt_places
@@ -58,7 +58,7 @@ pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow \
     segno python-barcode numpy
 pip install pytest pytest-asyncio pytest-mock pytest-cov pytest-xdist \
     pytest-timeout pytest-rerunfailures moto responses
-pip install black isort
+pip install black==26.5.1 isort==8.0.1
 
 # --- Node 22 (matches CI) + Next.js app dependencies ---
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"

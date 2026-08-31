@@ -62,6 +62,17 @@ if [[ "$PACKAGE" != "receipt_dynamo" ]]; then
     fi
 fi
 
+# receipt_chroma and its consumers import the backend-neutral package through
+# compatibility shims. Install the local checkout before pip resolves the
+# unpublished sibling dependency.
+if [[ "$PACKAGE" != "receipt_dynamo" && "$PACKAGE" != "receipt_embeddings" ]]; then
+    if pip list | grep -q "receipt-embeddings"; then
+        print_info "receipt_embeddings already installed"
+    else
+        pip install --no-deps -e receipt_embeddings
+    fi
+fi
+
 # Install target package
 PACKAGE_NAME=$(echo "$PACKAGE" | tr '_' '-')
 if pip list | grep -q "${PACKAGE_NAME}"; then

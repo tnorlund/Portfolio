@@ -55,6 +55,11 @@ CHROMA_IMAGE_CONTEXTS = (
         0,
     ),
     (
+        "infra/resegment_receipt_lambda/infrastructure.py",
+        "infra/resegment_receipt_lambda/lambdas/Dockerfile",
+        0,
+    ),
+    (
         "infra/label_refresh_lambda/infrastructure.py",
         "infra/label_refresh_lambda/lambdas/Dockerfile",
         0,
@@ -141,8 +146,8 @@ def test_chroma_dockerfiles_match_codebuild_source_paths() -> None:
         assert source_packages == copied_packages, dockerfile
 
 
-def test_only_compaction_installs_dynamo_stream() -> None:
-    """The stream parser stays out of images that only consume ChromaDB."""
+def test_only_stream_consumers_install_dynamo_stream() -> None:
+    """The stream parser stays out of images that do not consume streams."""
     stream_contexts = {
         dockerfile
         for _, dockerfile, _ in CHROMA_IMAGE_CONTEXTS
@@ -150,7 +155,10 @@ def test_only_compaction_installs_dynamo_stream() -> None:
         in _dockerfile_package_copies(REPOSITORY_ROOT / dockerfile)
     }
 
-    assert stream_contexts == {"infra/chromadb_compaction/lambdas/Dockerfile"}
+    assert stream_contexts == {
+        "infra/chromadb_compaction/lambdas/Dockerfile",
+        "infra/resegment_receipt_lambda/lambdas/Dockerfile",
+    }
 
 
 def test_all_chroma_package_dockerfiles_are_covered() -> None:

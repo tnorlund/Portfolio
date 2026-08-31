@@ -150,13 +150,11 @@ def test_external_callers_use_public_client_import() -> None:
 def test_external_runtime_callers_use_public_facades() -> None:
     """Runtime code must not bypass the supported package facades."""
     repository_root = Path(__file__).resolve().parents[3]
+    # Round B makes every formatting/OpenAI submodule a supported old-path
+    # compatibility shim, so those modules are intentionally absent here.
     internal_modules = {
         "receipt_chroma.compaction.dual_write",
         "receipt_chroma.compaction.models",
-        "receipt_chroma.embedding.formatting.line_format",
-        "receipt_chroma.embedding.formatting.receipt_rows",
-        "receipt_chroma.embedding.formatting.word_format",
-        "receipt_chroma.embedding.openai.realtime",
         "receipt_chroma.embedding.orchestration",
         "receipt_chroma.embedding.utils.normalize",
         "receipt_chroma.s3.helpers",

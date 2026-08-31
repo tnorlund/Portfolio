@@ -214,6 +214,7 @@ class FixPlaceLambda(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_agent",
+                "receipt_embeddings",
                 "receipt_chroma",
                 "receipt_dynamo",
                 "receipt_places",
