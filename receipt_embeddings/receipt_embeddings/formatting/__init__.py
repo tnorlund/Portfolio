@@ -4,7 +4,7 @@ This module provides functions for formatting line and word context
 for embedding operations, including row-based line embeddings.
 """
 
-from receipt_chroma.embedding.formatting.line_format import (
+from receipt_embeddings.formatting.line_format import (
     LineLike,
     format_line_context_embedding_input,
     format_row_embedding_input,
@@ -14,7 +14,7 @@ from receipt_chroma.embedding.formatting.line_format import (
     group_lines_into_visual_rows,
     parse_prev_next_from_formatted,
 )
-from receipt_chroma.embedding.formatting.receipt_rows import (
+from receipt_embeddings.formatting.receipt_rows import (
     GROUPING_VERSION,
     LabelAmountPair,
     PriceColumn,
@@ -24,7 +24,7 @@ from receipt_chroma.embedding.formatting.receipt_rows import (
     is_amount_text,
     pair_row_label_amount,
 )
-from receipt_chroma.embedding.formatting.word_format import (
+from receipt_embeddings.formatting.word_format import (
     format_word_context_embedding_input,
     get_word_neighbors,
 )
