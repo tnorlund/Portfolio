@@ -151,9 +151,53 @@ Summary of dispositions:
 
 MCP note: fix `scripts/receipt_mcp_server.py` and the **vendored fork**
 `infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py` (92 diverged
-lines) in the same PR. `validate_word_similarity` is retired (announce in tool
-list); its honest replacement, if wanted, is a new consensus tool on the words
-index.
+lines) in the same PR. `validate_word_similarity` is retired and **replaced by
+a working consensus tool on the words index** (see §3.7) — this is a planned
+deliverable, not an option: the human labeling loop (LayoutLM proposes →
+user + Claude-with-MCP confirms) is its direct consumer, and today's tool
+silently returns nothing.
+
+### 3.5a Merchant resolution: no math changes
+
+Same embedding model, and DynamoDB COSINE returns the same quantity Chroma
+returns today — cosine distance = 1 − cosine similarity, range 0–2, lower is
+closer. All thresholds, the phone/address/text tier logic, and corroboration
+gating carry over verbatim; only the retrieval call changes. Residual risk is
+ANN-vs-ANN: both engines are approximate, so neighbors at a threshold boundary
+can differ — this is exactly what the §8 golden-set gate screens.
+
+### 3.5b Capability parity: Chroma ops → DynamoDB
+
+| Chroma capability in use | DynamoDB equivalent | Notes |
+|---|---|---|
+| `.query()` top-k, ranked by distance | `SearchVectors`, ranked by score | same cosine-distance semantics |
+| `where` equality / `$and` of equalities | inline filter attributes | filter set is **declared at index creation** — choose deliberately; changing it means a new index |
+| `where` ranges / `$in` / negation | not supported (equality only) | post-filter client-side within top-100; current usage is negligible |
+| `where_document $contains` substring | not part of vector search | moves to DynamoDB text query — these were substring searches, not similarity searches (see read-path verdicts) |
+| `.get(ids=…, include=embeddings)` | GetItem/BatchGetItem on embedding items | improvement: no second datastore round-trip |
+| `.get(where=…)` metadata scans | Query/GSI | the DYNAMO-verdict consumers |
+| `n_results` up to 300 (Cloud cap) | **100 max per call** | QA search trims/pages; all other callers ≤ 60 |
+| `.count()` | Query count | trivial |
+
+Net: every search/filter/sort actually used survives; the losses are the
+substring operator (relocated, not lost), rich filter operators (post-filter),
+and result depth (300→100).
+
+### 3.7 Word-label consensus rebuild (resolved — this is in scope)
+
+Context: word labeling is LayoutLM first-guess + human/Claude confirmation via
+MCP tools. LayoutLM does not cover line items, so the items region has no model
+assist — and the Chroma tool that should have provided similarity evidence has
+been silently dead. The words vector index restores this properly:
+
+- New MCP tool (working name `similar_labeled_words`): given a word, SearchVectors
+  top-k with `label_status = validated`, post-filter by candidate label, return
+  scored evidence for/against — what `validate_word_similarity` always claimed
+  to do. Serves the confirm-labels workflow directly.
+- The ingest-side semantic PRODUCT_NAME proposer (already a live VECTOR
+  consumer) ports as-is and closes part of the PRODUCT_NAME-at-ingest gap.
+- Tier-1 auto-validation at ingest is rebuilt only after the MCP tool proves
+  hit-rate in the human loop — measured adoption first, automation second.
 
 ### 3.6 Backfill
 
@@ -256,11 +300,36 @@ Ordering rules from the infra inventory are load-bearing; violating them fails
    final snapshot copied to glacier-tier archive first as a courtesy backstop).
 7. Close the Chroma Cloud account.
 
-**Phase 5 — cleanup**
+**Phase 5 — cleanup + /receipt page rewrite**
 - pyproject/CI/test edits (drop matrix leg, 4 chromadb installs, lint leg;
   rewrite the `--reruns` justification comment), pull-request template,
-  ~35 doc updates/deletions, frontend copy + types + `ChromaLogo` + regenerate
-  the two misleading figures' caches, `EmbeddingStatus` GSI1 decision (§7).
+  ~35 doc updates/deletions, `EmbeddingStatus` GSI1 decision (§7).
+- **/receipt page rewrite** (concurrent with Phase 2–3, not after): see §5a.
+
+### 5a. /receipt page: present "similarity search", not a technology
+
+The page currently narrates the Chroma pipeline by name (tier panels, timing
+bars, logos). The rewrite reframes every figure around the *capability* —
+embeddings and similarity search — so the story survives any future backend
+change. Editorial rules:
+
+1. Name the concepts (embedding space, nearest neighbors, similarity score,
+   consensus voting), not the vendor. Backend named at most once, as an
+   implementation footnote.
+2. No per-technology performance theater: WordSimilarity's "Open Chroma"/
+   "Chroma Fetch" timing bars become capability-level stages (e.g. "load
+   vectors" / "search") or are dropped; regenerate the cached JSON so frozen
+   Chroma numbers never render.
+3. Tier panel "ChromaDB" → "Similarity search" (`TIER_COLORS.chroma` renamed);
+   QAAgentFlow caption → "Searching receipts by meaning and metadata";
+   `ChromaLogo` leaves the tech strip (DynamoDB already present);
+   resume.tsx drops "(FAISS + ChromaDB)" for "vector similarity search".
+4. Figures whose *data* is Chroma-shaped get their generators ported in Phase 2
+   (word-similarity → DynamoDB text query; address-similarity → SearchVectors)
+   so the page shows live data at cutover, not frozen caches.
+5. Types follow the same rule: `validation_source: "chroma"` → `"similarity"`,
+   `chromadb_init_ms` → stage-named fields, `avg_chroma_rate` →
+   `avg_similarity_rate` — coordinated generator+frontend change per figure.
 
 ## 6. Landmines (each verified, with evidence in the inventories)
 
@@ -290,13 +359,14 @@ H. **moto cannot mock SearchVectors** (feature is 3 weeks old): test the new
 1. **`embedding_status` as GSI1PK** on ReceiptWord/ReceiptLine: keep-and-freeze
    (write SUCCESS, never query) vs full-table migration to remove. Default:
    **keep-and-freeze**; revisit only if GSI1 storage cost matters.
-2. **Word-label consensus restoration**: after deleting the dead Tier-1 path,
-   do we rebuild it on the words index (restores the "skip an LLM call" saving
-   that is currently not realized)? Default: yes, as a post-removal enhancement
-   with measured hit-rate.
-3. **Address-similarity figure**: port to SearchVectors (small) or freeze the
-   figure and remove the generator? Default: port — it is the public demo of
-   the very capability being migrated.
+2. ~~Word-label consensus restoration~~ **Resolved — in scope** (§3.7): the
+   words index backs a working `similar_labeled_words` MCP tool for the
+   LayoutLM-propose / human-confirm loop, with line items (no LayoutLM
+   coverage) as the primary beneficiary; ingest auto-validation returns only
+   after measured hit-rate.
+3. ~~Address-similarity figure~~ **Resolved — port** (§5a): the /receipt page
+   is rewritten around "similarity search" as a capability, concurrent with
+   Phases 2–3, and figure generators are ported so the page shows live data.
 4. **QA search n_results 300 → 100**: trim or paginate (3 calls)? Default: trim
    to 100, measure answer quality on the marquee questions.
 5. Third index for letter-style vectors: park (default) or migrate.
