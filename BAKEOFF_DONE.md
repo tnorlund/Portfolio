@@ -1,132 +1,184 @@
-# Round A rubric self-report
+# Round B rubric self-report
 
-Implementation commit: `001380380`
+Implementation commit: `64932a15d`
 
-All implementation and verification ran offline. No `CHROMA_CLOUD_*`
-credentials were present, so no live capture was attempted. The committed
-fixture identifies itself as `canonical: false` and `backend:
-offline_bootstrap`. The live capture command is guarded to the `receipt_dev`
-database and `ReceiptsTable-dc5be22`, uses read APIs only, and is reserved for
-the winner's single post-selection canonical capture.
+All verification ran offline against a freshly created Python 3.13 venv in
+this worktree (no pre-existing `.venv`). No live AWS, Chroma Cloud, or
+OpenAI calls. The moved OpenAI helpers keep their existing empty-result
+and missing-file guards; this round does not add new live-system paths.
 
-## 1. Fixture coverage
+Swift parity fixtures were regenerated twice from the relocated formatting
+surface (via the back-compat shims). Both runs were byte-identical to each
+other and to the files already committed, so the fixtures did not change.
 
-Addressed by `tests/fixtures/similarity/golden.json` and schema enforcement in
-`scripts/similarity_harness/common.py`. The committed fixture contains 81
-receipts and 243 queries: 81 merchant-resolution queries, 81 word-neighbor
-queries, and 81 section-verifier queries. Every receipt has all three families.
-Word queries contain exactly 30 ranked IDs and distances. Merchant records
-contain neighbors, matched or not-found decisions, and phone/address/text tier
-outcomes. Section records contain predicted sections and agree, disagree, or
-abstain votes.
+## 1. Relocation complete
 
-Verify with:
-
-```bash
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k committed_fixture_covers
-```
-
-## 2. Metrics match the specification
-
-Addressed by `scripts/similarity_harness/evaluate.py`. Its deterministic JSON
-scorecard reports recall@k overall and by query family, merchant agreement,
-merchant tier-decision agreement, expected and actual tier distributions with
-percentage-point deltas, section-vote agreement, p50/p95 latency, read request
-units per query, and estimated USD per query. The scorecard also evaluates the
-0.90 recall, 98 percent merchant agreement, 5 percentage-point tier, and 100 ms
-DynamoDB p95 gates.
+`receipt_chroma.embedding.formatting` and `receipt_chroma.embedding.openai`
+now live at `receipt_embeddings.formatting` and `receipt_embeddings.openai`
+(`git mv`; `git log --follow` on `line_format.py` still reaches the chroma
+history). Internal imports in the moved tree point at
+`receipt_embeddings.*`. An AST scan of
+`receipt_embeddings/receipt_embeddings/**/*.py` finds zero `chromadb`
+imports.
 
 Verify with:
 
 ```bash
-.venv/bin/python scripts/similarity_harness/evaluate.py \
-  --backend fake --out fake-scorecard.json
+python3.13 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip wheel
+pip install -e receipt_dynamo
+pip install -e "receipt_embeddings[test]"
+pip install -e "receipt_embeddings[lint]"
+black --check --line-length=79 receipt_embeddings
+isort --check-only --profile=black --line-length=79 receipt_embeddings
+.venv/bin/pytest receipt_embeddings/tests/test_relocation.py \
+  -q -k package_has_zero_chromadb_imports
 ```
 
-## 3. Determinism
+## 2. Shim completeness
 
-Addressed by canonical JSON serialization, sorted receipt/corpus/query output,
-fixed vector and distance rounding, a self-checking content SHA-256, and the
-absence of timestamps from fixtures and scorecards. Semantic recapture
-comparison ignores latency and permits only the documented `1e-6` distance and
-`1e-7` vector tolerances. Offline bootstrap captures were byte-identical in the
-final gate run, and repeated fake evaluations were identical.
+Old paths are thin re-exports (`from receipt_embeddings.… import *` plus
+explicit `__all__`) at both the package and submodule level, so
+`receipt_chroma.embedding.formatting.line_format` and
+`receipt_chroma.embedding.openai.batch_status` keep working. Existing
+callers were not rewritten onto `receipt_embeddings` except one Round A
+harness import that the chroma public-facade contract already forbids
+(see below).
+
+The full `receipt_chroma` suite was run through the shims: **576 passed,
+7 skipped**. `receipt_upload` anti-drift parity tests that import
+`build_receipt_rows` through the old path: **6 passed**. Agent has no
+direct `embedding.{formatting,openai}` imports.
+
+CI install order now installs `receipt_dynamo` then `receipt_embeddings`
+before chroma/upload/agent so a matrix job from a clean checkout can
+import the shims. `.cursor/install.sh` matches that order.
 
 Verify with:
 
 ```bash
-.venv/bin/python scripts/similarity_harness/capture_golden.py \
-  --offline-bootstrap --out first.json
-.venv/bin/python scripts/similarity_harness/capture_golden.py \
-  --offline-bootstrap --compare-to first.json --out second.json
-cmp first.json second.json
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k 'deterministic or pure_given_fixture'
+source .venv/bin/activate
+pip install --no-deps -e receipt_dynamo_stream
+pip install --no-deps -e receipt_chroma
+pip install boto3 chromadb "openai>=2.8.1,<3.0.0"
+pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout \
+  pytest-rerunfailures moto
+pip install -e "receipt_chroma[lint]"
+black --check --line-length=79 receipt_chroma
+isort --check-only --profile=black --line-length=79 receipt_chroma
+cd receipt_chroma
+python -m pytest tests -n auto --timeout=120 --tb=short --maxfail=5 \
+  --reruns 1 --reruns-delay 2 \
+  -m "not end_to_end and not slow and not performance and not unused_in_production"
+cd ..
 ```
 
-## 4. Chroma self-parity sanity
+One Round A live-capture helper imported the internal
+`formatting.line_format` module and failed
+`test_external_runtime_callers_use_public_facades`. It now imports
+`group_lines_into_visual_rows` from the public
+`receipt_chroma.embedding.formatting` facade (still the old package, not
+`receipt_embeddings`). That is the only importer edit.
 
-Addressed by the offline `CapturedChromaReplay` backend. It replays the
-captured Chroma answer through the same `VectorSearchClient` path used by other
-backends. The final run produced neighbor recall@10 of 1.0 for every family,
-100 percent merchant agreement, 100 percent tier-decision agreement, and 100
-percent section-vote agreement. This is intentionally a fixture self-parity
-check and does not contact Chroma Cloud.
+## 3. Behavior identity
 
-Verify with:
+`receipt_chroma/tests/unit/test_embedding_relocation_identity.py` asserts
+old-path and new-path package `__all__` names are the same function
+objects, and that `format_row_embedding_input` on a fixed two-line row
+returns the identical bytes through both paths.
+`receipt_embeddings/tests/test_relocation.py` repeats the formatting and
+OpenAI-helper outputs on those fixed inputs.
+
+Swift section and structure fixtures were generated twice:
 
 ```bash
-.venv/bin/python scripts/similarity_harness/evaluate.py \
-  --backend chroma --out chroma-scorecard.json
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k chroma_self_parity
+source .venv/bin/activate
+pip install --no-deps -e receipt_upload
+pip install "Pillow>=11.2.1"
+python receipt_ocr_swift/Scripts/generate_section_parity.py \
+  --output /tmp/section_parity_1.json
+python receipt_ocr_swift/Scripts/generate_section_parity.py \
+  --output /tmp/section_parity_2.json
+cmp /tmp/section_parity_1.json /tmp/section_parity_2.json
+cmp /tmp/section_parity_1.json \
+  receipt_ocr_swift/Tests/ReceiptOCRCoreTests/Fixtures/section_assignment_parity_expected.json
+python -c "
+import sys
+from pathlib import Path
+sys.path.insert(0, 'receipt_ocr_swift/Scripts')
+import generate_receipt_structure_parity as structure
+first = structure.generate()
+second = structure.generate()
+assert first == second
+committed = Path(
+    'receipt_ocr_swift/Tests/ReceiptOCRCoreTests/Fixtures'
+    '/receipt_structure_parity_expected.json'
+).read_text(encoding='utf-8')
+assert first == committed
+print('structure twice and vs committed: byte-identical', len(first))
+"
+.venv/bin/pytest receipt_chroma/tests/unit/test_embedding_relocation_identity.py -q
+.venv/bin/pytest receipt_upload/tests/test_swift_line_item_parity_fixture.py -q
 ```
 
-## 5. Interface minimalism
+Both generators matched the committed fixtures (38 receipts; structure
+116437 bytes). Nothing to rewrite in-tree.
 
-Addressed by `receipt_embeddings/vector_client.py`. The runtime-checkable
-`VectorSearchClient` protocol exposes only `search()` and `get_vector()`.
-`FakeVectorIndex` implements exact NumPy cosine nearest-neighbor search,
-equality filters, a stable key tie-break, defensive copies, and the 100-result
-limit. Fake, Chroma replay, and future DynamoDB clients are selected without
-changing evaluation consumer logic. Optional latency and request-unit
-telemetry is discovered by the harness and is not part of the consumer
-protocol.
+## 4. Documented reproducibility
 
-Verify with:
+The commands above are the CI matrix install blocks plus the two
+generator scripts. They assume:
 
-```bash
-.venv/bin/pytest receipt_embeddings/tests/test_fake_index.py -q
-```
+- Python 3.13 (`python3.13 -m venv .venv`), same pin as CI
+- `pip install -e receipt_dynamo` **before**
+  `pip install -e "receipt_embeddings[test]"` so pip does not look for
+  unpublished `receipt-dynamo` on PyPI
+- chroma/upload jobs install `receipt_embeddings` explicitly because
+  chroma is installed `--no-deps` and the shims import it at runtime
 
-## 6. Runtime
+No extra `PYTHONPATH` is required once those editable installs are done.
+`.cursor/install.sh` uses the same dynamo-then-embeddings order.
 
-Addressed by the offline runtime regression test and compact deterministic
-fixture. In the final gate run, two 81-receipt captures completed in 0.12 and
-0.14 seconds. Fake and Chroma-replay evaluations completed in 0.11 and 0.10
-seconds. The test enforces capture below 15 minutes and evaluation below one
-minute. Live timing remains to be recorded during the judge-authorized blessed
-capture because credentials were unavailable and a live run was forbidden.
+## 5. Lean diff
 
-Verify with:
+Moves, shims, pyproject/CI/install order, identity tests, and the one
+facade-import fix in `capture_golden.py`. No formatting drive-by on
+Round A files. Swift fixtures unchanged after regen. Lambda Dockerfiles
+were not edited (see not-verified).
 
-```bash
-.venv/bin/pytest receipt_embeddings/tests/test_harness.py \
-  -q -k runtime_limits
-```
+## 6. Final commit
 
-## Final offline gate
+This file. Do not treat earlier commits as the completion signal.
 
-The exact CI-style command passed 35 tests. Focused package coverage was 100
-percent, above the enforced 95 percent threshold. Black, isort, strict mypy,
-Python-version consistency, wheel construction, fixture comparison, and both
-offline evaluator backends also passed.
+## Final package gates (CI-shaped)
 
 ```bash
 cd receipt_embeddings
 ../.venv/bin/python -m pytest tests -n auto --timeout=120 --tb=short \
   --maxfail=5 --reruns 1 --reruns-delay 2 \
-  -m 'not end_to_end and not slow and not performance and not unused_in_production' \
+  -m "not end_to_end and not slow and not performance and not unused_in_production" \
   --cov --cov-report=xml
 ```
+
+56 passed (this worktree). Then the chroma command in §2: 576 passed,
+7 skipped.
+
+## Not verified locally
+
+- Full `receipt_upload` and `receipt_agent` matrix jobs. Those CI legs
+  install langgraph/langchain/places; two `test_section_pipeline_contract`
+  cases that import `embedding_processor` failed here only with
+  `ModuleNotFoundError: langchain_core` in a slimmer venv. Tests that
+  import `build_receipt_rows` through the shim (parity + the rest of
+  that file) passed.
+- Lambda/CodeBuild images that `COPY receipt_chroma/` and
+  `pip install /tmp/receipt_chroma`. `receipt-chroma` was **not** given
+  a `receipt-embeddings` PyPI dependency, so those Dockerfiles still
+  resolve; a runtime import of formatting/openai inside an image that
+  does not also install `receipt_embeddings` will `ImportError` until a
+  follow-up copies that package into the build context. This round does
+  not deploy.
+- Live OpenAI, Chroma Cloud, or DynamoDB. No new test doubles were
+  added; existing chroma openai tests still pin the moved helpers
+  through the shims.
