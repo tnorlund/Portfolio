@@ -57,11 +57,14 @@ from receipt_embeddings.indexes import (  # noqa: E402
     DEV_TABLE_NAME,
     EMBEDDING_DIMENSION,
     LINE_INDEX,
+    MAX_SEARCH_VECTORS_TOP_K,
     PROD_TABLE_NAME,
+    WORD_INDEX,
 )
 from receipt_embeddings.writer import (  # noqa: E402
     WriteReport,
     embed_texts_checked,
+    owned_keys_in_hits,
     put_embedding_items,
 )
 
@@ -239,29 +242,75 @@ def _fill_vectors(
     return ready, failed
 
 
+def _sample_written(written_items: Sequence[Any]) -> list[Any]:
+    """One this-run item per index type (searchability wait is sampled)."""
+    samples: list[Any] = []
+    seen: set[type] = set()
+    for item in written_items:
+        kind = type(item)
+        if kind in seen:
+            continue
+        seen.add(kind)
+        samples.append(item)
+    return samples
+
+
 def _wait_searchable(
-    sample: Any,
+    written_items: Sequence[Any],
     timeout_s: float,
-) -> bool:
+) -> dict[str, Any]:
+    """Poll SearchVectors until sampled this-run keys appear.
+
+    Foreign embedding items on the shared dev table are ignorable: we
+    never compare result counts to the table, only membership of this
+    run's sampled keys. Each index type is probed with that item's own
+    vector so mixed line/word writes are both covered.
+    """
     from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 
+    samples = _sample_written(written_items)
+    owned = [item.harness_key() for item in samples]
+    pending = set(owned)
+    found: list[str] = []
+    if not samples:
+        return {
+            "ok": True,
+            "searchable_keys": [],
+            "pending_keys": [],
+        }
     client = DynamoVectorSearchClient.from_env()
     deadline = time.time() + timeout_s
-    vector = (
-        sample.line_vector
-        if isinstance(sample, ReceiptLineEmbedding)
-        else sample.word_vector
-    )
-    while time.time() < deadline:
-        try:
-            hits = client.search(vector, LINE_INDEX, top_k=10)
-        except Exception:  # noqa: BLE001
+    by_key = {item.harness_key(): item for item in samples}
+    while time.time() < deadline and pending:
+        for key in list(pending):
+            sample = by_key[key]
+            index = (
+                LINE_INDEX
+                if isinstance(sample, ReceiptLineEmbedding)
+                else WORD_INDEX
+            )
+            vector = (
+                sample.line_vector
+                if isinstance(sample, ReceiptLineEmbedding)
+                else sample.word_vector
+            )
+            try:
+                hits = client.search(
+                    vector, index, top_k=MAX_SEARCH_VECTORS_TOP_K
+                )
+            except Exception:  # noqa: BLE001
+                continue
+            newly = owned_keys_in_hits(hits, [key])
+            for found_key in newly:
+                pending.discard(found_key)
+                found.append(found_key)
+        if pending:
             time.sleep(2.0)
-            continue
-        if any(hit.key == sample.harness_key() for hit in hits):
-            return True
-        time.sleep(2.0)
-    return False
+    return {
+        "ok": not pending,
+        "searchable_keys": found,
+        "pending_keys": sorted(pending),
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -325,14 +374,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     if ready:
         put = put_embedding_items(dynamo, ready)
         report.merge(put)
+    written_items = [
+        item
+        for item in ready
+        if item.harness_key() in set(report.written_keys)
+    ]
     searchable = None
-    if ready and args.wait_searchable > 0:
-        searchable = _wait_searchable(ready[0], args.wait_searchable)
+    if written_items and args.wait_searchable > 0:
+        searchable = _wait_searchable(written_items, args.wait_searchable)
     payload = {
         "table": table,
         "receipts": len(receipts),
         "written": report.written,
         "skipped": report.skipped,
+        "written_keys": report.written_keys,
+        "skipped_keys": report.skipped_keys,
         "failed": report.failed,
         "skipped_receipts": skipped_receipts,
         "searchable": searchable,

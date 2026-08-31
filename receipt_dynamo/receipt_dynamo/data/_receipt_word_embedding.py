@@ -86,11 +86,17 @@ class _ReceiptWordEmbedding(FlattenedStandardMixin):
     @handle_dynamodb_errors("put_receipt_word_embeddings_idempotent")
     def put_receipt_word_embeddings_idempotent(
         self, embeddings: list[ReceiptWordEmbedding]
-    ) -> dict[str, int]:
+    ) -> dict[str, Any]:
+        """Put items that do not already exist. Existing keys are skipped.
+
+        Counts and key lists cover *this call's* arguments only — never
+        table-wide embedding totals (the shared dev table may already
+        hold other entrants' deterministic SKs).
+        """
         if embeddings is None:
             raise EntityValidationError("embeddings cannot be None")
-        written = 0
-        skipped = 0
+        written_keys: list[str] = []
+        skipped_keys: list[str] = []
         pending: list[ReceiptWordEmbedding] = []
         for embedding in embeddings:
             existing = self.get_receipt_word_embedding(
@@ -100,7 +106,7 @@ class _ReceiptWordEmbedding(FlattenedStandardMixin):
                 embedding.word_id,
             )
             if existing is not None:
-                skipped += 1
+                skipped_keys.append(embedding.harness_key())
                 continue
             pending.append(embedding)
         for offset in range(0, len(pending), CHUNK_SIZE):
@@ -112,5 +118,10 @@ class _ReceiptWordEmbedding(FlattenedStandardMixin):
                 for item in chunk
             ]
             self._batch_write_with_retry(requests)
-            written += len(chunk)
-        return {"written": written, "skipped": skipped}
+            written_keys.extend(item.harness_key() for item in chunk)
+        return {
+            "written": len(written_keys),
+            "skipped": len(skipped_keys),
+            "written_keys": written_keys,
+            "skipped_keys": skipped_keys,
+        }
