@@ -97,8 +97,7 @@ class ReceiptWordEmbedding:
 
         if self.valid_labels is not None:
             if not isinstance(self.valid_labels, list) or not all(
-                isinstance(label, str) and label
-                for label in self.valid_labels
+                isinstance(label, str) and label for label in self.valid_labels
             ):
                 raise ValueError(
                     "valid_labels must be a list of non-empty strings or None"

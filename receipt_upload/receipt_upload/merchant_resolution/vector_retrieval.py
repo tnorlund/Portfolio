@@ -96,8 +96,10 @@ class ChromaLinesSearchClient:
         metadatas = first_batch("metadatas")
         return [
             ScoredItem(
-                key=str(ids[position]) if position < len(ids) else (
-                    f"chroma-result-{position:05d}"
+                key=(
+                    str(ids[position])
+                    if position < len(ids)
+                    else (f"chroma-result-{position:05d}")
                 ),
                 distance=float(distance),
                 metadata=dict(metadata or {}),

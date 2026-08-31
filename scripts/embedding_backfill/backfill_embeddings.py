@@ -139,9 +139,7 @@ class ChromaVectorSource:
                 if embeddings is None:
                     continue
                 for key, embedding in zip(found_ids, embeddings):
-                    vectors[str(key)] = [
-                        float(value) for value in embedding
-                    ]
+                    vectors[str(key)] = [float(value) for value in embedding]
         return vectors
 
 
@@ -187,8 +185,7 @@ def _build_vector_source(args: argparse.Namespace):
     if choice == "chroma":
         if not _chroma_env_ready():
             raise SystemExit(
-                "vector source 'chroma' needs "
-                + ", ".join(CHROMA_ENVIRONMENT)
+                "vector source 'chroma' needs " + ", ".join(CHROMA_ENVIRONMENT)
             )
         database = os.environ["CHROMA_CLOUD_DATABASE"].strip()
         if database != DEV_DATABASE:

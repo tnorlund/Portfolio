@@ -154,9 +154,7 @@ class DynamoVectorSearchClient:
         request: dict[str, Any] = {
             "TableName": self.table_name,
             "IndexName": index_name,
-            "SearchVector": [
-                {"N": _number_string(value)} for value in vector
-            ],
+            "SearchVector": [{"N": _number_string(value)} for value in vector],
             "TopK": top_k,
             "ReturnConsumedCapacity": "TOTAL",
         }
@@ -226,9 +224,7 @@ class DynamoVectorSearchClient:
         item = response.get("Item")
         if not item or vector_attribute not in item:
             raise KeyError(f"unknown vector key: {key}")
-        return [
-            float(value["N"]) for value in item[vector_attribute]["L"]
-        ]
+        return [float(value["N"]) for value in item[vector_attribute]["L"]]
 
     @staticmethod
     def _serialize_filter_value(value: FilterValue) -> dict[str, Any]:
