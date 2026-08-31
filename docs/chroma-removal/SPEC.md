@@ -73,8 +73,7 @@ PK   = IMAGE#{image_id}
 SK   = RECEIPT#{r:05d}#LINE#{l:05d}#EMBEDDING     (visual row, keyed by primary line;
                                                    row_line_ids attr lists the rest)
 SK   = RECEIPT#{r:05d}#LINE#{l:05d}#WORD#{w:05d}#EMBEDDING          (words)
-SK   = RECEIPT#{r:05d}#LINE#{l:05d}#WORD#{w:05d}#LABEL#{label}#EVIDENCE  (§3.7)
-TYPE = RECEIPT_LINE_EMBEDDING / RECEIPT_WORD_EMBEDDING / RECEIPT_LABEL_EVIDENCE
+TYPE = RECEIPT_LINE_EMBEDDING / RECEIPT_WORD_EMBEDDING
 vector = List<Number>, 1536 floats (~15–25KB; DynamoDB decimals ≈10–18B/float)
 + flattened filter/display attributes (§3.3)
 **NO GSI1–4 keys.**
@@ -106,35 +105,26 @@ Priced consequences (accepted):
 - Writes: ~40 WCU per embedding (item + GSITYPE copy) → ~$0.01 per 200-word
   receipt; full-corpus backfill ~$25–50 of WCU + ~$1–2 OpenAI.
 - Streams: every embedding write emits a ~40KB NEW_AND_OLD_IMAGES record; the
-  stream processor must skip `*_EMBEDDING`/`*_EVIDENCE` TYPEs first thing
+  stream processor must skip `*_EMBEDDING` TYPEs first thing
   (one guard clause — add in Phase 2 before the writer ships).
 - Dev↔prod copy scripts deliberately **skip** embedding/evidence items
   (vectors are re-derivable; run backfill on the destination instead) —
   document in the scripts, don't "fix" them to copy vectors.
 
-### 3.2 Indexes (2 now, of the 5 allowed; a third deferred)
+### 3.2 Indexes (2 of the 5 allowed)
 
 | Index | Vector attr on | Distance | Partition key | Inline filters | Projection |
 |---|---|---|---|---|---|
 | `lines-vectors` | line embedding items | COSINE | **none** (corpus-wide queries dominate: merchant resolution, semantic search) | `section_type` (equality) | INCLUDE: text, merchant_name, place_id, image_id/receipt_id/line_id, row_line_ids, section_type |
-| `label-evidence` | (word, label, verdict) evidence items — §3.7 | COSINE | **none** | `label`, `verdict` (equality) | INCLUDE: text, merchant_name, ids, validated_by/at, confidence, **reasoning** |
-| `words-general` (**deferred**) | word embedding items | COSINE | none | `label_status` | — not created initially; see below |
+| `words-vectors` | word embedding items | COSINE | **none** | `label_status` (equality) | INCLUDE: text, merchant_name, image/receipt/line/word ids, label_status |
 
 **Embedding content formats (unchanged from today; relocated in §6 F):**
 - Line vectors are **visual-row** embeddings: `{row_above}\n{target_row}\n{row_below}`
-  with `<EDGE>` at receipt boundaries (`formatting/line_format.py:140-172`), one vector
+  with `<EDGE>` at receipt top/bottom (`formatting/line_format.py:140-172`), one vector
   per visual row keyed by its primary line, `row_line_ids` listing the rest.
-- Word vectors embed target word + neighboring words + 3×3 position bucket
-  (`formatting/word_format.py`).
-
-**Why words-general is deferred:** its would-be consumers (consensus voting,
-semantic PRODUCT_NAME proposer) want *labeled* neighbors — the evidence index
-serves them pre-filtered. Only the low-stakes agentic "similar to this word,
-any label" tool wants unfiltered word search. Word embedding **items are still
-written** (vector source of truth: minting an evidence item on a later label
-confirmation is a GetItem, not a re-embed — no drift between searched and
-labeled vectors), so creating this index later is one UpdateTable + backfill
-wait. Deferral is cheap; projections are not.
+- Word vectors are flat **±2-word context** embeddings, `<EDGE>`-padded at row
+  boundaries: `"<EDGE> Subtotal Total Tax Discount"`
+  (`formatting/word_format.py:format_word_context_embedding_input`).
 
 Constraints that shaped this (see research doc): distance function and INCLUDE
 projections are **immutable** after creation — get them right first; filters are
@@ -242,48 +232,43 @@ been silently dead. The core question the tool must answer, both polarities:
 *"what similar words have this label, or have been proven NOT to have it — and
 why?"*
 
-**Semantics note (pre-filter vs post-filter).** Chroma's intended behavior
-filtered *inside* the ANN search: top-k among words carrying label X. A
-post-filter design (top-100 by `label_status`, check label arrays in code)
-approximates this but thins out for rare labels and especially for the sparse
-INVALID polarity — the nearest 100 validated words may carry little evidence
-about label X even when strong evidence exists further out.
+**Design: search-then-join.** No new item type needed — `ReceiptWordLabel`
+rows already hold label, validation_status, and `reasoning`, keyed adjacent to
+the word (`…#WORD#{w}#LABEL#{name}`). The tool composes what exists:
 
-**Design: a dedicated label-evidence index (recommended).** One embedding item
-per **(word, label, verdict)** assertion:
+1. `GetItem` the target word's stored vector (word embedding item).
+2. `SearchVectors` on `words-vectors`, `label_status = validated`, top-k.
+3. Similarity-threshold cut (same thresholds as the old validator intended).
+4. `BatchGetItem` each surviving neighbor's `LABEL#` rows → per-neighbor
+   labels, verdicts, and the original `reasoning`.
+5. Aggregate: scored evidence for/against the candidate label, each neighbor
+   carrying its rationale.
 
-```
-SK      = …#WORD#{id}#LABEL#{label}#EVIDENCE
-label   = "GRAND_TOTAL"            ← inline filter (equality)
-verdict = "VALID" | "INVALID"      ← inline filter (equality)
-vector  = the word's embedding (copied from its word embedding item —
-          GetItem, not re-embed, so searched and labeled vectors never drift)
-projection: word text, merchant_name, image/receipt/line/word ids,
-            validated_by, validated_at, confidence,
-            reasoning (from ReceiptWordLabel.reasoning — the original
-            human/Claude rationale, returned with every neighbor)
-```
+Evidence *against* falls out identically — a neighbor whose `LABEL#{X}` row is
+INVALID is a counter-example with its reasoning. Cost is one `BatchGetItem`
+round-trip (≤100 keys, milliseconds). What this avoids: a third item type,
+duplicated vectors, a write hook on every validation event, and an evidence
+backfill — labeling stays pure `ReceiptWordLabel`, fully decoupled from the
+vector layer.
 
-`SearchVectors(label = X, verdict = VALID)` and `(label = X, verdict = INVALID)`
-each return exact pre-filtered nearest neighbors — full parity with Chroma's
-intended semantics using only equality filters, and the "why" arrives in the
-projection with provenance. Write hook is the existing validation event: the
-MCP confirm/reject action creates or flips the evidence item (and re-verdicts
-rewrite it). Costs: vector duplication per assertion (most words carry 0–1
-labels; ~20KB each — pennies) and one PutItem per validation event. Index
-budget: 2 of 5 used at launch (lines, label-evidence); words-general is
-deferred per §3.2 and can be added later with one UpdateTable.
+**Accepted trade-off (documented, not solved):** Chroma's intended semantics
+pre-filtered inside the ANN search ("nearest among words labeled X"); the join
+post-filters, so for a *rare* label the top-k validated neighbors may carry
+little signal about X even when labeled examples exist further out. Since the
+validator threshold-cut its results anyway — distant neighbors are weak
+evidence however found — the practical loss is minimal. If a rare-label case
+ever demonstrates otherwise, a dedicated (word, label, verdict) evidence index
+with `label`/`verdict` equality filters is a known, additive follow-up (index
+budget allows it); it is deliberately not in the launch design.
 
 Deliverables:
-- New MCP tool (working name `similar_labeled_words`): both polarities against
-  the evidence index, scored evidence with provenance — what
+- New MCP tool (working name `similar_labeled_words`): the search-then-join
+  above, both polarities, evidence with reasoning and provenance — what
   `validate_word_similarity` always claimed to do. Serves the confirm-labels
   workflow directly.
-- Backfill: one evidence item per existing VALID/INVALID ReceiptWordLabel
-  (DynamoDB is already authoritative for these; ~pennies of write cost).
 - The ingest-side semantic PRODUCT_NAME proposer (already a live VECTOR
-  consumer) ports to the evidence index (`verdict = VALID`) and closes part of
-  the PRODUCT_NAME-at-ingest gap.
+  consumer) uses the same pattern and closes part of the PRODUCT_NAME-at-ingest
+  gap.
 - Tier-1 auto-validation at ingest is rebuilt only after the MCP tool proves
   hit-rate in the human loop — measured adoption first, automation second.
 
