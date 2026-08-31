@@ -160,3 +160,17 @@ the winner before merging. Losers close with a one-line verdict note.
 
 Merge rules: winner PR exits draft and merges into the stack (parents
 `--merge`, leaves squash — never squash a stack parent).
+
+## Round C appendix — SearchVectors wire-format notes (judge-verified 2026-08-31)
+
+Shared with all entrants equally; discovered during the judge's smoke test:
+- `SearchVector` is a **list of AttributeValue dicts** (`[{"N": "0.01"}, …]`) —
+  not bare floats, not an `L`-wrapped AttributeValue.
+- Results return under **`SearchResults`** (not `Items`).
+- `ReturnConsumedCapacity` reports **`VectorSearchRequestBytes`** — request
+  bytes are the billing meter, and a 1536-dim query is ~40KB of request; batch
+  and serialize accordingly.
+- Cold-call latency against the empty `line-embeddings` index: ~630ms from
+  this Mac; expect in-region Lambda latency to be far lower.
+- Index creation required the SearchSchema attribute in `AttributeDefinitions`
+  (judge-handled; informational).
