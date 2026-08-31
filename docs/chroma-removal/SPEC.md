@@ -107,9 +107,15 @@ Priced consequences (accepted):
 - Streams: every embedding write emits a ~40KB NEW_AND_OLD_IMAGES record; the
   stream processor must skip `*_EMBEDDING` TYPEs first thing
   (one guard clause — add in Phase 2 before the writer ships).
-- Dev↔prod copy scripts deliberately **skip** embedding items (vectors are
-  re-derivable; run backfill on the destination instead) — document in the
-  scripts, don't "fix" them to copy vectors.
+- Dev↔prod copy scripts **copy embedding items like any other row**: they are
+  plain items, the destination's vector index picks them up automatically, the
+  WCU cost equals what backfill would spend anyway (minus OpenAI), and copying
+  preserves vector *identity* across environments — OpenAI embeddings are not
+  bit-stable across calls/model revisions, so copying is the only way shared
+  receipts behave identically in dev and prod. Add the two embedding TYPEs to
+  the copy scripts (they already have a known miss-list: SUMMARY/SECTION/ROW/
+  LINE_ITEM/OCR_JOB). Backfill covers only gaps: env-exclusive receipts and
+  regeneration after a format change.
 
 ### 3.1a Net table-schema footprint
 
