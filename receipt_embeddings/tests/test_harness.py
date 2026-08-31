@@ -323,6 +323,27 @@ def test_fixture_validation_rejects_missing_family_and_short_word_results() -> (
 
 
 @pytest.mark.unit
+def test_offline_evaluate_self_gate_under_60_seconds() -> None:
+    """In-process runtime self-gate, from the cursor Round A entrant.
+
+    The CLI test below times the subprocess path; this pins the library
+    path itself so a slow evaluate cannot hide behind interpreter
+    startup accounting.
+    """
+
+    fixture = load_fixture(GOLDEN_FIXTURE)
+    started = time.perf_counter()
+    evaluate_fixture(
+        fixture,
+        FakeVectorIndex(corpus_items(fixture)),
+        backend_name="fake",
+    )
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 60.0
+
+
+@pytest.mark.unit
 def test_cli_capture_and_evaluate_stay_well_below_runtime_limits(
     tmp_path: Path,
 ) -> None:
