@@ -74,6 +74,7 @@ jobs:
       fail-fast: false
       matrix:
         package:
+          - receipt_embeddings
           - receipt_dynamo
           - receipt_dynamo_stream
           - receipt_chroma
@@ -225,6 +226,7 @@ jobs:
           "$PYTHON_BIN" -m venv .venv-repository-tests
           source .venv-repository-tests/bin/activate
           pip install --upgrade pip wheel
+          pip install -e receipt_embeddings
           pip install -e receipt_dynamo
           pip install --no-deps -e receipt_dynamo_stream
           pip install --no-deps -e receipt_chroma
