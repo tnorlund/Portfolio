@@ -59,25 +59,57 @@ Why this is smaller than it looks (verified empirically by the mapping agents):
 
 ### 3.1 Vector storage: dedicated embedding items, not inline attributes
 
-Store each embedding on a **dedicated item**, not on the hot `RECEIPT_WORD` /
-`RECEIPT_LINE` items:
+Ground truth that shapes this (verified against `infra/dynamo_db.py:60-98` and
+the entities): **all six GSIs project ALL**, `delete_receipt` sweeps the base
+table by `begins_with(SK, "RECEIPT#{r:05d}")` (`_receipt.py:346`), and hot
+receipt-detail reads go through GSI4, not base-table prefix scans. RCU is
+charged on items *read*, not returned, so SK placement decides who pays for
+vectors.
+
+Store each embedding on a **dedicated item** in the parent's item collection:
 
 ```
-PK = IMAGE#{image_id}
-SK = RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#EMBEDDING            (lines)
-SK = RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}#EMBEDDING  (words)
-vector      = List<Number>, 1536 floats
-+ flattened filter/display attributes (below)
+PK   = IMAGE#{image_id}
+SK   = RECEIPT#{r:05d}#LINE#{l:05d}#EMBEDDING                       (lines)
+SK   = RECEIPT#{r:05d}#LINE#{l:05d}#WORD#{w:05d}#EMBEDDING          (words)
+SK   = RECEIPT#{r:05d}#LINE#{l:05d}#WORD#{w:05d}#LABEL#{label}#EVIDENCE  (§3.7)
+TYPE = RECEIPT_LINE_EMBEDDING / RECEIPT_WORD_EMBEDDING / RECEIPT_LABEL_EVIDENCE
+vector = List<Number>, 1536 floats (~15–25KB; DynamoDB decimals ≈10–18B/float)
++ flattened filter/display attributes (§3.3)
+**NO GSI1–4 keys.**
 ```
 
-Rationale: a 1536-float list is ~15–25KB per item. Inlined on words/lines it
-would bloat every existing Query that touches those items and — worse — replicate
-into every GSI that projects ALL. A dedicated item keeps the hot path untouched
-and gives the vector index a clean projection. The `#EMBEDDING` suffix keeps
-embeddings adjacent to their parent in the item collection (single-partition
-reads remain possible) and lets the existing delete/merge sweeps find them by SK
-prefix. TTL/delete of a receipt partition removes its vectors from the index
-automatically.
+Why each choice:
+
+- **Dedicated items, not attributes on words/lines**: inlining would replicate
+  every vector into all five ALL-projection GSIs the parents occupy (~6×
+  storage) and bloat every read of the hot items.
+- **No GSI1–4 keys on embedding items**: keeps them out of every GSI-based
+  access path (GSI4 receipt-details, GSI2/GSI3 enumerations) with zero code
+  change, and avoids ALL-projection copies. The vector index is their only
+  reader.
+- **Under the `RECEIPT#{r}` SK prefix**: `delete_receipt` / merge sweeps remove
+  them automatically — no new orphan class (see the orphan-summary history).
+  Every alternative (a `VEC#` SK namespace, a separate PK, a separate table)
+  requires all deletion/merge/copy paths to remember a second location forever;
+  a separate table would reintroduce exactly the two-datastore consistency
+  problem this migration eliminates. Considered and rejected.
+- **Keep `TYPE`** (→ one extra full copy in ALL-projection GSITYPE): ~$5/mo at
+  ~500k vectors, buys enumerate-by-type for backfill audits. Revisit only if
+  storage cost surprises.
+
+Priced consequences (accepted):
+- Base-table `begins_with(RECEIPT#{r})` scans now traverse vectors: the delete
+  sweep *wants* them; `get_receipt_item_type_counts` (rare admin call) gets
+  slower — comment at the call site.
+- Writes: ~40 WCU per embedding (item + GSITYPE copy) → ~$0.01 per 200-word
+  receipt; full-corpus backfill ~$25–50 of WCU + ~$1–2 OpenAI.
+- Streams: every embedding write emits a ~40KB NEW_AND_OLD_IMAGES record; the
+  stream processor must skip `*_EMBEDDING`/`*_EVIDENCE` TYPEs first thing
+  (one guard clause — add in Phase 2 before the writer ships).
+- Dev↔prod copy scripts deliberately **skip** embedding/evidence items
+  (vectors are re-derivable; run backfill on the destination instead) —
+  document in the scripts, don't "fix" them to copy vectors.
 
 ### 3.2 Indexes (3 of the 5 allowed)
 
