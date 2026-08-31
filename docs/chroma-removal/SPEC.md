@@ -347,6 +347,47 @@ this volume is dollars), Chroma Cloud subscription → $0, 2 paid VPC endpoints 
 $0, S3 vector bucket storage/requests → $0, OpenAI spend unchanged.
 The NAT instance **stays** (upload_images uses the same subnets).
 
+## 4a. Naming: capability names, never technology names
+
+Same rule as the /receipt rewrite (§5a): components are named for what they do,
+so no future backend change forces another rename.
+
+**Streaming/fan-out (survivors — derived-data recompute):**
+
+| Today | New |
+|---|---|
+| `ChromaDBCompactionInfrastructure` / `chromadb-{stack}-*` / `infra/chromadb_compaction/` | `ReceiptStreamInfrastructure` / `receipt-stream-{stack}-*` / `infra/receipt_stream/` |
+| `chromadb-{stack}-stream-processor`, `-summary-updater`, `-line-item-updater`, summary/line-item queues | `receipt-stream-{stack}-processor`, `-summary-updater`, `-line-item-updater`, `-summary-queue`, `-line-item-queue` |
+| `CHROMADB_RELEVANT_FIELDS` / `get_chromadb_relevant_changes()` | `SYNC_RELEVANT_FIELDS` / `get_sync_relevant_changes()` |
+| `chromadb:enable-line-item-refine` | `portfolio:enable-line-item-refine` |
+| `receipt_dynamo_stream` package | keep — already technology-neutral |
+
+**Embedding/similarity:**
+
+| Today | New |
+|---|---|
+| `receipt_chroma.embedding.{formatting,openai}` + new writer | new package `receipt_embeddings` (input formatting, OpenAI client, DynamoDB embedding writer). Not folded into `receipt_dynamo` — the foundational package must not grow an `openai` dep. Swift parity fixtures regenerate in the same PR. |
+| vector indexes | `line-embeddings`, `word-embeddings` |
+| MCP `CHROMA_TOOLS` | `SIMILARITY_TOOLS` |
+| `validate_word_similarity` | retired → `similar_labeled_words` (§3.7) |
+| `TIER_COLORS.chroma`, `validation_source: "chroma"` | `"similarity"` |
+
+**Networking (misnamed, shared by all VPC Lambdas):**
+
+| Today | New |
+|---|---|
+| `ChromaSecurity` (`infra/security.py`) | `LambdaNetworkSecurity` |
+| `infra/chroma/nat_egress.py` | `infra/network/nat_egress.py` |
+
+**Pulumi rename mechanics.** A logical rename is a replace unless the resource
+carries `aliases=[<old URN>]` — every *kept* resource (queues, updaters, stream
+processor, security groups, NAT) gets an alias in the relocation PR so nothing
+is recreated. Physical AWS names cannot be renamed in place at all; to purge
+`chromadb-*` from the console, those specific resources are recreated once,
+deliberately, during the Phase 4 teardown window with ESMs paused (the stream
+is being modified then anyway). Decision recorded: **full rename in Phase 4**,
+not logical-only.
+
 ## 5. Phasing (PR sequence)
 
 Each phase is independently shippable and leaves both stacks deployable.
