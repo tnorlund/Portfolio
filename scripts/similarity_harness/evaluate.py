@@ -46,6 +46,18 @@ for _pkg in ("receipt_embeddings", "receipt_chroma", "receipt_agent"):
         sys.path.insert(0, str(_path))
 sys.path.insert(0, str(_REPO_ROOT))
 
+# With the repo root on sys.path, the OUTER receipt_embeddings/ directory can
+# already be cached as an empty namespace package (it shadows the real
+# package one level down). Evict any such stub before importing.
+_cached = sys.modules.get("receipt_embeddings")
+if _cached is not None and getattr(_cached, "__file__", None) is None:
+    for _name in [
+        n
+        for n in list(sys.modules)
+        if n == "receipt_embeddings" or n.startswith("receipt_embeddings.")
+    ]:
+        del sys.modules[_name]
+
 from scripts.similarity_harness import decision, fixtures_io  # noqa: E402
 
 from receipt_embeddings.vector_client import (  # noqa: E402

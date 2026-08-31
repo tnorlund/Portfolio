@@ -18,9 +18,20 @@ import pytest
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-_EMBEDDINGS = _REPO_ROOT / "receipt_embeddings"
-if str(_EMBEDDINGS) not in sys.path:
-    sys.path.insert(0, str(_EMBEDDINGS))
+_EMBEDDINGS = str(_REPO_ROOT / "receipt_embeddings")
+if _EMBEDDINGS in sys.path:
+    sys.path.remove(_EMBEDDINGS)
+sys.path.insert(0, _EMBEDDINGS)
+# Evict a cached namespace stub of the OUTER receipt_embeddings/ directory
+# (it shadows the real package when pytest runs from the repo root).
+_cached = sys.modules.get("receipt_embeddings")
+if _cached is not None and getattr(_cached, "__file__", None) is None:
+    for _name in [
+        n
+        for n in list(sys.modules)
+        if n == "receipt_embeddings" or n.startswith("receipt_embeddings.")
+    ]:
+        del sys.modules[_name]
 
 from scripts.similarity_harness import (
     decision,
