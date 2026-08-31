@@ -443,7 +443,7 @@ def build_offline_bootstrap(
             ),
         },
     }
-    validate_fixture(fixture, minimum_receipts=MIN_RECEIPTS)
+    validate_fixture(fixture, minimum_receipts=0)
     return fixture
 
 
@@ -630,6 +630,64 @@ class _LiveCaptureSource:
         return items, vectors, latency_ms
 
 
+_SKIP_MISSING_VECTOR = "missing_vector"
+_SKIP_QUOTA_OR_RATE = "chroma_quota_or_rate_limit"
+_SKIP_NOT_FOUND = "receipt_not_found"
+_SKIP_INCOMPLETE = "incomplete_receipt_data"
+_QUOTA_TOKENS = (
+    "quota",
+    "rate limit",
+    "rate-limit",
+    "too many requests",
+    "429",
+    "numqueryembeddings",
+)
+
+
+def _classify_skip(exc: Exception, not_found: type | None) -> str:
+    """Bucket one per-receipt capture failure for the skip report."""
+
+    if not_found is not None and isinstance(exc, not_found):
+        return _SKIP_NOT_FOUND
+    text = str(exc).lower()
+    if "chroma has no vector" in text:
+        return _SKIP_MISSING_VECTOR
+    if any(token in text for token in _QUOTA_TOKENS):
+        return _SKIP_QUOTA_OR_RATE
+    if isinstance(exc, ValueError):
+        return _SKIP_INCOMPLETE
+    return f"error:{type(exc).__name__}"
+
+
+def _corpus_value(
+    key: str,
+    index: str,
+    vector: Sequence[float],
+    metadata: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "index": index,
+        "key": key,
+        "metadata": sanitize_metadata(metadata),
+        "vector": round_vector(vector),
+    }
+
+
+def _merge_corpus_value(
+    corpus: dict[str, dict[str, Any]], value: dict[str, Any]
+) -> None:
+    key = str(value["key"])
+    existing = corpus.get(key)
+    if existing is not None:
+        if existing["vector"] != value["vector"]:
+            raise ValueError(f"Chroma returned two vectors for {key}")
+        merged = dict(existing["metadata"])
+        merged.update(value["metadata"])
+        value = dict(value)
+        value["metadata"] = merged
+    corpus[key] = value
+
+
 def _row_primary_for_line(
     rows: Sequence[Sequence[Any]], line_id: int
 ) -> int | None:
@@ -650,22 +708,20 @@ def _section_by_line(sections: Sequence[Any]) -> dict[int, str]:
     return result
 
 
-def capture_live(
-    receipts: Sequence[Mapping[str, Any]],
-    *,
-    table_name: str,
-    canonical: bool,
-) -> dict[str, Any]:
-    """Capture all three families using reads only."""
+def _capture_receipt(
+    source: Any,
+    receipt: Mapping[str, Any],
+    group_rows: Any,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]], dict[str, Any]]:
+    """Capture all three families for one receipt.
 
-    from receipt_chroma.embedding.formatting.line_format import (
-        group_lines_into_visual_rows,
-    )
+    Returns the receipt's queries, its corpus additions, and its receipt
+    row. Nothing is shared with other receipts, so a failure here can be
+    skipped without corrupting the run.
+    """
 
-    source = _LiveCaptureSource(table_name=table_name)
     corpus: dict[str, dict[str, Any]] = {}
     queries: list[dict[str, Any]] = []
-    receipt_rows: list[dict[str, Any]] = []
 
     def add_corpus(
         key: str,
@@ -673,198 +729,234 @@ def capture_live(
         vector: Sequence[float],
         metadata: Mapping[str, Any],
     ) -> None:
-        value: dict[str, Any] = {
-            "index": index,
-            "key": key,
-            "metadata": sanitize_metadata(metadata),
-            "vector": round_vector(vector),
-        }
-        if key in corpus and corpus[key]["vector"] != value["vector"]:
-            raise ValueError(f"Chroma returned two vectors for {key}")
-        if key in corpus:
-            merged = dict(corpus[key]["metadata"])
-            merged.update(value["metadata"])
-            value["metadata"] = merged
-        corpus[key] = value
+        _merge_corpus_value(
+            corpus, _corpus_value(key, index, vector, metadata)
+        )
 
+    image_id = str(receipt["image_id"])
+    receipt_id = int(receipt["receipt_id"])
+    key = receipt_key(image_id, receipt_id)
+    details = source.dynamo.get_receipt_details(image_id, receipt_id)
+    sections = source.dynamo.get_receipt_sections_from_receipt(
+        image_id, receipt_id
+    )
+    rows = group_rows(details.lines)
+    if not rows or not details.words:
+        raise ValueError(f"receipt {key} has no rows or words")
+
+    anchor_line = None
+    tier = "chroma_text"
+    for anchor_type, candidate_tier in (
+        ("phone", "chroma_phone"),
+        ("address", "chroma_address"),
+    ):
+        candidates = sorted(
+            (
+                word
+                for word in details.words
+                if str((word.extracted_data or {}).get("type", "")).lower()
+                == anchor_type
+            ),
+            key=lambda word: (word.line_id, word.word_id),
+        )
+        if candidates:
+            anchor_line = int(candidates[0].line_id)
+            tier = candidate_tier
+            break
+    primary_line_id = (
+        _row_primary_for_line(rows, anchor_line)
+        if anchor_line is not None
+        else int(rows[0][0].line_id)
+    )
+    if primary_line_id is None:
+        raise ValueError(f"could not map merchant row for {key}")
+    line_key = _line_key(image_id, receipt_id, primary_line_id)
+    line_vector, line_metadata = source.get(line_key, LINE_INDEX)
+    add_corpus(line_key, LINE_INDEX, line_vector, line_metadata)
+    merchant_neighbors, vectors, latency_ms = source.search(
+        line_vector, LINE_INDEX, _MERCHANT_TOP_K
+    )
+    for item in merchant_neighbors:
+        add_corpus(item.key, LINE_INDEX, vectors[item.key], item.metadata)
+    max_distance = 0.15 if tier == "chroma_text" else 0.30
+    merchant = derive_merchant(
+        merchant_neighbors,
+        image_id=image_id,
+        receipt_id=receipt_id,
+        tier=tier,
+        max_distance=max_distance,
+    )
+    queries.append(
+        _query_record(
+            query_id=f"merchant:{key}",
+            family=MERCHANT_FAMILY,
+            receipt=receipt,
+            vector=line_vector,
+            index=LINE_INDEX,
+            top_k=_MERCHANT_TOP_K,
+            neighbors=merchant_neighbors,
+            expected_consumer=merchant,
+            inputs={
+                "image_id": image_id,
+                "max_distance": max_distance,
+                "query_tier": tier,
+                "receipt_id": receipt_id,
+            },
+            latency_ms=latency_ms,
+        )
+    )
+
+    words = sorted(
+        details.words, key=lambda word: (word.line_id, word.word_id)
+    )
+    word = words[len(words) // 2]
+    word_key = _word_key(
+        image_id, receipt_id, int(word.line_id), int(word.word_id)
+    )
+    word_vector, word_metadata = source.get(word_key, WORD_INDEX)
+    add_corpus(word_key, WORD_INDEX, word_vector, word_metadata)
+    word_neighbors, vectors, latency_ms = source.search(
+        word_vector, WORD_INDEX, _WORD_TOP_K
+    )
+    if len(word_neighbors) != _WORD_TOP_K:
+        raise ValueError(f"word query for {key} returned fewer than 30")
+    for item in word_neighbors:
+        add_corpus(item.key, WORD_INDEX, vectors[item.key], item.metadata)
+    queries.append(
+        _query_record(
+            query_id=f"word:{key}",
+            family=WORD_FAMILY,
+            receipt=receipt,
+            vector=word_vector,
+            index=WORD_INDEX,
+            top_k=_WORD_TOP_K,
+            neighbors=word_neighbors,
+            latency_ms=latency_ms,
+        )
+    )
+
+    section_map = _section_by_line(sections)
+    section_row = next(
+        (
+            row
+            for row in rows
+            if any(int(line.line_id) in section_map for line in row)
+        ),
+        rows[0],
+    )
+    section_line_id = int(section_row[0].line_id)
+    section_key = _line_key(image_id, receipt_id, section_line_id)
+    section_vector, section_metadata = source.get(section_key, LINE_INDEX)
+    add_corpus(section_key, LINE_INDEX, section_vector, section_metadata)
+    section_neighbors, vectors, latency_ms = source.search(
+        section_vector, LINE_INDEX, _SECTION_TOP_K
+    )
+    for item in section_neighbors:
+        add_corpus(item.key, LINE_INDEX, vectors[item.key], item.metadata)
+    proposed_counts = Counter(
+        section_map[int(line.line_id)]
+        for line in section_row
+        if int(line.line_id) in section_map
+    )
+    proposed = (
+        proposed_counts.most_common(1)[0][0] if proposed_counts else None
+    )
+    section = derive_section_vote(
+        section_neighbors,
+        image_id=image_id,
+        receipt_id=receipt_id,
+        proposed_section_type=proposed,
+    )
+    queries.append(
+        _query_record(
+            query_id=f"section:{key}",
+            family=SECTION_FAMILY,
+            receipt=receipt,
+            vector=section_vector,
+            index=LINE_INDEX,
+            top_k=_SECTION_TOP_K,
+            neighbors=section_neighbors,
+            expected_consumer=section,
+            inputs={
+                "image_id": image_id,
+                "proposed_section_type": proposed,
+                "receipt_id": receipt_id,
+            },
+            latency_ms=latency_ms,
+        )
+    )
+    receipt_row = {
+        "cohort": str(receipt.get("cohort") or "manifest"),
+        "image_id": image_id,
+        "key": key,
+        "receipt_id": receipt_id,
+    }
+    return queries, corpus, receipt_row
+
+
+def _run_capture_loop(
+    source: Any,
+    receipts: Sequence[Mapping[str, Any]],
+    group_rows: Any,
+) -> tuple[
+    dict[str, dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, str]],
+]:
+    """Capture every receipt, skipping per-receipt failures.
+
+    A missing vector, a Chroma quota or rate error, or a receipt absent
+    from Chroma/DynamoDB must not abort the whole run: each such failure
+    is logged as a SKIP with its key and reason, collected, and the loop
+    continues. The caller enforces the minimum-receipts floor at the end.
+    """
+
+    corpus: dict[str, dict[str, Any]] = {}
+    queries: list[dict[str, Any]] = []
+    receipt_rows: list[dict[str, Any]] = []
+    skips: list[dict[str, str]] = []
+    not_found = getattr(source, "_entity_not_found", None)
+    for receipt in receipts:
+        key = receipt_key(str(receipt["image_id"]), int(receipt["receipt_id"]))
+        try:
+            receipt_queries, receipt_corpus, receipt_row = _capture_receipt(
+                source, receipt, group_rows
+            )
+            for value in receipt_corpus.values():
+                _merge_corpus_value(corpus, value)
+        except Exception as exc:  # noqa: BLE001 - skip, report, continue
+            reason = _classify_skip(exc, not_found)
+            print(f"SKIP {key}: [{reason}] {exc}", file=sys.stderr)
+            skips.append({"detail": str(exc), "key": key, "reason": reason})
+            continue
+        queries.extend(receipt_queries)
+        receipt_rows.append(receipt_row)
+    return corpus, queries, receipt_rows, skips
+
+
+def capture_live(
+    receipts: Sequence[Mapping[str, Any]],
+    *,
+    table_name: str,
+    canonical: bool,
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    """Capture all three families using reads only.
+
+    Returns the fixture and the list of skipped receipts. The fixture is
+    shape-validated only; the caller decides whether the surviving receipt
+    count clears the floor.
+    """
+
+    from receipt_chroma.embedding.formatting.line_format import (
+        group_lines_into_visual_rows,
+    )
+
+    source = _LiveCaptureSource(table_name=table_name)
     try:
-        for receipt in receipts:
-            image_id = str(receipt["image_id"])
-            receipt_id = int(receipt["receipt_id"])
-            key = receipt_key(image_id, receipt_id)
-            details = source.dynamo.get_receipt_details(image_id, receipt_id)
-            sections = source.dynamo.get_receipt_sections_from_receipt(
-                image_id, receipt_id
-            )
-            rows = group_lines_into_visual_rows(details.lines)
-            if not rows or not details.words:
-                raise ValueError(f"receipt {key} has no rows or words")
-
-            anchor_line = None
-            tier = "chroma_text"
-            for anchor_type, candidate_tier in (
-                ("phone", "chroma_phone"),
-                ("address", "chroma_address"),
-            ):
-                candidates = sorted(
-                    (
-                        word
-                        for word in details.words
-                        if str(
-                            (word.extracted_data or {}).get("type", "")
-                        ).lower()
-                        == anchor_type
-                    ),
-                    key=lambda word: (word.line_id, word.word_id),
-                )
-                if candidates:
-                    anchor_line = int(candidates[0].line_id)
-                    tier = candidate_tier
-                    break
-            primary_line_id = (
-                _row_primary_for_line(rows, anchor_line)
-                if anchor_line is not None
-                else int(rows[0][0].line_id)
-            )
-            if primary_line_id is None:
-                raise ValueError(f"could not map merchant row for {key}")
-            line_key = _line_key(image_id, receipt_id, primary_line_id)
-            line_vector, line_metadata = source.get(line_key, LINE_INDEX)
-            add_corpus(line_key, LINE_INDEX, line_vector, line_metadata)
-            merchant_neighbors, vectors, latency_ms = source.search(
-                line_vector, LINE_INDEX, _MERCHANT_TOP_K
-            )
-            for item in merchant_neighbors:
-                add_corpus(
-                    item.key, LINE_INDEX, vectors[item.key], item.metadata
-                )
-            max_distance = 0.15 if tier == "chroma_text" else 0.30
-            merchant = derive_merchant(
-                merchant_neighbors,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                tier=tier,
-                max_distance=max_distance,
-            )
-            queries.append(
-                _query_record(
-                    query_id=f"merchant:{key}",
-                    family=MERCHANT_FAMILY,
-                    receipt=receipt,
-                    vector=line_vector,
-                    index=LINE_INDEX,
-                    top_k=_MERCHANT_TOP_K,
-                    neighbors=merchant_neighbors,
-                    expected_consumer=merchant,
-                    inputs={
-                        "image_id": image_id,
-                        "max_distance": max_distance,
-                        "query_tier": tier,
-                        "receipt_id": receipt_id,
-                    },
-                    latency_ms=latency_ms,
-                )
-            )
-
-            words = sorted(
-                details.words, key=lambda word: (word.line_id, word.word_id)
-            )
-            word = words[len(words) // 2]
-            word_key = _word_key(
-                image_id, receipt_id, int(word.line_id), int(word.word_id)
-            )
-            word_vector, word_metadata = source.get(word_key, WORD_INDEX)
-            add_corpus(word_key, WORD_INDEX, word_vector, word_metadata)
-            word_neighbors, vectors, latency_ms = source.search(
-                word_vector, WORD_INDEX, _WORD_TOP_K
-            )
-            if len(word_neighbors) != _WORD_TOP_K:
-                raise ValueError(
-                    f"word query for {key} returned fewer than 30"
-                )
-            for item in word_neighbors:
-                add_corpus(
-                    item.key, WORD_INDEX, vectors[item.key], item.metadata
-                )
-            queries.append(
-                _query_record(
-                    query_id=f"word:{key}",
-                    family=WORD_FAMILY,
-                    receipt=receipt,
-                    vector=word_vector,
-                    index=WORD_INDEX,
-                    top_k=_WORD_TOP_K,
-                    neighbors=word_neighbors,
-                    latency_ms=latency_ms,
-                )
-            )
-
-            section_map = _section_by_line(sections)
-            section_row = next(
-                (
-                    row
-                    for row in rows
-                    if any(int(line.line_id) in section_map for line in row)
-                ),
-                rows[0],
-            )
-            section_line_id = int(section_row[0].line_id)
-            section_key = _line_key(image_id, receipt_id, section_line_id)
-            section_vector, section_metadata = source.get(
-                section_key, LINE_INDEX
-            )
-            add_corpus(
-                section_key, LINE_INDEX, section_vector, section_metadata
-            )
-            section_neighbors, vectors, latency_ms = source.search(
-                section_vector, LINE_INDEX, _SECTION_TOP_K
-            )
-            for item in section_neighbors:
-                add_corpus(
-                    item.key, LINE_INDEX, vectors[item.key], item.metadata
-                )
-            proposed_counts = Counter(
-                section_map[int(line.line_id)]
-                for line in section_row
-                if int(line.line_id) in section_map
-            )
-            proposed = (
-                proposed_counts.most_common(1)[0][0]
-                if proposed_counts
-                else None
-            )
-            section = derive_section_vote(
-                section_neighbors,
-                image_id=image_id,
-                receipt_id=receipt_id,
-                proposed_section_type=proposed,
-            )
-            queries.append(
-                _query_record(
-                    query_id=f"section:{key}",
-                    family=SECTION_FAMILY,
-                    receipt=receipt,
-                    vector=section_vector,
-                    index=LINE_INDEX,
-                    top_k=_SECTION_TOP_K,
-                    neighbors=section_neighbors,
-                    expected_consumer=section,
-                    inputs={
-                        "image_id": image_id,
-                        "proposed_section_type": proposed,
-                        "receipt_id": receipt_id,
-                    },
-                    latency_ms=latency_ms,
-                )
-            )
-            receipt_rows.append(
-                {
-                    "cohort": str(receipt.get("cohort") or "manifest"),
-                    "image_id": image_id,
-                    "key": key,
-                    "receipt_id": receipt_id,
-                }
-            )
+        corpus, queries, receipt_rows, skips = _run_capture_loop(
+            source, receipts, group_lines_into_visual_rows
+        )
     finally:
         source.close()
 
@@ -887,8 +979,8 @@ def capture_live(
             "table": DEV_TABLE,
         },
     }
-    validate_fixture(fixture, minimum_receipts=MIN_RECEIPTS)
-    return fixture
+    validate_fixture(fixture, minimum_receipts=0)
+    return fixture, skips
 
 
 def compare_fixtures(
@@ -986,6 +1078,15 @@ def _require_live_environment(table_name: str) -> None:
         )
 
 
+def _print_skip_report(skips: Sequence[Mapping[str, str]]) -> None:
+    if not skips:
+        return
+    counts = Counter(str(skip["reason"]) for skip in skips)
+    print(f"skip report: {len(skips)} receipts skipped", file=sys.stderr)
+    for reason, count in sorted(counts.items()):
+        print(f"  {count} x {reason}", file=sys.stderr)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=DEFAULT_FIXTURE)
@@ -1023,6 +1124,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.canonical and args.offline_bootstrap:
         raise SystemExit("an offline bootstrap can never be canonical")
     receipts = _load_manifest(args.manifest)
+    skips: list[dict[str, str]] = []
     if args.offline_bootstrap:
         fixture = build_offline_bootstrap(receipts)
     else:
@@ -1030,11 +1132,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             _require_live_environment(args.table_name)
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
-        fixture = capture_live(
+        fixture, skips = capture_live(
             receipts,
             table_name=args.table_name,
             canonical=args.canonical,
         )
+    _print_skip_report(skips)
+    captured = len(fixture["receipts"])
+    if captured < MIN_RECEIPTS:
+        print(
+            f"ERROR: captured {captured} receipts, below the "
+            f"{MIN_RECEIPTS}-receipt floor "
+            f"({len(skips)} skipped); no fixture written",
+            file=sys.stderr,
+        )
+        return 1
     if args.compare_to:
         reference = load_fixture(args.compare_to)
         differences = compare_fixtures(
