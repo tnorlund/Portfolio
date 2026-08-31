@@ -233,4 +233,3 @@ fi
 echo ""
 echo "=== SUMMARY ==="
 echo "Script completed at: $(date)"
-echo "For more detailed metrics, use: ./infra/get_chromadb_metrics.sh"

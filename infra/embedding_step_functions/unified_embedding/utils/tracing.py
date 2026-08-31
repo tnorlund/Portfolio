@@ -306,15 +306,6 @@ def trace_s3_operation(operation: str):
     )
 
 
-def trace_chromadb_operation(operation: str):
-    """Trace ChromaDB operations."""
-    return tracer.trace_function(
-        f"ChromaDB.{operation}",
-        namespace="local",
-        capture_error=True,
-    )
-
-
 def trace_dynamodb_operation(operation: str):
     """Trace DynamoDB operations."""
     return tracer.trace_function(

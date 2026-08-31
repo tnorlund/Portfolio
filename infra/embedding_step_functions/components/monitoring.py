@@ -266,84 +266,6 @@ class MonitoringComponent(ComponentResource):
 
         return dashboard_body
 
-    def _create_lambda_widgets(self) -> list:
-        """Create CloudWatch widgets for Lambda monitoring."""
-        widgets = []
-
-        # Lambda duration widget
-        lambda_metrics = []
-        for name, lambda_func in self.lambda_functions.items():
-            lambda_metrics.append(
-                [
-                    "AWS/Lambda",
-                    "Duration",
-                    "FunctionName",
-                    lambda_func.name.apply(str),
-                    {"label": name},
-                ]
-            )
-
-        duration_widget = {
-            "type": "metric",
-            "x": 0,
-            "y": 0,
-            "width": 12,
-            "height": 6,
-            "properties": {
-                "metrics": lambda_metrics,
-                "view": "timeSeries",
-                "stacked": False,
-                "region": "us-east-1",
-                "title": "Lambda Function Duration",
-                "period": 300,
-                "stat": "Average",
-                "yAxis": {"left": {"min": 0}},
-            },
-        }
-        widgets.append(duration_widget)
-
-        # Lambda error rate widget
-        error_metrics = []
-        for name, lambda_func in self.lambda_functions.items():
-            error_metrics.append(
-                [
-                    "AWS/Lambda",
-                    "Errors",
-                    "FunctionName",
-                    lambda_func.name.apply(str),
-                    {"label": f"{name} Errors"},
-                ]
-            )
-            error_metrics.append(
-                [
-                    "AWS/Lambda",
-                    "Invocations",
-                    "FunctionName",
-                    lambda_func.name.apply(str),
-                    {"label": f"{name} Invocations"},
-                ]
-            )
-
-        error_widget = {
-            "type": "metric",
-            "x": 12,
-            "y": 0,
-            "width": 12,
-            "height": 6,
-            "properties": {
-                "metrics": error_metrics,
-                "view": "timeSeries",
-                "stacked": False,
-                "region": "us-east-1",
-                "title": "Lambda Function Errors & Invocations",
-                "period": 300,
-                "stat": "Sum",
-            },
-        }
-        widgets.append(error_widget)
-
-        return widgets
-
     def _create_lambda_widgets_resolved(self, lambda_names) -> list:
         """Create CloudWatch widgets for Lambda monitoring with resolved names."""
         widgets = []
@@ -461,84 +383,6 @@ class MonitoringComponent(ComponentResource):
 
         return widgets
 
-    def _create_step_function_widgets(self) -> list:
-        """Create CloudWatch widgets for Step Function monitoring."""
-        widgets = []
-
-        # Step Function execution status widget
-        sf_metrics = []
-        for name, step_func in self.step_functions.items():
-            sf_metrics.append(
-                [
-                    "AWS/States",
-                    "ExecutionsSucceeded",
-                    "StateMachineArn",
-                    step_func.arn.apply(str),
-                    {"label": f"{name} Succeeded"},
-                ]
-            )
-            sf_metrics.append(
-                [
-                    "AWS/States",
-                    "ExecutionsFailed",
-                    "StateMachineArn",
-                    step_func.arn.apply(str),
-                    {"label": f"{name} Failed"},
-                ]
-            )
-
-        sf_widget = {
-            "type": "metric",
-            "x": 0,
-            "y": 6,
-            "width": 12,
-            "height": 6,
-            "properties": {
-                "metrics": sf_metrics,
-                "view": "timeSeries",
-                "stacked": False,
-                "region": "us-east-1",
-                "title": "Step Function Executions",
-                "period": 300,
-                "stat": "Sum",
-            },
-        }
-        widgets.append(sf_widget)
-
-        # Step Function execution time widget
-        time_metrics = []
-        for name, step_func in self.step_functions.items():
-            time_metrics.append(
-                [
-                    "AWS/States",
-                    "ExecutionTime",
-                    "StateMachineArn",
-                    step_func.arn.apply(str),
-                    {"label": f"{name} Duration"},
-                ]
-            )
-
-        time_widget = {
-            "type": "metric",
-            "x": 12,
-            "y": 6,
-            "width": 12,
-            "height": 6,
-            "properties": {
-                "metrics": time_metrics,
-                "view": "timeSeries",
-                "stacked": False,
-                "region": "us-east-1",
-                "title": "Step Function Execution Time",
-                "period": 300,
-                "stat": "Average",
-                "yAxis": {"left": {"min": 0}},
-            },
-        }
-        widgets.append(time_widget)
-
-        return widgets
-
     def _create_step_function_widgets_resolved(self, step_func_arns) -> list:
         """Create CloudWatch widgets for Step Function monitoring with resolved ARNs."""
         widgets = []
@@ -648,12 +492,6 @@ class MonitoringComponent(ComponentResource):
                         "S3OperationDuration",
                         "Operation",
                         "download",
-                    ],
-                    [
-                        "EmbeddingWorkflow",
-                        "ChromaDBOperationDuration",
-                        "Operation",
-                        "save_delta",
                     ],
                 ],
                 "view": "timeSeries",

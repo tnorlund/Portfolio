@@ -411,11 +411,6 @@ def protect_s3_call(func):
     return s3_circuit_breaker().protect(func)
 
 
-def protect_chromadb_call(func):
-    """Decorator to protect ChromaDB operations with circuit breaker."""
-    return chromadb_circuit_breaker().protect(func)
-
-
 def protect_dynamodb_call(func):
     """Decorator to protect DynamoDB operations with circuit breaker."""
     return dynamodb_circuit_breaker().protect(func)
