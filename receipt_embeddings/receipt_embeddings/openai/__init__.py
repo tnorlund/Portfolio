@@ -1,22 +1,31 @@
-"""Back-compat re-export. Implementation lives in receipt_embeddings."""
+"""OpenAI batch API orchestration module.
 
-from receipt_embeddings.openai import *  # noqa: F403
-from receipt_embeddings.openai import (
-    add_batch_summary,
-    create_batch_summary,
-    download_openai_batch_result,
-    embed_texts,
-    get_openai_batch_status,
-    get_unique_receipt_and_image_ids,
+This module provides functionality for submitting, polling, and handling
+OpenAI batch embedding jobs.
+"""
+
+from receipt_embeddings.openai.batch_status import (
     handle_batch_status,
-    list_pending_line_embedding_batches,
-    list_pending_word_embedding_batches,
     map_openai_to_dynamo_status,
     mark_items_for_retry,
     mark_words_embedded,
     process_error_file,
     process_partial_results,
     should_retry_batch,
+)
+from receipt_embeddings.openai.helpers import (
+    get_unique_receipt_and_image_ids,
+)
+from receipt_embeddings.openai.poll import (
+    download_openai_batch_result,
+    get_openai_batch_status,
+    list_pending_line_embedding_batches,
+    list_pending_word_embedding_batches,
+)
+from receipt_embeddings.openai.realtime import embed_texts
+from receipt_embeddings.openai.submit import (
+    add_batch_summary,
+    create_batch_summary,
     submit_openai_batch,
     upload_to_openai,
 )

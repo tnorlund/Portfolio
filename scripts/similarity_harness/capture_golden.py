@@ -1028,7 +1028,7 @@ def capture_live(
     count clears the floor.
     """
 
-    from receipt_chroma.embedding.formatting.line_format import (
+    from receipt_chroma.embedding.formatting import (
         group_lines_into_visual_rows,
     )
 
