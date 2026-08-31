@@ -70,7 +70,8 @@ Store each embedding on a **dedicated item** in the parent's item collection:
 
 ```
 PK   = IMAGE#{image_id}
-SK   = RECEIPT#{r:05d}#LINE#{l:05d}#EMBEDDING                       (lines)
+SK   = RECEIPT#{r:05d}#LINE#{l:05d}#EMBEDDING     (visual row, keyed by primary line;
+                                                   row_line_ids attr lists the rest)
 SK   = RECEIPT#{r:05d}#LINE#{l:05d}#WORD#{w:05d}#EMBEDDING          (words)
 SK   = RECEIPT#{r:05d}#LINE#{l:05d}#WORD#{w:05d}#LABEL#{label}#EVIDENCE  (§3.7)
 TYPE = RECEIPT_LINE_EMBEDDING / RECEIPT_WORD_EMBEDDING / RECEIPT_LABEL_EVIDENCE
@@ -111,13 +112,29 @@ Priced consequences (accepted):
   (vectors are re-derivable; run backfill on the destination instead) —
   document in the scripts, don't "fix" them to copy vectors.
 
-### 3.2 Indexes (3 of the 5 allowed)
+### 3.2 Indexes (2 now, of the 5 allowed; a third deferred)
 
 | Index | Vector attr on | Distance | Partition key | Inline filters | Projection |
 |---|---|---|---|---|---|
-| `lines-vectors` | line embedding items | COSINE | **none** (corpus-wide queries dominate: merchant resolution, semantic search) | `section_type` (equality) | INCLUDE: text, merchant_name, place_id, image_id/receipt_id/line_id, section_type |
-| `words-vectors` | word embedding items | COSINE | **none** | `label_status` (equality) | INCLUDE: text, label fields (flattened), merchant_name, ids |
-| `label-evidence` | (word, label, verdict) evidence items — §3.7 | COSINE | **none** | `label`, `verdict` (equality) | INCLUDE: text, merchant_name, ids, validated_by/at, confidence |
+| `lines-vectors` | line embedding items | COSINE | **none** (corpus-wide queries dominate: merchant resolution, semantic search) | `section_type` (equality) | INCLUDE: text, merchant_name, place_id, image_id/receipt_id/line_id, row_line_ids, section_type |
+| `label-evidence` | (word, label, verdict) evidence items — §3.7 | COSINE | **none** | `label`, `verdict` (equality) | INCLUDE: text, merchant_name, ids, validated_by/at, confidence, **reasoning** |
+| `words-general` (**deferred**) | word embedding items | COSINE | none | `label_status` | — not created initially; see below |
+
+**Embedding content formats (unchanged from today; relocated in §6 F):**
+- Line vectors are **visual-row** embeddings: `{row_above}\n{target_row}\n{row_below}`
+  with `<EDGE>` at receipt boundaries (`formatting/line_format.py:140-172`), one vector
+  per visual row keyed by its primary line, `row_line_ids` listing the rest.
+- Word vectors embed target word + neighboring words + 3×3 position bucket
+  (`formatting/word_format.py`).
+
+**Why words-general is deferred:** its would-be consumers (consensus voting,
+semantic PRODUCT_NAME proposer) want *labeled* neighbors — the evidence index
+serves them pre-filtered. Only the low-stakes agentic "similar to this word,
+any label" tool wants unfiltered word search. Word embedding **items are still
+written** (vector source of truth: minting an evidence item on a later label
+confirmation is a GetItem, not a re-embed — no drift between searched and
+labeled vectors), so creating this index later is one UpdateTable + backfill
+wait. Deferral is cheap; projections are not.
 
 Constraints that shaped this (see research doc): distance function and INCLUDE
 projections are **immutable** after creation — get them right first; filters are
@@ -239,9 +256,12 @@ per **(word, label, verdict)** assertion:
 SK      = …#WORD#{id}#LABEL#{label}#EVIDENCE
 label   = "GRAND_TOTAL"            ← inline filter (equality)
 verdict = "VALID" | "INVALID"      ← inline filter (equality)
-vector  = the word's embedding (duplicated per assertion)
+vector  = the word's embedding (copied from its word embedding item —
+          GetItem, not re-embed, so searched and labeled vectors never drift)
 projection: word text, merchant_name, image/receipt/line/word ids,
-            validated_by, validated_at, confidence
+            validated_by, validated_at, confidence,
+            reasoning (from ReceiptWordLabel.reasoning — the original
+            human/Claude rationale, returned with every neighbor)
 ```
 
 `SearchVectors(label = X, verdict = VALID)` and `(label = X, verdict = INVALID)`
@@ -250,10 +270,9 @@ intended semantics using only equality filters, and the "why" arrives in the
 projection with provenance. Write hook is the existing validation event: the
 MCP confirm/reject action creates or flips the evidence item (and re-verdicts
 rewrite it). Costs: vector duplication per assertion (most words carry 0–1
-labels; ~20KB each — pennies), one PutItem per validation event, and a third
-index slot (lines, words-general, label-evidence — 3 of 5; words-general may
-prove redundant once evidence exists and can be dropped later, since index
-deletion is cheap while INCLUDE projections are not editable).
+labels; ~20KB each — pennies) and one PutItem per validation event. Index
+budget: 2 of 5 used at launch (lines, label-evidence); words-general is
+deferred per §3.2 and can be added later with one UpdateTable.
 
 Deliverables:
 - New MCP tool (working name `similar_labeled_words`): both polarities against
