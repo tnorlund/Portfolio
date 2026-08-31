@@ -107,9 +107,22 @@ Priced consequences (accepted):
 - Streams: every embedding write emits a ~40KB NEW_AND_OLD_IMAGES record; the
   stream processor must skip `*_EMBEDDING` TYPEs first thing
   (one guard clause — add in Phase 2 before the writer ships).
-- Dev↔prod copy scripts deliberately **skip** embedding/evidence items
-  (vectors are re-derivable; run backfill on the destination instead) —
-  document in the scripts, don't "fix" them to copy vectors.
+- Dev↔prod copy scripts deliberately **skip** embedding items (vectors are
+  re-derivable; run backfill on the destination instead) — document in the
+  scripts, don't "fix" them to copy vectors.
+
+### 3.1a Net table-schema footprint
+
+The migration's entire effect on the table schema:
+
+| Change | Types |
+|---|---|
+| **Added** (2) | `RECEIPT_LINE_EMBEDDING`, `RECEIPT_WORD_EMBEDDING` |
+| **Removed** (2) | `COMPACTION_RUN`, `COMPACTION_LOCK` (Chroma-only concepts) |
+| **Modified** | none — words, lines, labels, places, summaries keep their exact current shape; `embedding_status` stays but is frozen (§7.1) |
+| **Indexes** | +2 vector indexes; GSI1–4/GSITYPE untouched |
+
+Net record-type count: zero.
 
 ### 3.2 Indexes (2 of the 5 allowed)
 
