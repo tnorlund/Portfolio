@@ -187,10 +187,30 @@ cloud-upsert stack behind it) is replaced by a thin module — working name
 
 Producers to convert (all currently call the orchestration primitive):
 `process_ocr`/container OCR handler, merge_receipt, resegment_receipt,
-combine_receipts, smart re-OCR re-embed. Label/place/section *updates* that
-today flow through compaction appliers become plain `UpdateItem` on the
-embedding items (or are dropped where the consuming query is being deleted —
-which is most of them; only fields in §3.3 need maintaining).
+combine_receipts, smart re-OCR re-embed.
+
+### 3.4a Streaming after Chroma
+
+The stream processor survives with two of its jobs intact and one new small one:
+
+| Stream leg (today) | Post-migration |
+|---|---|
+| COMPACTION_RUN → lines/words queues → compaction Lambda | **deleted** (entity, queues, Lambda, ESMs all go) |
+| RECEIPT/RECEIPT_WORD/RECEIPT_LINE → lines/words | **deleted** — no consumer remains; re-OCR text changes re-embed explicitly at the re-OCR site, as today |
+| PLACE / WORD_LABEL → summary queue → summary-updater | **kept, relocated** out of the chroma component (live summary recompute) |
+| SECTION / SUMMARY → line-item queue → line-item-updater | **kept, relocated** (line-item rewrites, Tier-3 refine) |
+| PLACE / WORD_LABEL / SECTION → Chroma metadata appliers | **replaced by inline UpdateItems in the stream processor**: refresh the denormalized attrs on embedding items (`merchant_name`/`place_id` on line embeddings, `label_status` on the word's embedding, `section_type` on affected line embeddings) |
+
+The new leg lives inline in the stream processor — no new queue or Lambda:
+same-table targeted idempotent writes at low volume, and the stream is the one
+choke point that catches every writer (MCP tools, scripts, Lambdas) without any
+of them knowing vectors exist. It replaces the compaction appliers
+(`labels.py`/`metadata.py`/`sections.py`) plus their delta/S3/SQS/lock/
+snapshot transport. Required guard (also §3.1): skip `*_EMBEDDING` stream
+records first thing, so embedding writes don't echo.
+
+Net streaming footprint after migration: one 256MB zip Lambda, two queues, two
+updaters — all pre-existing — plus ~50 lines of vector-attr freshening.
 
 `EmbeddingStatus` keeps its enum but simplifies in meaning: set SUCCESS when
 the embedding item is written, FAILED on OpenAI errors (retry via the existing
