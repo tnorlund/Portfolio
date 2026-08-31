@@ -202,6 +202,27 @@ def test_batch_summary_invalid_dynamodb_format():
         item_to_batch_summary(item)
 
 
+@pytest.mark.unit
+def test_batch_summary_to_item_normalizes_post_init_enum_assignment(
+    example_batch_summary,
+):
+    """Post-init enum assignment must not corrupt GSI1PK on write (#1272)."""
+    example_batch_summary.status = BatchStatus.IN_PROGRESS
+    example_batch_summary.batch_type = BatchType.WORD_EMBEDDING
+
+    # Without to_item re-normalization, f-strings embed the enum repr.
+    assert f"STATUS#{example_batch_summary.status}" == (
+        "STATUS#BatchStatus.IN_PROGRESS"
+    )
+
+    item = example_batch_summary.to_item()
+    assert item["GSI1PK"] == {"S": "STATUS#IN_PROGRESS"}
+    assert item["status"] == {"S": "IN_PROGRESS"}
+    assert item["batch_type"] == {"S": "WORD_EMBEDDING"}
+    assert example_batch_summary.status == BatchStatus.IN_PROGRESS.value
+    assert item["GSI1SK"]["S"].startswith("BATCH_TYPE#WORD_EMBEDDING#")
+
+
 # === EQUALITY, HASHING, STR, ITER ===
 
 

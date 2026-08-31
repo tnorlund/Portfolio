@@ -96,6 +96,13 @@ class BatchSummary:
         return self.submitted_at
 
     def to_item(self) -> dict[str, Any]:
+        # Re-normalize on write. Post-init assignment of a BatchStatus member
+        # (e.g. poll handlers setting ``status = BatchStatus.IN_PROGRESS``)
+        # bypasses ``__post_init__``, and ``f"STATUS#{enum}"`` then embeds the
+        # enum repr (``STATUS#BatchStatus.IN_PROGRESS``) into GSI1PK, stranding
+        # the batch from ``get_batch_summaries_by_status``.
+        self.status = normalize_enum(self.status, BatchStatus)
+        self.batch_type = normalize_enum(self.batch_type, BatchType)
         return {
             **self.key,
             **self.gsi1_key(),
