@@ -3,6 +3,7 @@
 from receipt_embeddings.quotas import (
     MAX_GET_LIMIT,
     MAX_QUERY_EMBEDDINGS_PER_CALL,
+    MAX_SEARCH_RESULTS,
     build_chroma_where,
     ensure_get_ids_within_quota,
     ensure_query_embeddings_within_quota,
@@ -18,6 +19,7 @@ __all__ = [
     "FilterValue",
     "MAX_GET_LIMIT",
     "MAX_QUERY_EMBEDDINGS_PER_CALL",
+    "MAX_SEARCH_RESULTS",
     "ScoredItem",
     "VectorItem",
     "VectorSearchClient",

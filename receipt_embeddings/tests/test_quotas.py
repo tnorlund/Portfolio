@@ -12,24 +12,46 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from scripts.similarity_harness.capture_golden import _LiveCaptureSource
-from scripts.similarity_harness.common import LINE_INDEX
-
 from receipt_embeddings import (
     MAX_GET_LIMIT,
     MAX_QUERY_EMBEDDINGS_PER_CALL,
+    MAX_SEARCH_RESULTS,
     VectorItem,
     build_chroma_where,
     ensure_get_ids_within_quota,
     ensure_query_embeddings_within_quota,
 )
+from receipt_embeddings.quotas import (
+    EMBEDDING_DIMENSIONS,
+    LINE_EMBEDDING_INDEX,
+    MAX_VECTOR_DIMENSIONS,
+    PROTOCOL_LINE_INDEX,
+    WORD_EMBEDDING_INDEX,
+    dynamo_index_name,
+    ensure_top_k_within_quota,
+)
 from receipt_embeddings.testing import FakeVectorIndex
+
+from scripts.similarity_harness.capture_golden import _LiveCaptureSource
+from scripts.similarity_harness.common import LINE_INDEX
 
 
 @pytest.mark.unit
 def test_quota_constants_are_the_verified_chroma_cloud_limits() -> None:
     assert MAX_QUERY_EMBEDDINGS_PER_CALL == 20
     assert MAX_GET_LIMIT == 250
+
+
+@pytest.mark.unit
+def test_dynamo_quota_constants_pin_searchvectors_contract() -> None:
+    assert MAX_SEARCH_RESULTS == 100
+    assert MAX_VECTOR_DIMENSIONS == 4096
+    assert EMBEDDING_DIMENSIONS == 1536
+    assert dynamo_index_name(PROTOCOL_LINE_INDEX) == LINE_EMBEDDING_INDEX
+    assert dynamo_index_name("words-vectors") == WORD_EMBEDDING_INDEX
+    ensure_top_k_within_quota(MAX_SEARCH_RESULTS)
+    with pytest.raises(ValueError, match="between 1 and 100"):
+        ensure_top_k_within_quota(MAX_SEARCH_RESULTS + 1)
 
 
 @pytest.mark.unit

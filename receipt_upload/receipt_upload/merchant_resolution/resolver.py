@@ -37,6 +37,11 @@ from receipt_chroma.embedding.utils import (
     normalize_address,
     normalize_phone,
 )
+from receipt_upload.merchant_resolution.vector_backend import (
+    PROTOCOL_LINE_INDEX,
+    vector_search_client,
+)
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
@@ -1340,23 +1345,22 @@ class MerchantResolver:
                 return MerchantResult()
 
         try:
-            # Query ChromaDB by embedding similarity
-            results = lines_client.query(
-                collection_name="lines",
-                query_embeddings=[embedding],
-                n_results=20,
-                include=["metadatas", "distances", "documents"],
+            # Retrieval is the only VECTOR_BACKEND swap. Thresholds, phone/
+            # address boosts, and corroboration gating below stay verbatim.
+            search_client = vector_search_client(lines_client)
+            neighbors = search_client.search(
+                embedding, PROTOCOL_LINE_INDEX, 20
             )
 
-            if not results or not results.get("metadatas"):
+            if not neighbors:
                 return MerchantResult()
 
             # Process results and compute confidence with metadata comparison
             matches: List[SimilarityMatch] = []
-            metadatas = results.get("metadatas", [[]])[0]
-            distances = results.get("distances", [[]])[0]
 
-            for metadata, distance in zip(metadatas, distances):
+            for item in neighbors:
+                metadata = dict(item.metadata)
+                distance = item.distance
                 # Skip current receipt
                 meta_image_id = metadata.get("image_id")
                 meta_receipt_id = metadata.get("receipt_id")

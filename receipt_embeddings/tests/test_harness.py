@@ -10,6 +10,9 @@ import time
 from pathlib import Path
 
 import pytest
+from receipt_embeddings import ScoredItem
+from receipt_embeddings.testing import FakeVectorIndex
+
 from scripts.similarity_harness.capture_golden import (
     _default_receipts,
     _require_live_environment,
@@ -34,9 +37,6 @@ from scripts.similarity_harness.evaluate import (
     evaluate_fixture,
 )
 from scripts.similarity_harness.evaluate import main as evaluate_main
-
-from receipt_embeddings import ScoredItem
-from receipt_embeddings.testing import FakeVectorIndex
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 GOLDEN_FIXTURE = (
@@ -173,6 +173,30 @@ def test_dynamo_evaluation_rejects_prod_table(
                 str(tmp_path / "unused.json"),
             ]
         )
+
+
+@pytest.mark.unit
+def test_dynamo_backend_factory_wires_evaluate(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22")
+    out = tmp_path / "scorecard.json"
+    assert (
+        evaluate_main(
+            [
+                "--backend",
+                "dynamo",
+                "--backend-factory",
+                "receipt_embeddings.testing.fake_index:golden_fixture_client",
+                "--fixture",
+                str(GOLDEN_FIXTURE),
+                "--out",
+                str(out),
+            ]
+        )
+        == 0
+    )
+    assert out.exists()
 
 
 @pytest.mark.unit

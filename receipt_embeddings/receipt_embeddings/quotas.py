@@ -18,6 +18,32 @@ from receipt_embeddings.vector_client import FilterValue
 MAX_QUERY_EMBEDDINGS_PER_CALL = 20
 MAX_GET_LIMIT = 250
 
+# DynamoDB vector search (GA 2026-08-05). SearchVectors returns at most
+# 100 neighbors; filters are equality-only; indexes are 1536-dim COSINE.
+MAX_SEARCH_RESULTS = 100
+MAX_VECTOR_DIMENSIONS = 4096
+EMBEDDING_DIMENSIONS = 1536
+DEV_TABLE_NAME = "ReceiptsTable-dc5be22"
+PROD_TABLE_NAME = "ReceiptsTable-d7ff76a"
+LINE_EMBEDDING_INDEX = "line-embeddings"
+WORD_EMBEDDING_INDEX = "word-embeddings"
+PROTOCOL_LINE_INDEX = "lines-vectors"
+PROTOCOL_WORD_INDEX = "words-vectors"
+LINE_VECTOR_ATTR = "line_vector"
+WORD_VECTOR_ATTR = "word_vector"
+VECTOR_SEARCH_REQUEST_BYTES_PER_1536 = 40_000
+
+INDEX_NAME_MAP = {
+    PROTOCOL_LINE_INDEX: LINE_EMBEDDING_INDEX,
+    PROTOCOL_WORD_INDEX: WORD_EMBEDDING_INDEX,
+    LINE_EMBEDDING_INDEX: LINE_EMBEDDING_INDEX,
+    WORD_EMBEDDING_INDEX: WORD_EMBEDDING_INDEX,
+}
+VECTOR_ATTR_FOR_INDEX = {
+    LINE_EMBEDDING_INDEX: LINE_VECTOR_ATTR,
+    WORD_EMBEDDING_INDEX: WORD_VECTOR_ATTR,
+}
+
 
 def ensure_query_embeddings_within_quota(
     query_embeddings: Sequence[Sized],
@@ -69,10 +95,56 @@ def build_chroma_where(
     return {"$and": [{key: value} for key, value in items]}
 
 
+def ensure_top_k_within_quota(top_k: int) -> None:
+    """Reject a SearchVectors page larger than the service cap."""
+
+    if isinstance(top_k, bool) or not isinstance(top_k, int):
+        raise TypeError("top_k must be an integer")
+    if not 1 <= top_k <= MAX_SEARCH_RESULTS:
+        raise ValueError(f"top_k must be between 1 and {MAX_SEARCH_RESULTS}")
+
+
+def dynamo_index_name(index: str) -> str:
+    """Map a protocol index name onto the judge-provisioned Dynamo index."""
+
+    try:
+        return INDEX_NAME_MAP[index]
+    except KeyError as exc:
+        raise ValueError(f"unknown vector index: {index!r}") from exc
+
+
+def require_dev_table(table_name: str) -> str:
+    """Refuse any table other than the judge-provisioned dev table."""
+
+    if table_name != DEV_TABLE_NAME:
+        raise ValueError(
+            f"refusing to query DynamoDB table {table_name!r}; "
+            f"only {DEV_TABLE_NAME!r} is allowed"
+        )
+    return table_name
+
+
 __all__ = [
+    "DEV_TABLE_NAME",
+    "EMBEDDING_DIMENSIONS",
+    "INDEX_NAME_MAP",
+    "LINE_EMBEDDING_INDEX",
+    "LINE_VECTOR_ATTR",
     "MAX_GET_LIMIT",
     "MAX_QUERY_EMBEDDINGS_PER_CALL",
+    "MAX_SEARCH_RESULTS",
+    "MAX_VECTOR_DIMENSIONS",
+    "PROD_TABLE_NAME",
+    "PROTOCOL_LINE_INDEX",
+    "PROTOCOL_WORD_INDEX",
+    "VECTOR_ATTR_FOR_INDEX",
+    "VECTOR_SEARCH_REQUEST_BYTES_PER_1536",
+    "WORD_EMBEDDING_INDEX",
+    "WORD_VECTOR_ATTR",
     "build_chroma_where",
+    "dynamo_index_name",
     "ensure_get_ids_within_quota",
     "ensure_query_embeddings_within_quota",
+    "ensure_top_k_within_quota",
+    "require_dev_table",
 ]

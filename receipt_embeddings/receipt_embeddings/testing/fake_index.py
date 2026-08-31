@@ -8,14 +8,12 @@ from numbers import Real
 
 import numpy as np
 from numpy.typing import NDArray
-
+from receipt_embeddings.quotas import MAX_SEARCH_RESULTS
 from receipt_embeddings.vector_client import (
     FilterValue,
     ScoredItem,
     VectorItem,
 )
-
-_MAX_TOP_K = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,8 +105,10 @@ class FakeVectorIndex:
 
         if isinstance(top_k, bool) or not isinstance(top_k, int):
             raise TypeError("top_k must be an integer")
-        if not 1 <= top_k <= _MAX_TOP_K:
-            raise ValueError(f"top_k must be between 1 and {_MAX_TOP_K}")
+        if not 1 <= top_k <= MAX_SEARCH_RESULTS:
+            raise ValueError(
+                f"top_k must be between 1 and {MAX_SEARCH_RESULTS}"
+            )
 
         # Same contract as build_chroma_where: filters are flat equality
         # predicates; where-operator syntax never reaches a backend.
@@ -167,4 +167,21 @@ class FakeVectorIndex:
             raise KeyError(f"unknown vector key: {key}") from exc
 
 
-__all__ = ["FakeVectorIndex"]
+def golden_fixture_client() -> FakeVectorIndex:
+    """Factory for ``evaluate.py --backend dynamo --backend-factory`` tests."""
+
+    from pathlib import Path
+
+    from scripts.similarity_harness.common import corpus_items, load_fixture
+
+    fixture_path = (
+        Path(__file__).resolve().parents[3]
+        / "tests"
+        / "fixtures"
+        / "similarity"
+        / "golden.json"
+    )
+    return FakeVectorIndex(corpus_items(load_fixture(fixture_path)))
+
+
+__all__ = ["FakeVectorIndex", "golden_fixture_client"]

@@ -29,12 +29,13 @@ classifiers = [
 ]
 dependencies = [
   "receipt-dynamo",  # Local package for DynamoDB entities and operations
+  "receipt-embeddings",  # VectorSearchClient + Dynamo writer
   "receipt-chroma",  # Local package for ChromaDB embedding operations
   "receipt-places",  # Local package for Google Places API
   "numpy>=1.26.0,<3.0.0",
   "Pillow>=11.2.1",
   "pillow-avif-plugin>=1.3.0",
-  "boto3>=1.43.32,<1.44.0",
+  "boto3>=1.43.64,<1.44.0",
   "langsmith>=0.1.0",  # For Langsmith tracing
 ]
 keywords = ["dynamo", "dynamodb", "receipts", "aws", "database"]
