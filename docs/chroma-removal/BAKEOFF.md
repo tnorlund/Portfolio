@@ -185,3 +185,39 @@ chain headers, plus one casing artifact; merchant-IDENTITY agreement is
 regression vs main's replay of the same fixtures.** The ≥ 98% bar applies to
 the phase-2 populated-index dynamo evaluation. Recall@10 ≥ 0.85 unchanged.
 Do not modify Round A fixtures or the fake to chase the offline number.
+
+## Mode switch: distribution (post-Round-C ruling, 2026-08-31)
+
+Round C's field converged (three entries with identical six-decimal offline
+parity) — the design space is closed enough that tournament redundancy no
+longer pays. Round C finishes as a tournament (phase 2 decides it); all
+remaining cards are dealt **one per tool, in parallel**, each with its own
+gate, judged the same way. Tournament mode returns only for a genuinely
+design-open card.
+
+**Dealt now (independent of Round C):**
+- **X2 → grok**: delete the dormant `infra/embedding_step_functions/` batch
+  tree (6 zip + 5 container Lambdas, 3 state machines, ECR repo, dashboard,
+  second compaction impl) plus `combine_receipts_step_functions` and the
+  `pattern_builder` Lambda. ⚠️ Drop each container Lambda's legacy-URN
+  `aliases` in the same change (see SPEC §6 G). Fix the import-time breakages
+  this exposes (SPEC §6 A items 3, 5). Gates: `pulumi preview` clean on BOTH
+  stacks (read-only preview; do not deploy), full CI-relevant suites green,
+  grep proof that nothing imports the deleted trees.
+- **X4 → cursor**: dead-code sweep per SPEC §6 G / inventory-infra §G —
+  `infra/chromadb_compaction/lambdas/processor/`, `dual_chroma_client.py`,
+  the four unwired `simple_lambdas`, superseded monitoring builders,
+  `conftest.py.bak`, orphaned chroma metric/trace/circuit-breaker emitters,
+  the listed dead docs. NOTHING outside the documented dead list; no MCP or
+  receipt_agent files (fenced for later cards). Gates: CI green, grep proofs
+  per deleted item in the PR body.
+
+**Dealt after Round C closes:** D (stream freshening) → claude;
+E2 (sections/proposer ports) → codex; E3 (QA + MCP + similar_labeled_words,
+absorbing X1's MCP-file deletions and X3's search.py items) and E4 (/receipt
+generators + §5a) → assigned on availability. File fences: X2/X4 must not
+touch files in receipt_agent/, scripts/receipt_mcp_server.py, or
+infra/mcp_server_lambda/ — those belong to E3.
+
+Standing protocol unchanged: branch `cards/<card>-<tool>`, commit-don't-push,
+final commit replaces BAKEOFF_DONE.md wholesale.
