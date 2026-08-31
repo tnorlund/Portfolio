@@ -268,6 +268,23 @@ def serialize_coordinate_point(point: dict[str, float]) -> dict[str, Any]:
     }
 
 
+def serialize_number_list(values: list[float] | list[int]) -> dict[str, Any]:
+    """Serialize a numeric list as a DynamoDB ``L`` of ``N`` values."""
+    return {
+        "L": [
+            {
+                "N": (
+                    str(int(value))
+                    if isinstance(value, int)
+                    and not isinstance(value, bool)
+                    else _format_float(float(value), 8, 12)
+                )
+            }
+            for value in values
+        ]
+    }
+
+
 def serialize_confidence(confidence: float) -> dict[str, str]:
     """
     Serialize a confidence value to DynamoDB format.

@@ -378,7 +378,11 @@ class _Receipt(FlattenedStandardMixin):
     def get_receipt_item_type_counts(
         self, image_id: str, receipt_id: int
     ) -> dict[str, int]:
-        """Count all entity types stored below a receipt key prefix."""
+        """Count all entity types stored below a receipt key prefix.
+
+        Embedding items live under the same RECEIPT# SK prefix (SPEC §3.1),
+        so this prefix query now also walks ``RECEIPT_*_EMBEDDING`` rows.
+        """
         self._validate_image_id(image_id)
         self._validate_receipt_id(receipt_id)
         counts: Counter[str] = Counter()

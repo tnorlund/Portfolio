@@ -444,6 +444,60 @@ class EntityFactory(SerializationMixin):
         return extractor
 
     @staticmethod
+    def extract_float_list_field(field_name: str) -> DynamoDBItemExtractor:
+        """Create a type-safe float list extractor (DynamoDB ``L`` of ``N``)."""
+
+        def extractor(item: dict[str, Any]) -> list[float]:
+            if field_name not in item:
+                raise ValueError(f"Item is missing required key: {field_name}")
+            attribute = item[field_name]
+            if not isinstance(attribute, dict) or set(attribute) != {"L"}:
+                raise ValueError(
+                    f"{field_name} must be a DynamoDB list (L) of numbers"
+                )
+            values = attribute["L"]
+            if not isinstance(values, list) or not values:
+                raise ValueError(f"{field_name} must be a non-empty list")
+            floats: list[float] = []
+            for entry in values:
+                if not isinstance(entry, dict) or "N" not in entry:
+                    raise ValueError(
+                        f"{field_name} entries must be DynamoDB numbers (N)"
+                    )
+                floats.append(float(entry["N"]))
+            return floats
+
+        return extractor
+
+    @staticmethod
+    def extract_int_list_field(
+        field_name: str, default: list[int] | None = None
+    ) -> DynamoDBItemExtractor:
+        """Create a type-safe int list extractor (DynamoDB ``L`` of ``N``)."""
+
+        def extractor(item: dict[str, Any]) -> list[int]:
+            if field_name not in item:
+                return list(default or [])
+            attribute = item[field_name]
+            if not isinstance(attribute, dict) or set(attribute) != {"L"}:
+                raise ValueError(
+                    f"{field_name} must be a DynamoDB list (L) of numbers"
+                )
+            values = attribute["L"]
+            if not isinstance(values, list):
+                raise ValueError(f"{field_name} must be a list")
+            ints: list[int] = []
+            for entry in values:
+                if not isinstance(entry, dict) or "N" not in entry:
+                    raise ValueError(
+                        f"{field_name} entries must be DynamoDB numbers (N)"
+                    )
+                ints.append(int(float(entry["N"])))
+            return ints
+
+        return extractor
+
+    @staticmethod
     def extract_string_list_field(field_name: str) -> DynamoDBItemExtractor:
         """Create a type-safe string list field extractor."""
 

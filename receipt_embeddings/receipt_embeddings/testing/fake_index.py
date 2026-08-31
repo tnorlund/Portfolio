@@ -9,13 +9,15 @@ from numbers import Real
 import numpy as np
 from numpy.typing import NDArray
 
+from receipt_embeddings.indexes import (
+    MAX_SEARCH_VECTORS_TOP_K,
+    validate_search_args,
+)
 from receipt_embeddings.vector_client import (
     FilterValue,
     ScoredItem,
     VectorItem,
 )
-
-_MAX_TOP_K = 100
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,19 +107,7 @@ class FakeVectorIndex:
     ) -> list[ScoredItem]:
         """Return exact cosine neighbors with deterministic tie ordering."""
 
-        if isinstance(top_k, bool) or not isinstance(top_k, int):
-            raise TypeError("top_k must be an integer")
-        if not 1 <= top_k <= _MAX_TOP_K:
-            raise ValueError(f"top_k must be between 1 and {_MAX_TOP_K}")
-
-        # Same contract as build_chroma_where: filters are flat equality
-        # predicates; where-operator syntax never reaches a backend.
-        for filter_key in filters or ():
-            if filter_key.startswith("$"):
-                raise ValueError(
-                    f"filters are flat equality predicates; operator key "
-                    f"{filter_key!r} belongs to the adapter, not the caller"
-                )
+        validate_search_args(top_k=top_k, filters=filters)
 
         query = _as_vector(vector, name="query vector")
         if self._dimension is not None and query.size != self._dimension:

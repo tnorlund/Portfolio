@@ -784,6 +784,7 @@ class MerchantResolver:
         self.dynamo = dynamo_client
         self.places_client = places_client
         self._openai_client = openai_client
+        self._vector_client = None
 
     @property
     def openai_client(self) -> Any:
@@ -1309,6 +1310,62 @@ class MerchantResolver:
 
         return _traced_search()
 
+    def _retrieve_line_neighbors(
+        self,
+        embedding: List[float],
+        lines_client: ChromaClient,
+    ) -> List[tuple[dict, float]]:
+        """Fetch top-20 line neighbors from Chroma or SearchVectors.
+
+        Thresholds and ranking stay in ``_similarity_search_impl``. This
+        method only swaps the retrieval call behind VECTOR_BACKEND.
+        """
+        backend = os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
+        if backend in {"dynamodb", "dynamo"}:
+            return self._retrieve_line_neighbors_dynamo(embedding)
+        results = lines_client.query(
+            collection_name="lines",
+            query_embeddings=[embedding],
+            n_results=20,
+            include=["metadatas", "distances", "documents"],
+        )
+        if not results or not results.get("metadatas"):
+            return []
+        metadatas = results.get("metadatas", [[]])[0]
+        distances = results.get("distances", [[]])[0]
+        pairs: List[tuple[dict, float]] = []
+        for metadata, distance in zip(metadatas, distances):
+            pairs.append((metadata or {}, float(distance)))
+        return pairs
+
+    def _retrieve_line_neighbors_dynamo(
+        self, embedding: List[float]
+    ) -> List[tuple[dict, float]]:
+        """SearchVectors retrieval; empty list on throttle/missing client."""
+        try:
+            from receipt_embeddings.dynamo_client import (
+                DynamoVectorSearchClient,
+            )
+            from receipt_embeddings.indexes import LINE_INDEX
+        except ImportError as exc:
+            _log(
+                "VECTOR_BACKEND=dynamodb but receipt_embeddings missing: %s",
+                exc,
+            )
+            return []
+        if self._vector_client is None:
+            try:
+                self._vector_client = DynamoVectorSearchClient.from_env()
+            except Exception as exc:  # noqa: BLE001
+                _log("Dynamo vector client unavailable: %s", exc)
+                return []
+        try:
+            hits = self._vector_client.search(embedding, LINE_INDEX, 20)
+        except Exception as exc:  # noqa: BLE001
+            _log("SearchVectors failed: %s", exc)
+            return []
+        return [(dict(item.metadata), float(item.distance)) for item in hits]
+
     def _similarity_search_impl(
         self,
         lines_client: ChromaClient,
@@ -1340,23 +1397,16 @@ class MerchantResolver:
                 return MerchantResult()
 
         try:
-            # Query ChromaDB by embedding similarity
-            results = lines_client.query(
-                collection_name="lines",
-                query_embeddings=[embedding],
-                n_results=20,
-                include=["metadatas", "distances", "documents"],
+            neighbor_pairs = self._retrieve_line_neighbors(
+                embedding, lines_client
             )
-
-            if not results or not results.get("metadatas"):
+            if not neighbor_pairs:
                 return MerchantResult()
 
             # Process results and compute confidence with metadata comparison
             matches: List[SimilarityMatch] = []
-            metadatas = results.get("metadatas", [[]])[0]
-            distances = results.get("distances", [[]])[0]
 
-            for metadata, distance in zip(metadatas, distances):
+            for metadata, distance in neighbor_pairs:
                 # Skip current receipt
                 meta_image_id = metadata.get("image_id")
                 meta_receipt_id = metadata.get("receipt_id")

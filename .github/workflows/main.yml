@@ -110,8 +110,8 @@ jobs:
               # first so the [test]/[lint] resolves never reach for PyPI.
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_embeddings
-              pip install numpy "openai>=2.8.1,<3.0.0"
-              pip install pytest pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures
+              pip install numpy boto3 "openai>=2.8.1,<3.0.0"
+              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto
               ;;
             receipt_chroma)
               pip install -e receipt_dynamo
