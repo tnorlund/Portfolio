@@ -187,7 +187,8 @@ cloud-upsert stack behind it) is replaced by a thin module — working name
 
 Producers to convert (all currently call the orchestration primitive):
 `process_ocr`/container OCR handler, merge_receipt, resegment_receipt,
-combine_receipts, smart re-OCR re-embed.
+smart re-OCR re-embed. (combine_receipts is deleted outright instead —
+zero invocations in 60d per the Aug-2026 cost review.)
 
 ### 3.4a Streaming after Chroma
 
@@ -345,7 +346,14 @@ enough that it is the default. Run on dev, validate (§8), then prod.
 Cost effect: ~$240/mo compaction Lambdas → ~$0 (SearchVectors pay-per-request at
 this volume is dollars), Chroma Cloud subscription → $0, 2 paid VPC endpoints →
 $0, S3 vector bucket storage/requests → $0, OpenAI spend unchanged.
-The NAT instance **stays** (upload_images uses the same subnets).
+The **entire VPC/networking stack also goes** — NAT instance + EIP (~$7/mo),
+subnets, all four VPC endpoints, both security groups — because un-VPC'ing
+upload_images (whose attachment is vestigial) leaves nothing in the VPC
+(Phase 4 step 5; gated on an API-key IP-allowlist check). Also absorbed from
+the Aug-2026 cost review's phase-2 list: combine_receipts SF (zero invocations
+60d — delete outright instead of the ~30-line edit), pattern_builder,
+compaction alarms, EmbeddingWorkflow dashboard, both chroma ECR repos,
+log-group retention on deleted Lambdas.
 
 ## 4a. Naming: capability names, never technology names
 
@@ -372,12 +380,9 @@ so no future backend change forces another rename.
 | `validate_word_similarity` | retired → `similar_labeled_words` (§3.7) |
 | `TIER_COLORS.chroma`, `validation_source: "chroma"` | `"similarity"` |
 
-**Networking (misnamed, shared by all VPC Lambdas):**
-
-| Today | New |
-|---|---|
-| `ChromaSecurity` (`infra/security.py`) | `LambdaNetworkSecurity` |
-| `infra/chroma/nat_egress.py` | `infra/network/nat_egress.py` |
+**Networking:** no rename needed — `ChromaSecurity` and `nat_egress.py` are
+**deleted entirely** in Phase 4 step 5 (the VPC empties once upload_images is
+un-VPC'd; see §5).
 
 **Pulumi rename mechanics.** A logical rename is a replace unless the resource
 carries `aliases=[<old URN>]` — every *kept* resource (queues, updaters, stream
@@ -447,8 +452,18 @@ Ordering rules from the infra inventory are load-bearing; violating them fails
    other importers first), compaction queues/Lambda/alarms/ECR, stack exports
    (`chromadb_*`, `enhanced_compaction_function_arn`, …) after grepping
    scripts/Swift config loaders for `pulumi stack output` readers.
-5. Remove the two paid VPC interface endpoints; keep NAT + gateways
-   (edit their `route_table_ids` if subnets change). Rename `ChromaSecurity`.
+5. **Delete the entire VPC/networking stack.** upload_images's VPC attachment
+   is vestigial (component makes vpc_config optional, `infra.py:619-624`; the
+   VPC existed for the ECS-Chroma era) — pass `vpc_subnet_ids=None`, and with
+   compaction/embedding-SF/word-similarity-generator gone, nothing VPC-attached
+   remains. Then delete: NAT instance + EIP, private subnets/route tables,
+   both interface endpoints, both gateway endpoints, both security groups,
+   `infra/chroma/nat_egress.py`, `infra/security.py` (the §4a
+   LambdaNetworkSecurity rename becomes a delete). Bonus: upload_images loses
+   ENI cold-start overhead.
+   ⚠️ **Gate first**: verify no external API key (Google Places especially) is
+   IP-allowlisted to the NAT's EIP — the stable egress IP disappears. 2-minute
+   console check; remove the restriction before un-VPC'ing.
 6. Empty + delete the vector S3 buckets (dev, then prod after a 2-week soak;
    final snapshot copied to glacier-tier archive first as a courtesy backstop).
 7. Close the Chroma Cloud account.
