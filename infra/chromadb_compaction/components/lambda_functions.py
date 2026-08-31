@@ -1,7 +1,6 @@
 """Hybrid Lambda deployment component for ChromaDB compaction infrastructure.
 
-Creates both zip-based and container-based Lambda functions following the
-pattern from embedding_step_functions.
+Creates both zip-based and container-based Lambda functions.
 """
 
 # pylint: disable=duplicate-code,too-many-instance-attributes,too-many-arguments,too-many-locals
