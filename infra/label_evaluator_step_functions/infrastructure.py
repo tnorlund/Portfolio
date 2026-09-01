@@ -474,6 +474,7 @@ class LabelEvaluatorStepFunction(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_dynamo",
+                "receipt_embeddings",
                 "receipt_chroma",
                 "receipt_places",
                 "receipt_agent",
