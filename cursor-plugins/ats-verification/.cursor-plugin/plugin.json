@@ -1,0 +1,47 @@
+{
+  "name": "portfolio-ats-verification-dev",
+  "displayName": "Portfolio ATS Verification (Dev)",
+  "version": "0.1.0",
+  "description": "Read the latest trusted, unexpired Greenhouse verification code from the isolated Portfolio development inbox.",
+  "author": {
+    "name": "Tyler Norlund"
+  },
+  "homepage": "https://github.com/tnorlund/Portfolio/blob/main/infra/ATS_VERIFICATION_INBOX.md",
+  "repository": "https://github.com/tnorlund/Portfolio",
+  "keywords": [
+    "ats",
+    "greenhouse",
+    "verification-code",
+    "mcp",
+    "development"
+  ],
+  "category": "productivity",
+  "tags": [
+    "ats",
+    "greenhouse",
+    "mcp",
+    "development"
+  ],
+  "mcpServers": "./mcp.json",
+  "variables": {
+    "type": "object",
+    "properties": {
+      "ATS_MCP_URL": {
+        "type": "string",
+        "title": "Development ATS MCP URL",
+        "description": "Development stack endpoint only. Never configure this plugin with the production stack.",
+        "default": "https://gk35oy04tf.execute-api.us-east-1.amazonaws.com/ats/mcp"
+      },
+      "ATS_MCP_CLIENT_ID": {
+        "type": "string",
+        "title": "Development Cognito public client ID",
+        "description": "Public PKCE OAuth client ID exported by the Portfolio development stack.",
+        "default": "6pgbuam45p1cc9c8mplgq32241"
+      }
+    },
+    "required": [
+      "ATS_MCP_URL",
+      "ATS_MCP_CLIENT_ID"
+    ]
+  }
+}

@@ -113,8 +113,30 @@ redirects documented at [Cursor MCP](https://cursor.com/docs/mcp):
 - `https://www.cursor.com/agents/mcp/oauth/callback`
 - `http://localhost:8787/callback`
 
-Add a user-scoped custom MCP from Cursor **Customize -> MCPs -> New -> User**,
-or install the equivalent configuration through the team's plugin catalog:
+The user-scoped custom MCP under Cursor **Customize -> MCPs -> New -> User** is
+useful for local validation, but it is local configuration and does **not**
+install a connector in Grok Bot's hosted plugin catalog.
+
+For Grok Bot, install the checked-in
+`portfolio-ats-verification-dev` Cursor plugin through an account marketplace:
+
+1. In Cursor, open **Customize -> Browse -> Add Marketplace**.
+2. Choose **Import from Github** and import this repository. During review of
+   an unmerged change, use the feature-branch repository URL if the importer
+   offers a branch selector; otherwise wait until the plugin files are on the
+   repository's default branch.
+3. Install **Portfolio ATS Verification (Dev)** at user scope. Keep the
+   development defaults; never substitute production outputs.
+4. Open Grok Bot **Plugins -> Your plugins**, add the plugin, and complete its
+   browser OAuth flow.
+5. Restart Grok Bot and confirm `get_latest_verification_code` is enabled.
+
+Teams and Enterprise accounts can instead distribute the same plugin from a
+private team marketplace, or add the remote server under **Dashboard ->
+Integrations & MCP** and link that Team MCP to the Default marketplace. A
+plain `~/.cursor/mcp.json` entry is not sufficient for Grok Bot.
+
+The equivalent MCP configuration is:
 
 ```json
 {
@@ -133,10 +155,11 @@ or install the equivalent configuration through the team's plugin catalog:
 
 Complete the browser authorization, restart Grok Bot, then confirm the
 connector is installed and connected under **Plugins -> Your plugins**. Grok
-Bot and Cursor share the MCP authorization, and Cursor's connector backend
-holds the OAuth tokens rather than placing them on the Bot's computer. See the
-official [Grok Bot plugin guide](https://cursor.com/help/grok-bot/connect-plugins)
-and [Grok Bot security model](https://cursor.com/docs/grok-bot/work).
+Bot's account plugin layer keeps OAuth tokens on Cursor's connector backend
+rather than placing them on the Bot's computer. See the official [Grok Bot
+plugin guide](https://cursor.com/help/grok-bot/connect-plugins), [Grok Bot
+security model](https://cursor.com/docs/grok-bot/work), and [Cursor plugin
+distribution guide](https://cursor.com/docs/plugins).
 
 The connector is deliberately not general email access. It exposes exactly one
 read-only tool, `get_latest_verification_code`, which returns only a trusted,

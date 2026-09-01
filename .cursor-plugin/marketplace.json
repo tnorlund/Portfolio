@@ -1,0 +1,16 @@
+{
+  "name": "portfolio-development-tools",
+  "owner": {
+    "name": "Tyler Norlund"
+  },
+  "metadata": {
+    "description": "Development-only integrations for the Portfolio repository"
+  },
+  "plugins": [
+    {
+      "name": "portfolio-ats-verification-dev",
+      "source": "cursor-plugins/ats-verification",
+      "description": "Read the latest trusted Greenhouse verification code from the isolated Portfolio development inbox."
+    }
+  ]
+}

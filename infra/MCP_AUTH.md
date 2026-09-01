@@ -49,10 +49,13 @@ clients derive it. (A REST API's `/{stage}/` prefix breaks that
 derivation, and REST gateway responses can't emit a per-route
 `WWW-Authenticate` hint — that is why this is an HTTP API.)
 
-For Grok Bot, configure a user-scoped remote MCP in Cursor with the gateway
-URL, `mcp_oauth_interactive_client_id`, and only the route's required scope.
-Grok Bot uses the same Cursor-account MCP authorization; do not configure Grok
-CLI. Cursor's fixed redirects are:
+For local Cursor validation, configure a user-scoped remote MCP with the
+gateway URL, `mcp_oauth_interactive_client_id`, and only the route's required
+scope. That `~/.cursor/mcp.json` entry does not install a connector in Grok
+Bot's hosted plugin catalog. Grok Bot must receive the remote MCP through an
+account-installed Cursor plugin or a Team MCP linked to a team marketplace;
+do not configure Grok CLI. The ATS runbook documents the checked-in
+development plugin and installation flow. Cursor's fixed redirects are:
 
 - `https://www.cursor.com/agents/mcp/oauth/callback` for hosted agents;
 - `http://localhost:8787/callback` for the desktop app.
