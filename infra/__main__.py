@@ -41,11 +41,9 @@ from typing import Optional
 # Import our infrastructure components
 from billing_alerts import BillingAlerts
 from chromadb_compaction import create_chromadb_compaction_infrastructure
-from combine_receipts_step_functions import CombineReceiptsStepFunction
 from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
-from embedding_step_functions import EmbeddingInfrastructure
 from fix_place_lambda import create_fix_place_lambda
 from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from label_refresh_lambda import create_label_refresh_lambda
@@ -211,21 +209,6 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     alert_topic_arn=notification_system.critical_error_topic_arn,
 )
 
-# Create embedding infrastructure using shared bucket and queues
-embedding_infrastructure = EmbeddingInfrastructure(
-    f"embedding-infra-{pulumi.get_stack()}",
-    chromadb_queues=chromadb_infrastructure.chromadb_queues,
-    chromadb_buckets=shared_chromadb_buckets,
-    # Use same subnets as compaction Lambda
-    vpc_subnet_ids=compaction_lambda_subnets,
-    lambda_security_group_id=security.sg_lambda_id,
-)
-
-pulumi.export(
-    "embedding_embed_all_v1_sf_arn",
-    embedding_infrastructure.embed_all_workflow.state_machine.arn,
-)
-
 # Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
 s3_gateway_endpoint = aws.ec2.VpcEndpoint(
     f"s3-gateway-{pulumi.get_stack()}",
@@ -343,7 +326,7 @@ upload_images = UploadImages(
     "upload-images",
     raw_bucket=raw_bucket,
     site_bucket=site_bucket,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
+    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     vpc_subnet_ids=upload_images_subnets,
     security_group_id=security.sg_lambda_id,
     label_validation_project_name=label_validation_project_name,
@@ -1100,14 +1083,14 @@ pulumi.export(
     chromadb_infrastructure.enhanced_compaction_arn,
 )
 
-# Export the embedding infrastructure ChromaDB bucket (the one actually used!)
+# Keep historical stack-output names; the bucket is the shared one.
 pulumi.export(
     "embedding_chromadb_bucket_name",
-    embedding_infrastructure.chromadb_buckets.bucket_name,
+    shared_chromadb_buckets.bucket_name,
 )
 pulumi.export(
     "embedding_chromadb_bucket_arn",
-    embedding_infrastructure.chromadb_buckets.bucket_arn,
+    shared_chromadb_buckets.bucket_arn,
 )
 
 # Export label cache updater if successfully imported
@@ -1131,23 +1114,6 @@ except ImportError:
 
 # validate_pending_labels_sf, create_labels_sf, and validate_metadata_sf remain
 # disabled until we refactor those flows off receipt_label.
-
-# Combine Receipts Step Function (now receipt_label-free)
-combine_receipts_sf = CombineReceiptsStepFunction(
-    f"combine-receipts-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
-    raw_bucket_name=raw_bucket.bucket,
-    site_bucket_name=site_bucket.bucket,
-)
-
-pulumi.export("combine_receipts_sf_arn", combine_receipts_sf.state_machine_arn)
-pulumi.export(
-    "combine_receipts_batch_bucket_name",
-    combine_receipts_sf.batch_bucket_name,
-)
 
 # Fix Place Lambda (for correcting incorrect ReceiptPlace records)
 # Can be invoked with: {image_id, receipt_id, reason}
@@ -1261,8 +1227,8 @@ merge_receipt_lambda = create_merge_receipt_lambda(
     raw_bucket_name=raw_bucket.bucket,
     site_bucket_name=site_bucket.bucket,
     image_bucket_name=upload_images.image_bucket.bucket,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
 )
 pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
 pulumi.export(
@@ -1276,8 +1242,8 @@ resegment_receipt_lambda = create_resegment_receipt_lambda(
     raw_bucket_name=raw_bucket.bucket,
     site_bucket_name=site_bucket.bucket,
     image_bucket_name=upload_images.image_bucket.bucket,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
+    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
 )
 pulumi.export(
     "resegment_receipt_lambda_arn", resegment_receipt_lambda.lambda_arn

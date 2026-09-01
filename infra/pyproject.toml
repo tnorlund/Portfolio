@@ -41,7 +41,7 @@ line_length = 79
 
 [tool.mypy]
 # Configuration for mypy type checking
-# Applies to all Python code in infra/, including embedding_step_functions
+# Applies to all Python code in infra/
 python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
@@ -77,7 +77,7 @@ ignore_missing_imports = true
 
 [tool.pylint.format]
 # Pylint configuration for code style and quality
-# Applies to all Python code in infra/, including embedding_step_functions
+# Applies to all Python code in infra/
 max-line-length = 79
 
 [tool.pylint.messages_control]

@@ -16,7 +16,6 @@ class LambdaArns:
 
     list_all_receipts: str
     unified_evaluator: str
-    unified_pattern_builder: str
     final_aggregate: str
 
 
@@ -57,7 +56,6 @@ class RuntimeConfig:
     """Runtime configuration for Step Function execution."""
 
     batch_bucket: str
-    phase1_concurrency: int = 25
     phase2_concurrency: int = 40
 
 
@@ -171,9 +169,7 @@ def build_list_receipts_states(list_all_receipts_arn: str) -> dict[str, Any]:
 
     Flow:
         HasReceipts (total_receipts > 0)
-            ├─ YES → HasMerchants (total_merchants > 0)
-            │           ├─ YES → ComputeAllPatterns → ProcessReceipts
-            │           └─ NO → SkipPatterns → ProcessReceipts
+            ├─ YES → SkipPatterns (empty pattern_results) → ProcessReceipts
             └─ NO → NoReceipts (end)
     """
     retry_config = [build_retry_config(["States.TaskFailed"])]
@@ -201,25 +197,17 @@ def build_list_receipts_states(list_all_receipts_arn: str) -> dict[str, Any]:
                 {
                     "Variable": "$.all_data.total_receipts",
                     "NumericGreaterThan": 0,
-                    "Next": "HasMerchants",
+                    "Next": "SkipPatterns",
                 }
             ],
             "Default": "NoReceipts",
         },
-        "HasMerchants": {
-            "Type": "Choice",
-            "Choices": [
-                {
-                    "Variable": "$.all_data.total_merchants",
-                    "NumericGreaterThan": 0,
-                    "Next": "ComputeAllPatterns",
-                }
-            ],
-            "Default": "SkipPatterns",
-        },
         "SkipPatterns": {
             "Type": "Pass",
-            "Comment": "No merchants qualify for patterns, skip to receipt processing",
+            "Comment": (
+                "No precomputed merchant patterns; evaluator loads "
+                "from S3 when present"
+            ),
             "Result": [],
             "ResultPath": "$.pattern_results",
             "Next": "ProcessReceipts",
@@ -228,81 +216,6 @@ def build_list_receipts_states(list_all_receipts_arn: str) -> dict[str, Any]:
             "Type": "Pass",
             "Result": {"message": "No receipts found"},
             "End": True,
-        },
-    }
-
-
-def build_pattern_computation_states(
-    unified_pattern_builder_arn: str,
-    phase1_concurrency: int,
-) -> dict[str, Any]:
-    """Build Phase 1 pattern computation states using unified pattern builder.
-
-    The unified pattern builder combines LearnLineItemPatterns (LLM discovery)
-    and BuildMerchantPatterns (geometric computation) into a single Lambda.
-    """
-    retry_config = [
-        build_retry_config(
-            ["States.TaskFailed"],
-            interval_seconds=5,
-        ),
-        build_retry_config(
-            ["LLMRateLimitError"],
-            interval_seconds=30,
-            max_attempts=5,
-            backoff_rate=2.0,
-        ),
-    ]
-
-    return {
-        "ComputeAllPatterns": {
-            "Type": "Map",
-            "ItemsPath": "$.all_data.merchants",
-            "MaxConcurrency": phase1_concurrency,
-            "Parameters": {
-                "merchant.$": "$$.Map.Item.Value",
-                "execution_id.$": "$.init.execution_id",
-                "batch_bucket.$": "$.init.batch_bucket",
-                "max_training_receipts.$": "$.init.max_training_receipts",
-                "langchain_project.$": "$.init.langchain_project",
-            },
-            "ItemProcessor": {
-                "ProcessorConfig": {"Mode": "INLINE"},
-                "StartAt": "UnifiedPatternBuilder",
-                "States": {
-                    "UnifiedPatternBuilder": {
-                        "Type": "Task",
-                        "Resource": unified_pattern_builder_arn,
-                        "TimeoutSeconds": 900,  # 15 minutes (Lambda max)
-                        "Parameters": {
-                            "execution_id.$": "$.execution_id",
-                            "batch_bucket.$": "$.batch_bucket",
-                            "merchant_name.$": "$.merchant.merchant_name",
-                            "max_training_receipts.$": "$.max_training_receipts",
-                            "langchain_project.$": "$.langchain_project",
-                            "execution_arn.$": "$$.Execution.Id",
-                        },
-                        "ResultPath": "$.pattern_result",
-                        "Retry": retry_config,
-                        "Next": "ReturnPatternResult",
-                    },
-                    "ReturnPatternResult": {
-                        "Type": "Pass",
-                        "Parameters": {
-                            "merchant_name.$": "$.merchant.merchant_name",
-                            "patterns_s3_key.$": "$.pattern_result.patterns_s3_key",
-                            "line_item_patterns_s3_key.$": (
-                                "$.pattern_result.line_item_patterns_s3_key"
-                            ),
-                            "receipt_count.$": "$.pattern_result.receipt_count",
-                            "status": "patterns_computed",
-                        },
-                        "End": True,
-                    },
-                },
-            },
-            "ResultPath": "$.pattern_results",
-            "Next": "ProcessReceipts",
         },
     }
 
@@ -629,14 +542,10 @@ def create_step_function_definition(
     emr: EmrConfig,
     viz_cache: VizCacheConfig | None = None,
 ) -> str:
-    """
-    Create Step Function definition with two-phase flattened architecture.
+    """Create the label-evaluator Step Function definition.
 
-    TWO-PHASE ARCHITECTURE:
-    Phase 1: Compute all merchant patterns in parallel (MaxConcurrency)
-    Phase 2: Process all receipts in parallel (single Map with MaxConcurrency)
-
-    Both phases use simple Map states with MaxConcurrency - no nested batching.
+    Receipts are processed in a single Map. Merchant-pattern precompute
+    is gone; the evaluator loads patterns from S3 when present.
 
     Args:
         lambdas: Lambda function ARNs
@@ -662,18 +571,8 @@ def create_step_function_definition(
         )
     )
 
-    # List receipts (single merchant and all merchants)
+    # List receipts, then process them (no merchant-pattern precompute)
     states.update(build_list_receipts_states(lambdas.list_all_receipts))
-
-    # Phase 1: Pattern computation (unified pattern builder)
-    states.update(
-        build_pattern_computation_states(
-            lambdas.unified_pattern_builder,
-            runtime.phase1_concurrency,
-        )
-    )
-
-    # Phase 2: Receipt processing
     states.update(
         build_receipt_processing_states(
             lambdas,
@@ -702,9 +601,7 @@ def create_step_function_definition(
     # Build final definition
     definition = {
         "Comment": (
-            f"Label Evaluator Two-Phase "
-            f"(Phase1={runtime.phase1_concurrency}, "
-            f"Phase2={runtime.phase2_concurrency})"
+            f"Label Evaluator (concurrency={runtime.phase2_concurrency})"
         ),
         "StartAt": "NormalizeInput",
         "States": states,
