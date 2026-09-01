@@ -458,6 +458,109 @@ def collect_requests(
     return requests, skips
 
 
+def repair_label_status(
+    dynamo: DynamoClient,
+    receipts: Sequence[Mapping[str, Any]],
+    *,
+    apply: bool,
+) -> dict[str, Any]:
+    """Recompute ``label_status`` on EXISTING word embedding items.
+
+    Bounded metadata repair (E3 review P1-B): the writer skips existing
+    ``...#EMBEDDING`` keys and the stream freshener fires only on future
+    label events, so items backfilled before the terminal-verdict rule
+    (INVALID-only -> validated) keep their stale classification forever.
+    This mode re-aggregates each in-scope word's current
+    ``ReceiptWordLabel`` rows with the SAME ``_label_statuses`` rule the
+    writer uses and UpdateItems only the ``label_status`` attribute
+    where it differs — idempotent (a second run plans zero updates), no
+    vector writes, never creates items (``attribute_exists`` guard),
+    per-receipt skip-and-report.
+    """
+    from receipt_dynamo.entities.receipt_embedding import (
+        ReceiptWordEmbedding,
+    )
+
+    words_examined = 0
+    unchanged = 0
+    applied = 0
+    planned: list[dict[str, str]] = []
+    update_errors: list[dict[str, str]] = []
+    receipt_skips: list[dict[str, str]] = []
+    for receipt in receipts:
+        image_id = str(receipt["image_id"])
+        receipt_id = int(receipt["receipt_id"])
+        receipt_key = f"{image_id}#{receipt_id:05d}"
+        try:
+            labels: list[Any] = []
+            last_key: dict[str, Any] | None = None
+            while True:
+                page, last_key = dynamo.list_receipt_word_labels_for_receipt(
+                    image_id,
+                    receipt_id,
+                    limit=1000,
+                    last_evaluated_key=last_key,
+                )
+                labels.extend(page)
+                if last_key is None:
+                    break
+            embeddings = dynamo.get_receipt_embeddings(image_id, receipt_id)
+        except Exception as exc:  # noqa: BLE001 - isolate one receipt
+            receipt_skips.append({"receipt": receipt_key, "reason": str(exc)})
+            continue
+        statuses = _label_statuses(labels)
+        for item in embeddings:
+            if not isinstance(item, ReceiptWordEmbedding):
+                continue
+            words_examined += 1
+            desired = statuses.get(
+                (int(item.line_id), int(item.word_id)), "none"
+            )
+            if desired == item.label_status:
+                unchanged += 1
+                continue
+            planned.append(
+                {
+                    "key": item.canonical_key,
+                    "from": item.label_status,
+                    "to": desired,
+                }
+            )
+            if not apply:
+                continue
+            try:
+                dynamo._client.update_item(
+                    TableName=dynamo.table_name,
+                    Key=item.key,
+                    UpdateExpression="SET label_status = :s",
+                    ExpressionAttributeValues={":s": {"S": desired}},
+                    ConditionExpression="attribute_exists(PK)",
+                )
+                applied += 1
+            except Exception as exc:  # noqa: BLE001 - skip-and-report
+                update_errors.append(
+                    {"key": item.canonical_key, "reason": str(exc)}
+                )
+    exit_code = 0
+    if apply and planned and applied == 0 and update_errors:
+        # Same fail-closed pattern as the writer: every planned update
+        # failing is a global failure, not a partial one.
+        exit_code = EXIT_GLOBAL_WRITE_FAILURE
+    return {
+        "mode": "repair_label_status",
+        "dry_run": not apply,
+        "receipt_scope": len(receipts),
+        "words_examined": words_examined,
+        "unchanged": unchanged,
+        "updates_planned": len(planned),
+        "updates_applied": applied,
+        "planned_updates": planned[:50],
+        "update_errors": update_errors,
+        "receipt_skips": receipt_skips,
+        "exit_code": exit_code,
+    }
+
+
 # Fail-closed exit semantics (Round C vacatur gate): a run that writes
 # nothing while planned work failed is a global-failure pattern (bad
 # credentials, region outage) and must not exit 0; a post-write existence
@@ -646,6 +749,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--wait-seconds", type=float, default=120.0)
     parser.add_argument("--sample-size", type=int, default=2)
     parser.add_argument(
+        "--repair-label-status",
+        action="store_true",
+        help=(
+            "metadata-only repair: recompute label_status on EXISTING "
+            "word embedding items from their current label rows "
+            "(terminal-verdict rule); honors --apply/--limit, writes "
+            "no vectors, never creates items"
+        ),
+    )
+    parser.add_argument(
         "--vector-source",
         choices=("auto", "chroma", "openai", "fixture"),
         default="auto",
@@ -681,6 +794,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         limit=args.limit,
     )
     dynamo = DynamoClient(table_name=args.table_name, region=args.region)
+    if args.repair_label_status:
+        repair_report = repair_label_status(dynamo, receipts, apply=args.apply)
+        repair_report["table_name"] = args.table_name
+        print(json.dumps(repair_report, indent=2, sort_keys=True))
+        return int(repair_report["exit_code"])
     requests, receipt_skips = collect_requests(
         dynamo, receipts, fixture_vectors(fixture)
     )
