@@ -8,6 +8,7 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
+from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
 from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
 
 from receipt_embeddings.service_limits import (
@@ -31,7 +32,6 @@ _CANONICAL_KEY = re.compile(
     r"^IMAGE#(?P<image_id>[^#]+)#RECEIPT#(?P<receipt_id>[0-9]+)#"
     r"LINE#(?P<line_id>[0-9]+)(?:#WORD#(?P<word_id>[0-9]+))?$"
 )
-
 # Fetch-join ruling (spec §3.2/§3.3 amendment): the line index's projection
 # omits fields the resolver's phone/address tiers need, so line retrieval is
 # SearchVectors -> strongly consistent BatchGetItem of the neighbor items ->
@@ -50,6 +50,7 @@ _LINE_JOIN_ATTRIBUTES = (
     "normalized_phone_10",
     "normalized_full_address",
 )
+_WORD_LABEL_JOIN_ATTRIBUTES = ("PK", "SK", "validation_status")
 
 
 def _canonical_key(item: Mapping[str, Any], *, index: str) -> str:
@@ -159,6 +160,12 @@ class DynamoVectorSearchClient:
         results = results[:top_k]
         if physical == LINE_INDEX:
             results = self._join_line_metadata(results)
+        elif (
+            physical == WORD_INDEX
+            and filters
+            and filters.get("label_status") == "validated"
+        ):
+            results = self._join_word_label_metadata(results)
         return results
 
     def _join_line_metadata(
@@ -252,6 +259,107 @@ class DynamoVectorSearchClient:
                     key=result.key,
                     distance=result.distance,
                     metadata=dict(item),
+                )
+            )
+        return joined
+
+    def _join_word_label_metadata(
+        self, results: list[ScoredItem]
+    ) -> list[ScoredItem]:
+        """Hydrate Chroma-compatible validated-label arrays for words.
+
+        The word index can filter on aggregate ``label_status`` but its
+        immutable projection does not contain the label names used by the
+        semantic proposer. Fetch the known core-label rows by exact key and
+        surface the same ``valid_labels_array`` metadata shape as Chroma. Any
+        failed or unprocessed join leaves that array absent, which makes
+        consumers abstain instead of voting on partial evidence.
+        """
+
+        self.last_join_read_units = None
+        if not results:
+            return results
+
+        owner_by_token: dict[str, tuple[str, str]] = {}
+        request_keys: list[dict[str, Any]] = []
+        valid = {result.key: set() for result in results}
+        hydratable: set[str] = set()
+        for result in results:
+            match = _CANONICAL_KEY.fullmatch(result.key)
+            if match is None or match.group("word_id") is None:
+                continue
+            values = match.groupdict()
+            pk = f"IMAGE#{values['image_id']}"
+            prefix = (
+                f"RECEIPT#{int(values['receipt_id']):05d}#"
+                f"LINE#{int(values['line_id']):05d}#"
+                f"WORD#{int(values['word_id']):05d}#LABEL#"
+            )
+            hydratable.add(result.key)
+            for label in CORE_LABEL_NAMES:
+                sk = f"{prefix}{label}"
+                owner_by_token[f"{pk}|{sk}"] = (result.key, label)
+                request_keys.append({"PK": {"S": pk}, "SK": {"S": sk}})
+
+        names = {
+            f"#w{position}": name
+            for position, name in enumerate(_WORD_LABEL_JOIN_ATTRIBUTES)
+        }
+        consumed = 0.0
+        try:
+            for offset in range(0, len(request_keys), MAX_BATCH_GET_ITEMS):
+                pending = request_keys[offset : offset + MAX_BATCH_GET_ITEMS]
+                for attempt in range(self._max_retries + 1):
+                    response = self._client.batch_get_item(
+                        RequestItems={
+                            self.table_name: {
+                                "Keys": pending,
+                                "ProjectionExpression": ", ".join(names),
+                                "ExpressionAttributeNames": names,
+                                "ConsistentRead": True,
+                            }
+                        },
+                        ReturnConsumedCapacity="TOTAL",
+                    )
+                    for capacity in response.get("ConsumedCapacity") or []:
+                        consumed += float(capacity.get("CapacityUnits") or 0)
+                    for item in response.get("Responses", {}).get(
+                        self.table_name, []
+                    ):
+                        pk = item.get("PK", {}).get("S", "")
+                        sk = item.get("SK", {}).get("S", "")
+                        owner = owner_by_token.get(f"{pk}|{sk}")
+                        status = item.get("validation_status", {}).get("S")
+                        if owner and status == ValidationStatus.VALID.value:
+                            result_key, label = owner
+                            valid[result_key].add(label)
+                    pending = (
+                        response.get("UnprocessedKeys", {})
+                        .get(self.table_name, {})
+                        .get("Keys", [])
+                    )
+                    if not pending:
+                        break
+                    if attempt < self._max_retries:
+                        self._sleep(0.1 * (2**attempt))
+                if pending:
+                    return results
+        except Exception:  # noqa: BLE001 - abstain on join failure
+            return results
+
+        self.last_join_read_units = consumed
+        joined: list[ScoredItem] = []
+        for result in results:
+            if result.key not in hydratable:
+                joined.append(result)
+                continue
+            metadata = dict(result.metadata)
+            metadata["valid_labels_array"] = sorted(valid[result.key]) or None
+            joined.append(
+                ScoredItem(
+                    key=result.key,
+                    distance=result.distance,
+                    metadata=metadata,
                 )
             )
         return joined

@@ -6,10 +6,17 @@ import boto3
 import pytest
 from botocore.exceptions import ClientError
 from botocore.stub import Stubber
-from receipt_dynamo.entities import EMBEDDING_DIMENSIONS, ReceiptLineEmbedding
+from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
+from receipt_dynamo.entities import (
+    EMBEDDING_DIMENSIONS,
+    ReceiptLineEmbedding,
+    ReceiptWordEmbedding,
+)
 
+from receipt_embeddings import ChromaVectorSearchClient
 from receipt_embeddings.dynamo_client import (
     _LINE_JOIN_ATTRIBUTES,
+    _WORD_LABEL_JOIN_ATTRIBUTES,
     DynamoVectorSearchClient,
 )
 
@@ -39,6 +46,24 @@ def _join_names() -> dict[str, str]:
 
 def _expected_join_request(keys: list[dict]) -> dict:
     names = _join_names()
+    return {
+        "RequestItems": {
+            TABLE: {
+                "Keys": keys,
+                "ProjectionExpression": ", ".join(names),
+                "ExpressionAttributeNames": names,
+                "ConsistentRead": True,
+            }
+        },
+        "ReturnConsumedCapacity": "TOTAL",
+    }
+
+
+def _expected_word_join_request(keys: list[dict]) -> dict:
+    names = {
+        f"#w{position}": name
+        for position, name in enumerate(_WORD_LABEL_JOIN_ATTRIBUTES)
+    }
     return {
         "RequestItems": {
             TABLE: {
@@ -182,6 +207,39 @@ def _anchored_entity() -> ReceiptLineEmbedding:
     )
 
 
+def _word_entity(label_status: str = "validated") -> ReceiptWordEmbedding:
+    return ReceiptWordEmbedding(
+        image_id=IMAGE_ID,
+        receipt_id=1,
+        line_id=2,
+        word_id=3,
+        text="COFFEE",
+        merchant_name="Fixture Mart",
+        label_status=label_status,
+        word_vector=_vector(),
+    )
+
+
+class _ChromaWordClient:
+    def query(self, **_kwargs):
+        return {
+            "ids": [[_word_entity().canonical_key]],
+            "metadatas": [
+                [
+                    {
+                        "image_id": IMAGE_ID,
+                        "receipt_id": 1,
+                        "line_id": 2,
+                        "word_id": 3,
+                        "label_status": "validated",
+                        "valid_labels_array": ["PRODUCT_NAME"],
+                    }
+                ]
+            ],
+            "distances": [[0.25]],
+        }
+
+
 @pytest.mark.unit
 def test_line_search_fetch_joins_unprojected_resolver_metadata() -> None:
     """SearchVectors -> BatchGetItem join surfaces the anchor fields the
@@ -284,26 +342,103 @@ def test_fetch_join_retries_unprocessed_keys_bounded() -> None:
 
 
 @pytest.mark.unit
-def test_word_search_never_fetch_joins() -> None:
-    """The word index projects every metadata attribute; joining it would
-    only spend read units. The stubber proves no BatchGetItem happens."""
+def test_word_search_fetch_joins_chroma_label_metadata_contract() -> None:
+    """The index filter projects aggregate status, while the fetch join
+    supplies the exact label arrays that semantic consumers vote on."""
     boto_client = _client()
     adapter = DynamoVectorSearchClient(boto_client, TABLE)
-    word_item = {
-        "PK": {"S": f"IMAGE#{IMAGE_ID}"},
-        "SK": {"S": "RECEIPT#00001#LINE#00002#WORD#00003#EMBEDDING"},
-        "text": {"S": "COFFEE"},
-        "merchant_name": {"S": "Fixture Mart"},
-        "image_id": {"S": IMAGE_ID},
-        "receipt_id": {"N": "1"},
-        "line_id": {"N": "2"},
-        "word_id": {"N": "3"},
-        "label_status": {"S": "none"},
-    }
+    entity = _word_entity()
+    label_keys = [
+        {
+            "PK": {"S": f"IMAGE#{IMAGE_ID}"},
+            "SK": {
+                "S": ("RECEIPT#00001#LINE#00002#WORD#00003#LABEL#" f"{label}")
+            },
+        }
+        for label in CORE_LABEL_NAMES
+    ]
+    labels = [
+        {
+            **label_keys[CORE_LABEL_NAMES.index(label)],
+            "validation_status": {"S": status},
+        }
+        for label, status in (
+            ("PRODUCT_NAME", ValidationStatus.VALID.value),
+            ("TAX", ValidationStatus.INVALID.value),
+        )
+    ]
     with Stubber(boto_client) as stubber:
         stubber.add_response(
             "search_vectors",
-            {"SearchResults": [{"Item": word_item, "Score": 0.25}]},
+            {"SearchResults": [{"Item": entity.to_item(), "Score": 0.25}]},
+        )
+        stubber.add_response(
+            "batch_get_item",
+            {"Responses": {TABLE: labels}},
+            _expected_word_join_request(label_keys),
+        )
+        results = adapter.search(
+            _vector(),
+            "word-embeddings",
+            5,
+            {"label_status": "validated"},
+        )
+
+    assert results[0].metadata["label_status"] == "validated"
+    assert results[0].metadata["valid_labels_array"] == ["PRODUCT_NAME"]
+    chroma = ChromaVectorSearchClient(_ChromaWordClient()).search(
+        _vector(),
+        "word-embeddings",
+        5,
+        {"label_status": "validated"},
+    )[0]
+    contract_keys = {
+        "image_id",
+        "receipt_id",
+        "line_id",
+        "word_id",
+        "label_status",
+        "valid_labels_array",
+    }
+    assert {key: results[0].metadata[key] for key in contract_keys} == {
+        key: chroma.metadata[key] for key in contract_keys
+    }
+
+
+def test_word_label_join_failure_omits_vote_metadata() -> None:
+    boto_client = _client()
+    adapter = DynamoVectorSearchClient(boto_client, TABLE)
+    entity = _word_entity()
+    with Stubber(boto_client) as stubber:
+        stubber.add_response(
+            "search_vectors",
+            {"SearchResults": [{"Item": entity.to_item(), "Score": 0.25}]},
+        )
+        stubber.add_client_error(
+            "batch_get_item",
+            service_error_code="ProvisionedThroughputExceededException",
+            service_message="throttled",
+            http_status_code=400,
+        )
+        results = adapter.search(
+            _vector(),
+            "word-embeddings",
+            5,
+            {"label_status": "validated"},
+        )
+
+    assert "valid_labels_array" not in results[0].metadata
+
+
+@pytest.mark.unit
+def test_word_search_without_validated_filter_skips_label_join() -> None:
+    boto_client = _client()
+    adapter = DynamoVectorSearchClient(boto_client, TABLE)
+    entity = _word_entity(label_status="none")
+    with Stubber(boto_client) as stubber:
+        stubber.add_response(
+            "search_vectors",
+            {"SearchResults": [{"Item": entity.to_item(), "Score": 0.25}]},
         )
         results = adapter.search(_vector(), "word-embeddings", 5)
 

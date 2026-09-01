@@ -1,4 +1,4 @@
-"""Cross-backend neighbor-metadata contract (Round C fetch-join ruling).
+"""Cross-backend neighbor-metadata contracts for vector consumers.
 
 The real MerchantResolver reads a fixed set of metadata fields from every
 line-index neighbor (``RESOLVER_NEIGHBOR_METADATA_KEYS``). The Chroma
@@ -16,6 +16,7 @@ botocore-stubbed SearchVectors + BatchGetItem join.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -103,7 +104,15 @@ def _row(anchored: bool) -> tuple[list[_Line], list[_Word]]:
 def _chroma_neighbor_metadata(anchored: bool) -> dict[str, Any]:
     row_lines, row_words = _row(anchored)
     metadata = create_row_metadata(row_lines, merchant_name="Fixture Mart")
-    return dict(enrich_row_metadata_with_anchors(metadata, row_words))
+    metadata = dict(enrich_row_metadata_with_anchors(metadata, row_words))
+    key = f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00002"
+    client = ChromaVectorSearchClient(
+        _FakeChromaCollectionClient(metadata, key)
+    )
+    result = client.search(
+        [0.01] * EMBEDDING_DIMENSIONS, "line-embeddings", 10
+    )[0]
+    return dict(result.metadata)
 
 
 class _FakeChromaCollectionClient:
@@ -117,16 +126,6 @@ class _FakeChromaCollectionClient:
             "metadatas": [[self._metadata]],
             "distances": [[0.125]],
         }
-
-
-def _search_chroma(metadata: dict[str, Any], key: str) -> dict[str, Any]:
-    client = ChromaVectorSearchClient(
-        _FakeChromaCollectionClient(metadata, key)
-    )
-    results = client.search(
-        [0.01] * EMBEDDING_DIMENSIONS, "line-embeddings", 10
-    )
-    return dict(results[0].metadata)
 
 
 def _search_dynamo(anchored: bool) -> dict[str, Any]:
@@ -206,6 +205,8 @@ def test_backends_surface_identical_resolver_metadata_keys_with_anchors() -> (
     assert dynamo_keys == RESOLVER_NEIGHBOR_METADATA_KEYS
     for name in RESOLVER_NEIGHBOR_METADATA_KEYS:
         assert chroma_metadata[name] == dynamo_metadata[name], name
+    assert json.loads(chroma_metadata["row_line_ids"]) == [2]
+    assert dynamo_metadata["row_line_ids"] == [2]
 
 
 @pytest.mark.unit
