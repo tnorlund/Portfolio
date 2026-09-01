@@ -1,9 +1,10 @@
-"""Tests for the semantic (Chroma kNN) PRODUCT_NAME proposer."""
+"""Tests for the semantic vector-kNN PRODUCT_NAME proposer."""
 
 from types import SimpleNamespace
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
+from receipt_embeddings import ScoredItem
 
 from receipt_upload.line_items import propose_product_names
 
@@ -40,26 +41,30 @@ class _FakeClient:
     def __init__(self, primary="PRODUCT_NAME"):
         self.primary = primary
 
-    def query(self, **kwargs):
-        return {
-            "metadatas": [
-                [
-                    {
-                        "image_id": "other-1",
-                        "valid_labels_array": [self.primary],
-                    },
-                    {
-                        "image_id": "other-2",
-                        "valid_labels_array": [self.primary],
-                    },
-                    {
-                        "image_id": "other-3",
-                        "valid_labels_array": [self.primary],
-                    },
-                ]
-            ],
-            "distances": [[0.2, 0.3, 0.4]],
-        }
+    def search(self, vector, index, top_k, filters=None):
+        assert vector
+        assert index == "word-embeddings"
+        assert top_k == 13
+        assert filters == {"label_status": "validated"}
+        return [
+            ScoredItem(
+                key=f"word-{position}",
+                distance=distance,
+                metadata={
+                    "image_id": f"other-{position}",
+                    "valid_labels_array": [self.primary],
+                },
+            )
+            for position, distance in enumerate((0.2, 0.3, 0.4), 1)
+        ]
+
+    def get_vector(self, _key):
+        return [0.1] * 8
+
+
+class _FailingClient(_FakeClient):
+    def search(self, vector, index, top_k, filters=None):
+        raise RuntimeError("throttled")
 
 
 def _setup():
@@ -91,6 +96,14 @@ def test_skips_when_knn_majority_is_not_product():
         words, anchors, _FakeClient(primary="LINE_TOTAL"), embeddings
     )
     assert out == []
+
+
+def test_search_throttle_abstains_without_crashing():
+    words, anchors, embeddings = _setup()
+    assert (
+        propose_product_names(words, anchors, _FailingClient(), embeddings)
+        == []
+    )
 
 
 def test_does_not_propose_for_already_labeled_words():

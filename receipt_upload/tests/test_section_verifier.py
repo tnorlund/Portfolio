@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import pytest
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
+from receipt_embeddings import ScoredItem
 
 from receipt_upload.line_items.provenance import SWIFT_WORKER_MODEL_SOURCE
 from receipt_upload.section_assignment import MODEL_SOURCE
@@ -17,6 +18,7 @@ _NEIGHBOR = "00000000-0000-4000-8000-000000000002"
 class FakeChroma:
     def query(self, **_kwargs):
         return {
+            "ids": [[f"IMAGE#{_NEIGHBOR}#RECEIPT#00002#LINE#00020"]],
             "metadatas": [
                 [
                     {
@@ -26,8 +28,37 @@ class FakeChroma:
                     }
                 ]
             ],
-            "embeddings": [[[1.0, 0.0]]],
+            "distances": [[0.0]],
         }
+
+    def get(self, **_kwargs):
+        return {"embeddings": [[1.0, 0.0]]}
+
+
+class FailingVector:
+    def __init__(self, stage):
+        self.stage = stage
+
+    def search(self, vector, index, top_k, filters=None):
+        del vector, index, top_k, filters
+        if self.stage == "search":
+            raise RuntimeError("throttled")
+        return [
+            ScoredItem(
+                key=f"IMAGE#{_NEIGHBOR}#RECEIPT#00002#LINE#00020",
+                distance=0.0,
+                metadata={
+                    "image_id": _NEIGHBOR,
+                    "receipt_id": 2,
+                    "row_line_ids": [20],
+                },
+            )
+        ]
+
+    def get_vector(self, _key):
+        if self.stage == "get":
+            raise KeyError("missing vector")
+        return [1.0, 0.0]
 
 
 class FakeDynamo:
@@ -107,3 +138,50 @@ def test_disagreement_is_recorded_without_overriding_sync_assignment(
     assert updated.verification_confidence == pytest.approx(1.0)
     assert updated.disagreement_row_ids == [1]
     assert updated.verified_at is not None
+
+
+@pytest.mark.parametrize("failure_stage", ["search", "get"])
+def test_vector_failure_abstains_without_crashing(failure_stage: str) -> None:
+    now = datetime(2026, 7, 14, tzinfo=timezone.utc)
+    row = ReceiptRow(
+        image_id=_UPLOAD,
+        receipt_id=1,
+        row_id=1,
+        line_ids=[1],
+        grouping_version="visual-rows-v1",
+        y_min=0.7,
+        y_max=0.8,
+        x_min=0.1,
+        x_max=0.9,
+        created_at=now,
+    )
+    proposed = ReceiptSection(
+        image_id=_UPLOAD,
+        receipt_id=1,
+        section_type="ITEMS",
+        line_ids=[1],
+        row_ids=[1],
+        created_at=now,
+        validation_status=ValidationStatus.PENDING.value,
+        model_source=MODEL_SOURCE,
+    )
+    valid_neighbor = ReceiptSection(
+        image_id=_NEIGHBOR,
+        receipt_id=2,
+        section_type="ITEMS",
+        line_ids=[20],
+        created_at=now,
+        validation_status=ValidationStatus.VALID.value,
+    )
+    dynamo = FakeDynamo(proposed, valid_neighbor)
+
+    verified = verify_receipt_sections(
+        FakeChroma(),
+        dynamo,
+        [row],
+        [[1.0, 0.0]],
+        vector_client=FailingVector(failure_stage),
+    )
+
+    assert verified == []
+    assert dynamo.updated[0].verification_status == "ABSTAINED"
