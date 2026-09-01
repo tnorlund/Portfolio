@@ -10,6 +10,7 @@ from typing import Any, Iterator
 import boto3
 import pytest
 from moto import mock_aws
+
 from receipt_dynamo.entities.receipt_embedding import (
     ReceiptLineEmbedding,
     ReceiptWordEmbedding,
