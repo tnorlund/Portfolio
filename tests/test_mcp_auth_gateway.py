@@ -87,8 +87,13 @@ def test_direct_function_urls_require_sigv4(path):
 def test_gateway_uses_separate_cognito_scopes():
     source = (REPO_ROOT / "infra/mcp_auth_gateway.py").read_text()
     assert 'authorizer_type="JWT"' in source
+    assert '("receipt", receipt_lambda, "Use receipt MCP tools")' in source
+    assert '("glyph", glyph_lambda, "Use glyph MCP tools")' in source
+    assert '"Read recent ATS verification codes"' in source
+    assert 'f"{_RESOURCE_SERVER_ID}/{route_name}"' in source
+    assert 'authorization_scopes=[f"{_RESOURCE_SERVER_ID}/{route_name}"]' in source
+    # Scheduled callers remain intentionally receipt-only.
     assert 'f"{_RESOURCE_SERVER_ID}/receipt"' in source
-    assert 'f"{_RESOURCE_SERVER_ID}/glyph"' in source
     assert "oauth-protected-resource" in source
 
 
