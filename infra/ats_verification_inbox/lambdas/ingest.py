@@ -35,6 +35,7 @@ PROVIDERS = {
         "no-reply@us.greenhouse-mail.io",
         "no-reply@eu.greenhouse-mail.io",
         "no-reply@anz.greenhouse.io",
+        "login@us.greenhouse-jobs.com",
     }
 }
 

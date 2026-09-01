@@ -130,6 +130,7 @@ def _message(
         ("no-reply@us.greenhouse-mail.io", "us.greenhouse-mail.io"),
         ("no-reply@eu.greenhouse-mail.io", "eu.greenhouse-mail.io"),
         ("no-reply@anz.greenhouse.io", "anz.greenhouse.io"),
+        ("login@us.greenhouse-jobs.com", "us.greenhouse-jobs.com"),
     ],
 )
 def test_authenticated_greenhouse_heading_stores_only_minimal_record(
