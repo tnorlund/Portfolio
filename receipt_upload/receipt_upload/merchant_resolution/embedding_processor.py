@@ -73,6 +73,9 @@ from receipt_upload.label_validation.llm_runner import (
     build_async_payload,
     run_llm_validation_sync,
 )
+from receipt_upload.merchant_resolution.dynamo_embedding_write import (
+    maybe_dual_write_embeddings,
+)
 from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
     MerchantResult,
@@ -1632,6 +1635,23 @@ class MerchantResolvingEmbeddingProcessor:
                 "merchant_found": False,
             }
 
+        # Dual-run (SPEC §3.4): write the same in-memory vectors as native
+        # DynamoDB embedding items. Deliberately placed before the Chroma
+        # pipeline legs so a Chroma failure never blocks the Dynamo write;
+        # flag-gated and never-raising, so it can't affect ingest either.
+        dual_write_report = maybe_dual_write_embeddings(
+            dynamo=self.dynamo,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            lines=lines,
+            words=words,
+            word_labels=word_labels,
+            receipt_place=receipt_place,
+            row_embeddings=row_embeddings,
+            row_line_ids_list=row_line_ids_list,
+            word_embeddings_list=word_embeddings_list,
+        )
+
         # Track resources for cleanup
         merchant_result = MerchantResult()
         validation_stats: Dict[str, Any] = {}
@@ -2042,6 +2062,7 @@ class MerchantResolvingEmbeddingProcessor:
             "merchant_place_id": merchant_result.place_id,
             "merchant_resolution_tier": merchant_result.resolution_tier,
             "merchant_confidence": merchant_result.confidence,
+            "dual_write": dual_write_report,
             **validation_stats,
             **lines_stats,
         }

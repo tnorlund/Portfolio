@@ -72,6 +72,8 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     embedding_skipped_count = 0
     total_ocr_duration = 0.0
     total_embedding_duration = 0.0
+    dual_write_written_count = 0
+    dual_write_failed_count = 0
     # Messages to redrive (the llm-validation mapping reports these so SQS
     # retries / DLQs them instead of silently deleting on a swallowed error).
     batch_item_failures: list[Dict[str, str]] = []
@@ -117,6 +119,8 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 total_ocr_duration += result["ocr_duration"]
             if result.get("embedding_duration"):
                 total_embedding_duration += result["embedding_duration"]
+            dual_write_written_count += result.get("dual_write_written", 0)
+            dual_write_failed_count += result.get("dual_write_failed", 0)
 
         except Exception as exc:  # pylint: disable=broad-exception-caught
             _log(f"ERROR: Failed to process record: {exc}")
@@ -148,6 +152,10 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             "UploadLambdaEmbeddingSuccess": embedding_success_count,
             "UploadLambdaEmbeddingFailed": embedding_failed_count,
             "UploadLambdaEmbeddingSkipped": embedding_skipped_count,
+            # Dual-run engine writes (SPEC §3.4): non-fatal by design, so
+            # the Failed metric is the only detection path.
+            "UploadLambdaDualWriteWritten": dual_write_written_count,
+            "UploadLambdaDualWriteFailed": dual_write_failed_count,
             # Deferred-grok consumer failures (redriven to DLQ). Alarm on >0 so a
             # grok/OpenRouter outage or bad payload is never silently dropped.
             "UploadLambdaLLMValidationFailed": llm_validation_failures,
@@ -441,6 +449,8 @@ def _process_single_record(
             # Initialize merchant-resolving embedding processor once
             # This processor generates embeddings, resolves merchant info, and
             # enriches the receipt in DynamoDB
+            dual_write_written = 0
+            dual_write_failed = 0
             embedding_processor = MerchantResolvingEmbeddingProcessor(
                 table_name=os.environ["DYNAMO_TABLE_NAME"],
                 chromadb_bucket=os.environ["CHROMADB_BUCKET"],
@@ -486,6 +496,12 @@ def _process_single_record(
                     )
                     if merchant_found:
                         total_merchants_found += 1
+
+                    dual_write = embedding_result.get("dual_write") or {}
+                    dual_write_written += dual_write.get("written", 0)
+                    dual_write_failed += dual_write.get("failed", 0) + (
+                        1 if dual_write.get("error") else 0
+                    )
 
                     # The processor reports False when no CompactionRun was
                     # written. Its deltas are then orphaned in S3, nothing
@@ -605,6 +621,8 @@ def _process_single_record(
                 "merchant_place_id": first_result.get("merchant_place_id"),
                 "merchants_found_count": total_merchants_found,
                 "all_embedding_results": all_embedding_results,
+                "dual_write_written": dual_write_written,
+                "dual_write_failed": dual_write_failed,
             }
 
         except Exception as exc:  # pylint: disable=broad-exception-caught

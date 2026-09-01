@@ -347,6 +347,13 @@ class HybridLambdaDeployment(ComponentResource):
                     "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
                     "RECEIPT_SUMMARY_QUEUE_URL": chromadb_queues.summary_queue_url,
                     "LINE_ITEM_QUEUE_URL": chromadb_queues.line_item_queue_url,
+                    # Enables the inline vector-attr freshening leg
+                    # (receipt_dynamo_stream.vector_freshening); the leg is
+                    # inert when unset. Table name derived from the ARN
+                    # already passed to this component.
+                    "DYNAMO_TABLE_NAME": Output.from_input(
+                        dynamodb_table_arn
+                    ).apply(lambda arn: arn.split("/")[-1]),
                     "LOG_LEVEL": "INFO",
                     # Stream processing configuration (aligned with code and infrastructure)
                     "MAX_RECORDS_PER_INVOCATION": "10",  # Matches DynamoDB Stream batch_size
