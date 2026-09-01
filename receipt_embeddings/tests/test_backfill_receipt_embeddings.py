@@ -327,6 +327,20 @@ def test_idempotent_rerun_with_zero_writes_exits_zero() -> None:
     assert determine_exit_code(report, {"status": "not_needed"}) == 0
 
 
+def test_idempotent_rerun_with_residual_failures_exits_zero() -> None:
+    """Regression (judge run 2, 2026-09-01): a rerun over a completed
+    corpus skips everything as existing while the same residual
+    unfillable items the first run tolerated fail again. That is not the
+    global-outage pattern — skipped-existing items are proof the corpus
+    is there — so the rerun must exit 0 exactly like the first run."""
+    report = EmbeddingWriteReport(
+        skipped_existing_keys=["k1", "k2", "k3"],
+        failures=[_failure("k4"), _failure("k5")],
+    )
+
+    assert determine_exit_code(report, {"status": "not_needed"}) == 0
+
+
 def test_per_item_failures_beside_successful_writes_exit_zero() -> None:
     report = EmbeddingWriteReport(
         written_keys=["k1"], failures=[_failure("k2")]

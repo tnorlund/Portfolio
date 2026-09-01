@@ -104,12 +104,16 @@ not pushed, no PR:
 ### Gate: fail-closed exit semantics — DONE
 
 - `determine_exit_code`: zero items written with nonzero per-item
-  failures (the global credential/outage pattern) → **exit 3**
-  (`EXIT_GLOBAL_WRITE_FAILURE`); written keys the existence check cannot
-  account for → **exit 4** (`EXIT_VERIFICATION_FAILURE`). An idempotent
-  rerun (zero written, zero failures, everything already existing) and
-  partial runs where some writes landed still exit 0 — per-item failures
-  skip-and-continue. The report also embeds `exit_code`.
+  failures **and nothing skipped-as-existing** (the global
+  credential/outage pattern: every attempt failed with no evidence the
+  corpus is already there) → **exit 3** (`EXIT_GLOBAL_WRITE_FAILURE`);
+  written keys the existence check cannot account for → **exit 4**
+  (`EXIT_VERIFICATION_FAILURE`). An idempotent rerun over a completed
+  corpus exits 0 even when the same residual unfillable items the first
+  run tolerated fail again (skipped-existing items are the evidence that
+  distinguishes it from an outage — judge-run-2 regression, fixed
+  post-gate), and partial runs where some writes landed still exit 0 —
+  per-item failures skip-and-continue. The report also embeds `exit_code`.
 - Writer-side proof: a total write outage produces zero writes and one
   attributable `stage=write` failure per item with no exception escaping
   — exactly the shape exit 3 keys on

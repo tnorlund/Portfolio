@@ -463,13 +463,21 @@ def determine_exit_code(
 ) -> int:
     """Map an applied run's outcome to its exit code.
 
-    Zero written with nonzero failures is the global-failure pattern ->
-    ``EXIT_GLOBAL_WRITE_FAILURE``. An idempotent rerun (zero written,
-    zero failures, everything already existing) stays 0. Written keys
-    the strong-consistency check could not find -> a distinct
+    Zero written with nonzero failures AND nothing skipped-as-existing is
+    the global-failure pattern -> ``EXIT_GLOBAL_WRITE_FAILURE``: every
+    attempt failed and there is no evidence the corpus is already there.
+    Skipped-existing items are that evidence — an idempotent rerun over a
+    completed corpus skips everything as existing while the same residual
+    unfillable items the first run tolerated fail again, and that rerun
+    must exit 0 exactly like the first run did. Written keys the
+    strong-consistency check could not find -> a distinct
     ``EXIT_VERIFICATION_FAILURE``.
     """
-    if write_report.written == 0 and write_report.failures:
+    if (
+        write_report.written == 0
+        and write_report.failures
+        and not write_report.skipped_existing_keys
+    ):
         return EXIT_GLOBAL_WRITE_FAILURE
     if item_verification.get("status") == "missing":
         return EXIT_VERIFICATION_FAILURE
