@@ -44,6 +44,7 @@ from receipt_dynamo_stream import (
     LambdaContext,
     LambdaResponse,
     StreamProcessorResponseData,
+    apply_vector_freshening,
     build_messages_from_records,
     publish_messages,
 )
@@ -244,6 +245,12 @@ def lambda_handler(
             logger.info(
                 "Messages sent to compaction queues", message_count=sent_count
             )
+
+        # Vector-attr freshening leg (SPEC §3.4a): refresh denormalized
+        # attributes on embedding items inline. Inert when DYNAMO_TABLE_NAME
+        # is unset, and never raises, so opted-out stacks are unaffected.
+        freshening_stats = apply_vector_freshening(event["Records"], metrics)
+        collected_metrics.update(freshening_stats.to_metrics())
 
         # Collect batch statistics
         stats = BatchStats(
