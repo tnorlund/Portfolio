@@ -221,3 +221,28 @@ infra/mcp_server_lambda/ — those belong to E3.
 
 Standing protocol unchanged: branch `cards/<card>-<tool>`, commit-don't-push,
 final commit replaces BAKEOFF_DONE.md wholesale.
+
+## Round C vacatur + fetch-join ruling (2026-08-31)
+
+The claude Round C win is VACATED per the codex adversarial audit (findings
+preserved in the judging record): the seam was never tested against the real
+MerchantResolver; the searchability check could false-pass; the writer failed
+open; judging deviated from the wipe protocol. **Codex is presumptive winner**
+(stronger production design: strongly-consistent idempotency, bounded retries,
+separated byte/RRU cost accounting; best client metrics), subject to a judged
+fix-forward with the audit's demands as merge gates.
+
+**Design ruling (spec §3.2/§3.3 amendment):** the resolver's phone/address
+tiers need fields the index projection omits. Resolution: **fetch-join** —
+line-embedding items carry `normalized_phone_10` / `normalized_full_address`
+as ordinary (unprojected) attributes; retrieval is SearchVectors → BatchGetItem
+of neighbor items → full metadata to the resolver. Projections stay as
+provisioned; no index rebuild, and future metadata needs never fight
+projection immutability.
+
+Merge gates for the fix-forward (from the audit): real-MerchantResolver A/B
+through the seam on the actual Dynamo projection+fetch-join (judge-owned
+evaluator); one clean wipe → full-scale backfill → idempotent rerun → verified
+cleanup by the winner's code alone; strong-consistency item verification;
+fail-closed exit semantics (global failure ≠ exit 0); stream-guard evidence
+stays card D's scope.
