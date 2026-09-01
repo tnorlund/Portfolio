@@ -9,13 +9,18 @@ from typing import Any
 import pytest
 from receipt_dynamo.constants import ValidationStatus
 from scripts.backfill_receipt_embeddings import (
+    ChromaVectorSource,
+    apply_stored_vectors,
+    build_chroma_source,
     build_requests,
     collect_requests,
     main,
+    resolve_vector_source,
     wait_for_written_keys,
 )
 
 from receipt_embeddings import ScoredItem
+from receipt_embeddings.writer import EmbeddingWriteRequest
 
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"
 
@@ -140,7 +145,11 @@ def test_absent_receipt_is_skipped_without_aborting_scope() -> None:
 
     assert requests == []
     assert skips == [
-        {"receipt": f"{IMAGE_ID}#00001", "reason": "receipt absent"}
+        {
+            "receipt": f"{IMAGE_ID}#00001",
+            "reason": "receipt absent",
+            "category": "error:RuntimeError",
+        }
     ]
 
 
@@ -177,6 +186,106 @@ def test_searchability_wait_checks_only_this_runs_exact_keys() -> None:
     assert result["status"] == "searchable"
     assert set(client.gets) == {line_key, word_key}
     assert all(value["searchable"] for value in result["results"])
+
+
+def _line_request(line_id: int, vector: list[float] | None = None):
+    return EmbeddingWriteRequest(
+        kind="line",
+        image_id=IMAGE_ID,
+        receipt_id=1,
+        line_id=line_id,
+        text="COFFEE",
+        row_line_ids=(line_id,),
+        vector=vector,
+    )
+
+
+def test_vector_source_auto_prefers_chroma_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "CHROMA_CLOUD_API_KEY",
+        "CHROMA_CLOUD_TENANT",
+        "CHROMA_CLOUD_DATABASE",
+    ):
+        monkeypatch.setenv(name, "value")
+    assert resolve_vector_source("auto") == "chroma"
+    monkeypatch.delenv("CHROMA_CLOUD_API_KEY")
+    assert resolve_vector_source("auto") == "openai"
+    assert resolve_vector_source("fixture") == "fixture"
+
+
+def test_chroma_source_refuses_non_dev_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CHROMA_CLOUD_API_KEY", "key")
+    monkeypatch.setenv("CHROMA_CLOUD_TENANT", "tenant")
+    monkeypatch.setenv("CHROMA_CLOUD_DATABASE", "receipt_prod")
+    with pytest.raises(SystemExit, match="only 'receipt_dev'"):
+        build_chroma_source()
+
+
+def test_chroma_source_requires_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "CHROMA_CLOUD_API_KEY",
+        "CHROMA_CLOUD_TENANT",
+        "CHROMA_CLOUD_DATABASE",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(SystemExit, match="CHROMA_CLOUD_API_KEY"):
+        build_chroma_source()
+
+
+def test_chroma_vector_source_batches_by_collection() -> None:
+    line_key = f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00002"
+    word_key = f"{line_key}#WORD#00003"
+
+    class FakeChroma:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, list[str]]] = []
+
+        def get(self, collection_name: str, ids: list[str], **_: Any):
+            self.calls.append((collection_name, list(ids)))
+            return {"ids": list(ids), "embeddings": [[0.5] * 3] * len(ids)}
+
+        def close(self) -> None:
+            pass
+
+    fake = FakeChroma()
+    source = ChromaVectorSource(fake)
+    vectors = source.vectors_for([line_key, word_key])
+
+    assert set(vectors) == {line_key, word_key}
+    assert vectors[line_key] == [0.5, 0.5, 0.5]
+    assert ("lines", [line_key]) in fake.calls
+    assert ("words", [word_key]) in fake.calls
+
+
+def test_apply_stored_vectors_skip_reports_missing_vectors() -> None:
+    covered_key = f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00002"
+    requests = [
+        _line_request(2),
+        _line_request(3),
+        _line_request(4, vector=[0.25] * 1536),
+    ]
+
+    filled, skips = apply_stored_vectors(
+        requests,
+        {covered_key: [0.5] * 1536},
+        missing_reason="missing_stored_vector",
+    )
+
+    assert [request.line_id for request in filled] == [2, 4]
+    assert filled[0].vector == [0.5] * 1536
+    assert filled[1].vector == [0.25] * 1536
+    assert skips == [
+        {
+            "key": f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00003",
+            "reason": "missing_stored_vector",
+        }
+    ]
 
 
 def test_backfill_refuses_non_dev_table_before_any_io() -> None:

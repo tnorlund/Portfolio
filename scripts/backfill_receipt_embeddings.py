@@ -10,11 +10,13 @@ embedding items in the shared dev table are ignored.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import gzip
 import json
 import os
 import sys
 import time
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -51,6 +53,17 @@ from receipt_chroma.embedding.metadata.line_metadata import (  # noqa: E402
 )
 from receipt_dynamo import DynamoClient  # noqa: E402
 from receipt_dynamo.constants import ValidationStatus  # noqa: E402
+from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
+    EntityNotFoundError,
+)
+from receipt_embeddings.quotas import (  # noqa: E402
+    MAX_GET_LIMIT,
+    ensure_get_ids_within_quota,
+)
+from scripts.similarity_harness.capture_golden import (  # noqa: E402
+    CHROMA_ENVIRONMENT,
+    DEV_DATABASE,
+)
 from scripts.similarity_harness.common import validate_fixture  # noqa: E402
 
 DEV_TABLE = "ReceiptsTable-dc5be22"
@@ -137,6 +150,118 @@ def fixture_vectors(fixture: Mapping[str, Any]) -> dict[str, list[float]]:
         if isinstance(vector, list) and len(vector) == EMBEDDING_DIMENSIONS:
             result[str(value["key"])] = [float(number) for number in vector]
     return result
+
+
+class ChromaVectorSource:
+    """Reuse vectors already stored in Chroma Cloud dev (OpenAI-free).
+
+    Cherry-picked from the ``bakeoff/C/claude`` entry's vector-source
+    abstraction (scripts/embedding_backfill/backfill_embeddings.py).
+    Chroma document ids equal the canonical item keys, so lookup is a
+    batched read-only ``get`` per collection. Reused vectors preserve
+    identity with what the receipts embedded at ingest — OpenAI
+    embeddings are not bit-stable across calls, so reuse is also the
+    higher-fidelity path.
+    """
+
+    def __init__(self, chroma_client: Any = None) -> None:
+        if chroma_client is None:
+            from receipt_chroma import ChromaClient
+
+            chroma_client = ChromaClient(
+                mode="read",
+                cloud_api_key=os.environ["CHROMA_CLOUD_API_KEY"],
+                cloud_tenant=os.environ["CHROMA_CLOUD_TENANT"],
+                cloud_database=os.environ["CHROMA_CLOUD_DATABASE"],
+            )
+        self._chroma = chroma_client
+
+    def close(self) -> None:
+        self._chroma.close()
+
+    def vectors_for(self, keys: Sequence[str]) -> dict[str, list[float]]:
+        by_collection: dict[str, list[str]] = {"lines": [], "words": []}
+        for key in keys:
+            collection = "words" if "#WORD#" in key else "lines"
+            by_collection[collection].append(key)
+        vectors: dict[str, list[float]] = {}
+        for collection, ids in by_collection.items():
+            for start in range(0, len(ids), MAX_GET_LIMIT):
+                batch = ids[start : start + MAX_GET_LIMIT]
+                ensure_get_ids_within_quota(batch)
+                result = self._chroma.get(
+                    collection_name=collection,
+                    ids=batch,
+                    include=["embeddings"],
+                )
+                found_ids = list(result.get("ids") or [])
+                embeddings = result.get("embeddings")
+                if embeddings is None:
+                    continue
+                for key, embedding in zip(found_ids, embeddings):
+                    vectors[str(key)] = [float(value) for value in embedding]
+        return vectors
+
+
+def _chroma_env_ready() -> bool:
+    return all(os.environ.get(name) for name in CHROMA_ENVIRONMENT)
+
+
+def resolve_vector_source(choice: str) -> str:
+    """Resolve ``auto`` to a concrete source name (no clients built)."""
+    if choice == "auto":
+        return "chroma" if _chroma_env_ready() else "openai"
+    return choice
+
+
+def build_chroma_source() -> ChromaVectorSource:
+    """Validate credentials + dev-database guard, then open the client."""
+    missing = [name for name in CHROMA_ENVIRONMENT if not os.environ.get(name)]
+    if missing:
+        raise SystemExit("vector source 'chroma' needs " + ", ".join(missing))
+    database = os.environ["CHROMA_CLOUD_DATABASE"].strip()
+    if database != DEV_DATABASE:
+        raise SystemExit(
+            f"refusing to touch Chroma database {database!r}; "
+            f"only {DEV_DATABASE!r} is allowed"
+        )
+    return ChromaVectorSource()
+
+
+def apply_stored_vectors(
+    requests: list[EmbeddingWriteRequest],
+    stored_vectors: Mapping[str, Sequence[float]],
+    *,
+    missing_reason: str,
+) -> tuple[list[EmbeddingWriteRequest], list[dict[str, str]]]:
+    """Fill uncovered requests from stored vectors; skip-report the rest.
+
+    Used by the OpenAI-free sources (``chroma``, ``fixture``): a request
+    whose vector cannot be sourced is dropped with a per-item skip
+    reason instead of falling through to realtime embedding.
+    """
+    covered: list[EmbeddingWriteRequest] = []
+    skips: list[dict[str, str]] = []
+    for request in requests:
+        if request.vector is not None:
+            covered.append(request)
+            continue
+        vector = stored_vectors.get(request.canonical_key)
+        if vector is None:
+            skips.append(
+                {"key": request.canonical_key, "reason": missing_reason}
+            )
+            continue
+        covered.append(dataclasses.replace(request, vector=list(vector)))
+    return covered, skips
+
+
+def _classify_receipt_skip(exc: Exception) -> str:
+    if isinstance(exc, EntityNotFoundError):
+        return "receipt_not_found"
+    if isinstance(exc, ValueError):
+        return "incomplete_receipt_data"
+    return f"error:{type(exc).__name__}"
 
 
 def _label_statuses(labels: Sequence[Any]) -> dict[tuple[int, int], str]:
@@ -277,7 +402,13 @@ def collect_requests(
         except (
             Exception
         ) as exc:  # noqa: BLE001 - one absent receipt is isolated
-            skips.append({"receipt": receipt_key, "reason": str(exc)})
+            skips.append(
+                {
+                    "receipt": receipt_key,
+                    "reason": str(exc),
+                    "category": _classify_receipt_skip(exc),
+                }
+            )
             continue
         try:
             sections = dynamo.get_receipt_sections_from_receipt(
@@ -291,6 +422,7 @@ def collect_requests(
                 {
                     "receipt": receipt_key,
                     "reason": f"section metadata unavailable: {exc}",
+                    "category": "section_metadata_unavailable",
                 }
             )
         try:
@@ -307,7 +439,13 @@ def collect_requests(
                 )
             )
         except Exception as exc:  # noqa: BLE001 - isolate malformed receipt
-            skips.append({"receipt": receipt_key, "reason": str(exc)})
+            skips.append(
+                {
+                    "receipt": receipt_key,
+                    "reason": str(exc),
+                    "category": _classify_receipt_skip(exc),
+                }
+            )
     return requests, skips
 
 
@@ -392,6 +530,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--wait-seconds", type=float, default=120.0)
     parser.add_argument("--sample-size", type=int, default=2)
+    parser.add_argument(
+        "--vector-source",
+        choices=("auto", "chroma", "openai", "fixture"),
+        default="auto",
+        help=(
+            "where uncovered vectors come from: 'chroma' reuses stored "
+            "Chroma Cloud dev vectors (OpenAI-free), 'openai' re-embeds "
+            "realtime, 'fixture' uses only the fixture corpus (offline), "
+            "'auto' picks chroma when CHROMA_CLOUD_* is set, else openai"
+        ),
+    )
     return parser
 
 
@@ -420,19 +569,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     requests, receipt_skips = collect_requests(
         dynamo, receipts, fixture_vectors(fixture)
     )
+    vector_source = resolve_vector_source(args.vector_source)
 
     report: dict[str, Any] = {
         "mode": "apply" if args.apply else "dry_run",
         "table_name": args.table_name,
+        "vector_source": vector_source,
         "receipt_scope": len(receipts),
         "embedding_scope": len(requests),
         "fixture_vector_reuse": sum(
             request.vector is not None for request in requests
         ),
-        "realtime_embedding_scope": sum(
+        "uncovered_vector_scope": sum(
             request.vector is None for request in requests
         ),
         "receipt_skips": receipt_skips,
+        "receipt_skip_reasons": dict(
+            Counter(skip["category"] for skip in receipt_skips)
+        ),
     }
     if not args.apply:
         report["write_report"] = {
@@ -450,9 +604,54 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0
 
-    writer = EmbeddingWriter(dynamo._client, args.table_name)
-    write_report = writer.write(requests)
+    vector_skips: list[dict[str, str]] = []
+    close_source = lambda: None  # noqa: E731 - trivial closer
+    if vector_source == "chroma":
+        source = build_chroma_source()
+        close_source = source.close
+        try:
+            stored = source.vectors_for(
+                [
+                    request.canonical_key
+                    for request in requests
+                    if request.vector is None
+                ]
+            )
+            requests, vector_skips = apply_stored_vectors(
+                requests, stored, missing_reason="missing_stored_vector"
+            )
+        except SystemExit:
+            raise
+        except Exception:
+            close_source()
+            raise
+    elif vector_source == "fixture":
+        requests, vector_skips = apply_stored_vectors(
+            requests, {}, missing_reason="not_in_fixture_corpus"
+        )
+    elif not os.environ.get("OPENAI_API_KEY") and any(
+        request.vector is None for request in requests
+    ):
+        raise SystemExit(
+            "vector source 'openai' needs OPENAI_API_KEY for "
+            f"{sum(r.vector is None for r in requests)} uncovered "
+            "vectors; set CHROMA_CLOUD_* and --vector-source chroma "
+            "for an OpenAI-free run"
+        )
+    report["vector_skips"] = vector_skips
+    report["vector_skip_reasons"] = dict(
+        Counter(skip["reason"] for skip in vector_skips)
+    )
+
+    try:
+        writer = EmbeddingWriter(dynamo._client, args.table_name)
+        write_report = writer.write(requests)
+    finally:
+        close_source()
     report["write_report"] = write_report.as_dict()
+    report["item_failure_reasons"] = dict(
+        Counter(failure.stage for failure in write_report.failures)
+    )
     search_client = DynamoVectorSearchClient(dynamo._client, args.table_name)
     report["searchability"] = wait_for_written_keys(
         search_client,
