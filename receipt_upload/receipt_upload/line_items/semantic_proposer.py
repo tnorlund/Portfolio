@@ -1,4 +1,4 @@
-"""Semantic (Chroma kNN) PRODUCT_NAME proposer.
+"""Semantic vector-kNN PRODUCT_NAME proposer.
 
 The first-pass LayoutLM model emits no PRODUCT_NAME label at all, and the
 deterministic geometry pass only recovers product names that sit on the same
@@ -14,7 +14,7 @@ Two findings drive the design:
   existing validator may keep merchant as a *boost*, but never as a *filter*.
 * Propose, don't override. This only proposes ``PRODUCT_NAME`` (status
   PENDING) for words that carry **no** label, in the line-item band. The
-  existing Chroma + LLM validators then confirm — so it never overrides a
+  existing similarity + LLM validators then confirm — so it never overrides a
   deliberate currency/other label.
 """
 
@@ -27,6 +27,10 @@ from typing import Dict, List, Tuple
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+from receipt_embeddings import VectorSearchClient
+from receipt_embeddings.service_limits import WORD_INDEX
+
+from receipt_upload.vector_search import vector_search_client as _vector_client
 
 _PROPOSED_BY = "semantic_product_name"
 _HEADER = {"ADDRESS_LINE", "PHONE_NUMBER", "STORE_HOURS", "MERCHANT_NAME"}
@@ -158,7 +162,7 @@ def _has_letters(text: str) -> bool:
 
 
 def _knn_is_product(
-    words_client,
+    words_client: VectorSearchClient,
     embedding: List[float],
     image_id: str,
     k: int,
@@ -166,19 +170,18 @@ def _knn_is_product(
 ) -> bool:
     """kNN over validated words (UNSCOPED); majority-vote PRODUCT_NAME."""
     try:
-        res = words_client.query(
-            collection_name="words",
-            query_embeddings=[embedding],
-            n_results=k + 8,
-            where={"label_status": "validated"},
-            include=["metadatas", "distances"],
+        neighbors = words_client.search(
+            embedding,
+            index=WORD_INDEX,
+            top_k=k + 8,
+            filters={"label_status": "validated"},
         )
     except Exception:
         return False
-    metas = (res.get("metadatas") or [[]])[0]
-    dists = (res.get("distances") or [[]])[0]
     votes: List[str] = []
-    for meta, dist in zip(metas, dists):
+    for neighbor in neighbors:
+        meta = neighbor.metadata
+        dist = neighbor.distance
         if meta.get("image_id") == image_id:  # exclude the same receipt
             continue
         if max(0.0, 1.0 - (dist / 2.0)) < min_similarity:  # L2 -> similarity
@@ -206,6 +209,7 @@ def propose_product_names(
     *,
     k: int = 5,
     min_similarity: float = 0.5,
+    vector_client: VectorSearchClient | None = None,
 ) -> List[ReceiptWordLabel]:
     """Propose PENDING PRODUCT_NAME labels for unlabeled in-band words.
 
@@ -213,7 +217,7 @@ def propose_product_names(
         words: ReceiptWord entities (need ``.bounding_box``/``.text``/ids).
         existing_labels: labels already on the receipt (anchors + any proposals
             from the geometry pass); only unlabeled words are candidates.
-        words_client: ChromaClient exposing ``.query(collection_name=..., ...)``.
+        words_client: incumbent Chroma client used when the backend is Chroma.
         word_embeddings: cached embeddings keyed by ``(line_id, word_id)``.
     """
     # A word counts as "already labeled" only if it carries a real, non-rejected
@@ -245,6 +249,10 @@ def propose_product_names(
     if not header or not totals:
         return []
     lo, hi = min(min(header), min(totals)), max(max(header), max(totals))
+    try:
+        client = _vector_client(words_client, vector_client=vector_client)
+    except Exception:  # noqa: BLE001 - unavailable backend means abstain
+        return []
 
     out: List[ReceiptWordLabel] = []
     for w in words:
@@ -261,7 +269,7 @@ def propose_product_names(
         emb = word_embeddings.get(key)
         if emb is None:
             continue
-        if _knn_is_product(words_client, emb, w.image_id, k, min_similarity):
+        if _knn_is_product(client, emb, w.image_id, k, min_similarity):
             out.append(
                 ReceiptWordLabel(
                     image_id=w.image_id,

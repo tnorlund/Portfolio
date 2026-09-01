@@ -131,6 +131,15 @@ from receipt_dynamo.entities.receipt_chatgpt_validation import (  # noqa: F401
 from receipt_dynamo.entities.receipt_details import (  # noqa: F401
     ReceiptDetails,
 )
+from receipt_dynamo.entities.receipt_embedding import (
+    EMBEDDING_DIMENSIONS,
+    ReceiptEmbedding,
+    ReceiptLineEmbedding,
+    ReceiptWordEmbedding,
+    item_to_receipt_embedding,
+    item_to_receipt_line_embedding,
+    item_to_receipt_word_embedding,
+)
 from receipt_dynamo.entities.receipt_field import ReceiptField  # noqa: F401
 from receipt_dynamo.entities.receipt_field import item_to_receipt_field
 from receipt_dynamo.entities.receipt_label_analysis import (  # noqa: F401
@@ -303,10 +312,12 @@ __all__ = [
     "ReceiptSummary",
     "ReceiptSummaryRecord",
     "ReceiptDetails",
+    "ReceiptEmbedding",
     "ReceiptField",
     "ReceiptLabelAnalysis",
     "ReceiptLetter",
     "ReceiptLine",
+    "ReceiptLineEmbedding",
     "ReceiptLineItem",
     "ReceiptLineItemAnalysis",
     "ReceiptMetadata",
@@ -318,6 +329,7 @@ __all__ = [
     "ReceiptValidationResult",
     "ReceiptValidationSummary",
     "ReceiptWord",
+    "ReceiptWordEmbedding",
     "ReceiptWordLabel",
     "ReceiptWordLabelSpatialAnalysis",
     "SpatialRelationship",
@@ -357,9 +369,11 @@ __all__ = [
     "item_to_receipt_chat_gpt_validation",
     "item_to_receipt_summary_record",
     "item_to_receipt_field",
+    "item_to_receipt_embedding",
     "item_to_receipt_label_analysis",
     "item_to_receipt_letter",
     "item_to_receipt_line",
+    "item_to_receipt_line_embedding",
     "item_to_receipt_line_item",
     "item_to_receipt_line_item_analysis",
     "item_to_receipt_metadata",
@@ -372,11 +386,13 @@ __all__ = [
     "item_to_receipt_validation_result",
     "item_to_receipt_validation_summary",
     "item_to_receipt_word",
+    "item_to_receipt_word_embedding",
     "item_to_receipt_word_label",
     "item_to_receipt_word_label_spatial_analysis",
     "item_to_word",
     # Utility functions
     "assert_valid_uuid",
+    "EMBEDDING_DIMENSIONS",
     "extract_amount",
     "parse_date",
     "COMPONENT_NAMES",

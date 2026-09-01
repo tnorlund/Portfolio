@@ -18,8 +18,11 @@ import numpy as np
 from receipt_chroma import propagate_knn
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
+from receipt_embeddings import VectorSearchClient
+from receipt_embeddings.service_limits import LINE_INDEX
 
 from receipt_upload.section_assignment import VERIFIABLE_MODEL_SOURCES
+from receipt_upload.vector_search import vector_search_client as _vector_client
 
 VERIFICATION_SOURCE = "glyphstudio-knn-v1"
 KNN_NEIGHBORS = 15
@@ -36,14 +39,6 @@ class VerificationStore(Protocol):
 
     def update_receipt_section(self, section: ReceiptSection) -> None:
         """Persist verification provenance on one section."""
-        raise NotImplementedError
-
-
-class LinesQuery(Protocol):
-    """Chroma query surface used by the verifier."""
-
-    def query(self, **kwargs: Any) -> dict[str, Any]:
-        """Query line embeddings and metadata."""
         raise NotImplementedError
 
 
@@ -103,10 +98,12 @@ def _candidate_label(
 
 
 def verify_receipt_sections(
-    chroma: LinesQuery,
+    chroma: Any,
     dynamo: VerificationStore,
     rows: Sequence[ReceiptRow],
     row_embeddings: Sequence[Sequence[float]],
+    *,
+    vector_client: VectorSearchClient | None = None,
 ) -> list[VerifiedRow]:
     """Query cross-receipt VALID neighbors and annotate sync sections.
 
@@ -119,41 +116,55 @@ def verify_receipt_sections(
         return []
     if len(rows) != len(row_embeddings):
         raise ValueError("rows and row_embeddings must have equal length")
-    result = chroma.query(
-        collection_name="lines",
-        query_embeddings=[list(embedding) for embedding in row_embeddings],
-        n_results=KNN_NEIGHBORS,
-        include=["embeddings", "metadatas"],
-    )
+    try:
+        client = _vector_client(chroma, vector_client=vector_client)
+    except Exception:  # noqa: BLE001 - unavailable backend means abstain
+        _record_verification(dynamo, rows, [])
+        return []
+
     cache: dict[tuple[str, int], dict[int, str]] = {}
     verified: list[VerifiedRow] = []
-    for row, query_embedding, metadatas, embeddings in zip(
-        rows,
-        row_embeddings,
-        result.get("metadatas", []),
-        result.get("embeddings", []),
-        strict=True,
-    ):
+    for row, query_embedding in zip(rows, row_embeddings, strict=True):
+        try:
+            neighbors = client.search(
+                query_embedding,
+                index=LINE_INDEX,
+                top_k=KNN_NEIGHBORS,
+            )
+        except Exception:  # noqa: BLE001 - throttle/missing index => abstain
+            continue
         training_embeddings = []
         training_labels = []
-        for metadata, embedding in zip(metadatas, embeddings, strict=True):
-            if (
-                metadata.get("image_id") == row.image_id
-                and int(metadata.get("receipt_id", 0)) == row.receipt_id
-            ):
+        for neighbor in neighbors:
+            metadata = neighbor.metadata
+            try:
+                is_same_receipt = (
+                    metadata.get("image_id") == row.image_id
+                    and int(metadata.get("receipt_id", 0)) == row.receipt_id
+                )
+            except (TypeError, ValueError):
                 continue
-            label = _candidate_label(metadata, cache, dynamo)
+            if is_same_receipt:
+                continue
+            try:
+                label = _candidate_label(metadata, cache, dynamo)
+                embedding = client.get_vector(neighbor.key)
+            except Exception:  # noqa: BLE001 - incomplete neighbor => skip it
+                continue
             if label is not None:
                 training_embeddings.append(embedding)
                 training_labels.append(label)
         if not training_embeddings:
             continue
-        propagated = propagate_knn(
-            np.asarray(training_embeddings, dtype=np.float32),
-            training_labels,
-            np.asarray([query_embedding], dtype=np.float32),
-            k=KNN_NEIGHBORS,
-        )
+        try:
+            propagated = propagate_knn(
+                np.asarray(training_embeddings, dtype=np.float32),
+                training_labels,
+                np.asarray([query_embedding], dtype=np.float32),
+                k=KNN_NEIGHBORS,
+            )
+        except Exception:  # noqa: BLE001 - malformed evidence => abstain
+            continue
         if float(propagated.confidence[0]) <= 0.0:
             continue
         verified.append(

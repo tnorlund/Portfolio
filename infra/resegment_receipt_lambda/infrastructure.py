@@ -199,6 +199,7 @@ class ResegmentReceiptLambda(ComponentResource):
             source_paths=[
                 "receipt_dynamo",
                 "receipt_dynamo_stream",
+                "receipt_embeddings",
                 "receipt_chroma",
                 "receipt_upload",
                 "receipt_places",

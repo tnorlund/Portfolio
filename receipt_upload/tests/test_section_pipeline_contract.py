@@ -9,7 +9,7 @@ pipeline worker of MerchantResolvingEmbeddingProcessor:
 These tests pin that ordering plus the two safety invariants:
   * section predictions are ADDITIVE PENDING records that never overwrite
     existing (e.g. human VALID) sections, and
-  * Chroma KNN verification only ANNOTATES sections — it never changes their
+  * vector KNN verification only ANNOTATES sections — it never changes their
     section_type or row membership.
 """
 
@@ -29,6 +29,7 @@ from receipt_dynamo.entities import (
     ReceiptSection,
     ReceiptWord,
 )
+from receipt_embeddings import ScoredItem
 
 from receipt_upload.section_assignment import (
     MODEL_SOURCE,
@@ -557,25 +558,30 @@ class _VerifierStore:
 
 
 class _FakeLinesQuery:
-    """Chroma stub: same-receipt + cross-receipt neighbors per query row."""
+    """Vector seam stub: cross-receipt neighbors per query row."""
 
     def __init__(self, per_row_neighbors: list[list[dict]]):
         self.per_row_neighbors = per_row_neighbors
+        self.query_index = 0
+        self.vectors: dict[str, list[float]] = {}
 
-    def query(self, **kwargs):
-        assert kwargs["collection_name"] == "lines"
-        embeddings = kwargs["query_embeddings"]
-        assert len(embeddings) == len(self.per_row_neighbors)
-        metadatas, neighbor_embeddings = [], []
-        for query_embedding, neighbors in zip(
-            embeddings, self.per_row_neighbors
-        ):
-            metadatas.append(neighbors)
-            # Neighbors sit exactly on the query vector -> confidence 1.0.
-            neighbor_embeddings.append(
-                [list(query_embedding) for _ in neighbors]
+    def search(self, vector, index, top_k, filters=None):
+        assert index == "line-embeddings"
+        assert top_k == 15
+        assert filters is None
+        neighbors = self.per_row_neighbors[self.query_index]
+        results = []
+        for position, metadata in enumerate(neighbors):
+            key = f"neighbor-{self.query_index}-{position}"
+            self.vectors[key] = list(vector)
+            results.append(
+                ScoredItem(key=key, distance=0.0, metadata=metadata)
             )
-        return {"metadatas": metadatas, "embeddings": neighbor_embeddings}
+        self.query_index += 1
+        return results
+
+    def get_vector(self, key):
+        return list(self.vectors[key])
 
 
 def _row(row_id: int, line_ids: list[int]) -> ReceiptRow:
