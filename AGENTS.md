@@ -27,8 +27,14 @@ this file only covers environment mechanics.
 ## Conventions
 
 - Never commit directly to `main`; work on feature branches.
-- Do not run `pulumi` commands; deploys are CI-driven (and a local `pulumi up` can lock the
-  account-wide stack).
+- Production is a hard no-go for agents: never select, preview, refresh, update,
+  destroy, or import `tnorlund/portfolio/prod`, and never trigger a production
+  deployment.
+- Pulumi work against `tnorlund/portfolio/dev` is allowed only when the user
+  explicitly asks for a dev deployment or live dev test. Pin every command to
+  that fully qualified stack, verify AWS account `681647709217`, preview before
+  applying, and refuse unrelated deletes or replacements. The dev stack is
+  shared and account-wide, so never interrupt a running update.
 - Don't commit screenshots, logs, or `dev.*` scratch scripts you didn't author.
 
 ## Line-item decode stack
