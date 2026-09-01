@@ -9,18 +9,26 @@ from typing import Any
 import pytest
 from receipt_dynamo.constants import ValidationStatus
 from scripts.backfill_receipt_embeddings import (
+    EXIT_GLOBAL_WRITE_FAILURE,
+    EXIT_VERIFICATION_FAILURE,
     ChromaVectorSource,
     apply_stored_vectors,
     build_chroma_source,
     build_requests,
     collect_requests,
+    determine_exit_code,
     main,
     resolve_vector_source,
+    verify_written_items,
     wait_for_written_keys,
 )
 
 from receipt_embeddings import ScoredItem
-from receipt_embeddings.writer import EmbeddingWriteRequest
+from receipt_embeddings.writer import (
+    EmbeddingWriteFailure,
+    EmbeddingWriteReport,
+    EmbeddingWriteRequest,
+)
 
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"
 
@@ -296,3 +304,131 @@ def test_backfill_refuses_non_dev_table_before_any_io() -> None:
 def test_applied_backfill_requires_explicit_limit_before_any_io() -> None:
     with pytest.raises(SystemExit, match="requires an explicit --limit"):
         main(["--apply"])
+
+
+def _failure(key: str) -> EmbeddingWriteFailure:
+    return EmbeddingWriteFailure(key=key, stage="embed", error="denied")
+
+
+def test_global_failure_pattern_exits_with_distinct_code() -> None:
+    """Zero writes + nonzero failures (bad credentials, outage) is never
+    a success exit."""
+    report = EmbeddingWriteReport(failures=[_failure("k1"), _failure("k2")])
+
+    code = determine_exit_code(report, {"status": "not_needed"})
+
+    assert code == EXIT_GLOBAL_WRITE_FAILURE
+    assert code != 0
+
+
+def test_idempotent_rerun_with_zero_writes_exits_zero() -> None:
+    report = EmbeddingWriteReport(skipped_existing_keys=["k1", "k2"])
+
+    assert determine_exit_code(report, {"status": "not_needed"}) == 0
+
+
+def test_per_item_failures_beside_successful_writes_exit_zero() -> None:
+    report = EmbeddingWriteReport(
+        written_keys=["k1"], failures=[_failure("k2")]
+    )
+
+    assert determine_exit_code(report, {"status": "verified"}) == 0
+
+
+def test_unverified_written_items_exit_with_verification_code() -> None:
+    report = EmbeddingWriteReport(written_keys=["k1"])
+
+    code = determine_exit_code(report, {"status": "missing"})
+
+    assert code == EXIT_VERIFICATION_FAILURE
+    assert code not in (0, EXIT_GLOBAL_WRITE_FAILURE)
+
+
+class _VerifyDynamo:
+    """batch_get_item fake: returns the subset of requested keys it holds,
+    optionally leaving keys unprocessed once."""
+
+    def __init__(
+        self, present: set[str], unprocessed_once: bool = False
+    ) -> None:
+        self._present = present
+        self._unprocessed_once = unprocessed_once
+        self.calls = 0
+
+    def batch_get_item(self, RequestItems: dict) -> dict:
+        self.calls += 1
+        (table,) = RequestItems
+        request = RequestItems[table]
+        assert request["ConsistentRead"] is True
+        keys = request["Keys"]
+        if self._unprocessed_once:
+            self._unprocessed_once = False
+            return {
+                "Responses": {table: []},
+                "UnprocessedKeys": {table: {"Keys": keys}},
+            }
+        found = [key for key in keys if key["SK"]["S"] in self._present]
+        return {"Responses": {table: found}, "UnprocessedKeys": {}}
+
+
+def test_verify_written_items_confirms_every_key_strongly() -> None:
+    line_key = f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00002"
+    client = _VerifyDynamo({"RECEIPT#00001#LINE#00002#EMBEDDING"})
+
+    result = verify_written_items(
+        client, "ReceiptsTable-dc5be22", [line_key], sleep=lambda _: None
+    )
+
+    assert result == {
+        "status": "verified",
+        "checked": 1,
+        "missing_keys": [],
+    }
+
+
+def test_verify_written_items_never_false_passes_a_missing_item() -> None:
+    present = f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00002"
+    missing = f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00099"
+    client = _VerifyDynamo({"RECEIPT#00001#LINE#00002#EMBEDDING"})
+
+    result = verify_written_items(
+        client,
+        "ReceiptsTable-dc5be22",
+        [present, missing],
+        sleep=lambda _: None,
+    )
+
+    assert result["status"] == "missing"
+    assert result["missing_keys"] == [missing]
+
+
+def test_verify_written_items_retries_unprocessed_keys() -> None:
+    line_key = f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00002"
+    client = _VerifyDynamo(
+        {"RECEIPT#00001#LINE#00002#EMBEDDING"}, unprocessed_once=True
+    )
+
+    result = verify_written_items(
+        client, "ReceiptsTable-dc5be22", [line_key], sleep=lambda _: None
+    )
+
+    assert result["status"] == "verified"
+    assert client.calls == 2
+
+
+def test_verify_written_items_reports_missing_on_read_outage() -> None:
+    class BrokenDynamo:
+        def batch_get_item(self, **_: Any) -> dict:
+            raise RuntimeError("endpoint unreachable")
+
+    line_key = f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00002"
+
+    result = verify_written_items(
+        BrokenDynamo(),
+        "ReceiptsTable-dc5be22",
+        [line_key],
+        sleep=lambda _: None,
+    )
+
+    assert result["status"] == "missing"
+    assert result["missing_keys"] == [line_key]

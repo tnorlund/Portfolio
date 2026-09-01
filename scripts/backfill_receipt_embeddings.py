@@ -449,6 +449,104 @@ def collect_requests(
     return requests, skips
 
 
+# Fail-closed exit semantics (Round C vacatur gate): a run that writes
+# nothing while planned work failed is a global-failure pattern (bad
+# credentials, region outage) and must not exit 0; a post-write existence
+# check that cannot account for every written key is likewise an error.
+# Per-item failures alongside successful writes still skip-and-continue.
+EXIT_GLOBAL_WRITE_FAILURE = 3
+EXIT_VERIFICATION_FAILURE = 4
+
+
+def determine_exit_code(
+    write_report: Any, item_verification: Mapping[str, Any]
+) -> int:
+    """Map an applied run's outcome to its exit code.
+
+    Zero written with nonzero failures is the global-failure pattern ->
+    ``EXIT_GLOBAL_WRITE_FAILURE``. An idempotent rerun (zero written,
+    zero failures, everything already existing) stays 0. Written keys
+    the strong-consistency check could not find -> a distinct
+    ``EXIT_VERIFICATION_FAILURE``.
+    """
+    if write_report.written == 0 and write_report.failures:
+        return EXIT_GLOBAL_WRITE_FAILURE
+    if item_verification.get("status") == "missing":
+        return EXIT_VERIFICATION_FAILURE
+    return 0
+
+
+def _item_key_from_canonical(key: str) -> dict[str, Any]:
+    image_part, _, item_part = key.partition("#RECEIPT#")
+    return {
+        "PK": {"S": image_part},
+        "SK": {"S": f"RECEIPT#{item_part}#EMBEDDING"},
+    }
+
+
+def verify_written_items(
+    dynamodb_client: Any,
+    table_name: str,
+    written_keys: Sequence[str],
+    *,
+    max_retries: int = 3,
+    sleep: Any = time.sleep,
+) -> dict[str, Any]:
+    """Strongly consistent existence check over EVERY written key.
+
+    Uses BatchGetItem with ConsistentRead so a written item can never
+    false-pass through eventual consistency or a swallowed lookup error:
+    a key is verified only when the base table returns it, and any key
+    left unaccounted for (missing, or unprocessed after bounded retries)
+    is reported and fails the run.
+    """
+    if not written_keys:
+        return {"status": "not_needed", "checked": 0, "missing_keys": []}
+    unaccounted = {key: _item_key_from_canonical(key) for key in written_keys}
+    all_keys = list(unaccounted.items())
+    for offset in range(0, len(all_keys), 100):
+        chunk = all_keys[offset : offset + 100]
+        pending = [item_key for _, item_key in chunk]
+        by_table_key = {
+            (item_key["PK"]["S"], item_key["SK"]["S"]): canonical
+            for canonical, item_key in chunk
+        }
+        try:
+            for attempt in range(max_retries + 1):
+                response = dynamodb_client.batch_get_item(
+                    RequestItems={
+                        table_name: {
+                            "Keys": pending,
+                            "ProjectionExpression": "PK, SK",
+                            "ConsistentRead": True,
+                        }
+                    }
+                )
+                for item in response.get("Responses", {}).get(table_name, []):
+                    canonical = by_table_key.get(
+                        (item["PK"]["S"], item["SK"]["S"])
+                    )
+                    if canonical is not None:
+                        unaccounted.pop(canonical, None)
+                pending = (
+                    response.get("UnprocessedKeys", {})
+                    .get(table_name, {})
+                    .get("Keys", [])
+                )
+                if not pending:
+                    break
+                if attempt < max_retries:
+                    sleep(0.1 * (2**attempt))
+        except Exception:  # noqa: BLE001 - unaccounted keys fail the check
+            continue
+    missing = sorted(unaccounted)
+    return {
+        "status": "verified" if not missing else "missing",
+        "checked": len(written_keys),
+        "missing_keys": missing,
+    }
+
+
 def _sample_written_keys(keys: Sequence[str], sample_size: int) -> list[str]:
     if sample_size <= 0:
         return []
@@ -652,15 +750,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     report["item_failure_reasons"] = dict(
         Counter(failure.stage for failure in write_report.failures)
     )
+    # Two-phase verification (Round C vacatur gate): first a strongly
+    # consistent existence check over every written key — the pass/fail
+    # signal — then the bounded SearchVectors probe, reported separately
+    # because indexing is asynchronous and a probe timeout is not an
+    # existence failure.
+    report["item_verification"] = verify_written_items(
+        dynamo._client, args.table_name, write_report.written_keys
+    )
     search_client = DynamoVectorSearchClient(dynamo._client, args.table_name)
-    report["searchability"] = wait_for_written_keys(
+    report["searchability_probe"] = wait_for_written_keys(
         search_client,
         write_report.written_keys,
         timeout_seconds=args.wait_seconds,
         sample_size=args.sample_size,
     )
+    exit_code = determine_exit_code(write_report, report["item_verification"])
+    report["exit_code"] = exit_code
     print(json.dumps(report, indent=2, sort_keys=True))
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":
