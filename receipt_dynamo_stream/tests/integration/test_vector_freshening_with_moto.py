@@ -10,7 +10,6 @@ from typing import Any, Iterator
 import boto3
 import pytest
 from moto import mock_aws
-
 from receipt_dynamo.entities.receipt_embedding import (
     ReceiptLineEmbedding,
     ReceiptWordEmbedding,
@@ -279,6 +278,26 @@ class TestWordLabelFreshening:
             pending_label.to_item(),
         )
         record = _record("INSERT", new_item=pending_label.to_item())
+
+        apply_vector_freshening(
+            [record], dynamo_client=dynamo, table_name=_TABLE
+        )
+
+        item = _get_item(
+            dynamo, "RECEIPT#00001#LINE#00001#WORD#00001#EMBEDDING"
+        )
+        assert item is not None
+        assert item["label_status"]["S"] == "validated"
+
+    def test_invalid_only_word_stays_in_validated_population(
+        self, dynamo: Any
+    ) -> None:
+        """INVALID is a terminal human verdict: the word must remain
+        retrievable under label_status=validated so similar_labeled_words
+        can surface it as evidence_against (E3 review P1-2)."""
+        invalid_label = _word_label(validation_status="INVALID")
+        _seed(dynamo, _word_embedding().to_item(), invalid_label.to_item())
+        record = _record("INSERT", new_item=invalid_label.to_item())
 
         apply_vector_freshening(
             [record], dynamo_client=dynamo, table_name=_TABLE

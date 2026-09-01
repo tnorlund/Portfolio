@@ -97,6 +97,45 @@ def test_build_requests_preserves_display_text_and_context_input() -> None:
     assert requests[1].label_status == "validated"
 
 
+def test_build_requests_marks_invalid_only_words_validated() -> None:
+    """INVALID-only words carry a terminal verdict and must stay in the
+    validated population, or the word index's filter would drop exactly
+    the counterexamples similar_labeled_words needs (E3 review P1-2)."""
+    line = Geometry(
+        IMAGE_ID,
+        1,
+        2,
+        "COFFEE 12.99",
+        {"x": 0.1, "y": 0.8, "width": 0.5, "height": 0.05},
+    )
+    word = Geometry(
+        IMAGE_ID,
+        1,
+        2,
+        "COFFEE",
+        {"x": 0.1, "y": 0.8, "width": 0.2, "height": 0.05},
+        word_id=3,
+    )
+    details = SimpleNamespace(
+        receipt=SimpleNamespace(image_id=IMAGE_ID, receipt_id=1),
+        lines=[line],
+        words=[word],
+        labels=[
+            SimpleNamespace(
+                line_id=2,
+                word_id=3,
+                validation_status=ValidationStatus.INVALID.value,
+            )
+        ],
+        place=SimpleNamespace(merchant_name="Fixture Mart", place_id="p1"),
+    )
+    sections = [SimpleNamespace(line_ids=[2], section_type="ITEMS")]
+
+    requests = build_requests(details, sections, {})
+
+    assert requests[1].label_status == "validated"
+
+
 def test_build_requests_computes_fetch_join_anchor_metadata() -> None:
     """Line requests carry the Chroma-writer-computed normalized anchors
     for the row's words (Round C fetch-join ruling)."""

@@ -265,13 +265,22 @@ def _classify_receipt_skip(exc: Exception) -> str:
 
 
 def _label_statuses(labels: Sequence[Any]) -> dict[tuple[int, int], str]:
+    """Same rule as the stream freshener: any terminal human verdict
+    (VALID or INVALID) -> validated, else any PENDING -> pending, else
+    none. INVALID-only words must stay in the validated population or
+    the word index's filter would drop exactly the counterexamples
+    similar_labeled_words needs for evidence_against (E3 review P1-2).
+    """
     by_word: dict[tuple[int, int], list[str]] = {}
     for label in labels:
         key = (int(label.line_id), int(label.word_id))
         by_word.setdefault(key, []).append(str(label.validation_status))
     statuses: dict[tuple[int, int], str] = {}
     for key, values in by_word.items():
-        if ValidationStatus.VALID.value in values:
+        if (
+            ValidationStatus.VALID.value in values
+            or ValidationStatus.INVALID.value in values
+        ):
             statuses[key] = "validated"
         elif ValidationStatus.PENDING.value in values:
             statuses[key] = "pending"
