@@ -1,7 +1,30 @@
 # Card W — Wiring: dual-run ingest + freshening leg (self-report)
 
-Branch `cards/W-wiring`, 5 commits on current main. No pulumi commands were
-run, no dev/prod writes, no index operations.
+Branch `cards/W-wiring`, 7 commits on current main (5 feature/test/docs +
+1 codex-review fix + this re-declared report). No pulumi commands were run,
+no dev/prod writes, no index operations.
+
+## Codex review fixes (re-declaration)
+
+- **P1 (black 26.5.1):** `dynamo_embedding_write.py` and
+  `test_dual_write_embeddings.py` reformatted with the repo-pinned
+  black 26.5.1 exactly as the receipt_upload CI job invokes it;
+  `black --check --line-length=79 .` from the `receipt_upload/` package dir
+  is clean (143 files unchanged). The new freshening test is also
+  black-formatted.
+- **P2 (utils stub leakage):** the freshening test's `utils` stub moved
+  from a module-level `sys.modules` replacement into a `stream_env`
+  fixture that installs the stub, imports `stream_processor` against it,
+  and restores `sys.modules` on teardown. Co-collection with
+  `test_lambda_imports.py` verified **in both orders**: 5 passed / 2 failed
+  each way, and the 2 failures (`test_stream_processor_execution`,
+  `test_enhanced_compaction_handler_execution`) fail inside the **real**
+  `utils.timeout_handler` (`get_remaining_time` vs a MagicMock context) —
+  present identically in the full-dir run *without* my file, and proof the
+  stub was restored rather than leaked. For reference, `test_lambda_imports.py`
+  run standalone in this env fails all 5 (no sys.path/utils setup exists for
+  it outside `infra/chromadb_compaction/tests/conftest.py`); co-collection
+  with my file passes 3 of its tests that standalone cannot.
 
 ## Per-item report
 
@@ -71,7 +94,8 @@ run, no dev/prod writes, no index operations.
 
 ### 4. Tests
 
-- `receipt_upload/tests/test_dual_write_embeddings.py` (7 tests):
+- `receipt_upload/tests/test_dual_write_embeddings.py` (7 tests, re-run
+  green after the black reformat):
   - flag off → `None` returned, zero writer-factory/writer calls;
   - flag on → writer invoked once; every request carries a pre-computed
     vector; row/word vectors are the exact in-memory lists;
@@ -84,7 +108,8 @@ run, no dev/prod writes, no index operations.
 - `infra/chromadb_compaction/lambdas/tests/test_stream_processor_freshening.py`
   (2 tests): handler invokes the leg with the event's records and folds
   `VectorFreshening*` stats into EMF; with `DYNAMO_TABLE_NAME` unset the
-  real leg returns zeroed stats and the handler still returns 200.
+  real leg returns zeroed stats and the handler still returns 200. Stub is
+  fixture-scoped with `sys.modules` restore (see codex fixes above).
 - Adjacent suites re-run clean (no regressions):
   `test_embedding_failure_propagation.py`,
   `test_embedding_processor_label_hygiene.py`,
@@ -104,7 +129,7 @@ pip install --no-deps -e receipt_dynamo_stream -e receipt_embeddings \
 pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow pillow-avif-plugin \
   langsmith langgraph "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
   pydantic pydantic-settings structlog requests tenacity numpy \
-  pytest pytest-mock pytest-timeout moto
+  pytest pytest-mock pytest-timeout moto "black==26.5.1"
 
 # Dual-run unit + independence tests
 python -m pytest receipt_upload/tests/test_dual_write_embeddings.py -v
@@ -113,6 +138,19 @@ python -m pytest receipt_upload/tests/test_dual_write_embeddings.py -v
 # Pulumi imports — the repo's established convention for these tests)
 PYTEST_RUNNING=1 python -m pytest \
   infra/chromadb_compaction/lambdas/tests/test_stream_processor_freshening.py -v
+
+# Co-collection proof (P2): both orders; expect my 2 + their import tests
+# to pass, and only the pre-existing *_execution failures (identical
+# without my file) to remain
+PYTEST_RUNNING=1 python -m pytest \
+  infra/chromadb_compaction/lambdas/tests/test_lambda_imports.py \
+  infra/chromadb_compaction/lambdas/tests/test_stream_processor_freshening.py -v
+PYTEST_RUNNING=1 python -m pytest \
+  infra/chromadb_compaction/lambdas/tests/test_stream_processor_freshening.py \
+  infra/chromadb_compaction/lambdas/tests/test_lambda_imports.py -v
+
+# black as the receipt_upload CI job runs it (P1)
+(cd receipt_upload && black --check --line-length=79 .)
 
 # Adjacent regression suites
 python -m pytest \
@@ -128,7 +166,7 @@ python -m py_compile \
 ```
 
 All of the above were run locally on this branch and passed
-(Python 3.13.15, macOS).
+(Python 3.13.15, black 26.5.1, macOS).
 
 ## Not verified locally
 
