@@ -123,7 +123,9 @@ def test_ats_machine_auth_is_rotated_and_monitored():
     assert 'route_key="POST /ats/mcp"' in source
     assert "throttling_rate_limit=5.0" in source
     assert "access_log_settings" in source
-    assert "depends_on=[access_log_group, *protected_routes]" in source
+    assert (
+        "depends_on=[access_log_group, dcr_route, *protected_routes]" in source
+    )
     assert "add_user_pool_client_secret" in rotation
     assert "delete_user_pool_client_secret" in rotation
     assert "AWSPENDING" in rotation
