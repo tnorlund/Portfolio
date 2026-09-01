@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
@@ -13,6 +14,7 @@ from receipt_embeddings.service_limits import (
     EMBEDDING_DIMENSIONS,
     INDEX_VECTOR_ATTRIBUTES,
     LINE_INDEX,
+    MAX_BATCH_GET_ITEMS,
     VECTOR_SEARCH_USD_PER_GB,
     WORD_INDEX,
     build_search_filter,
@@ -30,6 +32,25 @@ _CANONICAL_KEY = re.compile(
     r"LINE#(?P<line_id>[0-9]+)(?:#WORD#(?P<word_id>[0-9]+))?$"
 )
 
+# Fetch-join ruling (spec §3.2/§3.3 amendment): the line index's projection
+# omits fields the resolver's phone/address tiers need, so line retrieval is
+# SearchVectors -> strongly consistent BatchGetItem of the neighbor items ->
+# full metadata. These are the base-item attributes fetched for that join
+# (everything metadata-bearing; never the vector, which would multiply the
+# response size ~40KB per neighbor for nothing).
+_LINE_JOIN_ATTRIBUTES = (
+    "image_id",
+    "receipt_id",
+    "line_id",
+    "text",
+    "merchant_name",
+    "place_id",
+    "row_line_ids",
+    "section_type",
+    "normalized_phone_10",
+    "normalized_full_address",
+)
+
 
 def _canonical_key(item: Mapping[str, Any], *, index: str) -> str:
     image_id = str(item["image_id"])
@@ -44,7 +65,14 @@ def _canonical_key(item: Mapping[str, Any], *, index: str) -> str:
 class DynamoVectorSearchClient:
     """Search and retrieve vectors from the two judge-provisioned indexes."""
 
-    def __init__(self, dynamodb_client: Any, table_name: str) -> None:
+    def __init__(
+        self,
+        dynamodb_client: Any,
+        table_name: str,
+        *,
+        max_retries: int = 3,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         if not table_name:
             raise ValueError("table_name must not be empty")
         if not callable(getattr(dynamodb_client, "search_vectors", None)):
@@ -53,8 +81,11 @@ class DynamoVectorSearchClient:
             )
         self._client = dynamodb_client
         self.table_name = table_name
+        self._max_retries = max_retries
+        self._sleep = sleep
         self.last_request_bytes: int | None = None
         self.last_request_units: None = None
+        self.last_join_read_units: float | None = None
 
     @classmethod
     def from_env(cls) -> "DynamoVectorSearchClient":
@@ -125,7 +156,105 @@ class DynamoVectorSearchClient:
             except (KeyError, TypeError, ValueError):
                 # One malformed projection must not discard healthy neighbors.
                 continue
-        return results[:top_k]
+        results = results[:top_k]
+        if physical == LINE_INDEX:
+            results = self._join_line_metadata(results)
+        return results
+
+    def _join_line_metadata(
+        self, results: list[ScoredItem]
+    ) -> list[ScoredItem]:
+        """Fetch-join full neighbor metadata for line-index results.
+
+        SearchVectors returns only the index projection, which omits the
+        resolver's ``normalized_phone_10`` / ``normalized_full_address``
+        fields. Read the neighbor base items with strongly consistent
+        BatchGetItem and replace each result's metadata with the full set.
+        A neighbor whose item cannot be fetched (deleted since indexing, or
+        unprocessed after bounded retries) keeps its projection metadata —
+        a degraded neighbor never discards a healthy search hit.
+        """
+        self.last_join_read_units = None
+        if not results:
+            return results
+        keys_by_id: dict[str, dict[str, Any]] = {}
+        for result in results:
+            match = _CANONICAL_KEY.fullmatch(result.key)
+            if match is None or match.group("word_id") is not None:
+                continue
+            values = match.groupdict()
+            keys_by_id[result.key] = {
+                "PK": {"S": f"IMAGE#{values['image_id']}"},
+                "SK": {
+                    "S": (
+                        f"RECEIPT#{int(values['receipt_id']):05d}#"
+                        f"LINE#{int(values['line_id']):05d}#EMBEDDING"
+                    )
+                },
+            }
+        if not keys_by_id:
+            return results
+        names = {
+            f"#j{position}": name
+            for position, name in enumerate(_LINE_JOIN_ATTRIBUTES)
+        }
+        fetched: dict[str, dict[str, Any]] = {}
+        consumed = 0.0
+        all_keys = list(keys_by_id.values())
+        for offset in range(0, len(all_keys), MAX_BATCH_GET_ITEMS):
+            pending = all_keys[offset : offset + MAX_BATCH_GET_ITEMS]
+            try:
+                for attempt in range(self._max_retries + 1):
+                    response = self._client.batch_get_item(
+                        RequestItems={
+                            self.table_name: {
+                                "Keys": pending,
+                                "ProjectionExpression": ", ".join(names),
+                                "ExpressionAttributeNames": names,
+                                "ConsistentRead": True,
+                            }
+                        },
+                        ReturnConsumedCapacity="TOTAL",
+                    )
+                    for capacity in response.get("ConsumedCapacity") or []:
+                        consumed += float(capacity.get("CapacityUnits") or 0)
+                    for item in response.get("Responses", {}).get(
+                        self.table_name, []
+                    ):
+                        parsed = parse_dynamodb_map(dict(item))
+                        try:
+                            joined_key = _canonical_key(
+                                parsed, index=LINE_INDEX
+                            )
+                        except (KeyError, TypeError, ValueError):
+                            continue
+                        fetched[joined_key] = parsed
+                    pending = (
+                        response.get("UnprocessedKeys", {})
+                        .get(self.table_name, {})
+                        .get("Keys", [])
+                    )
+                    if not pending:
+                        break
+                    if attempt < self._max_retries:
+                        self._sleep(0.1 * (2**attempt))
+            except Exception:  # noqa: BLE001 - degrade to projection metadata
+                continue
+        self.last_join_read_units = consumed
+        joined: list[ScoredItem] = []
+        for result in results:
+            item = fetched.get(result.key)
+            if item is None:
+                joined.append(result)
+                continue
+            joined.append(
+                ScoredItem(
+                    key=result.key,
+                    distance=result.distance,
+                    metadata=dict(item),
+                )
+            )
+        return joined
 
     def get_vector(self, key: str) -> list[float]:
         match = _CANONICAL_KEY.fullmatch(key)
@@ -171,6 +300,7 @@ class DynamoVectorSearchClient:
         return {
             "request_bytes": self.last_request_bytes,
             "estimated_usd": estimated_cost,
+            "join_read_units": self.last_join_read_units,
         }
 
 

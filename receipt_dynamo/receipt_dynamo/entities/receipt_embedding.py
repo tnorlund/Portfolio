@@ -83,6 +83,12 @@ class ReceiptLineEmbedding:
     row_line_ids: list[int]
     section_type: str
     line_vector: list[float]
+    # Fetch-join metadata (spec §3.2/§3.3 amendment): ordinary unprojected
+    # attributes the resolver's phone/address tiers read after a
+    # SearchVectors -> BatchGetItem join. Computed the same way the Chroma
+    # metadata writer computes its anchor fields; empty means "no anchor".
+    normalized_phone_10: str = ""
+    normalized_full_address: str = ""
 
     def __post_init__(self) -> None:
         _validate_common(
@@ -94,6 +100,14 @@ class ReceiptLineEmbedding:
         )
         _validate_text("place_id", self.place_id, allow_empty=True)
         _validate_text("section_type", self.section_type, allow_empty=True)
+        _validate_text(
+            "normalized_phone_10", self.normalized_phone_10, allow_empty=True
+        )
+        _validate_text(
+            "normalized_full_address",
+            self.normalized_full_address,
+            allow_empty=True,
+        )
         if not isinstance(self.row_line_ids, list) or not self.row_line_ids:
             raise ValueError("row_line_ids must be a non-empty list")
         for row_line_id in self.row_line_ids:
@@ -127,9 +141,15 @@ class ReceiptLineEmbedding:
         )
 
     def to_item(self) -> dict[str, Any]:
-        """Serialize without any GSI1-GSI4 keys."""
+        """Serialize without any GSI1-GSI4 keys.
 
-        return {
+        The normalized anchor attributes are sparse — present only when an
+        anchor exists — mirroring the Chroma metadata writer, which sets
+        ``normalized_phone_10`` / ``normalized_full_address`` keys only when
+        the row carries the corresponding anchor.
+        """
+
+        item = {
             **self.key,
             "TYPE": {"S": self.TYPE},
             self.VECTOR_ATTRIBUTE: _vector_attribute(self.line_vector),
@@ -144,6 +164,13 @@ class ReceiptLineEmbedding:
             },
             "section_type": {"S": self.section_type},
         }
+        if self.normalized_phone_10:
+            item["normalized_phone_10"] = {"S": self.normalized_phone_10}
+        if self.normalized_full_address:
+            item["normalized_full_address"] = {
+                "S": self.normalized_full_address
+            }
+        return item
 
     @classmethod
     def from_item(cls, item: dict[str, Any]) -> "ReceiptLineEmbedding":
@@ -160,6 +187,8 @@ class ReceiptLineEmbedding:
             row_line_ids=values["row_line_ids"],
             section_type=values.get("section_type", ""),
             line_vector=values[cls.VECTOR_ATTRIBUTE],
+            normalized_phone_10=values.get("normalized_phone_10", ""),
+            normalized_full_address=values.get("normalized_full_address", ""),
         )
 
 

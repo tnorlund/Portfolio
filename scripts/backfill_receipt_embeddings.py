@@ -24,6 +24,7 @@ sys.path.insert(0, str(REPOSITORY_ROOT))
 for package_root in (
     REPOSITORY_ROOT / "receipt_embeddings",
     REPOSITORY_ROOT / "receipt_dynamo",
+    REPOSITORY_ROOT / "receipt_chroma",
 ):
     sys.path.insert(0, str(package_root))
 
@@ -45,6 +46,9 @@ from receipt_embeddings.service_limits import (  # noqa: E402
     WORD_INDEX,
 )
 
+from receipt_chroma.embedding.metadata.line_metadata import (  # noqa: E402
+    enrich_row_metadata_with_anchors,
+)
 from receipt_dynamo import DynamoClient  # noqa: E402
 from receipt_dynamo.constants import ValidationStatus  # noqa: E402
 from scripts.similarity_harness.common import validate_fixture  # noqa: E402
@@ -196,6 +200,18 @@ def build_requests(
         section_type = (
             next(iter(section_values)) if len(section_values) == 1 else ""
         )
+        # Fetch-join metadata: the same anchor enrichment the Chroma line
+        # delta writer applies to a visual row's words populates the
+        # resolver's normalized phone/address fields on the Dynamo item.
+        row_line_id_set = {int(value) for value in line_ids}
+        anchors = enrich_row_metadata_with_anchors(
+            {},
+            [
+                word
+                for word in details.words
+                if int(word.line_id) in row_line_id_set
+            ],
+        )
         requests.append(
             EmbeddingWriteRequest(
                 kind="line",
@@ -208,6 +224,12 @@ def build_requests(
                 place_id=place_id,
                 row_line_ids=tuple(int(value) for value in line_ids),
                 section_type=section_type,
+                normalized_phone_10=str(
+                    anchors.get("normalized_phone_10", "")
+                ),
+                normalized_full_address=str(
+                    anchors.get("normalized_full_address", "")
+                ),
                 vector=known_vectors.get(canonical_key),
             )
         )

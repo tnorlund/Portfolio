@@ -28,6 +28,7 @@ class Geometry:
     text: str
     bounding_box: dict[str, float]
     word_id: int | None = None
+    extracted_data: dict[str, Any] | None = None
 
     def calculate_centroid(self) -> tuple[float, float]:
         return (
@@ -75,6 +76,55 @@ def test_build_requests_preserves_display_text_and_context_input() -> None:
     assert requests[1].text == "COFFEE"
     assert requests[1].embedding_input == "<EDGE> <EDGE> COFFEE <EDGE> <EDGE>"
     assert requests[1].label_status == "validated"
+
+
+def test_build_requests_computes_fetch_join_anchor_metadata() -> None:
+    """Line requests carry the Chroma-writer-computed normalized anchors
+    for the row's words (Round C fetch-join ruling)."""
+    line = Geometry(
+        IMAGE_ID,
+        1,
+        2,
+        "CALL 555-123-4567",
+        {"x": 0.1, "y": 0.8, "width": 0.5, "height": 0.05},
+    )
+    phone_word = Geometry(
+        IMAGE_ID,
+        1,
+        2,
+        "555-123-4567",
+        {"x": 0.1, "y": 0.8, "width": 0.2, "height": 0.05},
+        word_id=1,
+        extracted_data={"type": "phone", "value": "555-123-4567"},
+    )
+    address_word = Geometry(
+        IMAGE_ID,
+        1,
+        2,
+        "123 Main St, Henderson NV 89014",
+        {"x": 0.4, "y": 0.8, "width": 0.2, "height": 0.05},
+        word_id=2,
+        extracted_data={
+            "type": "address",
+            "value": "123 Main St, Henderson NV 89014",
+        },
+    )
+    details = SimpleNamespace(
+        receipt=SimpleNamespace(image_id=IMAGE_ID, receipt_id=1),
+        lines=[line],
+        words=[phone_word, address_word],
+        labels=[],
+        place=SimpleNamespace(merchant_name="Fixture Mart", place_id="p1"),
+    )
+
+    requests = build_requests(details, [], {})
+
+    line_request = requests[0]
+    assert line_request.kind == "line"
+    assert line_request.normalized_phone_10 == "5551234567"
+    assert "MAIN ST" in line_request.normalized_full_address
+    entity_item = line_request.build_entity([0.01] * 1536).to_item()
+    assert entity_item["normalized_phone_10"] == {"S": "5551234567"}
 
 
 def test_absent_receipt_is_skipped_without_aborting_scope() -> None:

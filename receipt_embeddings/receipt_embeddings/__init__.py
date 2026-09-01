@@ -10,6 +10,7 @@ from receipt_embeddings.quotas import (
     ensure_query_embeddings_within_quota,
 )
 from receipt_embeddings.vector_client import (
+    RESOLVER_NEIGHBOR_METADATA_KEYS,
     FilterValue,
     ScoredItem,
     VectorItem,
@@ -32,6 +33,7 @@ __all__ = [
     "FilterValue",
     "MAX_GET_LIMIT",
     "MAX_QUERY_EMBEDDINGS_PER_CALL",
+    "RESOLVER_NEIGHBOR_METADATA_KEYS",
     "ScoredItem",
     "VectorItem",
     "VectorSearchClient",

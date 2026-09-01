@@ -39,6 +39,8 @@ class EmbeddingWriteRequest:
     place_id: str = ""
     row_line_ids: tuple[int, ...] = ()
     section_type: str = ""
+    normalized_phone_10: str = ""
+    normalized_full_address: str = ""
     word_id: int | None = None
     label_status: str = "none"
     vector: Sequence[float] | None = None
@@ -92,6 +94,8 @@ class EmbeddingWriteRequest:
             row_line_ids=list(self.row_line_ids),
             section_type=self.section_type,
             line_vector=list(vector),
+            normalized_phone_10=self.normalized_phone_10,
+            normalized_full_address=self.normalized_full_address,
         )
 
 
