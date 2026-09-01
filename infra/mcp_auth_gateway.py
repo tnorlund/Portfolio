@@ -22,10 +22,11 @@ from pulumi import ComponentResource, Config, Output, ResourceOptions
 
 _RESOURCE_SERVER_ID = "portfolio-mcp"
 _DEFAULT_CALLBACK_URLS = [
-    # claude.ai / Claude desktop custom-connector OAuth callbacks — the
-    # primary remote clients for both MCP servers.
+    # Hosted and desktop connector callbacks for the supported MCP clients.
     "https://claude.ai/api/mcp/auth_callback",
     "https://claude.com/api/mcp/auth_callback",
+    "https://www.cursor.com/agents/mcp/oauth/callback",
+    "http://localhost:8787/callback",
     # Local development: mcp-remote default and MCP Inspector.
     "http://localhost:8765/callback",
     "http://127.0.0.1:8765/callback",

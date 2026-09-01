@@ -75,10 +75,9 @@ The accepted Greenhouse sender list follows Greenhouse's published
 same SES receiving components in another stack in this AWS account/region:
 that stack would compete for the single active receipt rule set.
 
-Deployment must go through the repository's approved stack workflow/operator.
-Do not run a local `pulumi up`. After the development update completes, record
-these non-secret stack outputs from Pulumi Cloud or the approved deployment
-job:
+Follow the dev-only Pulumi safeguards in the repository's `AGENTS.md`. Never
+select or trigger the production stack. After the development update completes,
+record these non-secret stack outputs:
 
 - `ats_verification_inbox_address`
 - `ats_mcp_server_url`
@@ -103,11 +102,47 @@ security-code subject and body shape, so other Greenhouse mail that happens to
 be forwarded is discarded without a DynamoDB record and its raw object expires
 after one day.
 
-In Grok Bot, add a custom remote MCP server using `ats_mcp_server_url`, choose
-the existing interactive OAuth client, and authorize the
-`portfolio-mcp/ats` scope. The server should expose exactly one tool:
-`get_latest_verification_code`. It accepts `provider=greenhouse` and an
-optional `max_age_seconds` from 30 through 900.
+### Connect Pipeline Scout in Grok Bot
+
+Grok Bot uses the same hosted plugin and MCP authentication layer as the
+Cursor account used to sign in; this is not a Grok CLI configuration. Cursor's
+static OAuth flow is required because Cognito does not implement dynamic client
+registration. The development Cognito client registers both fixed Cursor
+redirects documented at [Cursor MCP](https://cursor.com/docs/mcp):
+
+- `https://www.cursor.com/agents/mcp/oauth/callback`
+- `http://localhost:8787/callback`
+
+Add a user-scoped custom MCP from Cursor **Customize -> MCPs -> New -> User**,
+or install the equivalent configuration through the team's plugin catalog:
+
+```json
+{
+  "mcpServers": {
+    "ats-verification": {
+      "type": "http",
+      "url": "<ats_mcp_server_url>",
+      "auth": {
+        "CLIENT_ID": "<mcp_oauth_interactive_client_id>",
+        "scopes": ["openid", "email", "portfolio-mcp/ats"]
+      }
+    }
+  }
+}
+```
+
+Complete the browser authorization, restart Grok Bot, then confirm the
+connector is installed and connected under **Plugins -> Your plugins**. Grok
+Bot and Cursor share the MCP authorization, and Cursor's connector backend
+holds the OAuth tokens rather than placing them on the Bot's computer. See the
+official [Grok Bot plugin guide](https://cursor.com/help/grok-bot/connect-plugins)
+and [Grok Bot security model](https://cursor.com/docs/grok-bot/work).
+
+The connector is deliberately not general email access. It exposes exactly one
+read-only tool, `get_latest_verification_code`, which returns only a trusted,
+unexpired code and metadata. It accepts `provider=greenhouse` and an optional
+`max_age_seconds` from 30 through 900. Raw messages, subjects, bodies, iCloud
+credentials, and mail-send capability remain unavailable to every Bot.
 
 ## Acceptance test
 

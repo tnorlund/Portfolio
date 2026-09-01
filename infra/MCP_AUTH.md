@@ -26,11 +26,10 @@ The `mcp_oauth_interactive_client_id` stack output identifies a public OAuth
 client that uses authorization code flow. Configure the MCP client with that
 client ID, the appropriate `mcp_server_url`, `glyph_mcp_server_url`, or
 `ats_mcp_server_url`, and a callback URL allowed by
-`portfolio:mcpOAuthCallbackUrls`. The defaults cover
-the claude.ai / Claude desktop connector callbacks
-(`https://claude.ai/api/mcp/auth_callback`, `https://claude.com/...`) and
-local callbacks on ports 8765 and 6274. Cognito does not provide dynamic
-client registration, so the exported client ID is required.
+`portfolio:mcpOAuthCallbackUrls`. The defaults cover Claude connectors,
+Cursor/Grok Bot's hosted and desktop callbacks, and local development clients.
+Cognito does not provide dynamic client registration, so the exported client
+ID is required.
 
 Codex appends a stable, server-specific callback ID to its configured base
 callback URL. Register that complete derived URL in the development stack
@@ -49,6 +48,18 @@ path-derived well-known location: the gateway is an HTTP API on the
 clients derive it. (A REST API's `/{stage}/` prefix breaks that
 derivation, and REST gateway responses can't emit a per-route
 `WWW-Authenticate` hint — that is why this is an HTTP API.)
+
+For Grok Bot, configure a user-scoped remote MCP in Cursor with the gateway
+URL, `mcp_oauth_interactive_client_id`, and only the route's required scope.
+Grok Bot uses the same Cursor-account MCP authorization; do not configure Grok
+CLI. Cursor's fixed redirects are:
+
+- `https://www.cursor.com/agents/mcp/oauth/callback` for hosted agents;
+- `http://localhost:8787/callback` for the desktop app.
+
+Both must remain registered on the Cognito public client. The complete
+ATS-specific configuration and verification steps are in
+[ATS_VERIFICATION_INBOX.md](ATS_VERIFICATION_INBOX.md).
 
 User signup is administrator-only. Create the first user after deployment:
 
