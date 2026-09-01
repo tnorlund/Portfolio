@@ -40,6 +40,11 @@ from receipt_chroma.embedding.utils import (
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
+from receipt_embeddings import (
+    ChromaVectorSearchClient,
+    DynamoVectorSearchClient,
+    VectorSearchClient,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -772,6 +777,8 @@ class MerchantResolver:
         dynamo_client: DynamoClient,
         places_client: Optional[Any] = None,
         openai_client: Optional[Any] = None,
+        vector_client: Optional[VectorSearchClient] = None,
+        vector_backend: Optional[str] = None,
     ):
         """
         Initialize the merchant resolver.
@@ -780,10 +787,35 @@ class MerchantResolver:
             dynamo_client: DynamoDB client for fetching receipt metadata
             places_client: Optional Google Places client for Tier 2
             openai_client: Optional OpenAI client for embedding generation
+            vector_client: Optional injected similarity-search backend
+            vector_backend: ``chroma`` or ``dynamodb``; defaults to
+                ``VECTOR_BACKEND`` and then ``chroma``
         """
         self.dynamo = dynamo_client
         self.places_client = places_client
         self._openai_client = openai_client
+        self._vector_client = vector_client
+        self._vector_backend = (
+            (vector_backend or os.environ.get("VECTOR_BACKEND", "chroma"))
+            .strip()
+            .lower()
+        )
+        if self._vector_backend not in {"chroma", "dynamodb"}:
+            raise ValueError(
+                "VECTOR_BACKEND must be either 'chroma' or 'dynamodb'"
+            )
+
+    def _get_vector_client(
+        self, lines_client: ChromaClient
+    ) -> VectorSearchClient:
+        """Resolve the configured backend lazily so startup stays AWS-free."""
+        if self._vector_client is not None:
+            return self._vector_client
+        if self._vector_backend == "dynamodb":
+            client = DynamoVectorSearchClient.from_env()
+            self._vector_client = client
+            return client
+        return ChromaVectorSearchClient(lines_client)
 
     @property
     def openai_client(self) -> Any:
@@ -1340,21 +1372,19 @@ class MerchantResolver:
                 return MerchantResult()
 
         try:
-            # Query ChromaDB by embedding similarity
-            results = lines_client.query(
-                collection_name="lines",
-                query_embeddings=[embedding],
-                n_results=20,
-                include=["metadatas", "distances", "documents"],
+            neighbors = self._get_vector_client(lines_client).search(
+                embedding,
+                index="line-embeddings",
+                top_k=20,
             )
 
-            if not results or not results.get("metadatas"):
+            if not neighbors:
                 return MerchantResult()
 
             # Process results and compute confidence with metadata comparison
             matches: List[SimilarityMatch] = []
-            metadatas = results.get("metadatas", [[]])[0]
-            distances = results.get("distances", [[]])[0]
+            metadatas = [neighbor.metadata for neighbor in neighbors]
+            distances = [neighbor.distance for neighbor in neighbors]
 
             for metadata, distance in zip(metadatas, distances):
                 # Skip current receipt

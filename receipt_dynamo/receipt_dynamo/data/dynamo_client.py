@@ -37,6 +37,7 @@ from receipt_dynamo.data._receipt_barcode import _ReceiptBarcode
 from receipt_dynamo.data._receipt_chatgpt_validation import (
     _ReceiptChatGPTValidation,
 )
+from receipt_dynamo.data._receipt_embedding import _ReceiptEmbedding
 from receipt_dynamo.data._receipt_field import _ReceiptField
 from receipt_dynamo.data._receipt_label_analysis import _ReceiptLabelAnalysis
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
@@ -91,6 +92,7 @@ class DynamoClient(
     _Letter,
     _Receipt,
     _ReceiptBarcode,
+    _ReceiptEmbedding,
     _ReceiptLine,
     _ReceiptWord,
     _ReceiptLetter,
