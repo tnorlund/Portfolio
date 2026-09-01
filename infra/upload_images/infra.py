@@ -42,6 +42,11 @@ chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
 chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 # Defer grok label validation to the async queue/consumer (off by default).
 llm_validation_async = config.get("LLM_VALIDATION_ASYNC") or "false"
+# Dual-run ingest (SPEC §3.4): also write embedding items to DynamoDB via
+# the receipt_embeddings engine writer (off by default; string "true").
+enable_dual_write_embeddings = (
+    config.get("enable-dual-write-embeddings") or "false"
+)
 
 stack = pulumi.get_stack()
 
@@ -579,6 +584,8 @@ class UploadImages(ComponentResource):
                 "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
                 # Async LLM validation: producer enqueues here, same Lambda consumes.
                 "LLM_VALIDATION_ASYNC": llm_validation_async,
+                # Dual-run embedding writes to DynamoDB (non-fatal, flag-gated).
+                "DUAL_WRITE_EMBEDDINGS": enable_dual_write_embeddings,
                 "LLM_VALIDATION_QUEUE_URL": self.llm_validation_queue.url,
                 # Post-re-OCR line-item refresh: the overlay enqueues a
                 # summary recompute here (fresh timestamp_computed fires
