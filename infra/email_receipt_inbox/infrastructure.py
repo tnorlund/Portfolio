@@ -51,6 +51,7 @@ class EmailReceiptInbox(ComponentResource):
         }
 
         domain = f"{subdomain}.{zone_name}"
+        self.domain = domain
         self.address = f"{recipient_localpart}@{domain}"
         zone = aws.route53.get_zone(name=zone_name)
 
@@ -368,6 +369,7 @@ class EmailReceiptInbox(ComponentResource):
         rule_set = aws.ses.ReceiptRuleSet(
             f"{name}-rules", rule_set_name=rule_set_name, opts=child
         )
+        self.rule_set = rule_set
         store_rule = aws.ses.ReceiptRule(
             f"{name}-store-rule",
             name=store_rule_name,
@@ -404,6 +406,7 @@ class EmailReceiptInbox(ComponentResource):
                     depends_on=[store_rule, versioning, notification],
                 ),
             )
+        self.activation = activation
 
         # --- inbound MX, published LAST. Once this resolves SES starts
         # accepting mail; gating it on the active rule set plus versioning +
@@ -442,6 +445,8 @@ class EmailReceiptInbox(ComponentResource):
         self.register_outputs(
             {
                 "address": self.address,
+                "domain": self.domain,
+                "rule_set_name": self.rule_set.rule_set_name,
                 "bucket": self.bucket.bucket,
                 "parser_arn": self.parser.arn,
                 "dlq_url": self.dlq.url,

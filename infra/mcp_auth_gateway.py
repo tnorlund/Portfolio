@@ -110,7 +110,7 @@ def _token_validity(config: Config) -> tuple[int, int]:
 
 
 class McpAuthGateway(ComponentResource):
-    """Cognito-protected HTTP API routes for receipt and glyph MCP."""
+    """Cognito-protected HTTP API routes for Portfolio MCP servers."""
 
     def __init__(
         self,
@@ -118,6 +118,7 @@ class McpAuthGateway(ComponentResource):
         *,
         receipt_lambda: aws.lambda_.Function,
         glyph_lambda: aws.lambda_.Function,
+        ats_lambda: Optional[aws.lambda_.Function] = None,
         opts: Optional[ResourceOptions] = None,
     ) -> None:
         super().__init__("portfolio:infra:McpAuthGateway", name, None, opts)
@@ -153,6 +154,19 @@ class McpAuthGateway(ComponentResource):
             opts=child_opts,
         )
 
+        routes = [
+            ("receipt", receipt_lambda, "Use receipt MCP tools"),
+            ("glyph", glyph_lambda, "Use glyph MCP tools"),
+        ]
+        if ats_lambda is not None:
+            routes.append(
+                (
+                    "ats",
+                    ats_lambda,
+                    "Read recent ATS verification codes",
+                )
+            )
+
         self.resource_server = aws.cognito.ResourceServer(
             f"{name}-resource-server",
             identifier=_RESOURCE_SERVER_ID,
@@ -160,13 +174,10 @@ class McpAuthGateway(ComponentResource):
             user_pool_id=self.user_pool.id,
             scopes=[
                 {
-                    "scope_name": "receipt",
-                    "scope_description": "Use receipt MCP tools",
-                },
-                {
-                    "scope_name": "glyph",
-                    "scope_description": "Use glyph MCP tools",
-                },
+                    "scope_name": route_name,
+                    "scope_description": description,
+                }
+                for route_name, _function, description in routes
             ],
             opts=child_opts,
         )
@@ -189,11 +200,10 @@ class McpAuthGateway(ComponentResource):
             generate_secret=False,
             allowed_oauth_flows_user_pool_client=True,
             allowed_oauth_flows=["code"],
-            allowed_oauth_scopes=[
-                "openid",
-                "email",
-                f"{_RESOURCE_SERVER_ID}/receipt",
-                f"{_RESOURCE_SERVER_ID}/glyph",
+            allowed_oauth_scopes=["openid", "email"]
+            + [
+                f"{_RESOURCE_SERVER_ID}/{route_name}"
+                for route_name, _function, _description in routes
             ],
             callback_urls=callbacks,
             default_redirect_uri=callbacks[0],
@@ -295,6 +305,11 @@ class McpAuthGateway(ComponentResource):
             "{}/receipt/mcp", self.api.api_endpoint
         )
         self.glyph_url = Output.format("{}/glyph/mcp", self.api.api_endpoint)
+        self.ats_url = (
+            Output.format("{}/ats/mcp", self.api.api_endpoint)
+            if ats_lambda is not None
+            else None
+        )
 
         # Cognito access tokens carry the client id in the client_id
         # claim; HTTP API JWT authorizers accept it in place of aud.
@@ -314,10 +329,7 @@ class McpAuthGateway(ComponentResource):
             opts=child_opts,
         )
 
-        for route_name, lambda_function in (
-            ("receipt", receipt_lambda),
-            ("glyph", glyph_lambda),
-        ):
+        for route_name, lambda_function, _description in routes:
             integration = aws.apigatewayv2.Integration(
                 f"mcp-auth-{route_name}-integration",
                 api_id=self.api.id,
@@ -374,20 +386,23 @@ class McpAuthGateway(ComponentResource):
             ),
             opts=ResourceOptions(parent=metadata_role),
         )
+        route_urls = {
+            "receipt": self.receipt_url,
+            "glyph": self.glyph_url,
+        }
+        if self.ats_url is not None:
+            route_urls["ats"] = self.ats_url
         metadata_docs = Output.json_dumps(
             {
-                "/.well-known/oauth-protected-resource/receipt/mcp": {
-                    "resource": self.receipt_url,
+                f"/.well-known/oauth-protected-resource/{route_name}/mcp": {
+                    "resource": route_urls[route_name],
                     "authorization_servers": [self.issuer_url],
-                    "scopes_supported": [f"{_RESOURCE_SERVER_ID}/receipt"],
+                    "scopes_supported": [
+                        f"{_RESOURCE_SERVER_ID}/{route_name}"
+                    ],
                     "bearer_methods_supported": ["header"],
-                },
-                "/.well-known/oauth-protected-resource/glyph/mcp": {
-                    "resource": self.glyph_url,
-                    "authorization_servers": [self.issuer_url],
-                    "scopes_supported": [f"{_RESOURCE_SERVER_ID}/glyph"],
-                    "bearer_methods_supported": ["header"],
-                },
+                }
+                for route_name, _function, _description in routes
             }
         )
         metadata_lambda = aws.lambda_.Function(
@@ -411,7 +426,7 @@ class McpAuthGateway(ComponentResource):
             payload_format_version="2.0",
             opts=child_opts,
         )
-        for route_name in ("receipt", "glyph"):
+        for route_name, _function, _description in routes:
             aws.apigatewayv2.Route(
                 f"{name}-metadata-route-{route_name}",
                 api_id=self.api.id,
@@ -448,6 +463,7 @@ class McpAuthGateway(ComponentResource):
             {
                 "receipt_url": self.receipt_url,
                 "glyph_url": self.glyph_url,
+                "ats_url": self.ats_url,
                 "issuer_url": self.issuer_url,
                 "interactive_client_id": self.interactive_client.id,
                 "automation_secret_arn": self.automation_secret_arn,
