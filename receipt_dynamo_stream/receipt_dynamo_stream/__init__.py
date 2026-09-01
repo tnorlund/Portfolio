@@ -64,12 +64,17 @@ from receipt_dynamo_stream.stream_types import (
     StreamProcessorResponseData,
     StreamRecordDynamoDB,
 )
+from receipt_dynamo_stream.vector_freshening import (
+    FresheningStats,
+    apply_vector_freshening,
+)
 
 __all__ = [
     "__version__",
     "CHROMADB_RELEVANT_FIELDS",
     "ChromaDBCollection",
     "FieldChange",
+    "FresheningStats",
     "LambdaResponse",
     "ParsedStreamRecord",
     "QueueBatchFailureError",
@@ -80,6 +85,7 @@ __all__ = [
     "StreamMessage",
     "StreamRecordContext",
     "TargetQueue",
+    "apply_vector_freshening",
     "build_messages_from_records",
     "build_section_backfill_messages",
     "detect_entity_type",
