@@ -65,12 +65,32 @@ def _neighbor_identity(
         return None
 
 
+def _row_record(row: Any) -> dict[str, Any]:
+    """Normalize an adapter-hydrated dict or ReceiptWordLabel-like row."""
+
+    if isinstance(row, Mapping):
+        return {
+            "label": row.get("label"),
+            "validation_status": row.get("validation_status"),
+            "reasoning": row.get("reasoning"),
+            "label_proposed_by": row.get("label_proposed_by"),
+            "timestamp_added": row.get("timestamp_added"),
+        }
+    return {
+        "label": getattr(row, "label", None),
+        "validation_status": getattr(row, "validation_status", None),
+        "reasoning": getattr(row, "reasoning", None),
+        "label_proposed_by": getattr(row, "label_proposed_by", None),
+        "timestamp_added": getattr(row, "timestamp_added", None),
+    }
+
+
 def _evidence_entry(
     identity: tuple[str, int, int, int],
     metadata: Mapping[str, Any],
     similarity: float,
     same_merchant: Optional[bool],
-    row: Any,
+    row: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
         "image_id": identity[0],
@@ -81,10 +101,10 @@ def _evidence_entry(
         "similarity": round(similarity, 3),
         "merchant": str(metadata.get("merchant_name", "")),
         "same_merchant": same_merchant,
-        "validation_status": getattr(row, "validation_status", None),
-        "reasoning": getattr(row, "reasoning", None),
-        "proposed_by": getattr(row, "label_proposed_by", None),
-        "timestamp_added": str(getattr(row, "timestamp_added", "") or ""),
+        "validation_status": row.get("validation_status"),
+        "reasoning": row.get("reasoning"),
+        "proposed_by": row.get("label_proposed_by"),
+        "timestamp_added": str(row.get("timestamp_added") or ""),
     }
 
 
@@ -227,13 +247,28 @@ def similar_labeled_words(
     label_names = list(CORE_LABEL_NAMES)
     if label not in label_names:
         label_names.append(label)
-    keys = [
-        (identity[0], identity[1], identity[2], identity[3], name)
-        for identity, _, _ in survivors
-        for name in label_names
-    ]
+
+    # Single-join reuse (E3 review P2-4): the Dynamo adapter's
+    # validated-filter hydration already fetched each neighbor's
+    # core-label rows and attached them as ``label_rows``. Only
+    # neighbors without that metadata (the Chroma backend, or a
+    # degraded join) and non-core candidate labels reach the loader.
+    rows_by_word: dict[tuple[str, int, int, int], list[dict[str, Any]]] = {}
+    loader_keys: list[tuple[str, int, int, int, str]] = []
+    for identity, neighbor, _similarity in survivors:
+        hydrated = neighbor.metadata.get("label_rows")
+        if isinstance(hydrated, list):
+            rows_by_word[identity] = [
+                _row_record(row)
+                for row in hydrated
+                if isinstance(row, Mapping)
+            ]
+            if label not in CORE_LABEL_NAMES:
+                loader_keys.append((*identity, label))
+        else:
+            loader_keys.extend((*identity, name) for name in label_names)
     try:
-        rows = load_label_rows(keys)
+        loaded = load_label_rows(loader_keys) if loader_keys else []
     except Exception as exc:  # noqa: BLE001 - degrade, never raise
         return {
             **base,
@@ -244,9 +279,7 @@ def similar_labeled_words(
                 reason=f"Label-row join failed: {exc}",
             ),
         }
-
-    rows_by_word: dict[tuple[str, int, int, int], list[Any]] = {}
-    for row in rows:
+    for row in loaded:
         try:
             row_key = (
                 str(row.image_id),
@@ -256,7 +289,7 @@ def similar_labeled_words(
             )
         except (AttributeError, TypeError, ValueError):
             continue
-        rows_by_word.setdefault(row_key, []).append(row)
+        rows_by_word.setdefault(row_key, []).append(_row_record(row))
 
     evidence_for: list[dict[str, Any]] = []
     evidence_against: list[dict[str, Any]] = []
@@ -275,8 +308,8 @@ def similar_labeled_words(
             if same_merchant:
                 weight = min(1.0, weight + SAME_MERCHANT_BOOST)
         for row in rows_by_word.get(identity, []):
-            status = getattr(row, "validation_status", None)
-            row_label = getattr(row, "label", None)
+            status = row.get("validation_status")
+            row_label = row.get("label")
             if row_label == label:
                 if status == "VALID":
                     evidence_for.append(

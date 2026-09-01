@@ -292,3 +292,88 @@ def test_validated_filter_reaches_the_backend() -> None:
     _call(index, [])
 
     assert index.filters == [{"label_status": "validated"}]
+
+
+def _hydrated_row(label: str, status: str, reasoning: str) -> dict:
+    return {
+        "label": label,
+        "validation_status": status,
+        "reasoning": reasoning,
+        "label_proposed_by": "human",
+        "timestamp_added": "2026-08-31T00:00:00+00:00",
+    }
+
+
+def test_adapter_hydrated_label_rows_skip_the_loader() -> None:
+    """Single-join reuse (E3 review P2-4): neighbors carrying the Dynamo
+    adapter's ``label_rows`` hydration must not be re-fetched."""
+    index = FakeVectorIndex(
+        [
+            _word_item(IMAGE, 1, 2, 3, [1.0, 0.0]),
+            _word_item(
+                OTHER,
+                1,
+                1,
+                1,
+                [1.0, 0.0],
+                label_rows=[
+                    _hydrated_row("GRAND_TOTAL", "VALID", "after TOTAL"),
+                    _hydrated_row("TAX", "INVALID", "not a tax"),
+                ],
+            ),
+        ]
+    )
+
+    def exploding_loader(_keys):
+        raise AssertionError("hydrated neighbors must not hit the loader")
+
+    result = similar_labeled_words(
+        index,
+        exploding_loader,
+        **TARGET_IDS,
+        label="GRAND_TOTAL",
+    )
+
+    assert len(result["evidence_for"]) == 1
+    assert result["evidence_for"][0]["reasoning"] == "after TOTAL"
+    assert result["evidence_for"][0]["proposed_by"] == "human"
+
+
+def test_invalid_only_neighbor_surfaces_as_evidence_against() -> None:
+    """Regression (E3 review P1-2): a word whose only verdict for the
+    candidate label is INVALID is exactly the counterexample the tool
+    exists to surface — via hydrated rows and via the loader alike."""
+    hydrated_index = FakeVectorIndex(
+        [
+            _word_item(IMAGE, 1, 2, 3, [1.0, 0.0]),
+            _word_item(
+                OTHER,
+                1,
+                1,
+                1,
+                [1.0, 0.0],
+                label_rows=[
+                    _hydrated_row("GRAND_TOTAL", "INVALID", "line item price")
+                ],
+            ),
+        ]
+    )
+    hydrated = similar_labeled_words(
+        hydrated_index,
+        lambda _keys: [],
+        **TARGET_IDS,
+        label="GRAND_TOTAL",
+    )
+    assert hydrated["evidence_for"] == []
+    assert len(hydrated["evidence_against"]) == 1
+    assert hydrated["evidence_against"][0]["reasoning"] == "line item price"
+
+    loader_rows = [
+        _row(OTHER, 1, 1, 1, "GRAND_TOTAL", "INVALID", "line item price")
+    ]
+    loaded = _call(_index_with_neighbors(), loader_rows)
+    assert loaded["evidence_for"] == []
+    assert any(
+        entry["reasoning"] == "line item price"
+        for entry in loaded["evidence_against"]
+    )
