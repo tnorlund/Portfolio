@@ -43,7 +43,9 @@ def adapter_stubs(monkeypatch):
         return EventHandler
 
     stdio.StdioServerParameters = StdioServerParameters
-    mcp_lambda.StdioServerAdapterRequestHandler = StdioServerAdapterRequestHandler
+    mcp_lambda.StdioServerAdapterRequestHandler = (
+        StdioServerAdapterRequestHandler
+    )
     mcp_lambda.APIGatewayProxyEventHandler = event_handler("rest-v1")
     mcp_lambda.LambdaFunctionURLEventHandler = event_handler("url-v2")
 
@@ -91,7 +93,10 @@ def test_gateway_uses_separate_cognito_scopes():
     assert '("glyph", glyph_lambda, "Use glyph MCP tools")' in source
     assert '"Read recent ATS verification codes"' in source
     assert 'f"{_RESOURCE_SERVER_ID}/{route_name}"' in source
-    assert 'authorization_scopes=[f"{_RESOURCE_SERVER_ID}/{route_name}"]' in source
+    assert (
+        'authorization_scopes=[f"{_RESOURCE_SERVER_ID}/{route_name}"]'
+        in source
+    )
     # Scheduled callers remain intentionally receipt-only.
     assert 'f"{_RESOURCE_SERVER_ID}/receipt"' in source
     assert 'f"{_RESOURCE_SERVER_ID}/ats"' in source
@@ -103,8 +108,12 @@ def test_gateway_uses_separate_cognito_scopes():
 
 def test_ats_machine_auth_is_rotated_and_monitored():
     source = (REPO_ROOT / "infra/mcp_auth_gateway.py").read_text()
-    rotation = (REPO_ROOT / "infra/mcp_auth_automation/lambdas/rotation.py").read_text()
-    canary = (REPO_ROOT / "infra/mcp_auth_automation/lambdas/canary.py").read_text()
+    rotation = (
+        REPO_ROOT / "infra/mcp_auth_automation/lambdas/rotation.py"
+    ).read_text()
+    canary = (
+        REPO_ROOT / "infra/mcp_auth_automation/lambdas/canary.py"
+    ).read_text()
 
     assert "SecretRotation(" in source
     assert '"automatically_after_days": 7' in source
@@ -141,7 +150,9 @@ def test_label_fixer_sends_bearer_token():
     import json as _json
 
     config = _json.loads(
-        (REPO_ROOT / "infra/scheduled_agents/receipt_label_fixer.json").read_text()
+        (
+            REPO_ROOT / "infra/scheduled_agents/receipt_label_fixer.json"
+        ).read_text()
     )
     prompt = config["prompt"]
     assert "grant_type=client_credentials" in prompt
