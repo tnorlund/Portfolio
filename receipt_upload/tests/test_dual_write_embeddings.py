@@ -220,25 +220,28 @@ class TestProcessorWiringIndependence:
         word_embeddings_list = [_vector(0.2)]
         dual_report = {"enabled": True, "written": 2, "failed": 0}
 
-        with patch.object(ep, "DynamoClient") as mock_dynamo, patch.object(
-            ep, "boto3"
-        ), patch.object(ep, "MerchantResolver"), patch.object(
-            ep,
-            "download_and_embed_parallel",
-            return_value=(
-                None,
-                None,
-                row_embeddings,
-                row_line_ids_list,
-                word_embeddings_list,
+        with (
+            patch.object(ep, "DynamoClient") as mock_dynamo,
+            patch.object(ep, "boto3"),
+            patch.object(ep, "MerchantResolver"),
+            patch.object(
+                ep,
+                "download_and_embed_parallel",
+                return_value=(
+                    None,
+                    None,
+                    row_embeddings,
+                    row_line_ids_list,
+                    word_embeddings_list,
+                ),
             ),
-        ), patch.object(
-            ep, "log_merchant_resolution"
-        ), patch.object(
-            ep,
-            "maybe_dual_write_embeddings",
-            return_value=dual_report,
-        ) as dual_mock:
+            patch.object(ep, "log_merchant_resolution"),
+            patch.object(
+                ep,
+                "maybe_dual_write_embeddings",
+                return_value=dual_report,
+            ) as dual_mock,
+        ):
             client = MagicMock()
             client.table_name = "test-table"
             client.list_receipt_word_labels_for_receipt.return_value = (

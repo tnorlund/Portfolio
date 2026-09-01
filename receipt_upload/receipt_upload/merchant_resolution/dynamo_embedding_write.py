@@ -29,9 +29,7 @@ DUAL_WRITE_ENV_VAR = "DUAL_WRITE_EMBEDDINGS"
 
 def dual_write_embeddings_enabled() -> bool:
     """True only when DUAL_WRITE_EMBEDDINGS is the string "true"."""
-    return (
-        os.environ.get(DUAL_WRITE_ENV_VAR, "").strip().lower() == "true"
-    )
+    return os.environ.get(DUAL_WRITE_ENV_VAR, "").strip().lower() == "true"
 
 
 def _word_label_statuses(
