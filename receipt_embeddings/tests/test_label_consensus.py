@@ -94,7 +94,7 @@ def _index_with_neighbors() -> FakeVectorIndex:
             _word_item(IMAGE, 1, 2, 3, [1.0, 0.0]),
             _word_item(OTHER, 1, 1, 1, [1.0, 0.0], text="3.94"),
             _word_item(OTHER, 2, 1, 1, [0.99, 0.01], merchant_name="Costco"),
-            # cosine distance 1.0 -> similarity 0.5, below the 0.80 cut
+            # cosine distance 1.0 -> similarity 0.0, below the 0.80 cut
             _word_item(OTHER, 3, 1, 1, [0.0, 1.0], text="far away"),
         ]
     )
@@ -239,9 +239,11 @@ def test_consensus_reaches_valid_with_enough_agreement() -> None:
 
 
 def test_same_merchant_boost_applies_only_with_target_merchant() -> None:
-    # A neighbor at similarity 0.9 (cosine distance 0.2): the +0.10 boost
-    # is visible only below the 1.0 clamp, so an identical-vector
-    # neighbor could not distinguish boosted from unboosted votes.
+    # A neighbor whose cosine similarity is exactly 0.8 (vector
+    # [0.8, 0.6] against [1, 0]: dot = 0.8, unit norms), so cosine
+    # distance 0.2 and seam similarity 1 - 0.2 = 0.8 — right at the
+    # cut, and low enough that the +0.10 boost is visible below the
+    # 1.0 clamp.
     def index() -> FakeVectorIndex:
         return FakeVectorIndex(
             [
@@ -254,11 +256,11 @@ def test_same_merchant_boost_applies_only_with_target_merchant() -> None:
 
     without = _call(index(), rows)
     assert without["evidence_for"][0]["same_merchant"] is None
-    assert without["votes_for"] == pytest.approx(0.9)
+    assert without["votes_for"] == pytest.approx(0.8)
 
     with_merchant = _call(index(), rows, target_merchant="Sprouts")
     assert with_merchant["evidence_for"][0]["same_merchant"] is True
-    assert with_merchant["votes_for"] == pytest.approx(1.0)
+    assert with_merchant["votes_for"] == pytest.approx(0.9)
 
 
 class _RecordingIndex(FakeVectorIndex):
@@ -377,3 +379,98 @@ def test_invalid_only_neighbor_surfaces_as_evidence_against() -> None:
         entry["reasoning"] == "line item price"
         for entry in loaded["evidence_against"]
     )
+
+
+def test_weak_similarity_neighbor_is_excluded_at_threshold() -> None:
+    """Regression (E3 review P2-C): a true cosine similarity of 0.60
+    (distance 0.40) must not pass min_similarity=0.80. The retired
+    validator's ``1 - d/2`` halving inflated it to 0.80 and let it
+    through."""
+    index = FakeVectorIndex(
+        [
+            _word_item(IMAGE, 1, 2, 3, [1.0, 0.0]),
+            # dot([1,0],[0.6,0.8]) = 0.6 on unit vectors: cosine
+            # similarity 0.60, cosine distance 0.40.
+            _word_item(OTHER, 1, 1, 1, [0.6, 0.8]),
+        ]
+    )
+    rows = [_row(OTHER, 1, 1, 1, "GRAND_TOTAL", "VALID")]
+
+    result = _call(index, rows)
+
+    assert result["neighbors_after_cut"] == 0
+    assert result["evidence_for"] == []
+    assert result["recommended_status"] == "PENDING"
+
+
+def test_chroma_ndarray_responses_yield_real_evidence() -> None:
+    """Regression (E3 review P1-A): chromadb returns embeddings (and
+    often ids/distances) as numpy arrays, whose truth value is
+    ambiguous. The adapter must handle them so the default backend
+    returns real evidence instead of degrading every call."""
+    np = pytest.importorskip("numpy")
+    from receipt_embeddings import ChromaVectorSearchClient
+
+    neighbor_key = word_vector_key(OTHER, 1, 1, 1)
+
+    class _NdArrayChroma:
+        def get(self, **_kwargs):
+            return {
+                "ids": [word_vector_key(IMAGE, 1, 2, 3)],
+                "embeddings": np.asarray([[1.0, 0.0]]),
+            }
+
+        def query(self, **_kwargs):
+            return {
+                "ids": np.asarray([[neighbor_key]]),
+                "metadatas": [
+                    [
+                        {
+                            "image_id": OTHER,
+                            "receipt_id": 1,
+                            "line_id": 1,
+                            "word_id": 1,
+                            "text": "3.94",
+                            "merchant_name": "Sprouts",
+                        }
+                    ]
+                ],
+                "distances": np.asarray([[0.1]]),
+            }
+
+    client = ChromaVectorSearchClient(_NdArrayChroma())
+    rows = [_row(OTHER, 1, 1, 1, "GRAND_TOTAL", "VALID", "after TOTAL")]
+
+    result = similar_labeled_words(
+        client,
+        _loader(rows),
+        **TARGET_IDS,
+        label="GRAND_TOTAL",
+    )
+
+    assert result["found_vector"] is True
+    assert "error_type" not in result
+    assert len(result["evidence_for"]) == 1
+    assert result["evidence_for"][0]["reasoning"] == "after TOTAL"
+
+
+def test_chroma_ndarray_empty_embeddings_is_missing_vector() -> None:
+    np = pytest.importorskip("numpy")
+    from receipt_embeddings import ChromaVectorSearchClient
+
+    class _EmptyChroma:
+        def get(self, **_kwargs):
+            return {"ids": [], "embeddings": np.asarray([])}
+
+        def query(self, **_kwargs):  # pragma: no cover - never reached
+            raise AssertionError("no search without a vector")
+
+    result = similar_labeled_words(
+        ChromaVectorSearchClient(_EmptyChroma()),
+        _loader([]),
+        **TARGET_IDS,
+        label="GRAND_TOTAL",
+    )
+
+    assert result["found_vector"] is False
+    assert "No stored vector" in result["reason"]

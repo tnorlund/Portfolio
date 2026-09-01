@@ -23,6 +23,8 @@ from receipt_embeddings.vector_client import VectorSearchClient
 
 # The retired validate_word_similarity tool's thresholds, kept so the
 # evidence is judged the way the old validator intended (spec §3.7).
+# Similarity itself is computed on the seam's cosine-distance contract
+# (1 - distance), NOT the old tool's raw-L2 halving (review P2-C).
 MIN_SIMILARITY = 0.80
 MIN_MATCHES = 3
 CONSENSUS_THRESHOLD = 0.80
@@ -48,7 +50,17 @@ def word_vector_key(
 
 
 def _distance_to_similarity(distance: float) -> float:
-    return max(0.0, 1.0 - (distance / 2.0))
+    """Cosine distance (the VectorSearchClient contract) to similarity.
+
+    ``ScoredItem.distance`` is already cosine distance (1 - cosine
+    similarity, range 0-2) on every backend, so similarity is simply
+    ``1 - distance``. The retired validator's ``1 - d/2`` halving
+    belonged to its raw-L2 assumption and inflated weak matches — a
+    0.60-similarity neighbor scored 0.80 and passed the threshold
+    (E3 review P2-C).
+    """
+
+    return max(0.0, 1.0 - distance)
 
 
 def _neighbor_identity(
