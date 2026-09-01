@@ -87,7 +87,34 @@ def test_initialize_negotiates_supported_protocol(monkeypatch) -> None:
     assert response["headers"]["mcp-protocol-version"] == "2025-06-18"
     result = _body(response)["result"]
     assert result["protocolVersion"] == "2025-06-18"
-    assert result["capabilities"] == {"tools": {"listChanged": False}}
+    assert result["capabilities"] == {
+        "tools": {"listChanged": False},
+        "extensions": {"io.modelcontextprotocol/oauth-client-credentials": {}},
+    }
+
+
+def test_origin_is_validated_when_browser_supplies_it(monkeypatch) -> None:
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://www.cursor.com")
+    handler, _fake_table = _load_handler(monkeypatch)
+
+    allowed = _event("ping")
+    allowed["headers"] = {"Origin": "https://www.cursor.com"}
+    blocked = _event("ping")
+    blocked["headers"] = {"origin": "https://attacker.example"}
+
+    assert handler.lambda_handler(allowed, None)["statusCode"] == 200
+    blocked_response = handler.lambda_handler(blocked, None)
+    assert blocked_response["statusCode"] == 403
+    assert _body(blocked_response) == {"error": "Forbidden origin"}
+
+
+def test_server_to_server_request_without_origin_is_allowed(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://www.cursor.com")
+    handler, _fake_table = _load_handler(monkeypatch)
+
+    assert handler.lambda_handler(_event("ping"), None)["statusCode"] == 200
 
 
 def test_tools_list_exposes_one_read_only_tool(monkeypatch) -> None:

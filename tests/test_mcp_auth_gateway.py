@@ -43,9 +43,7 @@ def adapter_stubs(monkeypatch):
         return EventHandler
 
     stdio.StdioServerParameters = StdioServerParameters
-    mcp_lambda.StdioServerAdapterRequestHandler = (
-        StdioServerAdapterRequestHandler
-    )
+    mcp_lambda.StdioServerAdapterRequestHandler = StdioServerAdapterRequestHandler
     mcp_lambda.APIGatewayProxyEventHandler = event_handler("rest-v1")
     mcp_lambda.LambdaFunctionURLEventHandler = event_handler("url-v2")
 
@@ -93,13 +91,36 @@ def test_gateway_uses_separate_cognito_scopes():
     assert '("glyph", glyph_lambda, "Use glyph MCP tools")' in source
     assert '"Read recent ATS verification codes"' in source
     assert 'f"{_RESOURCE_SERVER_ID}/{route_name}"' in source
-    assert (
-        'authorization_scopes=[f"{_RESOURCE_SERVER_ID}/{route_name}"]'
-        in source
-    )
+    assert 'authorization_scopes=[f"{_RESOURCE_SERVER_ID}/{route_name}"]' in source
     # Scheduled callers remain intentionally receipt-only.
     assert 'f"{_RESOURCE_SERVER_ID}/receipt"' in source
+    assert 'f"{_RESOURCE_SERVER_ID}/ats"' in source
+    assert "/mcp/oauth/ats-automation-client" in source
+    assert 'f"POST /{route_name}/mcp"' in source
+    assert "self.ats_authorizer.id" in source
     assert "oauth-protected-resource" in source
+
+
+def test_ats_machine_auth_is_rotated_and_monitored():
+    source = (REPO_ROOT / "infra/mcp_auth_gateway.py").read_text()
+    rotation = (REPO_ROOT / "infra/mcp_auth_automation/lambdas/rotation.py").read_text()
+    canary = (REPO_ROOT / "infra/mcp_auth_automation/lambdas/canary.py").read_text()
+
+    assert "SecretRotation(" in source
+    assert '"automatically_after_days": 7' in source
+    assert "timeout=180" in source
+    assert 'schedule_expression="rate(15 minutes)"' in source
+    assert "ats-auth-canary-heartbeat" in source
+    assert 'route_key="POST /ats/mcp"' in source
+    assert "throttling_rate_limit=5.0" in source
+    assert "access_log_settings" in source
+    assert "depends_on=[access_log_group, *protected_routes]" in source
+    assert "add_user_pool_client_secret" in rotation
+    assert "delete_user_pool_client_secret" in rotation
+    assert "AWSPENDING" in rotation
+    assert "AWSCURRENT" in rotation
+    assert "get_secret_value" in canary
+    assert "client_credentials" in canary
 
 
 def test_gateway_supports_claude_connector_oauth():
@@ -120,9 +141,7 @@ def test_label_fixer_sends_bearer_token():
     import json as _json
 
     config = _json.loads(
-        (
-            REPO_ROOT / "infra/scheduled_agents/receipt_label_fixer.json"
-        ).read_text()
+        (REPO_ROOT / "infra/scheduled_agents/receipt_label_fixer.json").read_text()
     )
     prompt = config["prompt"]
     assert "grant_type=client_credentials" in prompt

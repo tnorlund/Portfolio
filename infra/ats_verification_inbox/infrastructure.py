@@ -249,7 +249,13 @@ class AtsVerificationInbox(ComponentResource):
             timeout=30,
             memory_size=192,
             reserved_concurrent_executions=3,
-            code=pulumi.AssetArchive({".": pulumi.FileArchive(LAMBDA_DIR)}),
+            code=pulumi.AssetArchive(
+                {
+                    "ingest.py": pulumi.FileAsset(
+                        os.path.join(LAMBDA_DIR, "ingest.py")
+                    )
+                }
+            ),
             environment={"variables": {"TABLE_NAME": self.table.name}},
             tags=tags,
             opts=ResourceOptions(
@@ -386,8 +392,22 @@ class AtsVerificationInbox(ComponentResource):
             timeout=10,
             memory_size=128,
             reserved_concurrent_executions=2,
-            code=pulumi.AssetArchive({".": pulumi.FileArchive(LAMBDA_DIR)}),
-            environment={"variables": {"TABLE_NAME": self.table.name}},
+            code=pulumi.AssetArchive(
+                {
+                    "mcp.py": pulumi.FileAsset(
+                        os.path.join(LAMBDA_DIR, "mcp.py")
+                    )
+                }
+            ),
+            environment={
+                "variables": {
+                    "TABLE_NAME": self.table.name,
+                    "ALLOWED_ORIGINS": (
+                        "https://www.cursor.com,https://cursor.com,"
+                        "https://claude.ai,https://claude.com"
+                    ),
+                }
+            },
             tags=tags,
             opts=ResourceOptions(
                 parent=self, depends_on=[mcp_policy, mcp_logs]

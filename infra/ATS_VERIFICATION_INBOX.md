@@ -64,6 +64,13 @@ deployed, monitored, and near-real-time.
   write records, enumerate the receipt store, or send mail.
 - `/ats/mcp` has its own `portfolio-mcp/ats` OAuth scope. Existing receipt
   automation credentials remain receipt-only.
+- The public API hostname is an address, not a credential. API Gateway rejects
+  missing or invalid JWTs before Lambda, checks the ATS scope, accepts only
+  `POST /ats/mcp`, rate-limits that route, and writes structured access logs
+  without request bodies, authorization headers, or verification codes.
+- Browser-originated MCP requests are accepted only from the configured Cursor
+  and Claude origins. Server-to-server requests normally have no `Origin`
+  header and remain supported; a supplied unapproved origin is rejected.
 
 The accepted Greenhouse sender list follows Greenhouse's published
 [no-reply address inventory](https://support.greenhouse.io/hc/en-us/articles/17675865619099-Greenhouse-Recruiting-no-reply-email-addresses).
@@ -82,6 +89,7 @@ record these non-secret stack outputs:
 - `ats_verification_inbox_address`
 - `ats_mcp_server_url`
 - `mcp_oauth_interactive_client_id`
+- `mcp_oauth_ats_automation_secret_arn` (an ARN, not the secret value)
 
 Then create four server-side rules in iCloud Mail. Apple documents that iCloud
 Mail rules can automatically forward matching mail and that a new or changed
@@ -160,6 +168,47 @@ rather than placing them on the Bot's computer. See the official [Grok Bot
 plugin guide](https://cursor.com/help/grok-bot/connect-plugins), [Grok Bot
 security model](https://cursor.com/docs/grok-bot/work), and [Cursor plugin
 distribution guide](https://cursor.com/docs/plugins).
+
+This Grok Bot path is distinct from the rotating machine credential. The
+plugin uses authorization-code OAuth plus a refresh token after the one-time
+browser login. The rotating secret is for AWS/CI/daemon callers whose runtime
+role can read Secrets Manager; do not paste it into the plugin variables.
+Cursor's current MCP documentation describes static OAuth clients, but the
+official MCP extension matrix does not list Cursor as supporting the OAuth
+Client Credentials extension. Treat Grok Bot client-credentials support as
+unverified until Cursor documents it.
+
+## Unattended caller contract
+
+An autonomous workload runs under an IAM role, not an IAM user and not a
+shared username/password. Grant the role this policy with the development
+secret ARN substituted exactly:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "<mcp_oauth_ats_automation_secret_arn>"
+    }
+  ]
+}
+```
+
+On each cold start, and again after any token-endpoint authentication failure,
+the caller reads `AWSCURRENT`. It exchanges the credential for an access token,
+uses that token until shortly before expiry, then repeats the exchange. The
+caller never needs to know when rotation occurred. AWS Secrets Manager and the
+rotation Lambda keep the client secret fresh; Cognito keeps access tokens
+short-lived; the scheduled canary proves the whole path continues working.
+
+The development stack is the only approved deployment target. The public URL
+may be used from unattended hosts because possession of the URL alone grants
+nothing: API Gateway still requires a valid, correctly scoped Cognito token.
+Do not add an unauthenticated fallback, API key in query parameters, or a
+Function URL for the ATS Lambda.
 
 The connector is deliberately not general email access. It exposes exactly one
 read-only tool, `get_latest_verification_code`, which returns only a trusted,

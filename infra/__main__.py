@@ -1199,6 +1199,11 @@ pulumi.export(
     "mcp_oauth_automation_secret_arn",
     mcp_auth_gateway.automation_secret_arn,
 )
+if mcp_auth_gateway.ats_automation_secret_arn is not None:
+    pulumi.export(
+        "mcp_oauth_ats_automation_secret_arn",
+        mcp_auth_gateway.ats_automation_secret_arn,
+    )
 
 # Web analytics query layer: Glue + Athena over the CloudFront access logs,
 # read by the analytics_* MCP tools. No new pipeline — just a queryable view

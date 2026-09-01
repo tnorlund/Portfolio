@@ -76,12 +76,43 @@ aws cognito-idp admin-create-user \
 
 Scheduled receipt callers use client credentials. Pulumi stores a client ID,
 generated client secret, token URL, and the receipt-only scope in Secrets
-Manager and exports only `mcp_oauth_automation_secret_arn`. Grant each
-scheduled receipt workload read access to that one secret, fetch a short-lived
-token, and send it as `Authorization: Bearer <token>`. Never copy the client
-secret into a config file or repository variable. Glyph or ATS automation
-should get its own single-scope client if it is ever needed. Do not add ATS
-access to the receipt automation client.
+Manager and exports only `mcp_oauth_automation_secret_arn`.
+
+When the ATS component is enabled, unattended ATS callers get a separate
+confidential client with only `portfolio-mcp/ats`. Its secret ARN is exported
+as `mcp_oauth_ats_automation_secret_arn`; the credential itself is never a
+stack output. AWS Secrets Manager rotates it every seven days using Cognito's
+two-active-secret support. This follows AWS's
+[Lambda rotation contract](https://docs.aws.amazon.com/secretsmanager/latest/userguide/rotate-secrets_lambda-functions.html)
+and Cognito's
+[app-client secret APIs](https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_ListUserPoolClientSecrets.html).
+Rotation proves the pending credential can mint a token and initialize the ATS
+MCP before promotion, including Cognito's brief new-secret propagation delay.
+The previous Cognito secret remains active for at least one hour, then a
+scheduled cleanup removes it. A
+separate canary repeats the token-and-initialize check every 15 minutes and
+CloudWatch alarms cover canary failure, a missing canary heartbeat, rotation
+failure, and API 4xx/5xx errors.
+
+Grant an unattended AWS workload only
+`secretsmanager:GetSecretValue` on the single ATS secret ARN. At runtime it
+must read the `AWSCURRENT` version, request a short-lived token from `token_url`
+with the stored client ID, client secret, and exact scopes, then send
+`Authorization: Bearer <token>` to `server_url`. Re-read `AWSCURRENT` when a
+token request fails so rotation is self-healing. Do not put the secret in a
+repository variable, local config, prompt, log, or a long-lived environment
+variable.
+
+The machine credential solves unattended AWS/CI/daemon access. It does not
+make a hosted Cursor/Grok Bot process an AWS principal. Grok Bot continues to
+use the account-installed plugin's one-time interactive authorization and
+Cursor-hosted token refresh. Cursor is not currently listed as supporting the
+[MCP OAuth Client Credentials extension](https://modelcontextprotocol.io/extensions/auth/oauth-client-credentials)
+in the official
+[client support matrix](https://modelcontextprotocol.io/extensions/client-matrix),
+so copying the rotating ATS client secret into the Cursor plugin would create
+a second, stale secret store and is not supported. Do not add ATS access to the
+receipt automation client.
 
 ## Configuration and rollout
 

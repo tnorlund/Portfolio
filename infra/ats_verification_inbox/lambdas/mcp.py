@@ -20,6 +20,14 @@ MIN_MAX_AGE_SECONDS = 30
 MAX_MAX_AGE_SECONDS = 900
 SUPPORTED_PROVIDERS = {"greenhouse"}
 TOOL_NAME = "get_latest_verification_code"
+CLIENT_CREDENTIALS_EXTENSION = (
+    "io.modelcontextprotocol/oauth-client-credentials"
+)
+ALLOWED_ORIGINS = {
+    value.strip()
+    for value in os.environ.get("ALLOWED_ORIGINS", "").split(",")
+    if value.strip()
+}
 
 TOOL = {
     "name": TOOL_NAME,
@@ -188,7 +196,25 @@ def _call_tool(arguments) -> dict:
     return _latest_code(provider, max_age)
 
 
+def _origin_allowed(event: dict) -> bool:
+    """Reject browser origins that were not explicitly registered.
+
+    Server-to-server MCP clients commonly omit Origin. When a browser runtime
+    supplies one, Streamable HTTP requires the server to validate it to avoid
+    DNS-rebinding attacks.
+    """
+    headers = event.get("headers") or {}
+    origin = next(
+        (value for key, value in headers.items() if key.lower() == "origin"),
+        None,
+    )
+    return origin is None or origin in ALLOWED_ORIGINS
+
+
 def lambda_handler(event, _context):
+    if not _origin_allowed(event):
+        return _response(403, {"error": "Forbidden origin"})
+
     method = event.get("requestContext", {}).get("http", {}).get("method")
     if method and method.upper() != "POST":
         response = _response(405, {"error": "Method not allowed"})
@@ -226,7 +252,10 @@ def lambda_handler(event, _context):
             request_id,
             {
                 "protocolVersion": version,
-                "capabilities": {"tools": {"listChanged": False}},
+                "capabilities": {
+                    "tools": {"listChanged": False},
+                    "extensions": {CLIENT_CREDENTIALS_EXTENSION: {}},
+                },
                 "serverInfo": {
                     "name": "portfolio-ats-verification",
                     "version": "1.0.0",
