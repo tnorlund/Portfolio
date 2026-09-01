@@ -23,6 +23,10 @@ from typing import Any
 import boto3
 import pytest
 from botocore.stub import Stubber
+import pytest
+
+pytest.importorskip("chromadb", reason="imports the backfill script's chroma source; the CI receipt_embeddings leg is chromadb-free")
+
 from receipt_chroma.embedding.metadata.line_metadata import (
     create_row_metadata,
     enrich_row_metadata_with_anchors,
