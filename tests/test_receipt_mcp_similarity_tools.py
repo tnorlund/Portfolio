@@ -25,6 +25,8 @@ from types import SimpleNamespace
 import pytest
 from test_receipt_mcp_section_tools import SERVER_FILES, _load_module
 
+from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
+
 IMG = "3f2a1b0c-4d5e-4f70-8192-a3b4c5d6e7f8"
 NEIGHBOR_IMG = "9e8d7c6b-5a49-4382-a1b0-c9d8e7f6a5b4"
 
@@ -393,3 +395,88 @@ def test_text_mode_still_requires_chroma_under_dynamodb_backend(
 
     assert result["error_type"] == "chroma_not_configured"
     assert result["tool"] == "search_receipts"
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_dynamodb_backend_threads_session_table(label, monkeypatch):
+    """E3 review P1-3: get_vector_search_client must hand the session's
+    configured table/client to the seam, never the env fallback."""
+    import receipt_embeddings.backend as backend_mod
+
+    module = _load_module(label, SERVER_FILES[label])
+    monkeypatch.setenv("VECTOR_BACKEND", "dynamodb")
+    sentinel_boto = object()
+    module.get_dynamo_client = lambda: SimpleNamespace(
+        _client=sentinel_boto, table_name="ReceiptsTable-session"
+    )
+    captured = {}
+
+    def _capture(chroma_client, **kwargs):
+        del chroma_client
+        captured.update(kwargs)
+        return _StubVectorClient()
+
+    monkeypatch.setattr(backend_mod, "vector_search_client", _capture)
+
+    module.get_vector_search_client()
+
+    assert captured["table_name"] == "ReceiptsTable-session"
+    assert captured["dynamodb_client"] is sentinel_boto
+
+
+class _FakeDynamoBackend(DynamoVectorSearchClient):
+    """isinstance-compatible stub; skips the real constructor."""
+
+    def __init__(self, results):  # pylint: disable=super-init-not-called
+        self.results = results
+
+    def search(self, vector, index, top_k, filters=None):
+        del vector, index, top_k, filters
+        return self.results
+
+    def get_vector(self, key):
+        raise KeyError(key)
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_has_price_label_is_unknown_under_dynamo_backend(label):
+    """E3 review P2-5: Dynamo line metadata never carries the Chroma
+    label_LINE_TOTAL flag — report "unknown", not a false False."""
+    module = _load_module(label, SERVER_FILES[label])
+    fake = _FakeDynamoBackend(
+        [_neighbor(IMG, 1, "RAW MILK 5.99", distance=0.1)]
+    )
+
+    result = asyncio.run(
+        module.search_product_lines_impl(
+            None,
+            lambda texts: [[1.0, 0.0] for _ in texts],
+            query="milk",
+            search_type="semantic",
+            limit=10,
+            vector_client=fake,
+        )
+    )
+
+    assert result["items"][0]["has_price_label"] == "unknown"
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_has_price_label_keeps_chroma_semantics_off_dynamo(label):
+    module = _load_module(label, SERVER_FILES[label])
+    stub = _StubVectorClient(
+        results=[_neighbor(IMG, 1, "RAW MILK 5.99", distance=0.1)]
+    )
+
+    result = asyncio.run(
+        module.search_product_lines_impl(
+            None,
+            lambda texts: [[1.0, 0.0] for _ in texts],
+            query="milk",
+            search_type="semantic",
+            limit=10,
+            vector_client=stub,
+        )
+    )
+
+    assert result["items"][0]["has_price_label"] is False

@@ -29,6 +29,7 @@ from receipt_chroma.section_labels import (
 )
 
 from receipt_embeddings.backend import vector_search_client
+from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 from receipt_embeddings.service_limits import LINE_INDEX, MAX_SEARCH_RESULTS
 from receipt_embeddings.vector_client import VectorSearchClient
 
@@ -166,8 +167,15 @@ def create_qa_tools(
     def _resolve_vector_client() -> Optional[VectorSearchClient]:
         if "client" not in _vector_client_cache:
             try:
+                # Thread the session's configured Dynamo table (and its
+                # low-level boto3 client) through, so a dynamodb backend
+                # targets the SAME table as every other tool instead of
+                # backend.py's environment fallback (E3 review P1-3).
                 _vector_client_cache["client"] = vector_search_client(
-                    chroma_client, vector_client=vector_client
+                    chroma_client,
+                    vector_client=vector_client,
+                    dynamodb_client=getattr(dynamo_client, "_client", None),
+                    table_name=getattr(dynamo_client, "table_name", None),
                 )
             except Exception as exc:  # noqa: BLE001 - degrade, never fail
                 logger.error("Vector search backend unavailable: %s", exc)
@@ -1050,6 +1058,13 @@ def create_qa_tools(
 
                 items = []
                 seen = set()
+                # label_LINE_TOTAL is Chroma line metadata; Dynamo line
+                # items never carry it, so under the Dynamo backend the
+                # flag is honestly "unknown" rather than a false False
+                # (E3 review P2-5).
+                label_flags_available = not isinstance(
+                    _resolve_vector_client(), DynamoVectorSearchClient
+                )
                 # Chroma pre-filtered non-item sections inside the ANN
                 # query ($nin); the seam takes equality filters only, so
                 # the same exclusion is applied after retrieval. Rows with
@@ -1082,8 +1097,10 @@ def create_qa_tools(
                             "text": text,
                             "price": extract_price(text),
                             "similarity": round(similarity, 3),
-                            "has_price_label": meta.get(
-                                "label_LINE_TOTAL", False
+                            "has_price_label": (
+                                meta.get("label_LINE_TOTAL", False)
+                                if label_flags_available
+                                else "unknown"
                             ),
                             "merchant": meta.get("merchant_name", "Unknown"),
                             "image_id": image_id,

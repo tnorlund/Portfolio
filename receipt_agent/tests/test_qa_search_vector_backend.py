@@ -8,6 +8,7 @@ to empty results with a logged reason. Text/label modes keep their
 direct Chroma behavior (their rewrite is explicitly out of this card).
 """
 
+from types import SimpleNamespace
 from typing import Any, Optional
 from unittest.mock import MagicMock
 
@@ -16,6 +17,7 @@ from receipt_agent.agents.question_answering.tools.search import (
     create_qa_tools,
 )
 
+from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 from receipt_embeddings.service_limits import LINE_INDEX, MAX_SEARCH_RESULTS
 from receipt_embeddings.testing import FakeVectorIndex
 from receipt_embeddings.vector_client import VectorItem
@@ -232,3 +234,79 @@ def test_text_mode_keeps_direct_chroma_and_skips_the_seam() -> None:
     assert result["total_matches"] == 1
     assert seam.calls == []
     chroma_client.get_collection.assert_called_once_with("lines")
+
+
+def test_dynamo_backend_threads_session_table(monkeypatch) -> None:
+    """E3 review P1-3: the seam must receive the session's configured
+    table/client instead of falling back to environment defaults."""
+    import receipt_agent.agents.question_answering.tools.search as search_mod
+
+    captured: dict[str, Any] = {}
+
+    def _capture(chroma_client, **kwargs):
+        del chroma_client
+        captured.update(kwargs)
+        return _RecordingClient()
+
+    monkeypatch.setattr(search_mod, "vector_search_client", _capture)
+    sentinel_boto = object()
+    dynamo = MagicMock()
+    dynamo.table_name = "ReceiptsTable-session"
+    dynamo._client = sentinel_boto
+
+    tools, _ = create_qa_tools(
+        dynamo_client=dynamo, chroma_client=None, embed_fn=_embed_fn
+    )
+    {tool.name: tool for tool in tools}["semantic_search"].invoke(
+        {"query": "q"}
+    )
+
+    assert captured["table_name"] == "ReceiptsTable-session"
+    assert captured["dynamodb_client"] is sentinel_boto
+
+
+class _FakeDynamoBackend(DynamoVectorSearchClient):
+    """isinstance-compatible stub; skips the real constructor."""
+
+    def __init__(self, results):  # pylint: disable=super-init-not-called
+        self.results = results
+
+    def search(self, vector, index, top_k, filters=None):
+        del vector, index, top_k, filters
+        return self.results
+
+    def get_vector(self, key):
+        raise KeyError(key)
+
+
+def test_has_price_label_is_unknown_under_dynamo_backend() -> None:
+    """E3 review P2-5: Dynamo line metadata never carries the Chroma
+    label_LINE_TOTAL flag, so reporting False would be wrong evidence —
+    the flag must read "unknown" until hydrated."""
+    neighbor = SimpleNamespace(
+        key="IMAGE#img-1#RECEIPT#00001#LINE#00001",
+        distance=0.1,
+        metadata={
+            "image_id": "img-1",
+            "receipt_id": 1,
+            "text": "RAW MILK 5.99",
+            "merchant_name": "Sprouts",
+        },
+    )
+    tools = _tools_by_name(vector_client=_FakeDynamoBackend([neighbor]))
+
+    result = tools["search_product_lines"].invoke(
+        {"query": "milk", "search_type": "semantic"}
+    )
+
+    assert result["items"][0]["has_price_label"] == "unknown"
+
+
+def test_has_price_label_keeps_chroma_semantics_off_dynamo() -> None:
+    tools = _tools_by_name(vector_client=_seeded_index())
+
+    result = tools["search_product_lines"].invoke(
+        {"query": "milk", "search_type": "semantic"}
+    )
+
+    assert all(item["has_price_label"] is False for item in result["items"])

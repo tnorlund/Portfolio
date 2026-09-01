@@ -119,7 +119,16 @@ def get_vector_search_client(chroma_client=None):
 
     if _vector_backend() == "dynamodb":
         if _vector_search_client is None:
-            _vector_search_client = vector_search_client(None)
+            # Thread this session's configured table (and its low-level
+            # boto3 client) through, so semantic search targets the SAME
+            # table as every other tool instead of backend.py's
+            # environment fallback (E3 review P1-3).
+            dynamo_client = get_dynamo_client()
+            _vector_search_client = vector_search_client(
+                None,
+                dynamodb_client=getattr(dynamo_client, "_client", None),
+                table_name=getattr(dynamo_client, "table_name", None),
+            )
         return _vector_search_client
     if chroma_client is None:
         chroma_client, _ = get_chroma_clients()
@@ -3145,6 +3154,18 @@ async def search_product_lines_impl(
                     "items": [],
                 }
 
+            # label_LINE_TOTAL is Chroma line metadata; Dynamo line
+            # items never carry it, so under the Dynamo backend the
+            # flag is honestly "unknown" rather than a false False
+            # (E3 review P2-5).
+            from receipt_embeddings.dynamo_client import (
+                DynamoVectorSearchClient,
+            )
+
+            label_flags_available = not isinstance(
+                client, DynamoVectorSearchClient
+            )
+
             # Process semantic results with similarity scores
             items = []
             seen = set()
@@ -3177,7 +3198,11 @@ async def search_product_lines_impl(
                 if similarity < 0.25:
                     continue
 
-                has_line_total = meta.get("label_LINE_TOTAL", False)
+                has_line_total = (
+                    meta.get("label_LINE_TOTAL", False)
+                    if label_flags_available
+                    else "unknown"
+                )
                 price = extract_price(text)
 
                 items.append(
