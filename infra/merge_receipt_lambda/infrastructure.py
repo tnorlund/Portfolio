@@ -224,6 +224,7 @@ class MergeReceiptLambda(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_dynamo",
+                "receipt_embeddings",
                 "receipt_chroma",
                 "receipt_upload",
                 "receipt_agent",

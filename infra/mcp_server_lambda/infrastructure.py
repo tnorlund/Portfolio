@@ -271,6 +271,7 @@ class McpServerLambda(ComponentResource):
                 "receipt_agent",
                 "receipt_chroma",
                 "receipt_dynamo",
+                "receipt_embeddings",
                 "receipt_places",
                 "receipt_upload",
             ],

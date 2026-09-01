@@ -100,6 +100,7 @@ class DockerImageComponent(ComponentResource):
             source_paths=[
                 "receipt_dynamo",
                 "receipt_dynamo_stream",
+                "receipt_embeddings",
                 "receipt_chroma",
             ],
             lambda_function_name=f"{name}-{stack}" if lambda_config else None,

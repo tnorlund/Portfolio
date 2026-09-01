@@ -633,6 +633,7 @@ class UploadImages(ComponentResource):
             build_context_path=".",  # Project root for monorepo access
             source_paths=[
                 "receipt_dynamo",
+                "receipt_embeddings",
                 "receipt_chroma",
                 "receipt_agent",
                 "receipt_places",
