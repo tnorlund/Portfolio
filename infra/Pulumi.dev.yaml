@@ -7,7 +7,9 @@ config:
     - https://claude.ai/api/mcp/auth_callback
     - https://claude.com/api/mcp/auth_callback
     - https://www.cursor.com/agents/mcp/oauth/callback
+    - https://www.cursor.com/bot/mcp/oauth/callback
     - http://localhost:8787/callback
+    - cursor://anysphere.cursor-mcp/oauth/callback
     - http://localhost:8765/callback
     - http://127.0.0.1:8765/callback
     - http://localhost:6274/oauth/callback

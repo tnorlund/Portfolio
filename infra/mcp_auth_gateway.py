@@ -27,7 +27,10 @@ _DEFAULT_CALLBACK_URLS = [
     "https://claude.ai/api/mcp/auth_callback",
     "https://claude.com/api/mcp/auth_callback",
     "https://www.cursor.com/agents/mcp/oauth/callback",
+    "https://www.cursor.com/bot/mcp/oauth/callback",
     "http://localhost:8787/callback",
+    # Cursor's account-level DCR currently registers its desktop deep link too.
+    "cursor://anysphere.cursor-mcp/oauth/callback",
     # Local development: mcp-remote default and MCP Inspector.
     "http://localhost:8765/callback",
     "http://127.0.0.1:8765/callback",
@@ -41,31 +44,6 @@ _AUTOMATION_LAMBDA_DIR = os.path.join(
     "mcp_auth_automation",
     "lambdas",
 )
-
-# Serves the RFC 9728 protected-resource metadata documents. HTTP APIs
-# have no mock integrations, so a minimal Lambda answers the well-known
-# routes from an env-var lookup table.
-_METADATA_HANDLER_CODE = """\
-import json
-import os
-
-DOCS = json.loads(os.environ["METADATA_DOCS"])
-
-
-def handler(event, context):
-    path = event.get("rawPath") or event.get("path") or ""
-    doc = DOCS.get(path)
-    if doc is None:
-        return {"statusCode": 404, "body": "{}"}
-    return {
-        "statusCode": 200,
-        "headers": {
-            "content-type": "application/json",
-            "cache-control": "max-age=3600",
-        },
-        "body": json.dumps(doc),
-    }
-"""
 
 
 def _callback_urls(config: Config) -> List[str]:
@@ -278,6 +256,11 @@ class McpAuthGateway(ComponentResource):
         )
         self.token_url = Output.format(
             "https://{}.auth.{}.amazoncognito.com/oauth2/token",
+            domain_prefix,
+            region,
+        )
+        self.authorization_url = Output.format(
+            "https://{}.auth.{}.amazoncognito.com/oauth2/authorize",
             domain_prefix,
             region,
         )
@@ -779,30 +762,69 @@ class McpAuthGateway(ComponentResource):
         }
         if self.ats_url is not None:
             route_urls["ats"] = self.ats_url
+        allowed_interactive_scopes = ["openid", "email"] + [
+            f"{_RESOURCE_SERVER_ID}/{route_name}"
+            for route_name, _function, _description in routes
+        ]
         metadata_docs = Output.json_dumps(
             {
-                f"/.well-known/oauth-protected-resource/{route_name}/mcp": {
-                    "resource": route_urls[route_name],
-                    "authorization_servers": [self.issuer_url],
-                    "scopes_supported": [
-                        f"{_RESOURCE_SERVER_ID}/{route_name}"
+                "/.well-known/oauth-authorization-server": {
+                    "issuer": self.api.api_endpoint,
+                    "authorization_endpoint": self.authorization_url,
+                    "token_endpoint": self.token_url,
+                    "registration_endpoint": Output.format(
+                        "{}/oauth/register", self.api.api_endpoint
+                    ),
+                    "response_types_supported": ["code"],
+                    "grant_types_supported": [
+                        "authorization_code",
+                        "refresh_token",
                     ],
-                    "bearer_methods_supported": ["header"],
-                }
-                for route_name, _function, _description in routes
+                    "token_endpoint_auth_methods_supported": ["none"],
+                    "code_challenge_methods_supported": ["S256"],
+                    "scopes_supported": allowed_interactive_scopes,
+                    "authorization_response_iss_parameter_supported": False,
+                },
+                **{
+                    (
+                        "/.well-known/oauth-protected-resource/"
+                        f"{route_name}/mcp"
+                    ): {
+                        "resource": route_urls[route_name],
+                        "authorization_servers": [self.api.api_endpoint],
+                        "scopes_supported": [
+                            f"{_RESOURCE_SERVER_ID}/{route_name}"
+                        ],
+                        "bearer_methods_supported": ["header"],
+                    }
+                    for route_name, _function, _description in routes
+                },
             }
         )
         metadata_lambda = aws.lambda_.Function(
             f"{name}-metadata",
             role=metadata_role.arn,
             runtime="python3.13",
-            handler="index.handler",
+            handler="metadata.lambda_handler",
             timeout=5,
             memory_size=128,
             code=pulumi.AssetArchive(
-                {"index.py": pulumi.StringAsset(_METADATA_HANDLER_CODE)}
+                {
+                    "metadata.py": pulumi.FileAsset(
+                        os.path.join(_AUTOMATION_LAMBDA_DIR, "metadata.py")
+                    )
+                }
             ),
-            environment={"variables": {"METADATA_DOCS": metadata_docs}},
+            environment={
+                "variables": {
+                    "METADATA_DOCS": metadata_docs,
+                    "DCR_CLIENT_ID": self.interactive_client.id,
+                    "DCR_ALLOWED_CALLBACK_URLS": json.dumps(callbacks),
+                    "DCR_ALLOWED_SCOPES": json.dumps(
+                        allowed_interactive_scopes
+                    ),
+                }
+            },
             opts=child_opts,
         )
         metadata_integration = aws.apigatewayv2.Integration(
@@ -827,6 +849,26 @@ class McpAuthGateway(ComponentResource):
                 authorization_type="NONE",
                 opts=child_opts,
             )
+        aws.apigatewayv2.Route(
+            f"{name}-authorization-metadata-route",
+            api_id=self.api.id,
+            route_key="GET /.well-known/oauth-authorization-server",
+            target=metadata_integration.id.apply(
+                lambda iid: f"integrations/{iid}"
+            ),
+            authorization_type="NONE",
+            opts=child_opts,
+        )
+        dcr_route = aws.apigatewayv2.Route(
+            f"{name}-dcr-route",
+            api_id=self.api.id,
+            route_key="POST /oauth/register",
+            target=metadata_integration.id.apply(
+                lambda iid: f"integrations/{iid}"
+            ),
+            authorization_type="NONE",
+            opts=child_opts,
+        )
         aws.lambda_.Permission(
             f"{name}-metadata-invoke",
             action="lambda:InvokeFunction",
@@ -837,6 +879,16 @@ class McpAuthGateway(ComponentResource):
             ),
             opts=child_opts,
         )
+        aws.lambda_.Permission(
+            f"{name}-dcr-invoke",
+            action="lambda:InvokeFunction",
+            function=metadata_lambda.name,
+            principal="apigateway.amazonaws.com",
+            source_arn=self.api.execution_arn.apply(
+                lambda arn: f"{arn}/*/POST/oauth/register"
+            ),
+            opts=child_opts,
+        )
 
         access_log_group = aws.cloudwatch.LogGroup(
             f"{name}-api-access-logs",
@@ -844,7 +896,14 @@ class McpAuthGateway(ComponentResource):
             retention_in_days=30 if stack != "prod" else 90,
             opts=child_opts,
         )
-        route_settings = []
+        route_settings = [
+            aws.apigatewayv2.StageRouteSettingArgs(
+                route_key="POST /oauth/register",
+                detailed_metrics_enabled=True,
+                throttling_burst_limit=5,
+                throttling_rate_limit=1.0,
+            )
+        ]
         if ats_lambda is not None:
             route_settings.append(
                 aws.apigatewayv2.StageRouteSettingArgs(
@@ -882,7 +941,7 @@ class McpAuthGateway(ComponentResource):
             route_settings=route_settings,
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[access_log_group, *protected_routes],
+                depends_on=[access_log_group, dcr_route, *protected_routes],
             ),
         )
 

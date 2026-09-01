@@ -32,7 +32,9 @@ def test_callback_defaults_cover_grok_bot_cursor_oauth() -> None:
     callbacks = _callback_urls(_Config({}))
 
     assert "https://www.cursor.com/agents/mcp/oauth/callback" in callbacks
+    assert "https://www.cursor.com/bot/mcp/oauth/callback" in callbacks
     assert "http://localhost:8787/callback" in callbacks
+    assert "cursor://anysphere.cursor-mcp/oauth/callback" in callbacks
 
 
 def test_token_validity_uses_secure_defaults() -> None:

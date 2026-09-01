@@ -28,8 +28,13 @@ client ID, the appropriate `mcp_server_url`, `glyph_mcp_server_url`, or
 `ats_mcp_server_url`, and a callback URL allowed by
 `portfolio:mcpOAuthCallbackUrls`. The defaults cover Claude connectors,
 Cursor/Grok Bot's hosted and desktop callbacks, and local development clients.
-Cognito does not provide dynamic client registration, so the exported client
-ID is required.
+Cognito does not provide dynamic client registration. The gateway therefore
+publishes a constrained RFC 7591 compatibility endpoint for hosted MCP clients
+that cannot retain a static client ID. It never creates a Cognito client or
+returns a secret: it returns the existing public interactive client only when
+every requested redirect URI and scope is already allowlisted. API Gateway
+throttles that route independently. Clients that support static OAuth should
+continue to use the exported client ID directly.
 
 Codex appends a stable, server-specific callback ID to its configured base
 callback URL. Register that complete derived URL in the development stack
@@ -52,15 +57,21 @@ derivation, and REST gateway responses can't emit a per-route
 For local Cursor validation, configure a user-scoped remote MCP with the
 gateway URL, `mcp_oauth_interactive_client_id`, and only the route's required
 scope. That `~/.cursor/mcp.json` entry does not install a connector in Grok
-Bot's hosted plugin catalog. Grok Bot must receive the remote MCP through an
-account-installed Cursor plugin or a Team MCP linked to a team marketplace;
-do not configure Grok CLI. The ATS runbook documents the checked-in
-development plugin and installation flow. Cursor's fixed redirects are:
+Bot's hosted plugin catalog. Add the same URL through the account-level MCP
+picker at `cursor.com/agents` for Grok Bot, or distribute the checked-in plugin
+through a team marketplace; do not configure Grok CLI. The hosted custom-MCP
+path uses the gateway's constrained registration endpoint and still resolves
+to the same public Cognito client. The ATS runbook documents both installation
+flows. Cursor's fixed redirects are:
 
 - `https://www.cursor.com/agents/mcp/oauth/callback` for hosted agents;
-- `http://localhost:8787/callback` for the desktop app.
+- `https://www.cursor.com/bot/mcp/oauth/callback` for Grok Bot;
+- `http://localhost:8787/callback` for the desktop app;
+- `cursor://anysphere.cursor-mcp/oauth/callback`, which Cursor's current
+  account-level DCR request includes alongside the two documented redirects.
 
-Both must remain registered on the Cognito public client. The complete
+All four must remain registered on the Cognito public client while the hosted
+installer sends the combined DCR request. The complete
 ATS-specific configuration and verification steps are in
 [ATS_VERIFICATION_INBOX.md](ATS_VERIFICATION_INBOX.md).
 

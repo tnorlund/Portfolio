@@ -113,36 +113,45 @@ after one day.
 ### Connect Pipeline Scout in Grok Bot
 
 Grok Bot uses the same hosted plugin and MCP authentication layer as the
-Cursor account used to sign in; this is not a Grok CLI configuration. Cursor's
-static OAuth flow is required because Cognito does not implement dynamic client
-registration. The development Cognito client registers both fixed Cursor
-redirects documented at [Cursor MCP](https://cursor.com/docs/mcp):
+Cursor account used to sign in; this is not a Grok CLI configuration. Cognito
+does not implement dynamic client registration, so the gateway provides a
+constrained compatibility endpoint for Cursor's hosted custom-MCP installer.
+That endpoint returns the existing public client ID only for pre-registered
+callbacks and approved scopes; it never creates clients or returns secrets.
+The development Cognito client registers both fixed Cursor redirects
+documented at [Cursor MCP](https://cursor.com/docs/mcp):
 
 - `https://www.cursor.com/agents/mcp/oauth/callback`
 - `http://localhost:8787/callback`
+
+Grok Bot currently uses the distinct
+`https://www.cursor.com/bot/mcp/oauth/callback`. Cursor's current account-level
+DCR request also includes
+`cursor://anysphere.cursor-mcp/oauth/callback`; keep that desktop deep link
+pre-registered too. The constrained endpoint rejects the entire registration
+if any requested redirect is absent from the Cognito allowlist.
 
 The user-scoped custom MCP under Cursor **Customize -> MCPs -> New -> User** is
 useful for local validation, but it is local configuration and does **not**
 install a connector in Grok Bot's hosted plugin catalog.
 
-For Grok Bot, install the checked-in
-`portfolio-ats-verification-dev` Cursor plugin through an account marketplace:
+For an individual Cursor account, add the development server to the hosted
+account catalog:
 
-1. In Cursor, open **Customize -> Browse -> Add Marketplace**.
-2. Choose **Import from Github** and import this repository. During review of
-   an unmerged change, use the feature-branch repository URL if the importer
-   offers a branch selector; otherwise wait until the plugin files are on the
-   repository's default branch.
-3. Install **Portfolio ATS Verification (Dev)** at user scope. Keep the
-   development defaults; never substitute production outputs.
-4. Open Grok Bot **Plugins -> Your plugins**, add the plugin, and complete its
-   browser OAuth flow.
-5. Restart Grok Bot and confirm `get_latest_verification_code` is enabled.
+1. Open `cursor.com/agents`, then **Add context and tools -> MCP Servers ->
+   Add MCP -> Custom MCP**.
+2. Add `ats-verification` with the development `ats_mcp_server_url`. Keep the
+   development URL; never substitute production outputs.
+3. Restart Grok Bot and open **Plugins -> Your plugins -> ats-verification**.
+4. Add an account, choose **Authenticate**, and complete the browser login.
+5. Confirm the connector is connected and exposes
+   `get_latest_verification_code`.
 
-Teams and Enterprise accounts can instead distribute the same plugin from a
-private team marketplace, or add the remote server under **Dashboard ->
-Integrations & MCP** and link that Team MCP to the Default marketplace. A
-plain `~/.cursor/mcp.json` entry is not sufficient for Grok Bot.
+Teams and Enterprise accounts can distribute the checked-in
+`portfolio-ats-verification-dev` plugin from a private team marketplace, or add
+the remote server under **Dashboard -> Integrations & MCP** and link that Team
+MCP to the Default marketplace. A plain `~/.cursor/mcp.json` entry is not
+sufficient for Grok Bot.
 
 The equivalent MCP configuration is:
 
