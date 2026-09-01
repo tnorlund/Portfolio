@@ -7,6 +7,7 @@ from receipt_dynamo_stream.parsing.compaction_run import (
 )
 from receipt_dynamo_stream.parsing.parsers import (
     detect_entity_type,
+    is_embedding_sk,
     parse_entity,
     parse_stream_record,
 )
@@ -14,6 +15,7 @@ from receipt_dynamo_stream.parsing.parsers import (
 __all__ = [
     "detect_entity_type",
     "is_compaction_run",
+    "is_embedding_sk",
     "is_embeddings_completed",
     "parse_compaction_run",
     "parse_entity",
