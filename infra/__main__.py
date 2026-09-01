@@ -1125,6 +1125,38 @@ pulumi.export("fix_place_lambda_arn", fix_place_lambda.lambda_arn)
 pulumi.export("fix_place_lambda_name", fix_place_lambda.lambda_function.name)
 pulumi.export("fix_place_lambda_role_name", fix_place_lambda.lambda_role_name)
 
+# The receipt and ATS inboxes share the account's sole active SES receipt rule
+# set. Construct them together before the MCP gateway so the ATS reader can be
+# exposed through its own OAuth scope without creating a second mail plane.
+email_inbox = None
+ats_inbox = None
+email_inbox_enabled = portfolio_config.get_bool("email_receipt_inbox_enabled")
+ats_inbox_enabled = portfolio_config.get_bool("ats_verification_inbox_enabled")
+if ats_inbox_enabled and not email_inbox_enabled:
+    raise ValueError(
+        "portfolio:ats_verification_inbox_enabled requires "
+        "portfolio:email_receipt_inbox_enabled so both recipients share the "
+        "active SES receipt rule set"
+    )
+if email_inbox_enabled:
+    from email_receipt_inbox import EmailReceiptInbox
+
+    email_inbox = EmailReceiptInbox("email-receipt-inbox")
+    pulumi.export("email_receipt_inbox_address", email_inbox.address)
+    pulumi.export("email_receipt_inbox_bucket", email_inbox.bucket.bucket)
+
+if ats_inbox_enabled and email_inbox is not None:
+    from ats_verification_inbox import AtsVerificationInbox
+
+    ats_inbox = AtsVerificationInbox(
+        "ats-verification-inbox",
+        domain=email_inbox.domain,
+        rule_set_name=email_inbox.rule_set.rule_set_name,
+    )
+    pulumi.export("ats_verification_inbox_address", ats_inbox.address)
+    pulumi.export("ats_verification_inbox_bucket", ats_inbox.bucket.bucket)
+    pulumi.export("ats_verification_codes_table", ats_inbox.table.name)
+
 # Receipt MCP Server Lambda
 from mcp_server_lambda import McpServerLambda
 
@@ -1151,9 +1183,12 @@ mcp_auth_gateway = McpAuthGateway(
     "portfolio-mcp-auth",
     receipt_lambda=mcp_server.lambda_function,
     glyph_lambda=glyph_mcp_server.lambda_function,
+    ats_lambda=ats_inbox.mcp_lambda if ats_inbox is not None else None,
 )
 pulumi.export("mcp_server_url", mcp_auth_gateway.receipt_url)
 pulumi.export("glyph_mcp_server_url", mcp_auth_gateway.glyph_url)
+if mcp_auth_gateway.ats_url is not None:
+    pulumi.export("ats_mcp_server_url", mcp_auth_gateway.ats_url)
 pulumi.export("mcp_oauth_issuer_url", mcp_auth_gateway.issuer_url)
 pulumi.export("mcp_oauth_user_pool_id", mcp_auth_gateway.user_pool.id)
 pulumi.export(
@@ -1164,6 +1199,11 @@ pulumi.export(
     "mcp_oauth_automation_secret_arn",
     mcp_auth_gateway.automation_secret_arn,
 )
+if mcp_auth_gateway.ats_automation_secret_arn is not None:
+    pulumi.export(
+        "mcp_oauth_ats_automation_secret_arn",
+        mcp_auth_gateway.ats_automation_secret_arn,
+    )
 
 # Web analytics query layer: Glue + Athena over the CloudFront access logs,
 # read by the analytics_* MCP tools. No new pipeline — just a queryable view
@@ -1571,16 +1611,3 @@ if hasattr(api_gateway, "api"):
         lambda_function=qa_viz_cache.api_lambda,
         permission_name="qa_viz_lambda_permission",
     )
-
-
-# Inbound email receipt pipeline (SES -> S3 -> parser Lambda -> S3 parsed/).
-# Gated off by default: enable per-stack with
-#   pulumi config set portfolio:email_receipt_inbox_enabled true
-# CAUTION: activates the account's SES receipt rule set (one active per
-# account+region) — see email_receipt_inbox/infrastructure.py.
-if portfolio_config.get_bool("email_receipt_inbox_enabled"):
-    from email_receipt_inbox import EmailReceiptInbox
-
-    email_inbox = EmailReceiptInbox("email-receipt-inbox")
-    pulumi.export("email_receipt_inbox_address", email_inbox.address)
-    pulumi.export("email_receipt_inbox_bucket", email_inbox.bucket.bucket)

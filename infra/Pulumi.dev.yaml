@@ -6,6 +6,10 @@ config:
   portfolio:mcpOAuthCallbackUrls:
     - https://claude.ai/api/mcp/auth_callback
     - https://claude.com/api/mcp/auth_callback
+    - https://www.cursor.com/agents/mcp/oauth/callback
+    - https://www.cursor.com/bot/mcp/oauth/callback
+    - http://localhost:8787/callback
+    - cursor://anysphere.cursor-mcp/oauth/callback
     - http://localhost:8765/callback
     - http://127.0.0.1:8765/callback
     - http://localhost:6274/oauth/callback
@@ -61,4 +65,5 @@ config:
   portfolio:CHROMA_CLOUD_ENABLED: "true"
   portfolio:LLM_VALIDATION_ASYNC: "true"
   portfolio:email_receipt_inbox_enabled: "true"
+  portfolio:ats_verification_inbox_enabled: "true"
   chromadb:enable-line-item-refine: "true"
