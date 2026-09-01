@@ -23,6 +23,10 @@ Environment:
     CHROMA_CLOUD_ENABLED / CHROMA_CLOUD_API_KEY / CHROMA_CLOUD_TENANT /
     CHROMA_CLOUD_DATABASE environment variables override Pulumi config
     (e.g. CHROMA_CLOUD_ENABLED=false runs Dynamo-only).
+
+    VECTOR_BACKEND=dynamodb serves the SEMANTIC search modes and
+    similar_labeled_words from the DynamoDB vector indexes instead of
+    Chroma; text/substring modes still require Chroma.
 """
 
 import asyncio
@@ -44,6 +48,7 @@ sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_upload"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
+sys.path.insert(0, os.path.join(parent_dir, "receipt_embeddings"))
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -91,6 +96,34 @@ CHROMA_NOT_CONFIGURED_MESSAGE = (
 
 class ChromaNotConfiguredError(RuntimeError):
     """Raised when a Chroma-backed tool is called without Chroma Cloud creds."""
+
+
+_vector_search_client = None
+
+
+def _vector_backend() -> str:
+    return os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
+
+
+def get_vector_search_client(chroma_client=None):
+    """Resolve the similarity backend for SEMANTIC retrieval.
+
+    Default (VECTOR_BACKEND unset or "chroma"): wrap the provided — or
+    lazily created — Chroma client, preserving today's behavior.
+    VECTOR_BACKEND=dynamodb: SearchVectors on the receipt table's vector
+    indexes; Chroma credentials are then unnecessary for semantic modes.
+    """
+    global _vector_search_client
+
+    from receipt_embeddings.backend import vector_search_client
+
+    if _vector_backend() == "dynamodb":
+        if _vector_search_client is None:
+            _vector_search_client = vector_search_client(None)
+        return _vector_search_client
+    if chroma_client is None:
+        chroma_client, _ = get_chroma_clients()
+    return vector_search_client(chroma_client)
 
 
 def _load_config():
@@ -678,29 +711,14 @@ Example:
         ),
         Tool(
             name="validate_word_similarity",
-            description="""Validate a word's label using ChromaDB similarity search.
+            description="""[DEPRECATED] Use similar_labeled_words instead.
 
-Given a specific word (by image_id, receipt_id, line_id, word_id), runs the
-same similarity search used by the label validation system:
-
-1. Retrieves the word's embedding from Chroma Cloud
-2. Queries for similar VALIDATED words where label=True (positive evidence)
-3. Queries for similar VALIDATED words where label=False (negative evidence)
-4. Computes weighted consensus (with same-merchant boosting)
-5. Returns the evidence and a validation decision
-
-Use this to manually review and validate individual words found via
-list_words_by_label.
-
-Returns:
-  - recommended_status: VALID, INVALID, NEEDS_REVIEW, or PENDING (matches ValidationStatus enum in receipt_dynamo)
-  - confidence: 0-1 score
-  - evidence_for: list of similar words supporting the label
-  - evidence_against: list of similar words rejecting the label
-  - suggested_labels: if invalid/uncertain, top alternative label candidates
-
-NOTE: This tool is READ-ONLY. It does NOT write to DynamoDB. It returns a
-recommendation that you can review before taking any action.""",
+This tool's positive/negative queries filtered the words collection on
+label_{NAME} metadata keys the embedding writer never wrote, so every
+call returned empty evidence with confidence 0.0. It now returns a
+pointer to similar_labeled_words, which performs the working
+search-then-join over validated word embeddings and ReceiptWordLabel
+rows.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -723,6 +741,60 @@ recommendation that you can review before taking any action.""",
                     "label": {
                         "type": "string",
                         "description": "The label to validate (e.g., GRAND_TOTAL)",
+                    },
+                },
+                "required": [
+                    "image_id",
+                    "receipt_id",
+                    "line_id",
+                    "word_id",
+                    "label",
+                ],
+            },
+        ),
+        Tool(
+            name="similar_labeled_words",
+            description="""Similarity evidence for a word's candidate label (search-then-join).
+
+Replaces the retired validate_word_similarity tool. Given a specific word
+(image_id, receipt_id, line_id, word_id) and a candidate label:
+
+1. Reads the word's stored embedding vector (no OpenAI call)
+2. Searches validated word embeddings for nearest neighbors
+3. Applies the similarity cut the old validator intended (0.80)
+4. Joins each surviving neighbor's ReceiptWordLabel rows
+5. Returns evidence FOR (VALID rows) and AGAINST (INVALID rows) the
+   candidate label -- each neighbor carrying its original reasoning and
+   provenance -- plus alternative-label candidates and a weighted
+   consensus recommendation.
+
+Use this to review words found via list_words_by_label before
+update_word_label. If the word has no stored vector yet, the response
+says so instead of erroring.
+
+NOTE: This tool is READ-ONLY. It does NOT write to DynamoDB.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the word",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID of the word",
+                    },
+                    "line_id": {
+                        "type": "integer",
+                        "description": "Line ID of the word",
+                    },
+                    "word_id": {
+                        "type": "integer",
+                        "description": "Word ID within the line",
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "The candidate label (e.g., GRAND_TOTAL)",
                     },
                 },
                 "required": [
@@ -2215,7 +2287,22 @@ async def call_tool(
     try:
         dynamo_client = get_dynamo_client()
         if name in CHROMA_TOOLS:
-            chroma_client, embed_fn = get_chroma_clients()
+            try:
+                chroma_client, embed_fn = get_chroma_clients()
+            except ChromaNotConfiguredError:
+                # VECTOR_BACKEND=dynamodb serves the semantic modes from
+                # the DynamoDB vector indexes; only those may proceed
+                # without Chroma credentials.
+                if (
+                    _vector_backend() == "dynamodb"
+                    and name in ("search_receipts", "search_product_lines")
+                    and arguments.get("search_type") == "semantic"
+                ):
+                    from receipt_agent.clients.factory import create_embed_fn
+
+                    chroma_client, embed_fn = None, create_embed_fn()
+                else:
+                    raise
         else:
             chroma_client = embed_fn = None
 
@@ -2276,6 +2363,15 @@ async def call_tool(
         elif name == "validate_word_similarity":
             result = await validate_word_similarity_impl(
                 chroma_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                line_id=arguments["line_id"],
+                word_id=arguments["word_id"],
+                label=arguments["label"],
+            )
+        elif name == "similar_labeled_words":
+            result = await similar_labeled_words_impl(
+                dynamo_client,
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments["line_id"],
@@ -2592,8 +2688,14 @@ async def search_receipts_impl(
     query: str,
     search_type: str,
     limit: int,
+    vector_client=None,
 ) -> dict:
-    """Search for receipts."""
+    """Search for receipts.
+
+    The semantic mode retrieves through the VectorSearchClient seam
+    (``vector_client`` is a test-injection override); label and text
+    modes keep their direct Chroma behavior.
+    """
     try:
         if search_type == "label":
             words_collection = chroma_client.get_collection("words")
@@ -2622,38 +2724,44 @@ async def search_receipts_impl(
             }
 
         elif search_type == "semantic":
-            lines_collection = chroma_client.get_collection("lines")
             query_embeddings = embed_fn([query])
 
             if not query_embeddings or not query_embeddings[0]:
                 return {"error": "Failed to generate embedding"}
 
-            results = lines_collection.query(
-                query_embeddings=query_embeddings,
-                n_results=limit * 2,
-                include=["metadatas", "distances"],
+            # Imported lazily: the server must stay importable without
+            # the embeddings stack (mirrors the receipt_chroma imports).
+            from receipt_embeddings.service_limits import (
+                LINE_INDEX,
+                MAX_SEARCH_RESULTS,
+            )
+
+            client = (
+                vector_client
+                if vector_client is not None
+                else get_vector_search_client(chroma_client)
+            )
+            # limit*2 is trimmed to the 100-result SearchVectors cap
+            # (spec section 3.5b); Chroma accepts the smaller ask too.
+            neighbors = client.search(
+                query_embeddings[0],
+                index=LINE_INDEX,
+                top_k=max(1, min(limit * 2, MAX_SEARCH_RESULTS)),
             )
 
             unique_receipts = {}
-            if results["ids"] and results["ids"][0]:
-                for idx, (id_, meta) in enumerate(
-                    zip(results["ids"][0], results["metadatas"][0])
-                ):
-                    key = (meta.get("image_id"), meta.get("receipt_id"))
-                    distance = (
-                        results["distances"][0][idx]
-                        if results["distances"]
-                        else 1.0
-                    )
-                    similarity = max(0.0, 1.0 - distance)
+            for neighbor in neighbors:
+                meta = neighbor.metadata
+                key = (meta.get("image_id"), meta.get("receipt_id"))
+                similarity = max(0.0, 1.0 - neighbor.distance)
 
-                    if key not in unique_receipts:
-                        unique_receipts[key] = {
-                            "image_id": meta.get("image_id"),
-                            "receipt_id": meta.get("receipt_id"),
-                            "matched_text": meta.get("text", "")[:100],
-                            "similarity": round(similarity, 3),
-                        }
+                if key not in unique_receipts:
+                    unique_receipts[key] = {
+                        "image_id": meta.get("image_id"),
+                        "receipt_id": meta.get("receipt_id"),
+                        "matched_text": str(meta.get("text", ""))[:100],
+                        "similarity": round(similarity, 3),
+                    }
 
             sorted_results = sorted(
                 unique_receipts.values(),
@@ -2953,6 +3061,7 @@ async def search_product_lines_impl(
     query: str,
     search_type: str,
     limit: int,
+    vector_client=None,
 ) -> dict:
     """Search for product lines and extract prices for spending analysis.
 
@@ -2966,11 +3075,12 @@ async def search_product_lines_impl(
     # Imported here, not at module scope: receipt_chroma.__init__ pulls in
     # chromadb, and this server must stay importable without it
     # (tests/test_receipt_mcp_lazy_chroma.py).
-    from receipt_chroma.section_labels import non_item_section_filter
+    from receipt_chroma.section_labels import (
+        NON_ITEM_SECTION_LABELS,
+        non_item_section_filter,
+    )
 
     try:
-        lines_collection = chroma_client.get_collection("lines")
-
         # Extract price from text (e.g., "RAW WHOLE MILK 17.99" -> 17.99)
         def extract_price(text: str) -> Optional[float]:
             matches = re.findall(r"\d+\.\d{2}", text)
@@ -2979,20 +3089,33 @@ async def search_product_lines_impl(
             return None
 
         if search_type == "semantic":
-            # Semantic search using embeddings
+            # Semantic search using embeddings via the vector seam
             query_embeddings = embed_fn([query])
 
             if not query_embeddings or not query_embeddings[0]:
                 return {"error": "Failed to generate embedding"}
 
-            results = lines_collection.query(
-                query_embeddings=query_embeddings,
-                n_results=limit * 3,  # Get more to filter duplicates
-                where=non_item_section_filter(),
-                include=["metadatas", "distances"],
+            # Imported lazily: the server must stay importable without
+            # the embeddings stack (mirrors the receipt_chroma imports).
+            from receipt_embeddings.service_limits import (
+                LINE_INDEX,
+                MAX_SEARCH_RESULTS,
             )
 
-            if not results["ids"] or not results["ids"][0]:
+            client = (
+                vector_client
+                if vector_client is not None
+                else get_vector_search_client(chroma_client)
+            )
+            # limit*3 is trimmed to the 100-result SearchVectors cap
+            # (spec section 3.5b); Chroma accepts the smaller ask too.
+            neighbors = client.search(
+                query_embeddings[0],
+                index=LINE_INDEX,
+                top_k=max(1, min(limit * 3, MAX_SEARCH_RESULTS)),
+            )
+
+            if not neighbors:
                 return {
                     "query": query,
                     "search_type": "semantic",
@@ -3003,11 +3126,20 @@ async def search_product_lines_impl(
             # Process semantic results with similarity scores
             items = []
             seen = set()
+            # Chroma pre-filtered non-item sections inside the ANN query
+            # ($nin); the seam takes equality filters only, so the same
+            # exclusion is applied after retrieval. Rows with no section
+            # label stay, matching non_item_section_filter().
+            non_item_sections = set(NON_ITEM_SECTION_LABELS)
 
-            for idx, (id_, meta) in enumerate(
-                zip(results["ids"][0], results["metadatas"][0])
-            ):
-                text = meta.get("text", "")
+            for neighbor in neighbors:
+                meta = neighbor.metadata
+                section = meta.get("section_label") or meta.get(
+                    "section_type"
+                )
+                if section in non_item_sections:
+                    continue
+                text = str(meta.get("text", ""))
                 image_id = meta.get("image_id")
                 receipt_id = meta.get("receipt_id")
 
@@ -3017,13 +3149,7 @@ async def search_product_lines_impl(
                     continue
                 seen.add(key)
 
-                # Calculate similarity from distance
-                distance = (
-                    results["distances"][0][idx]
-                    if results["distances"]
-                    else 1.0
-                )
-                similarity = max(0.0, 1.0 - distance)
+                similarity = max(0.0, 1.0 - neighbor.distance)
 
                 # Skip low similarity results
                 if similarity < 0.25:
@@ -3056,7 +3182,7 @@ async def search_product_lines_impl(
             return {
                 "query": query,
                 "search_type": "semantic",
-                "total_matches": len(results["ids"][0]),
+                "total_matches": len(neighbors),
                 "unique_items": len(items),
                 "items": items,
                 "raw_total": round(total, 2),
@@ -3064,7 +3190,8 @@ async def search_product_lines_impl(
             }
 
         else:
-            # Text search (exact match)
+            # Text search (exact match; unchanged Chroma substring scan)
+            lines_collection = chroma_client.get_collection("lines")
             results = lines_collection.get(
                 where_document={"$contains": query.upper()},
                 where=non_item_section_filter(),
@@ -3437,255 +3564,86 @@ async def validate_word_similarity_impl(
     word_id: int,
     label: str,
 ) -> dict:
-    """Validate a word's label using ChromaDB similarity search."""
-    from receipt_dynamo.constants import CORE_LABELS
+    """Deprecated: point callers at similar_labeled_words.
 
-    MIN_SIMILARITY = 0.80
-    MIN_MATCHES = 3
-    CONSENSUS_THRESHOLD = 0.80
+    The old implementation filtered the words collection on label_{NAME}
+    metadata keys the embedding writer never wrote (see the read-path
+    inventory), so both polarity queries matched zero records and every
+    call returned empty evidence with confidence 0.0. Rather than keep
+    returning silently-empty results, answer with a deprecation pointer
+    to the working search-then-join replacement.
+    """
+    del chroma_client  # retained for dispatch compatibility; unused
+    return {
+        "deprecated": True,
+        "error_type": "deprecated_tool",
+        "replacement": "similar_labeled_words",
+        "message": (
+            "validate_word_similarity is retired: its label_{X} metadata "
+            "filters matched zero records (the words index never carried "
+            "those keys), so it always returned empty evidence. Call "
+            "similar_labeled_words with the same ids plus the candidate "
+            "label for working similarity evidence."
+        ),
+        "word": {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "line_id": line_id,
+            "word_id": word_id,
+            "label": label,
+        },
+    }
+
+
+async def similar_labeled_words_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    word_id: int,
+    label: str,
+    vector_client=None,
+) -> dict:
+    """Search-then-join similarity evidence for a candidate word label.
+
+    Reads the word's stored vector (GetItem; no OpenAI call), searches
+    validated word embeddings, joins the neighbors' ReceiptWordLabel
+    rows, and returns evidence for/against with each neighbor's
+    reasoning and provenance (spec section 3.7). Degrades to structured
+    answers on a missing vector or backend failure.
+    """
+    # Imported lazily so the server stays importable without the
+    # embeddings stack (tests stub only what a test exercises).
+    from receipt_embeddings.label_consensus import similar_labeled_words
 
     try:
-        # Build the word's ChromaDB ID
-        chroma_id = (
-            f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-            f"#LINE#{line_id:05d}#WORD#{word_id:05d}"
+        if vector_client is None:
+            try:
+                vector_client = get_vector_search_client()
+            except ChromaNotConfiguredError as e:
+                return {
+                    "error": str(e),
+                    "error_type": "chroma_not_configured",
+                    "tool": "similar_labeled_words",
+                }
+        target_merchant = None
+        try:
+            place = dynamo_client.get_receipt_place(image_id, receipt_id)
+            target_merchant = getattr(place, "merchant_name", None)
+        except Exception:  # noqa: BLE001 - merchant boost is optional
+            target_merchant = None
+        return similar_labeled_words(
+            vector_client,
+            dynamo_client.get_receipt_word_labels,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+            label=label,
+            target_merchant=target_merchant,
         )
-
-        # Get the word's embedding from Chroma
-        words_collection = chroma_client.get_collection("words")
-        result = words_collection.get(
-            ids=[chroma_id],
-            include=["embeddings", "metadatas"],
-        )
-
-        if not result["ids"]:
-            return {"error": f"Word not found in Chroma: {chroma_id}"}
-
-        embeddings = result.get("embeddings")
-        if embeddings is None or len(embeddings) == 0:
-            return {"error": "Word has no embedding"}
-
-        embedding = embeddings[0]
-        if hasattr(embedding, "tolist"):
-            embedding = embedding.tolist()
-
-        word_meta = result["metadatas"][0] if result["metadatas"] else {}
-        word_text = word_meta.get("text", "")
-        merchant_name = word_meta.get("merchant_name", "")
-
-        # Distance to similarity conversion (L2)
-        def dist_to_sim(distance: float) -> float:
-            return max(0.0, 1.0 - (distance / 2.0))
-
-        # Query for positive evidence (validated words WITH this label)
-        label_field = f"label_{label}"
-
-        positive_results = words_collection.query(
-            query_embeddings=[embedding],
-            n_results=10,
-            where={
-                "$and": [
-                    {"label_status": "validated"},
-                    {label_field: True},
-                ]
-            },
-            include=["metadatas", "distances"],
-        )
-
-        # Query for negative evidence (validated words WITHOUT this label)
-        negative_results = words_collection.query(
-            query_embeddings=[embedding],
-            n_results=10,
-            where={
-                "$and": [
-                    {"label_status": "validated"},
-                    {label_field: False},
-                ]
-            },
-            include=["metadatas", "distances"],
-        )
-
-        # Process results
-        evidence_for = []
-        evidence_against = []
-
-        for metas, dists in [
-            (
-                positive_results.get("metadatas", [[]]),
-                positive_results.get("distances", [[]]),
-            )
-        ]:
-            for meta, dist in zip(
-                metas[0] if metas else [], dists[0] if dists else []
-            ):
-                sim = dist_to_sim(dist)
-                if sim < MIN_SIMILARITY:
-                    continue
-                # Skip self
-                rid = f"IMAGE#{meta.get('image_id', '')}#RECEIPT#{meta.get('receipt_id', 0):05d}#LINE#{meta.get('line_id', 0):05d}#WORD#{meta.get('word_id', 0):05d}"
-                if rid == chroma_id:
-                    continue
-                evidence_for.append(
-                    {
-                        "text": meta.get("text", ""),
-                        "similarity": round(sim, 3),
-                        "merchant": meta.get("merchant_name", ""),
-                        "same_merchant": meta.get("merchant_name", "")
-                        == merchant_name,
-                    }
-                )
-
-        for metas, dists in [
-            (
-                negative_results.get("metadatas", [[]]),
-                negative_results.get("distances", [[]]),
-            )
-        ]:
-            for meta, dist in zip(
-                metas[0] if metas else [], dists[0] if dists else []
-            ):
-                sim = dist_to_sim(dist)
-                if sim < MIN_SIMILARITY:
-                    continue
-                rid = f"IMAGE#{meta.get('image_id', '')}#RECEIPT#{meta.get('receipt_id', 0):05d}#LINE#{meta.get('line_id', 0):05d}#WORD#{meta.get('word_id', 0):05d}"
-                if rid == chroma_id:
-                    continue
-                evidence_against.append(
-                    {
-                        "text": meta.get("text", ""),
-                        "similarity": round(sim, 3),
-                        "merchant": meta.get("merchant_name", ""),
-                        "same_merchant": meta.get("merchant_name", "")
-                        == merchant_name,
-                    }
-                )
-
-        total_matches = len(evidence_for) + len(evidence_against)
-
-        if total_matches == 0:
-            return {
-                "word_text": word_text,
-                "label": label,
-                "recommended_status": "PENDING",
-                "confidence": 0.0,
-                "reason": f"No similar validated words found for {label}",
-                "evidence_for": [],
-                "evidence_against": [],
-                "suggested_labels": [],
-            }
-
-        if total_matches < MIN_MATCHES:
-            return {
-                "word_text": word_text,
-                "label": label,
-                "recommended_status": "PENDING",
-                "confidence": 0.0,
-                "reason": f"Only {total_matches} matches (need {MIN_MATCHES})",
-                "evidence_for": evidence_for,
-                "evidence_against": evidence_against,
-                "suggested_labels": [],
-            }
-
-        # Weighted consensus voting
-        SAME_MERCHANT_BOOST = 0.10
-        votes_for = 0.0
-        votes_against = 0.0
-
-        for ev in evidence_for:
-            weight = ev["similarity"]
-            if ev["same_merchant"]:
-                weight = min(1.0, weight + SAME_MERCHANT_BOOST)
-            votes_for += weight
-
-        for ev in evidence_against:
-            weight = ev["similarity"]
-            if ev["same_merchant"]:
-                weight = min(1.0, weight + SAME_MERCHANT_BOOST)
-            votes_against += weight
-
-        total_votes = votes_for + votes_against
-        confidence = votes_for / total_votes if total_votes > 0 else 0.0
-
-        # Map to ValidationStatus enum values (VALID, INVALID, NEEDS_REVIEW, PENDING)
-        if confidence >= CONSENSUS_THRESHOLD:
-            recommended_status = "VALID"
-            reason = f"{confidence:.0%} of similar words validated as {label}"
-        elif confidence <= (1.0 - CONSENSUS_THRESHOLD):
-            recommended_status = "INVALID"
-            reason = (
-                f"{1.0 - confidence:.0%} of similar words rejected {label}"
-            )
-        else:
-            recommended_status = "NEEDS_REVIEW"
-            reason = f"Mixed evidence: {confidence:.0%} for, {1.0 - confidence:.0%} against"
-
-        # Find suggested labels if invalid or uncertain
-        suggested_labels = []
-        if recommended_status in ("INVALID", "NEEDS_REVIEW"):
-            for candidate_label in CORE_LABELS:
-                if candidate_label == label:
-                    continue
-                try:
-                    cand_field = f"label_{candidate_label}"
-                    cand_results = words_collection.query(
-                        query_embeddings=[embedding],
-                        n_results=10,
-                        where={
-                            "$and": [
-                                {"label_status": "validated"},
-                                {cand_field: True},
-                            ]
-                        },
-                        include=["distances"],
-                    )
-                    cand_dists = (
-                        cand_results.get("distances", [[]])[0]
-                        if cand_results.get("distances")
-                        else []
-                    )
-                    cand_sims = [
-                        dist_to_sim(d)
-                        for d in cand_dists
-                        if dist_to_sim(d) >= MIN_SIMILARITY
-                    ]
-                    if cand_sims:
-                        avg_sim = sum(cand_sims) / len(cand_sims)
-                        score = len(cand_sims) * avg_sim
-                        suggested_labels.append(
-                            {
-                                "label": candidate_label,
-                                "match_count": len(cand_sims),
-                                "avg_similarity": round(avg_sim, 3),
-                                "score": round(score, 3),
-                            }
-                        )
-                except Exception as e:
-                    logger.warning(
-                        "Error querying label %s (%s): %s",
-                        candidate_label,
-                        cand_field,
-                        e,
-                    )
-                    continue
-
-            suggested_labels.sort(key=lambda x: x["score"], reverse=True)
-            suggested_labels = suggested_labels[:5]
-
-        return {
-            "word_text": word_text,
-            "label": label,
-            "recommended_status": recommended_status,
-            "confidence": round(confidence, 3),
-            "reason": reason,
-            "votes_for": round(votes_for, 3),
-            "votes_against": round(votes_against, 3),
-            "evidence_for": evidence_for,
-            "evidence_against": evidence_against,
-            "suggested_labels": suggested_labels,
-        }
-
     except Exception as e:
-        logger.exception("Error validating word similarity")
+        logger.exception("Error collecting similar labeled words")
         return {"error": str(e)}
 
 
