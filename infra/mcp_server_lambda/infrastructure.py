@@ -144,6 +144,7 @@ class McpServerLambda(ComponentResource):
                                     "dynamodb:Query",
                                     "dynamodb:BatchGetItem",
                                     "dynamodb:BatchWriteItem",
+                                    "dynamodb:SearchVectors",
                                 ],
                                 "Resource": [
                                     arn,

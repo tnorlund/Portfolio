@@ -164,6 +164,7 @@ class QAAgentStepFunction(ComponentResource):
                                     "dynamodb:GetItem",
                                     "dynamodb:Query",
                                     "dynamodb:BatchGetItem",
+                                    "dynamodb:SearchVectors",
                                 ],
                                 "Resource": [arn, f"{arn}/index/*"],
                             }

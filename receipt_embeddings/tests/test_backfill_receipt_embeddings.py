@@ -97,6 +97,168 @@ def test_build_requests_preserves_display_text_and_context_input() -> None:
     assert requests[1].label_status == "validated"
 
 
+def test_build_requests_marks_invalid_only_words_validated() -> None:
+    """INVALID-only words carry a terminal verdict and must stay in the
+    validated population, or the word index's filter would drop exactly
+    the counterexamples similar_labeled_words needs (E3 review P1-2)."""
+    line = Geometry(
+        IMAGE_ID,
+        1,
+        2,
+        "COFFEE 12.99",
+        {"x": 0.1, "y": 0.8, "width": 0.5, "height": 0.05},
+    )
+    word = Geometry(
+        IMAGE_ID,
+        1,
+        2,
+        "COFFEE",
+        {"x": 0.1, "y": 0.8, "width": 0.2, "height": 0.05},
+        word_id=3,
+    )
+    details = SimpleNamespace(
+        receipt=SimpleNamespace(image_id=IMAGE_ID, receipt_id=1),
+        lines=[line],
+        words=[word],
+        labels=[
+            SimpleNamespace(
+                line_id=2,
+                word_id=3,
+                validation_status=ValidationStatus.INVALID.value,
+            )
+        ],
+        place=SimpleNamespace(merchant_name="Fixture Mart", place_id="p1"),
+    )
+    sections = [SimpleNamespace(line_ids=[2], section_type="ITEMS")]
+
+    requests = build_requests(details, sections, {})
+
+    assert requests[1].label_status == "validated"
+
+
+def test_repair_label_status_reclassifies_existing_word_embeddings(
+    monkeypatch,
+) -> None:
+    """Metadata repair for pre-rule backfills (E3 review P1-B): existing
+    word embedding items are re-aggregated from their CURRENT label rows
+    — idempotent, metadata-only (vectors untouched), line embeddings and
+    already-correct words ignored, never creating items."""
+    boto3 = pytest.importorskip("boto3")
+    moto = pytest.importorskip("moto")
+    from receipt_dynamo import DynamoClient
+    from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
+    from receipt_dynamo.entities.receipt_embedding import (
+        ReceiptLineEmbedding,
+        ReceiptWordEmbedding,
+    )
+    from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+    from scripts.backfill_receipt_embeddings import repair_label_status
+
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.delenv("DYNAMODB_ENDPOINT_URL", raising=False)
+    table = "ReceiptsTable-dc5be22"
+    vector = [0.001] * EMBEDDING_DIMENSIONS
+    with moto.mock_aws():
+        client = boto3.client("dynamodb", region_name="us-east-1")
+        client.create_table(
+            TableName=table,
+            KeySchema=[
+                {"AttributeName": "PK", "KeyType": "HASH"},
+                {"AttributeName": "SK", "KeyType": "RANGE"},
+            ],
+            AttributeDefinitions=[
+                {"AttributeName": "PK", "AttributeType": "S"},
+                {"AttributeName": "SK", "AttributeType": "S"},
+            ],
+            BillingMode="PAY_PER_REQUEST",
+        )
+        client.get_waiter("table_exists").wait(TableName=table)
+
+        stale = ReceiptWordEmbedding(
+            image_id=IMAGE_ID,
+            receipt_id=1,
+            line_id=2,
+            word_id=3,
+            text="12.99",
+            merchant_name="Fixture Mart",
+            label_status="none",
+            word_vector=list(vector),
+        )
+        current = ReceiptWordEmbedding(
+            image_id=IMAGE_ID,
+            receipt_id=1,
+            line_id=2,
+            word_id=4,
+            text="TOTAL",
+            merchant_name="Fixture Mart",
+            label_status="validated",
+            word_vector=list(vector),
+        )
+        line = ReceiptLineEmbedding(
+            image_id=IMAGE_ID,
+            receipt_id=1,
+            line_id=2,
+            text="TOTAL 12.99",
+            merchant_name="Fixture Mart",
+            place_id="p1",
+            row_line_ids=[2],
+            section_type="",
+            line_vector=list(vector),
+        )
+        invalid_only = ReceiptWordLabel(
+            image_id=IMAGE_ID,
+            receipt_id=1,
+            line_id=2,
+            word_id=3,
+            label="GRAND_TOTAL",
+            reasoning="human rejected",
+            timestamp_added="2026-08-31T00:00:00+00:00",
+            validation_status="INVALID",
+            label_proposed_by="human",
+        )
+        valid = ReceiptWordLabel(
+            image_id=IMAGE_ID,
+            receipt_id=1,
+            line_id=2,
+            word_id=4,
+            label="GRAND_TOTAL",
+            reasoning="matches printed total",
+            timestamp_added="2026-08-31T00:00:00+00:00",
+            validation_status="VALID",
+            label_proposed_by="human",
+        )
+        for entity in (stale, current, line, invalid_only, valid):
+            client.put_item(TableName=table, Item=entity.to_item())
+
+        dynamo = DynamoClient(table_name=table, region="us-east-1")
+        receipts = [{"image_id": IMAGE_ID, "receipt_id": 1}]
+
+        dry = repair_label_status(dynamo, receipts, apply=False)
+        assert dry["dry_run"] is True
+        assert dry["words_examined"] == 2
+        assert dry["unchanged"] == 1
+        assert dry["updates_planned"] == 1
+        assert dry["updates_applied"] == 0
+        untouched = client.get_item(TableName=table, Key=stale.key)["Item"]
+        assert untouched["label_status"]["S"] == "none"
+
+        applied = repair_label_status(dynamo, receipts, apply=True)
+        assert applied["updates_planned"] == 1
+        assert applied["updates_applied"] == 1
+        assert applied["exit_code"] == 0
+        repaired = client.get_item(TableName=table, Key=stale.key)["Item"]
+        assert repaired["label_status"]["S"] == "validated"
+        # Metadata-only: the stored vector is byte-identical.
+        assert repaired[ReceiptWordEmbedding.VECTOR_ATTRIBUTE] == (
+            stale.to_item()[ReceiptWordEmbedding.VECTOR_ATTRIBUTE]
+        )
+
+        second = repair_label_status(dynamo, receipts, apply=True)
+        assert second["updates_planned"] == 0
+        assert second["updates_applied"] == 0
+
+
 def test_build_requests_computes_fetch_join_anchor_metadata() -> None:
     """Line requests carry the Chroma-writer-computed normalized anchors
     for the row's words (Round C fetch-join ruling)."""

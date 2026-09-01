@@ -58,9 +58,20 @@ class ChromaVectorSearchClient:
         if where is not None:
             query["where"] = where
         response = self._client.query(**query)
-        metadatas = (response.get("metadatas") or [[]])[0]
-        distances = (response.get("distances") or [[]])[0]
-        ids = (response.get("ids") or [[]])[0]
+
+        # Same ndarray-truthiness hazard as get_vector (review P1-A):
+        # chromadb may return these as numpy arrays, so never boolean-
+        # test them — take the first query's row with explicit checks.
+        def _first_row(name: str) -> Sequence[Any]:
+            value = response.get(name)
+            if value is None or len(value) == 0:
+                return []
+            row = value[0]
+            return [] if row is None else row
+
+        metadatas = _first_row("metadatas")
+        distances = _first_row("distances")
+        ids = _first_row("ids")
         results: list[ScoredItem] = []
         for position, (metadata, distance) in enumerate(
             zip(metadatas, distances, strict=False)
@@ -93,10 +104,17 @@ class ChromaVectorSearchClient:
             ids=[key],
             include=["embeddings"],
         )
-        embeddings = response.get("embeddings") or []
-        if not embeddings:
+        # chromadb returns embeddings as a numpy ndarray, whose truth
+        # value is ambiguous — ``or []`` / ``if not`` raise ValueError
+        # and turned every default-backend consensus call into a
+        # degraded answer (E3 review P1-A). Check None/length instead.
+        embeddings = response.get("embeddings")
+        if embeddings is None or len(embeddings) == 0:
             raise KeyError(f"unknown vector key: {key}")
-        return [float(value) for value in embeddings[0]]
+        vector = embeddings[0]
+        if vector is None or len(vector) == 0:
+            raise KeyError(f"unknown vector key: {key}")
+        return [float(value) for value in vector]
 
 
 __all__ = ["ChromaVectorSearchClient"]

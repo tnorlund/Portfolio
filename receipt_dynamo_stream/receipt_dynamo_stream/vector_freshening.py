@@ -14,9 +14,9 @@ Behavior per entity type:
   (``enrich_row_metadata_with_anchors``), not from place fields, so a
   place change never invalidates them.
 - ``RECEIPT_WORD_LABEL``: recompute ``label_status`` for the word from
-  its *current* label set (any VALID -> ``validated``, else any PENDING
-  -> ``pending``, else ``none`` — same rule as the backfill) and write it
-  to the word's embedding item.
+  its *current* label set (any terminal VALID/INVALID verdict ->
+  ``validated``, else any PENDING -> ``pending``, else ``none`` — same
+  rule as the backfill) and write it to the word's embedding item.
 - ``RECEIPT_SECTION``: write ``section_type`` onto the line-embedding
   items of the section's lines; lines dropped from the section (or the
   whole section on REMOVE) are cleared to ``""``. Embeddings exist only
@@ -41,7 +41,6 @@ from typing import Any, Iterable, Mapping, Optional
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_section import ReceiptSection
@@ -377,8 +376,13 @@ def _compute_word_label_status(
 ) -> Optional[str]:
     """Aggregate the word's current labels into a label_status value.
 
-    Same rule as the backfill: any VALID -> validated, else any PENDING
-    -> pending, else none. Returns None if the label query fails.
+    Same rule as the backfill: any terminal human verdict (VALID or
+    INVALID) -> validated, else any PENDING -> pending, else none.
+    INVALID-only words must stay in the validated population or the
+    word index's ``label_status = validated`` filter would drop exactly
+    the counterexamples similar_labeled_words needs for
+    ``evidence_against`` (E3 review P1-2). Returns None if the label
+    query fails.
     """
     prefix = (
         f"RECEIPT#{int(label.receipt_id):05d}#"
@@ -410,7 +414,10 @@ def _compute_word_label_status(
             break
         kwargs["ExclusiveStartKey"] = last_key
 
-    if ValidationStatus.VALID.value in statuses:
+    if (
+        ValidationStatus.VALID.value in statuses
+        or ValidationStatus.INVALID.value in statuses
+    ):
         return "validated"
     if ValidationStatus.PENDING.value in statuses:
         return "pending"

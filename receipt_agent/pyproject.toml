@@ -32,6 +32,7 @@ classifiers = [
 dependencies = [
     # Internal packages (transitive deps: boto3, requests, pydantic*, tenacity, structlog, chromadb, openai)
     "receipt-dynamo",              # DynamoDB client for receipts
+    "receipt-embeddings",          # Vector-search seam (VectorSearchClient)
     "receipt-chroma",              # ChromaDB client (brings chromadb, openai)
     "receipt-places",              # Google Places API (brings pydantic*, tenacity, structlog)
     # LangGraph/LangChain for agent orchestration

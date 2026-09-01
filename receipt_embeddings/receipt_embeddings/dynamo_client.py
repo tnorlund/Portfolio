@@ -50,7 +50,18 @@ _LINE_JOIN_ATTRIBUTES = (
     "normalized_phone_10",
     "normalized_full_address",
 )
-_WORD_LABEL_JOIN_ATTRIBUTES = ("PK", "SK", "validation_status")
+# The label name itself comes from the requested SK, so it is not
+# projected; the extra attributes let similar_labeled_words reuse this
+# one join for evidence provenance instead of re-fetching the same keys
+# (E3 review P2-4).
+_WORD_LABEL_JOIN_ATTRIBUTES = (
+    "PK",
+    "SK",
+    "validation_status",
+    "reasoning",
+    "label_proposed_by",
+    "timestamp_added",
+)
 
 
 def _canonical_key(item: Mapping[str, Any], *, index: str) -> str:
@@ -271,9 +282,12 @@ class DynamoVectorSearchClient:
         The word index can filter on aggregate ``label_status`` but its
         immutable projection does not contain the label names used by the
         semantic proposer. Fetch the known core-label rows by exact key and
-        surface the same ``valid_labels_array`` metadata shape as Chroma. Any
-        failed or unprocessed join leaves that array absent, which makes
-        consumers abstain instead of voting on partial evidence.
+        surface the same ``valid_labels_array`` metadata shape as Chroma,
+        plus the full per-row provenance as ``label_rows`` so
+        similar_labeled_words reuses this single join instead of
+        re-fetching the same keys (E3 review P2-4). Any failed or
+        unprocessed join leaves both absent, which makes consumers abstain
+        instead of voting on partial evidence.
         """
 
         self.last_join_read_units = None
@@ -283,6 +297,7 @@ class DynamoVectorSearchClient:
         owner_by_token: dict[str, tuple[str, str]] = {}
         request_keys: list[dict[str, Any]] = []
         valid = {result.key: set() for result in results}
+        rows_by_key: dict[str, list[dict[str, Any]]] = {}
         hydratable: set[str] = set()
         for result in results:
             match = _CANONICAL_KEY.fullmatch(result.key)
@@ -329,10 +344,26 @@ class DynamoVectorSearchClient:
                         pk = item.get("PK", {}).get("S", "")
                         sk = item.get("SK", {}).get("S", "")
                         owner = owner_by_token.get(f"{pk}|{sk}")
-                        status = item.get("validation_status", {}).get("S")
-                        if owner and status == ValidationStatus.VALID.value:
-                            result_key, label = owner
-                            valid[result_key].add(label)
+                        if owner is None:
+                            continue
+                        result_key, row_label = owner
+                        parsed = parse_dynamodb_map(dict(item))
+                        status = parsed.get("validation_status")
+                        if status == ValidationStatus.VALID.value:
+                            valid[result_key].add(row_label)
+                        rows_by_key.setdefault(result_key, []).append(
+                            {
+                                "label": row_label,
+                                "validation_status": status,
+                                "reasoning": parsed.get("reasoning"),
+                                "label_proposed_by": parsed.get(
+                                    "label_proposed_by"
+                                ),
+                                "timestamp_added": parsed.get(
+                                    "timestamp_added"
+                                ),
+                            }
+                        )
                     pending = (
                         response.get("UnprocessedKeys", {})
                         .get(self.table_name, {})
@@ -355,6 +386,10 @@ class DynamoVectorSearchClient:
                 continue
             metadata = dict(result.metadata)
             metadata["valid_labels_array"] = sorted(valid[result.key]) or None
+            metadata["label_rows"] = sorted(
+                rows_by_key.get(result.key, []),
+                key=lambda row: str(row["label"]),
+            )
             joined.append(
                 ScoredItem(
                     key=result.key,

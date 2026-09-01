@@ -361,10 +361,11 @@ def test_word_search_fetch_joins_chroma_label_metadata_contract() -> None:
         {
             **label_keys[CORE_LABEL_NAMES.index(label)],
             "validation_status": {"S": status},
+            "reasoning": {"S": reason},
         }
-        for label, status in (
-            ("PRODUCT_NAME", ValidationStatus.VALID.value),
-            ("TAX", ValidationStatus.INVALID.value),
+        for label, status, reason in (
+            ("PRODUCT_NAME", ValidationStatus.VALID.value, "is a product"),
+            ("TAX", ValidationStatus.INVALID.value, "not a tax amount"),
         )
     ]
     with Stubber(boto_client) as stubber:
@@ -386,6 +387,15 @@ def test_word_search_fetch_joins_chroma_label_metadata_contract() -> None:
 
     assert results[0].metadata["label_status"] == "validated"
     assert results[0].metadata["valid_labels_array"] == ["PRODUCT_NAME"]
+    # Single-join provenance (E3 review P2-4): similar_labeled_words
+    # reuses these rows instead of re-fetching the same keys.
+    assert [
+        (row["label"], row["validation_status"], row["reasoning"])
+        for row in results[0].metadata["label_rows"]
+    ] == [
+        ("PRODUCT_NAME", "VALID", "is a product"),
+        ("TAX", "INVALID", "not a tax amount"),
+    ]
     chroma = ChromaVectorSearchClient(_ChromaWordClient()).search(
         _vector(),
         "word-embeddings",
@@ -428,6 +438,7 @@ def test_word_label_join_failure_omits_vote_metadata() -> None:
         )
 
     assert "valid_labels_array" not in results[0].metadata
+    assert "label_rows" not in results[0].metadata
 
 
 @pytest.mark.unit

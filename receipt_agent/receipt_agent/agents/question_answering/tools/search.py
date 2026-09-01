@@ -23,14 +23,22 @@ from datetime import datetime
 from typing import Any, Callable, Optional
 
 from langchain_core.tools import tool
-from receipt_chroma.section_labels import non_item_section_filter
+from receipt_chroma.section_labels import (
+    NON_ITEM_SECTION_LABELS,
+    non_item_section_filter,
+)
+
+from receipt_embeddings.backend import vector_search_client
+from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
+from receipt_embeddings.service_limits import LINE_INDEX, MAX_SEARCH_RESULTS
+from receipt_embeddings.vector_client import VectorSearchClient
 
 logger = logging.getLogger(__name__)
 
-# Chroma Cloud rejects queries requesting more than 300 results per call
-# ("NumResults" quota). Requests above it fail outright, which sends the
-# agent into retry loops, so every n_results must stay at or under this.
-CHROMA_MAX_N_RESULTS = 300
+# Every semantic n_results is trimmed to the 100-result SearchVectors cap
+# (MAX_SEARCH_RESULTS). This deliberately cuts the old Chroma depth of up
+# to 300 (spec §3.5 "Top-100 cap check"); Chroma accepts the smaller ask
+# unchanged, so both backends stay within one call.
 
 
 # ==============================================================================
@@ -132,6 +140,8 @@ def create_qa_tools(
     dynamo_client: Any,
     chroma_client: Any,
     embed_fn: Callable[[list[str]], list[list[float]]],
+    *,
+    vector_client: Optional[VectorSearchClient] = None,
 ) -> tuple[list, dict]:
     """Create tools for QA agent.
 
@@ -139,11 +149,55 @@ def create_qa_tools(
         dynamo_client: DynamoDB client for receipt data
         chroma_client: ChromaDB client for similarity search
         embed_fn: Function to generate embeddings for semantic search
+        vector_client: Optional injected similarity backend; defaults to
+            the ``VECTOR_BACKEND`` selection (chroma unless set)
 
     Returns:
         (tools, state_holder) - List of tools and state dict for tracking
     """
     _embed_fn = embed_fn
+
+    # Semantic retrieval goes through the shared VectorSearchClient seam
+    # (VECTOR_BACKEND=chroma|dynamodb, default chroma). Resolution is lazy
+    # and cached so the default path builds no AWS client, and any failure
+    # degrades every semantic mode to empty results instead of hard-failing
+    # the QA agent — search is its only discovery surface.
+    _vector_client_cache: dict[str, Optional[VectorSearchClient]] = {}
+
+    def _resolve_vector_client() -> Optional[VectorSearchClient]:
+        if "client" not in _vector_client_cache:
+            try:
+                # Thread the session's configured Dynamo table (and its
+                # low-level boto3 client) through, so a dynamodb backend
+                # targets the SAME table as every other tool instead of
+                # backend.py's environment fallback (E3 review P1-3).
+                _vector_client_cache["client"] = vector_search_client(
+                    chroma_client,
+                    vector_client=vector_client,
+                    dynamodb_client=getattr(dynamo_client, "_client", None),
+                    table_name=getattr(dynamo_client, "table_name", None),
+                )
+            except Exception as exc:  # noqa: BLE001 - degrade, never fail
+                logger.error("Vector search backend unavailable: %s", exc)
+                _vector_client_cache["client"] = None
+        return _vector_client_cache["client"]
+
+    def _search_lines(
+        query_embedding: list[float], top_k: int
+    ) -> Optional[list]:
+        """Line-index neighbors, or None when retrieval is degraded."""
+        client = _resolve_vector_client()
+        if client is None:
+            return None
+        try:
+            return client.search(
+                query_embedding,
+                index=LINE_INDEX,
+                top_k=max(1, min(top_k, MAX_SEARCH_RESULTS)),
+            )
+        except Exception as exc:  # noqa: BLE001 - throttle/missing index
+            logger.error("Vector search failed, degrading to empty: %s", exc)
+            return None
 
     # State holder tracks searches and retrieved receipts
     # This helps the agent know what it's already searched/fetched
@@ -469,7 +523,6 @@ def create_qa_tools(
                 }
 
             elif search_type == "semantic":
-                lines_collection = chroma_client.get_collection("lines")
                 query_embeddings = _embed_fn([query])
                 if not query_embeddings or not query_embeddings[0]:
                     return {
@@ -477,39 +530,41 @@ def create_qa_tools(
                         "results": [],
                     }
 
-                results = lines_collection.query(
-                    query_embeddings=query_embeddings,
-                    n_results=min(limit * 2, CHROMA_MAX_N_RESULTS),
-                    include=["metadatas", "distances"],
+                neighbors = _search_lines(
+                    query_embeddings[0], min(limit * 2, MAX_SEARCH_RESULTS)
                 )
+                if neighbors is None:
+                    _track_search(query, search_type, 0)
+                    return {
+                        "search_type": "semantic",
+                        "query": query,
+                        "total_matches": 0,
+                        "unique_receipts": 0,
+                        "results": [],
+                        "note": (
+                            "Vector search is unavailable; reason logged. "
+                            "Try text search instead."
+                        ),
+                    }
 
-                if results["ids"] and results["ids"][0]:
-                    for idx, (id_, meta) in enumerate(
-                        zip(results["ids"][0], results["metadatas"][0])
-                    ):
-                        receipt_key = (
-                            meta.get("image_id"),
-                            meta.get("receipt_id"),
-                        )
-                        distance = (
-                            results["distances"][0][idx]
-                            if results["distances"]
-                            else None
-                        )
-                        if receipt_key not in unique_receipts:
-                            unique_receipts[receipt_key] = {
-                                "image_id": meta.get("image_id"),
-                                "receipt_id": meta.get("receipt_id"),
-                                "matched_row": meta.get("text", "")[:100],
-                                "similarity_distance": distance,
-                            }
+                for neighbor in neighbors:
+                    meta = neighbor.metadata
+                    receipt_key = (
+                        meta.get("image_id"),
+                        meta.get("receipt_id"),
+                    )
+                    if receipt_key not in unique_receipts:
+                        unique_receipts[receipt_key] = {
+                            "image_id": meta.get("image_id"),
+                            "receipt_id": meta.get("receipt_id"),
+                            "matched_row": str(meta.get("text", ""))[:100],
+                            "similarity_distance": neighbor.distance,
+                        }
 
                 search_result = {
                     "search_type": "semantic",
                     "query": query,
-                    "total_matches": (
-                        len(results["ids"][0]) if results["ids"] else 0
-                    ),
+                    "total_matches": len(neighbors),
                     "unique_receipts": len(unique_receipts),
                     "results": list(unique_receipts.values())[:limit],
                 }
@@ -628,7 +683,6 @@ def create_qa_tools(
             semantic_search("dairy products") -> finds milk, cheese, yogurt receipts
         """
         try:
-            lines_collection = chroma_client.get_collection("lines")
             query_embeddings = _embed_fn([query])
             if not query_embeddings or not query_embeddings[0]:
                 return {
@@ -637,47 +691,51 @@ def create_qa_tools(
                     "suggestion": "Try using search_receipts with text search instead",
                 }
 
-            results = lines_collection.query(
-                query_embeddings=query_embeddings,
-                n_results=min(limit * 3, CHROMA_MAX_N_RESULTS),
-                include=["metadatas", "distances", "documents"],
+            neighbors = _search_lines(
+                query_embeddings[0], min(limit * 3, MAX_SEARCH_RESULTS)
             )
+            if neighbors is None:
+                _track_search(query, "semantic", 0)
+                return {
+                    "search_type": "semantic",
+                    "query": query,
+                    "total_matches": 0,
+                    "min_similarity_used": min_similarity,
+                    "results": [],
+                    "suggestions": [
+                        "Vector search is unavailable; use search_receipts "
+                        "with text search instead"
+                    ],
+                }
 
             unique_receipts: dict[tuple, dict] = {}
-            if results["ids"] and results["ids"][0]:
-                for idx, (id_, meta) in enumerate(
-                    zip(results["ids"][0], results["metadatas"][0])
+            for neighbor in neighbors:
+                meta = neighbor.metadata
+                receipt_key = (
+                    meta.get("image_id"),
+                    meta.get("receipt_id"),
+                )
+                similarity = max(0.0, 1.0 - neighbor.distance)
+
+                if similarity < min_similarity:
+                    continue
+
+                if (
+                    receipt_key not in unique_receipts
+                    or similarity
+                    > unique_receipts[receipt_key].get("similarity", 0)
                 ):
-                    receipt_key = (
-                        meta.get("image_id"),
-                        meta.get("receipt_id"),
-                    )
-                    distance = (
-                        results["distances"][0][idx]
-                        if results["distances"]
-                        else 1.0
-                    )
-                    similarity = max(0.0, 1.0 - distance)
-
-                    if similarity < min_similarity:
-                        continue
-
-                    if (
-                        receipt_key not in unique_receipts
-                        or similarity
-                        > unique_receipts[receipt_key].get("similarity", 0)
-                    ):
-                        unique_receipts[receipt_key] = {
-                            "image_id": meta.get("image_id"),
-                            "receipt_id": meta.get("receipt_id"),
-                            "matched_text": meta.get("text", "")[:150],
-                            "similarity": round(similarity, 3),
-                            "confidence": (
-                                "high"
-                                if similarity > 0.7
-                                else "medium" if similarity > 0.5 else "low"
-                            ),
-                        }
+                    unique_receipts[receipt_key] = {
+                        "image_id": meta.get("image_id"),
+                        "receipt_id": meta.get("receipt_id"),
+                        "matched_text": str(meta.get("text", ""))[:150],
+                        "similarity": round(similarity, 3),
+                        "confidence": (
+                            "high"
+                            if similarity > 0.7
+                            else "medium" if similarity > 0.5 else "low"
+                        ),
+                    }
 
             # Track this search
             _track_search(query, "semantic", len(unique_receipts))
@@ -961,7 +1019,6 @@ def create_qa_tools(
             search_product_lines("dairy products", "semantic") -> milk, cheese, etc.
         """
         try:
-            lines_collection = chroma_client.get_collection("lines")
 
             def extract_price(text: str) -> Optional[float]:
                 matches = re.findall(r"\d+\.\d{2}", text)
@@ -974,14 +1031,23 @@ def create_qa_tools(
                 if not query_embeddings or not query_embeddings[0]:
                     return {"error": "Failed to generate embedding"}
 
-                results = lines_collection.query(
-                    query_embeddings=query_embeddings,
-                    n_results=min(limit * 3, CHROMA_MAX_N_RESULTS),
-                    where=non_item_section_filter(),
-                    include=["metadatas", "distances"],
+                neighbors = _search_lines(
+                    query_embeddings[0], min(limit * 3, MAX_SEARCH_RESULTS)
                 )
+                if neighbors is None:
+                    _track_search(query, "semantic", 0)
+                    return {
+                        "query": query,
+                        "search_type": "semantic",
+                        "total_matches": 0,
+                        "items": [],
+                        "note": (
+                            "Vector search is unavailable; reason logged. "
+                            "Try text search instead."
+                        ),
+                    }
 
-                if not results["ids"] or not results["ids"][0]:
+                if not neighbors:
                     _track_search(query, "semantic", 0)
                     return {
                         "query": query,
@@ -992,11 +1058,27 @@ def create_qa_tools(
 
                 items = []
                 seen = set()
+                # label_LINE_TOTAL is Chroma line metadata; Dynamo line
+                # items never carry it, so under the Dynamo backend the
+                # flag is honestly "unknown" rather than a false False
+                # (E3 review P2-5).
+                label_flags_available = not isinstance(
+                    _resolve_vector_client(), DynamoVectorSearchClient
+                )
+                # Chroma pre-filtered non-item sections inside the ANN
+                # query ($nin); the seam takes equality filters only, so
+                # the same exclusion is applied after retrieval. Rows with
+                # no section label stay, like non_item_section_filter().
+                non_item_sections = set(NON_ITEM_SECTION_LABELS)
 
-                for idx, (id_, meta) in enumerate(
-                    zip(results["ids"][0], results["metadatas"][0])
-                ):
-                    text = meta.get("text", "")
+                for neighbor in neighbors:
+                    meta = neighbor.metadata
+                    section = meta.get("section_label") or meta.get(
+                        "section_type"
+                    )
+                    if section in non_item_sections:
+                        continue
+                    text = str(meta.get("text", ""))
                     image_id = meta.get("image_id")
                     receipt_id = meta.get("receipt_id")
 
@@ -1005,12 +1087,7 @@ def create_qa_tools(
                         continue
                     seen.add(item_key)
 
-                    distance = (
-                        results["distances"][0][idx]
-                        if results["distances"]
-                        else 1.0
-                    )
-                    similarity = max(0.0, 1.0 - distance)
+                    similarity = max(0.0, 1.0 - neighbor.distance)
 
                     if similarity < 0.25:
                         continue
@@ -1020,8 +1097,10 @@ def create_qa_tools(
                             "text": text,
                             "price": extract_price(text),
                             "similarity": round(similarity, 3),
-                            "has_price_label": meta.get(
-                                "label_LINE_TOTAL", False
+                            "has_price_label": (
+                                meta.get("label_LINE_TOTAL", False)
+                                if label_flags_available
+                                else "unknown"
                             ),
                             "merchant": meta.get("merchant_name", "Unknown"),
                             "image_id": image_id,
@@ -1056,7 +1135,7 @@ def create_qa_tools(
                 result = {
                     "query": query,
                     "search_type": "semantic",
-                    "total_matches": len(results["ids"][0]),
+                    "total_matches": len(neighbors),
                     "unique_items": len(items),
                     "items": items,
                     "auto_fetched": fetched_count,
@@ -1081,7 +1160,9 @@ def create_qa_tools(
                 return result
 
             else:
-                # Text search
+                # Text search (unchanged: direct Chroma substring scan;
+                # its DynamoDB rewrite is out of this card's scope)
+                lines_collection = chroma_client.get_collection("lines")
                 results = lines_collection.get(
                     where_document={"$contains": query.upper()},
                     where=non_item_section_filter(),
