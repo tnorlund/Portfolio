@@ -301,6 +301,11 @@ class DynamoVectorSearchClient:
             "request_bytes": self.last_request_bytes,
             "estimated_usd": estimated_cost,
             "join_read_units": self.last_join_read_units,
+            # SearchVectors itself bills request bytes, never read units;
+            # the fetch-join's BatchGetItem units are the only read units
+            # this client consumes, so they ARE its request_units — which
+            # also lets the harness report read_request_units_per_query.
+            "request_units": self.last_join_read_units,
         }
 
 

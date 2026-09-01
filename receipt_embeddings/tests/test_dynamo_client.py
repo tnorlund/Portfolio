@@ -126,6 +126,7 @@ def test_search_vectors_wire_shape_and_response_contract() -> None:
         40960 / 1_000_000_000 * 0.002
     )
     assert metrics["join_read_units"] == pytest.approx(4.0)
+    assert metrics["request_units"] == pytest.approx(4.0)
 
 
 @pytest.mark.unit
