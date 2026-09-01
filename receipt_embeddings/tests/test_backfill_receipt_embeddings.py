@@ -8,6 +8,10 @@ from typing import Any
 
 import pytest
 from receipt_dynamo.constants import ValidationStatus
+import pytest
+
+pytest.importorskip("chromadb", reason="imports the backfill script's chroma source; the CI receipt_embeddings leg is chromadb-free")
+
 from scripts.backfill_receipt_embeddings import (
     EXIT_GLOBAL_WRITE_FAILURE,
     EXIT_VERIFICATION_FAILURE,
