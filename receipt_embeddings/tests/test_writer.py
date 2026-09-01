@@ -106,3 +106,95 @@ def test_duplicate_request_is_skip_and_report() -> None:
     assert report.written == 1
     assert len(report.failures) == 1
     assert report.failures[0].stage == "validate"
+
+
+class ThrottlingDynamo(MemoryDynamo):
+    """Batched writes throttle; single-item retries throttle only for the
+    poisoned key, so healthy items still land."""
+
+    def __init__(self, poisoned_sk: str) -> None:
+        super().__init__()
+        self._poisoned_sk = poisoned_sk
+
+    def batch_write_item(self, **kwargs: Any) -> dict[str, Any]:
+        requests = kwargs["RequestItems"][TABLE]
+        if len(requests) > 1:
+            raise RuntimeError("ProvisionedThroughputExceededException")
+        item = requests[0]["PutRequest"]["Item"]
+        if item["SK"]["S"] == self._poisoned_sk:
+            raise RuntimeError("ProvisionedThroughputExceededException")
+        return super().batch_write_item(**kwargs)
+
+
+@pytest.mark.unit
+def test_write_throttle_isolates_items_and_keeps_healthy_writes() -> None:
+    dynamo = ThrottlingDynamo("RECEIPT#00001#LINE#00003#EMBEDDING")
+    writer = EmbeddingWriter(
+        dynamo,
+        TABLE,
+        embedder=lambda **_kwargs: [[0.01] * EMBEDDING_DIMENSIONS],
+        sleep=lambda _: None,
+    )
+
+    report = writer.write([_line("GOOD"), _line("BAD", line_id=3)])
+
+    assert report.written == 1
+    assert len(report.failures) == 1
+    assert report.failures[0].stage == "write"
+    stored_sks = {item["SK"]["S"] for item in dynamo.items.values()}
+    assert stored_sks == {"RECEIPT#00001#LINE#00002#EMBEDDING"}
+
+
+@pytest.mark.unit
+def test_global_write_outage_reports_every_item_and_writes_nothing() -> None:
+    """The writer never raises on a total outage: every item becomes an
+    attributable failure with zero writes — the exact report shape the
+    backfill's fail-closed exit keys on."""
+
+    class DeadDynamo(MemoryDynamo):
+        def batch_write_item(self, **_kwargs: Any) -> dict[str, Any]:
+            raise RuntimeError("endpoint unreachable")
+
+    dynamo = DeadDynamo()
+    writer = EmbeddingWriter(
+        dynamo,
+        TABLE,
+        embedder=lambda **_kwargs: [[0.01] * EMBEDDING_DIMENSIONS],
+        sleep=lambda _: None,
+    )
+
+    report = writer.write([_line("A"), _line("B", line_id=3)])
+
+    assert report.written == 0
+    assert len(report.failures) == 2
+    assert {failure.stage for failure in report.failures} == {"write"}
+    assert dynamo.items == {}
+
+
+@pytest.mark.unit
+def test_line_anchor_fields_flow_through_writer_to_stored_item() -> None:
+    dynamo = MemoryDynamo()
+    writer = EmbeddingWriter(
+        dynamo,
+        TABLE,
+        embedder=lambda **_kwargs: [[0.01] * EMBEDDING_DIMENSIONS],
+    )
+    request = EmbeddingWriteRequest(
+        kind="line",
+        image_id=IMAGE_ID,
+        receipt_id=1,
+        line_id=2,
+        text="CALL 555-123-4567",
+        row_line_ids=(2,),
+        normalized_phone_10="5551234567",
+        normalized_full_address="123 MAIN ST HENDERSON NV 89014",
+    )
+
+    report = writer.write([request])
+
+    assert report.written == 1
+    stored = next(iter(dynamo.items.values()))
+    assert stored["normalized_phone_10"] == {"S": "5551234567"}
+    assert stored["normalized_full_address"] == {
+        "S": "123 MAIN ST HENDERSON NV 89014"
+    }
