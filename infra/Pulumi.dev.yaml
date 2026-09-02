@@ -68,3 +68,4 @@ config:
   portfolio:ats_verification_inbox_enabled: "true"
   chromadb:enable-line-item-refine: "true"
   portfolio:enable-dual-write-embeddings: "true"
+  portfolio:vector-backend: dynamodb
