@@ -433,6 +433,17 @@ class EmbeddingResult:
         default_factory=dict
     )
 
+    # Row-aligned raw embedding output (issue #1517): exactly what
+    # receipt_upload.merchant_resolution.dynamo_embedding_write's
+    # build_ingest_embedding_requests needs — vectors paired with the
+    # visual-row grouping that produced them, and word vectors aligned
+    # with the receipt_words input order — so callers (e.g. the merge
+    # Lambda) can dual-write native DynamoDB embedding items without
+    # re-embedding or re-deriving rows.
+    row_embeddings: list = field(default_factory=list)
+    row_line_ids_list: list = field(default_factory=list)
+    word_embeddings_list: list = field(default_factory=list)
+
     _closed: bool = field(default=False, repr=False)
 
     def wait_for_compaction_to_finish(
@@ -1095,6 +1106,9 @@ def create_embeddings_and_compaction_run(
             compaction_run=compaction_run,
             line_embeddings=line_embedding_cache,
             word_embeddings=word_embedding_cache,
+            row_embeddings=list(row_embeddings),
+            row_line_ids_list=list(row_line_ids_list),
+            word_embeddings_list=list(word_embeddings_list),
             _lines_dir=local_lines_dir,
             _words_dir=local_words_dir,
         )

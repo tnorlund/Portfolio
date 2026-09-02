@@ -105,7 +105,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             create_embeddings_and_compaction_run,
         )
         from receipt_dynamo import DynamoClient
-
         from receipt_upload.combine import (
             calculate_min_area_rect,
             clone_receipt_place_for_receipt,
@@ -438,6 +437,31 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
         compaction_run_id = embedding_result.compaction_run.run_id
         logger.info("CompactionRun created: %s", compaction_run_id)
+
+        # Dual-run leg (issue #1517): reuse the vectors this merge just
+        # computed to write native DynamoDB embedding items, so a
+        # receipt merged during/after the Dynamo cutover is searchable
+        # via SearchVectors. Flag-gated and never-raising — a failure
+        # here cannot affect the merge outcome.
+        # pylint: disable=import-outside-toplevel
+        from receipt_upload.merchant_resolution.dynamo_embedding_write import (
+            maybe_dual_write_embeddings,
+        )
+
+        dual_report = maybe_dual_write_embeddings(
+            dynamo=client,
+            image_id=image_id,
+            receipt_id=new_receipt_id,
+            lines=receipt_lines,
+            words=non_noise_words,
+            word_labels=new_labels or [],
+            receipt_place=receipt_place,
+            row_embeddings=embedding_result.row_embeddings,
+            row_line_ids_list=embedding_result.row_line_ids_list,
+            word_embeddings_list=embedding_result.word_embeddings_list,
+        )
+        if dual_report is not None:
+            logger.info("Dual-write embeddings report: %s", dual_report)
 
         # ============================================================
         # Step 12: Close embedding resources (compaction runs async

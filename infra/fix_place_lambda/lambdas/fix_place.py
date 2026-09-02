@@ -133,7 +133,10 @@ async def _run_place_finder(
     tiered_stats: dict[str, Any] = {}
 
     resolution_mode = os.environ.get("FIX_PLACE_RESOLUTION_MODE", "agent").lower()
-    if resolution_mode == "tiered":
+    vector_backend = (
+        os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
+    )
+    if resolution_mode == "tiered" or vector_backend == "dynamodb":
         from receipt_agent.subagents.place_finder.tiered import (
             resolve_tiered_place,
         )
@@ -141,6 +144,25 @@ async def _run_place_finder(
         tiered_result, tiered_stats = await resolve_tiered_place(details, places_client)
         if tiered_result is not None:
             return tiered_result, details, tiered_stats
+        if vector_backend == "dynamodb":
+            # Tier 3's agentic tools are Chroma-only (issue #1517): they
+            # need unfiltered word queries and invalid-label arrays the
+            # embedding items don't carry. On the dynamodb backend a
+            # tiered miss returns a structured not-found instead of
+            # falling through to a ChromaClient.
+            return (
+                {
+                    "found": False,
+                    "resolution_tier": "tiered",
+                    "reasoning": (
+                        "tiered resolution missed; the Chroma-only "
+                        "tier-3 agent is disabled on "
+                        "VECTOR_BACKEND=dynamodb"
+                    ),
+                },
+                details,
+                tiered_stats,
+            )
     elif resolution_mode != "agent":
         logger.warning(
             "Unknown FIX_PLACE_RESOLUTION_MODE=%s; using agent fallback",
@@ -235,7 +257,15 @@ def handler(  # pylint: disable=unused-argument
         # mode already contains a bounded agent and a single structured picker;
         # rerunning the whole cascade would multiply both limits and cost.
         resolution_mode = os.environ.get("FIX_PLACE_RESOLUTION_MODE", "agent").lower()
-        max_attempts = 1 if resolution_mode == "tiered" else 3
+        # One attempt when the cascade cannot reach tier 3: tiered mode,
+        # or the dynamodb vector backend (which gates tier 3 off).
+        max_attempts = (
+            1
+            if resolution_mode == "tiered"
+            or os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
+            == "dynamodb"
+            else 3
+        )
         agent_result = None
         details = None
         attempted_reason = reason
