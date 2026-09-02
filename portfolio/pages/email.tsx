@@ -320,7 +320,9 @@ export default function EmailPage() {
         new raw mail down from S3, parses it with the one and only set of
         parsers, and reconciles it against the bank. Then it takes a
         consistent copy of the file and uploads it back to S3 next to a
-        manifest: a checksum, row counts, and when it was published.
+        manifest: a checksum, row counts, and when it was published. That
+        job is a launchd agent at seven in the morning, and it has already
+        run without me: 21 new messages, 3 receipts, a fresh copy in S3.
       </p>
 
       <FigureBoundary
@@ -363,9 +365,16 @@ export default function EmailPage() {
 
       <p>
         I deleted the Lambda, its dead-letter queue, the alarm, the retry
-        config, and the S3 trigger. SES to S3 is now just mail in a bucket.
-        Fewer moving parts, same data, and one parser to fix when Apple
-        changes its template again.
+        config, and the S3 trigger. Nine resources. SES to S3 is now just
+        mail in a bucket. Fewer moving parts, same data, and one parser to
+        fix when Apple changes its template again.
+      </p>
+
+      <p>
+        The one piece of code AWS still shares with the Mac is the query
+        module the replica Lambda answers with. It is a byte-for-byte copy,
+        and a test fails the build if the two ever differ. That is how the
+        second-parser problem does not come back.
       </p>
 
       <h1>What Else Should Agents See?</h1>
@@ -421,6 +430,14 @@ export default function EmailPage() {
         gets parsed is lost. Seven other senders have parsers but have not
         emailed me a receipt in two years. They get a rule if they come back,
         not before. Adding a parser and adding a rule are the same moment.
+      </p>
+
+      <p>
+        The audit is a command, not a memory. iCloud has no API, so a text
+        file in the repo mirrors the rules screen, and one command compares
+        it against every sender that has ever produced a receipt. I run it
+        after I touch the rules. It tells me what to add, what forwards mail
+        nothing reads, and which parsers have no rule.
       </p>
 
       <h1>Turning It Off</h1>
