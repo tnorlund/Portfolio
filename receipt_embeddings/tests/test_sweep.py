@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+
 from receipt_embeddings.service_limits import MAX_BATCH_WRITE_ITEMS
 from receipt_embeddings.sweep import delete_native_embedding_items
 
