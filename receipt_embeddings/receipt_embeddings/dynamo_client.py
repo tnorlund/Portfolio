@@ -9,7 +9,6 @@ from typing import Any
 
 from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
 from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
-
 from receipt_embeddings.keys import (
     canonical_key_from_item,
     embedding_item_key,
