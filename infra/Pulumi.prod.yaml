@@ -58,3 +58,4 @@ config:
   portfolio:vector-backend: dynamodb
   portfolio:fix_place_resolution_mode: tiered
   portfolio:enable-dual-write-embeddings: "true"
+  chromadb:enable-compaction: "false"
