@@ -38,6 +38,7 @@ addopts = "-v"
 markers = [
   "unit: fully offline unit test",
   "vector_integration: live vector backend integration test",
+  "performance: opt-in moto benchmarks (RECEIPT_EMBEDDINGS_PERF=1 or -m performance)",
 ]
 
 [tool.black]
