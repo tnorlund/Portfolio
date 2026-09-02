@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
+
 from receipt_embeddings import EmbeddingWriter, EmbeddingWriteRequest
 from receipt_embeddings.writer import (
     EmbeddingWriteFailure,
