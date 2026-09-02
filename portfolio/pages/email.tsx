@@ -13,7 +13,7 @@ import {
   EmailReplicaDiagram,
   EmailSenderCensus,
 } from "../components/ui/Figures";
-import { AWSLogo, ClaudeLogo, GrokBotLogo, PulumiLogo } from "../components/ui/Logos";
+import { AWSLogo, ClaudeAppLogo, GrokBotLogo, PulumiLogo } from "../components/ui/Logos";
 import styles from "../styles/Receipt.module.css";
 
 interface FigureBoundaryProps {
@@ -172,11 +172,9 @@ export default function EmailPage() {
 
       <h1>The Receipt Reader Gets Parsed Rows</h1>
 
-      <FigureBoundary name="claude-logo" intrinsicSize="150px">
+      <FigureBoundary name="claude-logo" intrinsicSize="200px">
         <ClientOnly>
-          <AnimatedInView>
-            <ClaudeLogo />
-          </AnimatedInView>
+          <ClaudeAppLogo />
         </ClientOnly>
       </FigureBoundary>
 

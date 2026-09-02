@@ -1,6 +1,6 @@
 import React from "react";
 import {
-  ClientIcon,
+  ClaudeIcon,
   LambdaIcon,
   LaptopIcon,
   S3Icon,
@@ -30,7 +30,7 @@ const NODES: FlowNode[] = [
       <LambdaIcon x={x} y={y} gradientId="email-lambda-gradient" />
     ),
   },
-  { id: "mcp", label: "MCP", render: (x, y) => <ClientIcon x={x} y={y} /> },
+  { id: "claude", label: "Claude", render: (x, y) => <ClaudeIcon x={x} y={y} /> },
 ];
 
 /**
@@ -55,7 +55,7 @@ const EmailReplicaDiagram: React.FC<EmailReplicaDiagramProps> = ({
     legs={LEGS}
     chars={chars}
     paused={paused}
-    ariaLabel="The Mac uploads a SQLite snapshot to S3, a Lambda downloads it, and MCP clients ask it questions"
+    ariaLabel="The Mac uploads a SQLite snapshot to S3, a Lambda downloads it, and Claude asks it questions over MCP"
   />
 );
 

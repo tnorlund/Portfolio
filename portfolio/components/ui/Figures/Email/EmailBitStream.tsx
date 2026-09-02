@@ -348,6 +348,13 @@ export function GrokIcon({ x, y }: { x: number; y: number }) {
   );
 }
 
+/** The Claude app icon (public/claude-icon.svg), in the same 85×85 slot. */
+export function ClaudeIcon({ x, y }: { x: number; y: number }) {
+  return (
+    <image href="/claude-icon.svg" x={x - 46} y={y - 46} width="92" height="92" />
+  );
+}
+
 export function EmailGradients() {
   return (
     <defs>
