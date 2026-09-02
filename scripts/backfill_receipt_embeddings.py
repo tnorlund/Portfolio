@@ -30,6 +30,14 @@ for package_root in (
 ):
     sys.path.insert(0, str(package_root))
 
+from receipt_chroma.embedding.metadata.line_metadata import (  # noqa: E402
+    enrich_row_metadata_with_anchors,
+)
+from receipt_dynamo import DynamoClient  # noqa: E402
+from receipt_dynamo.constants import ValidationStatus  # noqa: E402
+from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
+    EntityNotFoundError,
+)
 from receipt_embeddings import (  # noqa: E402
     DynamoVectorSearchClient,
     EmbeddingWriter,
@@ -41,24 +49,15 @@ from receipt_embeddings.formatting import (  # noqa: E402
     get_row_embedding_inputs,
     group_lines_into_visual_rows,
 )
+from receipt_embeddings.quotas import (  # noqa: E402
+    MAX_GET_LIMIT,
+    ensure_get_ids_within_quota,
+)
 from receipt_embeddings.service_limits import (  # noqa: E402
     EMBEDDING_DIMENSIONS,
     LINE_INDEX,
     MAX_SEARCH_RESULTS,
     WORD_INDEX,
-)
-
-from receipt_chroma.embedding.metadata.line_metadata import (  # noqa: E402
-    enrich_row_metadata_with_anchors,
-)
-from receipt_dynamo import DynamoClient  # noqa: E402
-from receipt_dynamo.constants import ValidationStatus  # noqa: E402
-from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
-    EntityNotFoundError,
-)
-from receipt_embeddings.quotas import (  # noqa: E402
-    MAX_GET_LIMIT,
-    ensure_get_ids_within_quota,
 )
 from scripts.similarity_harness.capture_golden import (  # noqa: E402
     CHROMA_ENVIRONMENT,
