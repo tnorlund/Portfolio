@@ -1257,7 +1257,6 @@ def _dual_write_outputs_native_only(
     from receipt_chroma.embedding.metadata.line_metadata import (
         enrich_row_metadata_with_anchors,
     )
-
     from receipt_embeddings import EmbeddingWriter
     from receipt_embeddings.write_requests import (
         build_embedding_write_requests,
