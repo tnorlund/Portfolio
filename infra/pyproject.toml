@@ -66,7 +66,6 @@ module = [
     "pulumi.*",
     "pulumi_aws.*",
     "pulumi_docker_build.*",
-    "chromadb_compaction.*",
     "dynamo_db.*",
     "lambda_layer.*",
     "utils.*",
@@ -128,7 +127,7 @@ allow-any-import-level = ["boto3", "botocore", "chromadb", "openai"]
 # Configure pytest to not import packages when collecting tests
 # This prevents loading infrastructure code during Lambda function testing
 pythonpath = ["."]
-testpaths = ["chromadb_compaction/tests"]
+testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

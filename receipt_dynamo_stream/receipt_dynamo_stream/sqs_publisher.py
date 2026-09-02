@@ -56,7 +56,12 @@ def publish_messages(
         if TargetQueue.LINE_ITEMS in msg.collections:
             line_item_messages.append((msg_dict, TargetQueue.LINE_ITEMS))
 
-    if lines_messages:
+    # Chroma compaction legs are RETIRED targets: when their queue URLs
+    # are absent (the compaction stack is deleted), skip them silently
+    # instead of raising — a raise here would abort the whole batch
+    # BEFORE the surviving summary/line-item sends and the vector
+    # freshening leg run (codex teardown review P1).
+    if lines_messages and os.environ.get("LINES_QUEUE_URL"):
         sent_count += send_batch_to_queue(
             sqs,
             lines_messages,
@@ -65,7 +70,7 @@ def publish_messages(
             metrics,
         )
 
-    if words_messages:
+    if words_messages and os.environ.get("WORDS_QUEUE_URL"):
         sent_count += send_batch_to_queue(
             sqs,
             words_messages,

@@ -40,7 +40,6 @@ from typing import Optional
 
 # Import our infrastructure components
 from billing_alerts import BillingAlerts
-from chromadb_compaction import create_chromadb_compaction_infrastructure
 from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
@@ -196,33 +195,20 @@ nat = NatEgress(
 pulumi.export("nat_instance_id", nat.nat_instance_id)
 pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
 
-# Create ChromaDB compaction infrastructure using the shared S3 bucket.
-compaction_lambda_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])
+# ChromaDB compaction stack DELETED (teardown PR #3 of the Chroma
+# removal): the 10GB enhanced-compaction Lambda, lines/words queues,
+# docker pipeline and alarms are gone. The shared snapshot bucket
+# (shared_chromadb_buckets) survives until the bucket-teardown PR.
 
-chromadb_infrastructure = create_chromadb_compaction_infrastructure(
-    name=f"chromadb-{pulumi.get_stack()}",
-    dynamodb_table_arn=dynamodb_table.arn,
-    dynamodb_stream_arn=dynamodb_table.stream_arn,
-    chromadb_buckets=shared_chromadb_buckets,
-    subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
-    lambda_security_group_id=security.sg_lambda_id,
-    alert_topic_arn=notification_system.critical_error_topic_arn,
-)
-
-# Summary/line-item update pipeline + stream processor, relocated out of
-# the chromadb component (alias-preserving move: same logical names, same
-# physical queues/Lambdas). lines/words URLs still feed the stream
-# processor until the compaction stack is deleted.
+# Summary/line-item update pipeline + stream processor (Chroma-free;
+# relocated in #1530). Without lines/words env vars the stream
+# publisher's compaction legs self-disable.
 receipt_update_queues = ReceiptUpdateQueues(
     f"receipt-updates-{pulumi.get_stack()}",
     queues_name=f"chromadb-{pulumi.get_stack()}-queues",
     lambdas_name=f"chromadb-{pulumi.get_stack()}",
     dynamodb_table_arn=dynamodb_table.arn,
     dynamodb_stream_arn=dynamodb_table.stream_arn,
-    lines_queue_url=chromadb_infrastructure.chromadb_queues.lines_queue_url,
-    words_queue_url=chromadb_infrastructure.chromadb_queues.words_queue_url,
-    lines_queue_arn=chromadb_infrastructure.chromadb_queues.lines_queue_arn,
-    words_queue_arn=chromadb_infrastructure.chromadb_queues.words_queue_arn,
 )
 
 # Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
@@ -1082,21 +1068,11 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # pulumi.export("instance_registry_table_name", instance_registry.table_name)
 # pulumi.export("ml_packages_built", ml_package_builder.packages)
 
-# ChromaDB infrastructure exports (hybrid deployment)
+# ChromaDB bucket export (compaction stack deleted in teardown PR #3)
 pulumi.export("chromadb_bucket_name", shared_chromadb_buckets.bucket_name)
-pulumi.export(
-    "chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url
-)
-pulumi.export(
-    "chromadb_words_queue_url", chromadb_infrastructure.words_queue_url
-)
 pulumi.export(
     "stream_processor_function_arn",
     receipt_update_queues.stream_processor_arn,
-)
-pulumi.export(
-    "enhanced_compaction_function_arn",
-    chromadb_infrastructure.enhanced_compaction_arn,
 )
 
 # Keep historical stack-output names; the bucket is the shared one.

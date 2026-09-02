@@ -39,7 +39,9 @@ from pulumi import Alias, ComponentResource, Output, ResourceOptions
 from lambda_layer import dynamo_layer, dynamo_stream_layer
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
-_COMPACTION_DIR = Path(__file__).parent.parent / "chromadb_compaction"
+# Stream-processor handler + utils moved here with the compaction-stack
+# deletion (teardown PR #3); previously bundled from chromadb_compaction.
+_LOCAL_LAMBDAS = Path(__file__).parent / "lambdas"
 
 
 def _old_parent(chain: str, instance_name: str) -> str:
@@ -66,10 +68,6 @@ class ReceiptUpdateQueues(ComponentResource):
         lambdas_name: str,
         dynamodb_table_arn: pulumi.Input[str],
         dynamodb_stream_arn: pulumi.Input[str],
-        lines_queue_url: pulumi.Input[str],
-        words_queue_url: pulumi.Input[str],
-        lines_queue_arn: pulumi.Input[str],
-        words_queue_arn: pulumi.Input[str],
         stack: Optional[str] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -77,9 +75,8 @@ class ReceiptUpdateQueues(ComponentResource):
         child prefixes (``chromadb-{stack}-queues`` / ``chromadb-{stack}``)
         so auto-named physical resources keep their identities.
 
-        ``lines/words_queue_*`` keep the stream processor publishing to
-        the compaction queues until the compaction stack is deleted; drop
-        them (and the two env vars) in that later PR.
+        The compaction stack is deleted: no lines/words env vars are
+        set, so the stream publisher's compaction legs self-disable.
         """
         super().__init__("receipt:update:Queues", name, None, opts)
         if stack is None:
@@ -272,8 +269,6 @@ class ReceiptUpdateQueues(ComponentResource):
                 self.summary_dlq.arn,
                 self.line_item_queue.arn,
                 self.line_item_dlq.arn,
-                lines_queue_arn,
-                words_queue_arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -408,7 +403,7 @@ class ReceiptUpdateQueues(ComponentResource):
         # Stream processor (moved whole; env unchanged incl. lines/words
         # URLs until the compaction stack is deleted)
         # ------------------------------------------------------------------
-        _stream_lambdas = _COMPACTION_DIR / "lambdas"
+        _stream_lambdas = _LOCAL_LAMBDAS
         self.stream_processor_function = aws.lambda_.Function(
             f"{lambdas_name}-stream-processor",
             runtime="python3.13",
@@ -453,8 +448,6 @@ class ReceiptUpdateQueues(ComponentResource):
             memory_size=256,
             environment={
                 "variables": {
-                    "LINES_QUEUE_URL": lines_queue_url,
-                    "WORDS_QUEUE_URL": words_queue_url,
                     "RECEIPT_SUMMARY_QUEUE_URL": self.summary_queue.url,
                     "LINE_ITEM_QUEUE_URL": self.line_item_queue.url,
                     "DYNAMO_TABLE_NAME": Output.from_input(
