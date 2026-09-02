@@ -198,11 +198,34 @@ def test_batches_above_ten_messages(
     assert len(words_msgs) == 10
 
 
-def test_missing_queue_env_raises_configuration_error(moto_sqs: Any) -> None:
+def test_missing_retired_queue_env_is_skipped(moto_sqs: Any) -> None:
+    """Chroma compaction legs are retired: absent LINES/WORDS queue URLs
+    must be SKIPPED, not raised — a raise would abort the batch before
+    the surviving summary/line-item sends and vector freshening ran
+    (codex teardown review P1)."""
     os.environ.pop("LINES_QUEUE_URL", None)
     os.environ.pop("WORDS_QUEUE_URL", None)
     msg = _sample_place_message()
+    assert publish_messages([msg]) == 0
+
+
+def test_missing_surviving_queue_env_still_raises(moto_sqs: Any) -> None:
+    """The summary/line-item legs keep their fail-loud contract."""
+    from receipt_dynamo_stream import TargetQueue
+
+    os.environ.pop("RECEIPT_SUMMARY_QUEUE_URL", None)
+    msg = StreamMessage(
+        entity_type="RECEIPT_PLACE",
+        entity_data={"image_id": "img-1", "receipt_id": 1},
+        changes={"merchant_name": FieldChange(old="Old", new="New")},
+        event_name="MODIFY",
+        collections=(TargetQueue.RECEIPT_SUMMARY,),
+        context=StreamRecordContext(
+            timestamp=datetime.now().isoformat(),
+            record_id="event-1",
+            aws_region="us-east-1",
+        ),
+    )
     with pytest.raises(QueueConfigurationError) as caught:
         publish_messages([msg])
-    assert type(caught.value) is QueueConfigurationError
-    assert caught.value.environment_variable == "LINES_QUEUE_URL"
+    assert caught.value.environment_variable == "RECEIPT_SUMMARY_QUEUE_URL"
