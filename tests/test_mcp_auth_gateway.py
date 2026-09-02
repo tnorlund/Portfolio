@@ -146,17 +146,5 @@ def test_gateway_supports_claude_connector_oauth():
     assert "apigateway.RestApi" not in source
 
 
-def test_label_fixer_sends_bearer_token():
-    """The scheduled agent must fetch a client-credentials token and
-    send it on every MCP tools/call once the gateway fronts the URL."""
-    import json as _json
-
-    config = _json.loads(
-        (
-            REPO_ROOT / "infra/scheduled_agents/receipt_label_fixer.json"
-        ).read_text()
-    )
-    prompt = config["prompt"]
-    assert "grant_type=client_credentials" in prompt
-    assert "/mcp/oauth/receipt-automation-client" in prompt
-    assert '-H "Authorization: Bearer $MCP_TOKEN"' in prompt
+# test_label_fixer_sends_bearer_token removed with the retired
+# receipt_label_fixer scheduled agent (Label Evaluator retirement).
