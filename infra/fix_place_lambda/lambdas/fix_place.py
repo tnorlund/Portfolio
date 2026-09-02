@@ -132,16 +132,18 @@ async def _run_place_finder(
     places_client = create_places_client()
     tiered_stats: dict[str, Any] = {}
 
-    resolution_mode = os.environ.get("FIX_PLACE_RESOLUTION_MODE", "agent").lower()
-    vector_backend = (
-        os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
-    )
+    resolution_mode = os.environ.get(
+        "FIX_PLACE_RESOLUTION_MODE", "agent"
+    ).lower()
+    vector_backend = os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
     if resolution_mode == "tiered" or vector_backend == "dynamodb":
         from receipt_agent.subagents.place_finder.tiered import (
             resolve_tiered_place,
         )
 
-        tiered_result, tiered_stats = await resolve_tiered_place(details, places_client)
+        tiered_result, tiered_stats = await resolve_tiered_place(
+            details, places_client
+        )
         if tiered_result is not None:
             return tiered_result, details, tiered_stats
         if vector_backend == "dynamodb":
@@ -256,7 +258,9 @@ def handler(  # pylint: disable=unused-argument
         # but no place_id, so retain its historical retry behavior. Tiered
         # mode already contains a bounded agent and a single structured picker;
         # rerunning the whole cascade would multiply both limits and cost.
-        resolution_mode = os.environ.get("FIX_PLACE_RESOLUTION_MODE", "agent").lower()
+        resolution_mode = os.environ.get(
+            "FIX_PLACE_RESOLUTION_MODE", "agent"
+        ).lower()
         # One attempt when the cascade cannot reach tier 3: tiered mode,
         # or the dynamodb vector backend (which gates tier 3 off).
         max_attempts = (
@@ -270,8 +274,10 @@ def handler(  # pylint: disable=unused-argument
         details = None
         attempted_reason = reason
         for attempt in range(1, max_attempts + 1):
-            agent_result, details, attempt_llm_stats = _loop.run_until_complete(
-                _run_place_finder(image_id, receipt_id, attempted_reason)
+            agent_result, details, attempt_llm_stats = (
+                _loop.run_until_complete(
+                    _run_place_finder(image_id, receipt_id, attempted_reason)
+                )
             )
             for key in invocation_llm_stats:
                 invocation_llm_stats[key] += attempt_llm_stats.get(key, 0)
@@ -321,7 +327,9 @@ def handler(  # pylint: disable=unused-argument
         if not agent_result.get("merchant_name"):
             return {
                 "success": False,
-                "error": ("Agent found a place but merchant_name " "is missing"),
+                "error": (
+                    "Agent found a place but merchant_name " "is missing"
+                ),
                 "image_id": image_id,
                 "receipt_id": receipt_id,
                 "old_merchant": old_merchant,
@@ -384,7 +392,8 @@ def handler(  # pylint: disable=unused-argument
 
     finally:
         logger.info(
-            "fix_place_resolution image_id=%s receipt_id=%s tier=%s " "success=%s",
+            "fix_place_resolution image_id=%s receipt_id=%s tier=%s "
+            "success=%s",
             image_id,
             receipt_id,
             resolution_tier,
@@ -439,7 +448,9 @@ def _update_receipt_place(
         current_place.confidence = confidence
         current_place.reasoning = reasoning
         current_place.validated_by = "INFERENCE"
-        current_place.validation_status = "MATCHED" if confidence >= 0.8 else "UNSURE"
+        current_place.validation_status = (
+            "MATCHED" if confidence >= 0.8 else "UNSURE"
+        )
         current_place.timestamp = now
 
         dynamo_client.update_receipt_place(current_place)

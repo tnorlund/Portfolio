@@ -48,6 +48,60 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
+def _delete_native_embedding_items(
+    client: Any, image_id: str, receipt_id: int
+) -> int:
+    """Best-effort delete of a source receipt's ``#EMBEDDING`` items.
+
+    ``delete_receipt`` removes the receipt's entity rows but native
+    DynamoDB embedding items would otherwise linger and keep the deleted
+    fragment queryable via SearchVectors (codex review P1). Returns the
+    number of items deleted; never raises.
+    """
+    deleted = 0
+    try:
+        raw = client._client  # pylint: disable=protected-access
+        kwargs = {
+            "TableName": client.table_name,
+            "KeyConditionExpression": "PK = :p AND begins_with(SK, :s)",
+            "ExpressionAttributeValues": {
+                ":p": {"S": f"IMAGE#{image_id}"},
+                ":s": {"S": f"RECEIPT#{receipt_id:05d}#"},
+            },
+            "ProjectionExpression": "PK, SK",
+        }
+        keys = []
+        while True:
+            response = raw.query(**kwargs)
+            keys.extend(
+                {"PK": item["PK"], "SK": item["SK"]}
+                for item in response.get("Items", [])
+                if item["SK"]["S"].endswith("#EMBEDDING")
+            )
+            last_key = response.get("LastEvaluatedKey")
+            if not last_key:
+                break
+            kwargs["ExclusiveStartKey"] = last_key
+        for start in range(0, len(keys), 25):
+            chunk = keys[start : start + 25]
+            raw.batch_write_item(
+                RequestItems={
+                    client.table_name: [
+                        {"DeleteRequest": {"Key": key}} for key in chunk
+                    ]
+                }
+            )
+            deleted += len(chunk)
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception(
+            "Failed to delete native embedding items for %s#%s "
+            "(orphaned vectors may remain queryable)",
+            image_id,
+            receipt_id,
+        )
+    return deleted
+
+
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Lambda handler to merge receipt fragments into a single receipt.
@@ -462,6 +516,27 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
         if dual_report is not None:
             logger.info("Dual-write embeddings report: %s", dual_report)
+            # Destructive-step ordering (codex review P1): source
+            # receipts are deleted below, so an incomplete native write
+            # must abort the merge as retryable BEFORE deletion — never
+            # report success with the merged receipt missing vectors.
+            if dual_report.get("error") or dual_report.get("failed"):
+                try:
+                    embedding_result.close()
+                except Exception:  # pylint: disable=broad-exception-caught
+                    pass
+                return {
+                    "status": "error",
+                    "error": (
+                        "dual-write embeddings incomplete; source "
+                        "receipts NOT deleted (safe to retry): "
+                        f"{dual_report}"
+                    ),
+                    "image_id": image_id,
+                    "receipt_ids": receipt_ids,
+                    "new_receipt_id": new_receipt_id,
+                    "compaction_run_id": compaction_run_id,
+                }
 
         # ============================================================
         # Step 12: Close embedding resources (compaction runs async
@@ -490,6 +565,17 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             if deletion_result.success:
                 deleted_receipts.append(rid)
                 logger.info("  Deleted receipt %d", rid)
+                # Native embedding items are not receipt children the
+                # deleter knows about; sweep them so the deleted
+                # fragment stops matching SearchVectors (review P1).
+                removed = _delete_native_embedding_items(client, image_id, rid)
+                if removed:
+                    logger.info(
+                        "  Deleted %d native embedding items for "
+                        "receipt %d",
+                        removed,
+                        rid,
+                    )
             else:
                 logger.error(
                     "  Failed to delete receipt %d: %s",
