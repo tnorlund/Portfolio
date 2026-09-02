@@ -166,6 +166,90 @@ def calculate_bounding_box_for_lines(lines):
     }
 
 
+# Vector backend seam: "dynamodb" serves the seed embedding and the
+# neighbor search from the receipt table's RECEIPT_LINE_EMBEDDING items
+# and its line-embeddings vector index instead of a Chroma snapshot.
+VECTOR_BACKEND = os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
+
+
+class _DynamoLinesClient:
+    """Duck-typed stand-in for ChromaClient's lines-collection reads.
+
+    ``get`` returns the stored ``line_vector`` for an exact id;
+    ``query`` runs SearchVectors on the line-embeddings index.
+    Distances are converted to Chroma's default squared-L2 scale
+    (2 x cosine distance for unit-norm vectors) so cached
+    ``similarity_distance`` values keep their historical meaning.
+    """
+
+    def __init__(self, table_name: str):
+        self._table = table_name
+        self._client = boto3.client("dynamodb")
+
+    def close(self):
+        pass
+
+    def list_collections(self):
+        return ["lines"]
+
+    def get(self, collection_name, ids, include=None):
+        del collection_name, include
+        out = {"ids": [], "embeddings": [], "metadatas": [], "documents": []}
+        for key in ids:
+            image_part, _, rest = key.partition("#RECEIPT#")
+            item = self._client.get_item(
+                TableName=self._table,
+                Key={
+                    "PK": {"S": image_part},
+                    "SK": {"S": f"RECEIPT#{rest}#EMBEDDING"},
+                },
+                ProjectionExpression="line_vector",
+            ).get("Item")
+            if not item:
+                continue
+            out["ids"].append(key)
+            out["embeddings"].append(
+                [float(value["N"]) for value in item["line_vector"]["L"]]
+            )
+            out["metadatas"].append({})
+            out["documents"].append(None)
+        return out
+
+    def query(
+        self, collection_name, query_embeddings, n_results, include=None
+    ):
+        del collection_name, include
+        response = self._client.search_vectors(
+            TableName=self._table,
+            IndexName="line-embeddings",
+            SearchVector=[{"N": str(value)} for value in query_embeddings[0]],
+            TopK=n_results,
+        )
+        metadatas, distances, documents, result_ids = [], [], [], []
+        for result in response.get("SearchResults", []):
+            item = result.get("Item") or {}
+            score = result.get("Score")
+            pk = item.get("PK", {}).get("S", "")
+            sk = item.get("SK", {}).get("S", "")
+            parts = sk.split("#")
+            if score is None or not pk or len(parts) < 4:
+                continue
+            image_id = pk.split("#", 1)[1]
+            receipt_id = int(parts[1])
+            metadatas.append({"image_id": image_id, "receipt_id": receipt_id})
+            # Chroma's default metric is squared-L2; for unit-norm
+            # embeddings that equals 2 x cosine distance.
+            distances.append(2.0 * float(score))
+            documents.append(None)
+            result_ids.append(f"{pk}#{sk}")
+        return {
+            "ids": [result_ids],
+            "metadatas": [metadatas],
+            "distances": [distances],
+            "documents": [documents],
+        }
+
+
 def handler(_event, _context):
     """Handle EventBridge scheduled event to generate address similarity cache.
 
@@ -186,16 +270,21 @@ def handler(_event, _context):
         # Initialize clients
         dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
 
-        # Download ChromaDB snapshot from S3
-        logger.info(
-            "Downloading ChromaDB snapshot from S3: %s/lines", CHROMADB_BUCKET
-        )
-        download_result = download_snapshot_atomic(
-            bucket=CHROMADB_BUCKET,
-            collection="lines",
-            local_path=temp_dir,
-            verify_integrity=True,
-        )
+        # Download ChromaDB snapshot from S3 (skipped on the dynamodb
+        # backend, which reads embedding items from the receipt table)
+        if VECTOR_BACKEND == "dynamodb":
+            download_result = {"status": "downloaded"}
+        else:
+            logger.info(
+                "Downloading ChromaDB snapshot from S3: %s/lines",
+                CHROMADB_BUCKET,
+            )
+            download_result = download_snapshot_atomic(
+                bucket=CHROMADB_BUCKET,
+                collection="lines",
+                local_path=temp_dir,
+                verify_integrity=True,
+            )
 
         if download_result.get("status") != "downloaded":
             logger.error("Failed to download snapshot: %s", download_result)
@@ -212,11 +301,15 @@ def handler(_event, _context):
             temp_dir,
         )
 
-        # Initialize ChromaDB client in read mode from downloaded snapshot
-        chroma_client = ChromaClient(
-            persist_directory=temp_dir,
-            mode="read",
-        )
+        # Initialize the vector client: DynamoDB seam, or ChromaDB in
+        # read mode from the downloaded snapshot
+        if VECTOR_BACKEND == "dynamodb":
+            chroma_client = _DynamoLinesClient(DYNAMODB_TABLE_NAME)
+        else:
+            chroma_client = ChromaClient(
+                persist_directory=temp_dir,
+                mode="read",
+            )
 
         # Verify that the "lines" collection exists in the downloaded snapshot
         logger.info("Checking if 'lines' collection exists in snapshot")

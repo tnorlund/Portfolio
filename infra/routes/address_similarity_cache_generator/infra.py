@@ -115,6 +115,7 @@ class AddressSimilarityCacheGenerator(ComponentResource):
                                     "dynamodb:Query",
                                     "dynamodb:GetItem",
                                     "dynamodb:DescribeTable",
+                                    "dynamodb:SearchVectors",
                                 ],
                                 "Resource": [
                                     arn,
@@ -214,6 +215,11 @@ class AddressSimilarityCacheGenerator(ComponentResource):
                 "architectures": ["arm64"],
                 "environment": {
                     "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
+                    # Vector backend seam (chroma | dynamodb)
+                    "VECTOR_BACKEND": (
+                        pulumi.Config("portfolio").get("vector-backend")
+                        or "chroma"
+                    ),
                     "CHROMADB_BUCKET": Output.from_input(chromadb_bucket_name),
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
                 },

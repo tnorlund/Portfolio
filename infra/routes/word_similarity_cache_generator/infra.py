@@ -227,6 +227,10 @@ class WordSimilarityCacheGenerator(ComponentResource):
                 "vpc_config": vpc_config,
                 "environment": {
                     "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
+                    # Vector backend seam (chroma | dynamodb)
+                    "VECTOR_BACKEND": (
+                        portfolio_config.get("vector-backend") or "chroma"
+                    ),
                     "CHROMADB_BUCKET": Output.from_input(chromadb_bucket_name),
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
                     # Chroma Cloud config for faster queries (skip S3 download)

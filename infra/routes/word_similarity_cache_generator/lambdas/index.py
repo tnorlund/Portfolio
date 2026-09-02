@@ -43,6 +43,10 @@ CHROMA_CLOUD_ENABLED = (
     os.environ.get("CHROMA_CLOUD_ENABLED", "false").lower() == "true"
 )
 
+# Vector backend seam: "dynamodb" sources the line rows from the
+# receipt table's RECEIPT_LINE_EMBEDDING items instead of Chroma.
+VECTOR_BACKEND = os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
+
 # Exclusion terms for dairy milk filtering
 DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND", "OAT", "DAT"]
 
@@ -631,6 +635,79 @@ def line_to_dict(line):
     }
 
 
+def _fetch_lines_from_dynamo(timing: TimingStats, dynamo_client) -> dict:
+    """Fetch milk line rows from DynamoDB RECEIPT_LINE_EMBEDDING items.
+
+    One GSITYPE query (projection skips the 1536-dim vectors) replaces
+    Chroma's ``where_document={"$contains": TARGET_WORD}``. The match is
+    case-insensitive on purpose: Chroma's ``$contains`` is
+    case-sensitive and silently missed rows like "Milk Shake" that the
+    in-memory dairy filter below clearly intends to consider.
+    Returns the same ``{ids, metadatas}`` shape the Chroma paths return.
+    """
+    step_start = time.time()
+    client = dynamo_client._client  # pylint: disable=protected-access
+    rows = []
+    kwargs = {
+        "TableName": DYNAMODB_TABLE_NAME,
+        "IndexName": "GSITYPE",
+        "KeyConditionExpression": "#t = :t",
+        "ExpressionAttributeNames": {"#t": "TYPE", "#x": "text"},
+        "ExpressionAttributeValues": {":t": {"S": "RECEIPT_LINE_EMBEDDING"}},
+        "ProjectionExpression": ("PK, SK, #x, merchant_name, row_line_ids"),
+    }
+    while True:
+        response = client.query(**kwargs)
+        for item in response.get("Items", []):
+            text = item.get("text", {}).get("S", "")
+            if TARGET_WORD not in text.upper():
+                continue
+            pk = item["PK"]["S"]  # IMAGE#<uuid>
+            sk = item["SK"]["S"]  # RECEIPT#NNNNN#LINE#NNNNN#EMBEDDING
+            parts = sk.split("#")
+            if len(parts) < 4 or not sk.endswith("#EMBEDDING"):
+                continue
+            image_id = pk.split("#", 1)[1]
+            receipt_id = int(parts[1])
+            line_id = int(parts[3])
+            row_line_ids = [
+                int(value["N"])
+                for value in item.get("row_line_ids", {}).get("L", [])
+            ] or [line_id]
+            rows.append(
+                (
+                    f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
+                    f"#LINE#{line_id:05d}",
+                    {
+                        "text": text,
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "line_id": line_id,
+                        "row_line_ids": row_line_ids,
+                        "merchant_name": item.get("merchant_name", {}).get(
+                            "S", ""
+                        ),
+                    },
+                )
+            )
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        kwargs["ExclusiveStartKey"] = last_key
+    rows.sort(key=lambda pair: pair[0])
+    timing.chromadb_fetch_all = time.time() - step_start
+    logger.info(
+        "Fetched %d '%s' line rows from DynamoDB (%.2fs)",
+        len(rows),
+        TARGET_WORD,
+        timing.chromadb_fetch_all,
+    )
+    return {
+        "ids": [key for key, _ in rows],
+        "metadatas": [meta for _, meta in rows],
+    }
+
+
 def _fetch_lines_from_cloud(timing: TimingStats) -> list:
     """Fetch milk lines from Chroma Cloud with server-side filtering."""
     cloud_config = CloudConfig.from_env()
@@ -752,8 +829,10 @@ def handler(_event, _context):
             DYNAMODB_TABLE_NAME, max_pool_connections=100
         )
 
-        # Step 1: Fetch lines (local snapshot, Cloud, or S3)
-        if LOCAL_CHROMADB_PATH:
+        # Step 1: Fetch lines (DynamoDB, local snapshot, Cloud, or S3)
+        if VECTOR_BACKEND == "dynamodb":
+            all_lines = _fetch_lines_from_dynamo(timing, dynamo_client)
+        elif LOCAL_CHROMADB_PATH:
             local_chroma_path = (
                 Path(LOCAL_CHROMADB_PATH).expanduser().resolve()
             )
