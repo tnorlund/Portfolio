@@ -4,7 +4,6 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from receipt_chroma.embedding.formatting import build_receipt_rows
-
 from receipt_dynamo.entities import ReceiptLine, ReceiptRow, ReceiptWord
 
 

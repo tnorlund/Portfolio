@@ -7,6 +7,7 @@ word-level placement of every label type, and the fail-closed rules
 """
 
 import pytest
+
 from receipt_upload.label_validation.label_normalization import is_core_label
 from receipt_upload.line_items.labels import (
     DECODER_PROPOSED_BY,

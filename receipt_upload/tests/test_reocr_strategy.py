@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
 from receipt_upload.line_items.reocr_strategy import (
     LEDGER_ASSET,
     MIN_LEDGER_ATTEMPTS,

@@ -1,12 +1,12 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptWordLabel
+
 from receipt_upload.merchant_resolution.embedding_processor import (
     _prepare_pending_core_labels,
 )
-
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptWordLabel
 
 
 def _label(label: str) -> ReceiptWordLabel:

@@ -21,7 +21,16 @@ from datetime import datetime, timezone
 
 import pytest
 from receipt_chroma.embedding.formatting import build_receipt_rows
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+from receipt_dynamo.entities import (
+    ReceiptLine,
+    ReceiptRow,
+    ReceiptSection,
+    ReceiptWord,
+)
 from receipt_embeddings import ScoredItem
+
 from receipt_upload.section_assignment import (
     MODEL_SOURCE,
     assign_and_persist_sections,
@@ -31,15 +40,6 @@ from receipt_upload.section_assignment import (
 from receipt_upload.section_verifier import (
     VERIFICATION_SOURCE,
     verify_receipt_sections,
-)
-
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
-from receipt_dynamo.entities import (
-    ReceiptLine,
-    ReceiptRow,
-    ReceiptSection,
-    ReceiptWord,
 )
 
 _IMAGE_ID = "00000000-0000-4000-8000-000000000001"
@@ -145,13 +145,13 @@ def test_lines_worker_orders_merchant_sections_verification_payload(
     first Chroma delta already has section metadata."""
     import boto3
     import receipt_chroma.embedding.records as records_module
+    import receipt_dynamo as receipt_dynamo_module
+
     import receipt_upload.merchant_resolution.embedding_processor as ep
     import receipt_upload.merchant_resolution.resolver as resolver_module
     import receipt_upload.section_assignment as assignment_module
     import receipt_upload.section_verifier as verifier_module
     from receipt_upload.merchant_resolution.resolver import MerchantResult
-
-    import receipt_dynamo as receipt_dynamo_module
 
     monkeypatch.delenv("CHROMA_CLOUD_ENABLED", raising=False)
 
@@ -317,13 +317,13 @@ def test_lines_worker_tags_reconstructed_rows_without_changing_behavior(
     runs on rows with identical identities (row_id = primary line id)."""
     import boto3
     import receipt_chroma.embedding.records as records_module
+    import receipt_dynamo as receipt_dynamo_module
+
     import receipt_upload.merchant_resolution.embedding_processor as ep
     import receipt_upload.merchant_resolution.resolver as resolver_module
     import receipt_upload.section_assignment as assignment_module
     import receipt_upload.section_verifier as verifier_module
     from receipt_upload.merchant_resolution.resolver import MerchantResult
-
-    import receipt_dynamo as receipt_dynamo_module
 
     monkeypatch.delenv("CHROMA_CLOUD_ENABLED", raising=False)
 

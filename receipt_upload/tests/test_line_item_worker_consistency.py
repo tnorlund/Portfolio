@@ -22,11 +22,11 @@ from types import SimpleNamespace
 
 import pytest
 from infra.receipt_line_item_updater import line_item_processor
+from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
+
 from receipt_upload.line_items.provenance import (
     SWIFT_WORKER_EXTRACTOR_VERSION,
 )
-
-from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 
 IMAGE_ID = "11111111-2222-4333-8444-555555555555"
 RECEIPT_ID = 1

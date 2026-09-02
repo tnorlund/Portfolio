@@ -13,13 +13,13 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 import pytest
+from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
+
 from receipt_embeddings import EmbeddingWriter, EmbeddingWriteRequest
 from receipt_embeddings.service_limits import (
     MAX_BATCH_GET_ITEMS,
     MAX_BATCH_WRITE_ITEMS,
 )
-
-from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
 
 pytestmark = pytest.mark.performance
 

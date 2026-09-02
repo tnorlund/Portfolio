@@ -16,6 +16,8 @@ Claimed-department-header skip (DAIRY) is a later stacked PR.
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+from receipt_dynamo.entities.receipt_section import ReceiptSection
+
 from receipt_upload.line_items.geometry import (
     _is_skippable_annotation_row,
     evaluate_items_zone,
@@ -25,8 +27,6 @@ from receipt_upload.line_items.geometry import (
     parse_band,
     propose_items_boundary_extension,
 )
-
-from receipt_dynamo.entities.receipt_section import ReceiptSection
 
 IMAGE_ID = "a0301717-d765-4f34-a15d-48c362ebf9fd"
 

@@ -9,6 +9,15 @@ from typing import Any, Dict, List, Tuple
 from uuid import uuid4
 
 import boto3
+from receipt_dynamo.entities import (
+    Letter,
+    Line,
+    ReceiptLetter,
+    ReceiptLine,
+    ReceiptWord,
+    Word,
+)
+
 from receipt_upload.exceptions import (
     OCRExecutionError,
     OCRInputError,
@@ -21,15 +30,6 @@ from receipt_upload.exceptions import (
 
 # from receipt_label.utils.noise_detection import is_noise_text
 from receipt_upload.utils import is_noise_text
-
-from receipt_dynamo.entities import (
-    Letter,
-    Line,
-    ReceiptLetter,
-    ReceiptLine,
-    ReceiptWord,
-    Word,
-)
 
 
 def process_ocr_dict_as_receipt(

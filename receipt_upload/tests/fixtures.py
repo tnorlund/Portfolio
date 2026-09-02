@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import pytest
-
 from receipt_dynamo.constants import OCRStatus
 from receipt_dynamo.entities import (
     Letter,

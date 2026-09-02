@@ -33,14 +33,14 @@ from receipt_chroma.embedding.metadata.line_metadata import (
     create_row_metadata,
     enrich_row_metadata_with_anchors,
 )
+from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
+
 from receipt_embeddings import (
     RESOLVER_NEIGHBOR_METADATA_KEYS,
     ChromaVectorSearchClient,
 )
 from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 from receipt_embeddings.writer import EmbeddingWriteRequest
-
-from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
 
 TABLE = "ReceiptsTable-dc5be22"
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"

@@ -1,5 +1,11 @@
 """Canonical vector-item key builders and parsers."""
 
+from receipt_dynamo.entities import (
+    EMBEDDING_DIMENSIONS,
+    ReceiptLineEmbedding,
+    ReceiptWordEmbedding,
+)
+
 from receipt_embeddings.keys import (
     canonical_from_dynamo_key,
     canonical_key_from_item,
@@ -13,12 +19,6 @@ from receipt_embeddings.keys import (
 )
 from receipt_embeddings.service_limits import LINE_INDEX, WORD_INDEX
 from receipt_embeddings.writer import EmbeddingWriteRequest
-
-from receipt_dynamo.entities import (
-    EMBEDDING_DIMENSIONS,
-    ReceiptLineEmbedding,
-    ReceiptWordEmbedding,
-)
 
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"
 

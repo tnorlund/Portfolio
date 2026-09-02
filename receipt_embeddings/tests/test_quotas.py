@@ -12,6 +12,9 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from scripts.similarity_harness.capture_golden import _LiveCaptureSource
+from scripts.similarity_harness.common import LINE_INDEX
+
 from receipt_embeddings import (
     MAX_GET_LIMIT,
     MAX_QUERY_EMBEDDINGS_PER_CALL,
@@ -21,8 +24,6 @@ from receipt_embeddings import (
     ensure_query_embeddings_within_quota,
 )
 from receipt_embeddings.testing import FakeVectorIndex
-from scripts.similarity_harness.capture_golden import _LiveCaptureSource
-from scripts.similarity_harness.common import LINE_INDEX
 
 
 @pytest.mark.unit

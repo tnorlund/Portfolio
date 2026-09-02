@@ -12,6 +12,7 @@ OFF"), so a real markdown has to carry its percent/amount.
 from __future__ import annotations
 
 import pytest
+
 from receipt_upload.line_items.geometry import DISCOUNT_WORD_RE
 
 # Real prod item names wrongly flagged as discounts by the substring scan.

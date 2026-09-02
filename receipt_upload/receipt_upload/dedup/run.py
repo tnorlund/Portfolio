@@ -12,10 +12,10 @@ import argparse
 import json
 from dataclasses import asdict
 
+from receipt_dynamo import DynamoClient
+
 from receipt_upload.dedup.detector import find_exact_duplicates
 from receipt_upload.dedup.dossiers import ENV_TABLE
-
-from receipt_dynamo import DynamoClient
 
 
 def main() -> None:

@@ -21,10 +21,10 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Dict, List
 
+from receipt_dynamo import DynamoClient
+
 from receipt_upload.dedup._ddb import DYNAMO_ERRORS
 from receipt_upload.dedup.context import is_valid_status
-
-from receipt_dynamo import DynamoClient
 
 AMOUNT = {
     "UNIT_PRICE",

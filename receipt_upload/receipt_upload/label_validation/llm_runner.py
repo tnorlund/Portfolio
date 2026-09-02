@@ -68,7 +68,6 @@ def _delete_non_core_label(
     raising (which would re-fail the whole record).
     """
     from receipt_agent.constants import CORE_LABELS
-
     from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
     if label.label in CORE_LABELS:
@@ -182,12 +181,12 @@ def apply_llm_results(
       (NOT cleaned up) so the retry can validate them — never silently dropped.
     """
     from receipt_agent.constants import CORE_LABELS
-    from receipt_upload.label_validation.llm_validator import (
-        LLMBatchValidator,
-    )
-
     from receipt_dynamo.data.shared_exceptions import (
         EntityAlreadyExistsError,
+    )
+
+    from receipt_upload.label_validation.llm_validator import (
+        LLMBatchValidator,
     )
 
     llm_validated = 0

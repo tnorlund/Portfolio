@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from receipt_embeddings import ScoredItem
 from scripts.similarity_harness import capture_golden
 from scripts.similarity_harness.capture_golden import (
     _classify_skip,
@@ -21,6 +20,8 @@ from scripts.similarity_harness.common import (
     receipt_key,
     validate_fixture,
 )
+
+from receipt_embeddings import ScoredItem
 
 
 class _NotFound(Exception):

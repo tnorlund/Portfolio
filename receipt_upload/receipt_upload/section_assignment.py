@@ -19,13 +19,13 @@ from statistics import fmean, pstdev
 from typing import Any, Protocol
 
 from receipt_chroma.section_labels import sections_to_line_map
-from receipt_upload.line_items.geometry import is_tender_row
-from receipt_upload.line_items.provenance import SWIFT_WORKER_MODEL_SOURCE
-
 from receipt_dynamo.amounts import looks_like_receipt_amount
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
+
+from receipt_upload.line_items.geometry import is_tender_row
+from receipt_upload.line_items.provenance import SWIFT_WORKER_MODEL_SOURCE
 
 MODEL_SOURCE = "upload-determinism-v1"
 

@@ -10,8 +10,6 @@ import time
 from pathlib import Path
 
 import pytest
-from receipt_embeddings import ScoredItem
-from receipt_embeddings.testing import FakeVectorIndex
 from scripts.similarity_harness.capture_golden import (
     _default_receipts,
     _require_live_environment,
@@ -36,6 +34,9 @@ from scripts.similarity_harness.evaluate import (
     evaluate_fixture,
 )
 from scripts.similarity_harness.evaluate import main as evaluate_main
+
+from receipt_embeddings import ScoredItem
+from receipt_embeddings.testing import FakeVectorIndex
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 GOLDEN_FIXTURE = (

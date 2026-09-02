@@ -26,13 +26,13 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 
-from receipt_upload.dedup._ddb import DYNAMO_ERRORS, raw_client
-from receipt_upload.dedup.context import is_valid_status
-from receipt_upload.dedup.dossiers import ENV_TABLE
-
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+
+from receipt_upload.dedup._ddb import DYNAMO_ERRORS, raw_client
+from receipt_upload.dedup.context import is_valid_status
+from receipt_upload.dedup.dossiers import ENV_TABLE
 
 WordKey = Tuple[str, int, int, int]
 

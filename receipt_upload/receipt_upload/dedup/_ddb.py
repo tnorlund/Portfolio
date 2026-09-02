@@ -12,7 +12,6 @@ from __future__ import annotations
 from typing import Iterator
 
 from botocore.exceptions import BotoCoreError, ClientError
-
 from receipt_dynamo.data.shared_exceptions import ReceiptDynamoError
 
 # Failures from the AWS SDK (S3 / low-level DynamoDB) we surface, not crash on.

@@ -9,7 +9,6 @@ from typing import List, Optional, Tuple
 from boto3 import client
 from PIL import Image as PIL_Image
 from PIL.Image import Resampling
-from receipt_upload.exceptions import AVIFError
 
 # from receipt_label.utils.noise_detection import is_noise_text
 from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -23,6 +22,8 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     Word,
 )
+
+from receipt_upload.exceptions import AVIFError
 
 
 @dataclass

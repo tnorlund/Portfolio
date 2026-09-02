@@ -8,9 +8,9 @@ This test file validates the new approach works correctly.
 """
 
 import pytest
-from receipt_upload.geometry import convex_hull
-
 from receipt_dynamo.entities import Line
+
+from receipt_upload.geometry import convex_hull
 
 
 def create_mock_line(

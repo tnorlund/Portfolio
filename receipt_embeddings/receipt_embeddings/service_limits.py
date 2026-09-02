@@ -7,9 +7,9 @@ from collections.abc import Mapping, Sequence
 from math import isfinite
 from typing import Any
 
-from receipt_embeddings.vector_client import FilterValue
-
 from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
+
+from receipt_embeddings.vector_client import FilterValue
 
 MAX_SEARCH_RESULTS = 100
 MAX_VECTOR_DIMENSIONS = 4096

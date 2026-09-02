@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import pytest
 from receipt_chroma.embedding.cloud_upsert import CloudUpsertResult
+
 from receipt_upload.merchant_resolution import embedding_processor as ep
 
 CLOUD_CFG = {

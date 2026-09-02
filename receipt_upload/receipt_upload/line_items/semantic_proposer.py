@@ -25,12 +25,12 @@ from collections import Counter
 from datetime import datetime, timezone
 from typing import Dict, List, Tuple
 
-from receipt_embeddings import VectorSearchClient
-from receipt_embeddings.service_limits import WORD_INDEX
-from receipt_upload.vector_search import vector_search_client as _vector_client
-
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+from receipt_embeddings import VectorSearchClient
+from receipt_embeddings.service_limits import WORD_INDEX
+
+from receipt_upload.vector_search import vector_search_client as _vector_client
 
 _PROPOSED_BY = "semantic_product_name"
 _HEADER = {"ADDRESS_LINE", "PHONE_NUMBER", "STORE_HOURS", "MERCHANT_NAME"}

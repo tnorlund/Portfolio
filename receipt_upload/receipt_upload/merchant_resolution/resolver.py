@@ -37,15 +37,14 @@ from receipt_chroma.embedding.utils import (
     normalize_address,
     normalize_phone,
 )
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 from receipt_embeddings import (
     ChromaVectorSearchClient,
     DynamoVectorSearchClient,
     VectorSearchClient,
 )
-
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
