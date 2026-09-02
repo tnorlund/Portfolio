@@ -27,6 +27,7 @@ from receipt_embeddings.vector_client import (
     VectorItem,
     VectorSearchClient,
 )
+from receipt_embeddings.write_requests import build_embedding_write_requests
 from receipt_embeddings.writer import (
     EmbeddingWriteFailure,
     EmbeddingWriter,
@@ -50,6 +51,7 @@ __all__ = [
     "VectorSearchClient",
     "aggregate_word_label_status",
     "build_chroma_where",
+    "build_embedding_write_requests",
     "ensure_get_ids_within_quota",
     "ensure_query_embeddings_within_quota",
     "line_canonical_key",

@@ -20,8 +20,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 from receipt_chroma.embedding.metadata.line_metadata import (
     enrich_row_metadata_with_anchors,
 )
-from receipt_embeddings import EmbeddingWriteRequest
-from receipt_embeddings.label_status import word_label_statuses
+from receipt_embeddings.write_requests import build_embedding_write_requests
 
 logger = logging.getLogger(__name__)
 
@@ -52,68 +51,21 @@ def build_ingest_embedding_requests(
     grouping that produced the vectors, so rows are never re-derived here
     (no risk of misaligning a vector with a different grouping).
     """
-    lines_by_id = {int(line.line_id): line for line in lines}
-    requests: List[Any] = []
-
-    for row_line_ids, vector in zip(
-        row_line_ids_list, row_embeddings, strict=True
-    ):
-        line_ids = [int(value) for value in row_line_ids]
-        row_lines = [
-            lines_by_id[line_id]
-            for line_id in line_ids
-            if line_id in lines_by_id
-        ]
-        if not row_lines:
-            raise ValueError(
-                f"visual row {line_ids} has no matching receipt lines"
-            )
-        row_line_id_set = set(line_ids)
-        anchors = enrich_row_metadata_with_anchors(
-            {},
-            [word for word in words if int(word.line_id) in row_line_id_set],
-        )
-        requests.append(
-            EmbeddingWriteRequest(
-                kind="line",
-                image_id=image_id,
-                receipt_id=receipt_id,
-                line_id=line_ids[0],
-                text=" ".join(line.text for line in row_lines),
-                merchant_name=merchant_name,
-                place_id=place_id,
-                row_line_ids=tuple(line_ids),
-                # Sections don't exist yet at ingest; the stream freshening
-                # leg writes section_type when RECEIPT_SECTION lands.
-                section_type="",
-                normalized_phone_10=str(
-                    anchors.get("normalized_phone_10", "")
-                ),
-                normalized_full_address=str(
-                    anchors.get("normalized_full_address", "")
-                ),
-                vector=list(vector),
-            )
-        )
-
-    statuses = word_label_statuses(word_labels)
-    for word, vector in zip(words, word_embeddings_list, strict=True):
-        requests.append(
-            EmbeddingWriteRequest(
-                kind="word",
-                image_id=image_id,
-                receipt_id=receipt_id,
-                line_id=int(word.line_id),
-                word_id=int(word.word_id),
-                text=word.text,
-                merchant_name=merchant_name,
-                label_status=statuses.get(
-                    (int(word.line_id), int(word.word_id)), "none"
-                ),
-                vector=list(vector),
-            )
-        )
-    return requests
+    return build_embedding_write_requests(
+        image_id=image_id,
+        receipt_id=receipt_id,
+        lines=lines,
+        words=words,
+        word_labels=word_labels,
+        merchant_name=merchant_name,
+        place_id=place_id,
+        row_line_ids_list=row_line_ids_list,
+        row_embeddings=row_embeddings,
+        word_embeddings=word_embeddings_list,
+        include_embedding_input=False,
+        missing_row="raise",
+        enrich_anchors=enrich_row_metadata_with_anchors,
+    )
 
 
 def maybe_dual_write_embeddings(

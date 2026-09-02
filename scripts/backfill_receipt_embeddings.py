@@ -47,15 +47,8 @@ from receipt_embeddings import (  # noqa: E402
     DynamoVectorSearchClient,
     EmbeddingWriter,
     EmbeddingWriteRequest,
-    line_canonical_key,
-    word_canonical_key,
+    build_embedding_write_requests,
     word_label_statuses,
-)
-from receipt_embeddings.formatting import (  # noqa: E402
-    format_visual_row,
-    format_word_context_embedding_input,
-    get_row_embedding_inputs,
-    group_lines_into_visual_rows,
 )
 from receipt_embeddings.keys import dynamo_key_from_canonical  # noqa: E402
 from receipt_embeddings.quotas import (  # noqa: E402
@@ -285,14 +278,6 @@ def _classify_receipt_skip(exc: Exception) -> str:
     return f"error:{type(exc).__name__}"
 
 
-def _section_by_line(sections: Sequence[Any]) -> dict[int, str]:
-    result: dict[int, str] = {}
-    for section in sections:
-        for line_id in section.line_ids:
-            result[int(line_id)] = str(section.section_type)
-    return result
-
-
 def build_requests(
     details: Any,
     sections: Sequence[Any],
@@ -309,85 +294,19 @@ def build_requests(
     place_id = (
         str(getattr(place, "place_id", "") or "") if place is not None else ""
     )
-    section_by_line = _section_by_line(sections)
-    requests: list[EmbeddingWriteRequest] = []
-
-    row_inputs = get_row_embedding_inputs(details.lines)
-    visual_rows = group_lines_into_visual_rows(details.lines)
-    for (embedding_input, line_ids), row in zip(
-        row_inputs, visual_rows, strict=True
-    ):
-        primary_line_id = int(line_ids[0])
-        canonical_key = line_canonical_key(
-            details.receipt.image_id,
-            details.receipt.receipt_id,
-            primary_line_id,
-        )
-        section_values = {
-            section_by_line.get(int(line_id), "") for line_id in line_ids
-        }
-        section_values.discard("")
-        section_type = (
-            next(iter(section_values)) if len(section_values) == 1 else ""
-        )
-        # Fetch-join metadata: the same anchor enrichment the Chroma line
-        # delta writer applies to a visual row's words populates the
-        # resolver's normalized phone/address fields on the Dynamo item.
-        row_line_id_set = {int(value) for value in line_ids}
-        anchors = enrich_row_metadata_with_anchors(
-            {},
-            [
-                word
-                for word in details.words
-                if int(word.line_id) in row_line_id_set
-            ],
-        )
-        requests.append(
-            EmbeddingWriteRequest(
-                kind="line",
-                image_id=details.receipt.image_id,
-                receipt_id=details.receipt.receipt_id,
-                line_id=primary_line_id,
-                text=format_visual_row(row),
-                embedding_input=embedding_input,
-                merchant_name=merchant_name,
-                place_id=place_id,
-                row_line_ids=tuple(int(value) for value in line_ids),
-                section_type=section_type,
-                normalized_phone_10=str(
-                    anchors.get("normalized_phone_10", "")
-                ),
-                normalized_full_address=str(
-                    anchors.get("normalized_full_address", "")
-                ),
-                vector=known_vectors.get(canonical_key),
-            )
-        )
-
-    statuses = word_label_statuses(details.labels)
-    for word in details.words:
-        canonical_key = word_canonical_key(
-            word.image_id, word.receipt_id, word.line_id, word.word_id
-        )
-        requests.append(
-            EmbeddingWriteRequest(
-                kind="word",
-                image_id=word.image_id,
-                receipt_id=word.receipt_id,
-                line_id=word.line_id,
-                word_id=word.word_id,
-                text=word.text,
-                embedding_input=format_word_context_embedding_input(
-                    word, details.words, context_size=2
-                ),
-                merchant_name=merchant_name,
-                label_status=statuses.get(
-                    (int(word.line_id), int(word.word_id)), "none"
-                ),
-                vector=known_vectors.get(canonical_key),
-            )
-        )
-    return requests
+    return build_embedding_write_requests(
+        image_id=details.receipt.image_id,
+        receipt_id=details.receipt.receipt_id,
+        lines=details.lines,
+        words=details.words,
+        word_labels=details.labels,
+        merchant_name=merchant_name,
+        place_id=place_id,
+        sections=sections,
+        known_vectors=known_vectors,
+        include_embedding_input=True,
+        enrich_anchors=enrich_row_metadata_with_anchors,
+    )
 
 
 def collect_requests(
