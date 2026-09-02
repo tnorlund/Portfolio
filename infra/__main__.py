@@ -45,7 +45,6 @@ from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
 from fix_place_lambda import create_fix_place_lambda
-from label_evaluator_step_functions import LabelEvaluatorStepFunction
 from label_refresh_lambda import create_label_refresh_lambda
 from merge_receipt_lambda import create_merge_receipt_lambda
 
@@ -1391,31 +1390,12 @@ pulumi.export(
     label_evaluator_shared.viz_cache_bucket_name,
 )
 
-# Label Evaluator Step Function (with LangSmith observability + EMR analytics + viz-cache)
-label_evaluator_sf = LabelEvaluatorStepFunction(
-    f"label-evaluator-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-    ocr_job_queue_url=upload_images.ocr_queue.url,
-    ocr_job_queue_arn=upload_images.ocr_queue.arn,
-    # EMR Serverless Analytics integration
-    emr_application_id=emr_analytics.emr_application.id,
-    emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
-    langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
-    analytics_output_bucket=emr_analytics.analytics_bucket.id,
-    spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-    # Shared resources (viz-cache bucket for Lambda output, batch bucket for data)
-    cache_bucket=label_evaluator_shared.viz_cache_bucket_name,
-    batch_bucket_name=label_evaluator_shared.batch_bucket_name,
-    batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
-)
-
-pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
-pulumi.export(
-    "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
-)
+# Label Evaluator Step Function: RETIRED 2026-09-02 (teardown PR #1 of the
+# Chroma removal, closing #1523). It was the last Chroma consumer with no
+# vector-seam route; the pipeline-consolidation plan supersedes it. Shared
+# resources it merely referenced (chromadb bucket, OCR queue, EMR analytics,
+# LangSmith bulk export, label_evaluator_shared viz-cache/batch buckets)
+# all remain — the viz-cache API routes keep serving the frozen cache.
 
 # CoreML Export Queue Infrastructure (for exporting LayoutLM models to CoreML on macOS)
 # Only create if SageMaker training is enabled (we need the training bucket)
