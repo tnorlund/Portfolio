@@ -1,5 +1,28 @@
 import React from "react";
 import { useViewportAnimation } from "../useDiagramOptimizations";
+import { GLYPH_BASELINE, GLYPH_VIEWBOX, ICLOUD_GLYPHS } from "./icloudGlyphs";
+
+/** One SF Symbol from the real modal, sized like iCloud sizes it. */
+const Glyph: React.FC<{ name: keyof typeof ICLOUD_GLYPHS; size?: number }> = ({
+  name,
+  size = 16,
+}) => {
+  const g = ICLOUD_GLYPHS[name];
+  return (
+    <svg
+      viewBox={g.viewBox ?? GLYPH_VIEWBOX}
+      height={size}
+      width={size * 1.7}
+      aria-hidden="true"
+      focusable="false"
+      style={{ display: "block", flex: "none" }}
+    >
+      <g transform={`translate(${g.tx} ${GLYPH_BASELINE})`}>
+        <path d={g.d} fill="currentColor" />
+      </g>
+    </svg>
+  );
+};
 
 /**
  * A replica of the iCloud Mail "Rules" settings modal — the one screen that
@@ -20,26 +43,20 @@ const ADDRESS: Record<Destination, string> = {
   ats: "ats@in.tylernorlund.com",
 };
 
+/* In iCloud's order, as of 2026-09-02. */
 const RULES: Rule[] = [
-  { from: "apple.com", to: "receipts" },
-  { from: "doordash.com", to: "receipts" },
-  { from: "amazon.com", to: "receipts" },
-  { from: "venmo.com", to: "receipts" },
-  { from: "paypal.com", to: "receipts" },
-  { from: "squareup.com", to: "receipts" },
-  { from: "toasttab.com", to: "receipts" },
-  { from: "uber.com", to: "receipts" },
-  { from: "airbnb.com", to: "receipts" },
-  { from: "equinox.com", to: "receipts" },
-  { from: "stripe.com", to: "receipts" },
-  { from: "socalgas.com", to: "receipts" },
-  { from: "oftendining.com", to: "receipts" },
-  { from: "target.com", to: "receipts" },
-  { from: "no-reply@greenhouse.io", to: "ats" },
-  { from: "no-reply@us.greenhouse-mail.io", to: "ats" },
-  { from: "no-reply@eu.greenhouse-mail.io", to: "ats" },
-  { from: "no-reply@anz.greenhouse.io", to: "ats" },
-  { from: "login@us.greenhouse-jobs.com", to: "ats" },
+  ...[
+    "doordash.com", "amazon.com", "apple.com", "paypal.com", "venmo.com",
+    "uber.com", "toasttab.com", "squareup.com", "chownow.com", "equinox.com",
+    "github.com", "costco.com", "airbnb.com", "chase.com", "socalgas.com",
+    "scewebservices.com", "stripe.com", "digitalocean.com", "ebay.com",
+    "oftendining.com", "target.com",
+  ].map((from) => ({ from, to: "receipts" as const })),
+  ...[
+    "no-reply@greenhouse.io", "no-reply@us.greenhouse-mail.io",
+    "no-reply@eu.greenhouse-mail.io", "no-reply@anz.greenhouse.io",
+    "login@us.greenhouse-jobs.com",
+  ].map((from) => ({ from, to: "ats" as const })),
 ];
 
 const SIDEBAR = [
@@ -82,28 +99,31 @@ const STYLE = `
 .efr { --efr-bg:#1d1d1f; --efr-side:#232325; --efr-row:#2b2b2d; --efr-line:#3a3a3c;
        --efr-text:#f2f2f4; --efr-muted:#9b9ba1; --efr-link:#5aa3ff; --efr-active:#2f2f33; }
 .efr-modal { display:grid; grid-template-columns: 180px minmax(0,1fr); background:var(--efr-bg);
+  opacity:0; transform:translateY(14px) scale(.97); transition:opacity .45s ease, transform .45s cubic-bezier(.2,.7,.2,1);
   color:var(--efr-text); border-radius:14px; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,.45);
   font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size:14px; line-height:1.35; }
 .efr-side { background:var(--efr-side); padding:18px 12px 14px; }
 .efr-close { width:14px; height:14px; margin:0 0 14px 4px; color:var(--efr-muted); font-size:18px; line-height:14px; }
 .efr-side ul { list-style:none; margin:0; padding:0; }
-.efr-side li { display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; color:var(--efr-text); }
+.efr-side li { display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:8px; color:var(--efr-text); }
+.efr-side li svg { color:var(--efr-link); }
 .efr-side li[data-active="true"] { background:var(--efr-active); }
-.efr-side li i { width:14px; height:14px; border-radius:50%; border:1.5px solid var(--efr-link); flex:none; }
 .efr-main { padding:18px 18px 14px; min-width:0; display:flex; flex-direction:column; }
 .efr-head { display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid var(--efr-line); padding-bottom:8px; }
 .efr-head h3 { margin:0; font-size:17px; font-weight:700; color:var(--efr-text); }
-.efr-head span { color:var(--efr-link); font-size:22px; line-height:1; }
+.efr-head .efr-plus { color:var(--efr-link); }
 .efr-list { list-style:none; margin:12px 0 0; padding:0 4px 0 0; flex:1 1 auto; min-height:0; max-height:470px; overflow-y:auto; }
 .efr-list li { background:var(--efr-row); border:1px solid var(--efr-line); border-radius:9px; padding:9px 12px;
   margin-bottom:8px; display:flex; justify-content:space-between; gap:12px; align-items:center;
   opacity:0; transform:translateY(6px); transition:opacity .35s ease, transform .35s ease, border-color .15s ease; cursor:default; }
+.efr[data-in="true"] .efr-modal { opacity:1; transform:none; }
 .efr[data-in="true"] .efr-list li { opacity:1; transform:none; }
 .efr-list li[data-hot="true"] { border-color:var(--efr-link); }
 .efr-list li b { font-weight:400; color:var(--efr-link); overflow-wrap:anywhere; }
-.efr-list li span { color:var(--efr-muted); flex:none; letter-spacing:-2px; }
+.efr-list li .efr-handle { color:var(--efr-muted); flex:none; }
 .efr-note { border-top:1px solid var(--efr-line); margin-top:auto; padding-top:10px; color:var(--efr-muted); font-size:12.5px; }
+.efr-note a { color:var(--efr-link); text-decoration:none; display:inline-flex; align-items:center; gap:2px; }
 .efr-dest { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
 .efr-dest div { border:1.5px solid rgba(var(--text-color-rgb),.18); border-radius:10px; padding:10px 12px; font-size:13px;
   color:var(--text-color); transition:border-color .15s ease, background-color .15s ease; }
@@ -140,7 +160,7 @@ const EmailForwardingRules: React.FC = () => {
           <ul>
             {SIDEBAR.map((item) => (
               <li key={item} data-active={item === "Rules" ? "true" : undefined}>
-                <i />
+                <Glyph name={item} />
                 {item}
               </li>
             ))}
@@ -149,14 +169,16 @@ const EmailForwardingRules: React.FC = () => {
         <div className="efr-main">
           <div className="efr-head">
             <h3>Rules</h3>
-            <span aria-hidden="true">+</span>
+            <span className="efr-plus" title="Add New Rule">
+              <Glyph name="Plus" size={14} />
+            </span>
           </div>
           <ul className="efr-list" onMouseLeave={() => setHot(null)}>
             {RULES.map((rule, i) => (
               <li
                 key={rule.from}
                 data-hot={hot === rule.to ? "true" : undefined}
-                style={{ transitionDelay: `${Math.min(i, 12) * 45}ms` }}
+                style={{ transitionDelay: `${250 + Math.min(i, 12) * 45}ms` }}
                 onMouseEnter={() => setHot(rule.to)}
                 onFocus={() => setHot(rule.to)}
                 tabIndex={0}
@@ -165,13 +187,24 @@ const EmailForwardingRules: React.FC = () => {
                   Forward messages from <b>{rule.from}</b> to{" "}
                   <b>{ADDRESS[rule.to]}</b>
                 </div>
-                <span aria-hidden="true">≡</span>
+                <span className="efr-handle">
+                  <Glyph name="DragHandle" size={14} />
+                </span>
               </li>
             ))}
           </ul>
           <div className="efr-note">
             Rules are applied as messages arrive. Only the first matching rule
-            will be applied per message.
+            will be applied per message. It may take a few minutes for the
+            changes to rules to take effect.{" "}
+            <a
+              href="https://support.apple.com/guide/icloud/set-up-filtering-rules-mm6b1a3f8a/icloud"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Learn more
+              <Glyph name="ExternalLink" size={11} />
+            </a>
           </div>
         </div>
       </div>

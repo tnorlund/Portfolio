@@ -218,7 +218,8 @@ export default function EmailPage() {
         Since it went live in July: 1,189 messages forwarded, 14 failed the
         trust gate, and 59 were receipts. 756 of them were GitHub
         notifications, because GitHub sends its ten receipts a year from the
-        same address as everything else it says. That rule is gone now.
+        same address as everything else it says. That rule is the next one I
+        delete.
       </p>
 
       <h1>The Read Replica</h1>
