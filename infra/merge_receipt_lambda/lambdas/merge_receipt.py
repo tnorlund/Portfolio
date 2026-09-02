@@ -33,7 +33,10 @@ Environment Variables:
 import io
 import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:  # heavy imports stay lazy in this Lambda by design
+    from receipt_embeddings.protocols import EmbeddingTableHandle
 
 import boto3
 from PIL import Image as PIL_Image
@@ -47,7 +50,7 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def _delete_native_embedding_items(
-    client: Any, image_id: str, receipt_id: int
+    client: "EmbeddingTableHandle", image_id: str, receipt_id: int
 ) -> int:
     """Best-effort delete of a source receipt's ``#EMBEDDING`` items.
 

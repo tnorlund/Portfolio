@@ -6,12 +6,13 @@ import os
 import re
 import time
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
 from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
 
 from receipt_embeddings.keys import canonical_key_from_item as _canonical_key
+from receipt_embeddings.protocols import DynamoVectorLowLevelClient
 from receipt_embeddings.service_limits import (
     EMBEDDING_DIMENSIONS,
     INDEX_VECTOR_ATTRIBUTES,
@@ -70,7 +71,7 @@ class DynamoVectorSearchClient:
 
     def __init__(
         self,
-        dynamodb_client: Any,
+        dynamodb_client: "DynamoVectorLowLevelClient",
         table_name: str,
         *,
         max_retries: int = 3,
@@ -287,7 +288,7 @@ class DynamoVectorSearchClient:
 
         owner_by_token: dict[str, tuple[str, str]] = {}
         request_keys: list[dict[str, Any]] = []
-        valid = {result.key: set() for result in results}
+        valid: dict[str, set[str]] = {result.key: set() for result in results}
         rows_by_key: dict[str, list[dict[str, Any]]] = {}
         hydratable: set[str] = set()
         for result in results:
@@ -421,7 +422,12 @@ class DynamoVectorSearchClient:
             raise KeyError(f"unknown vector key: {key}")
         vector = parse_dynamodb_map(item).get(vector_attribute)
         try:
-            return normalize_vector(vector, dimensions=EMBEDDING_DIMENSIONS)
+            # Annotation-only cast: a None/malformed value still raises
+            # inside normalize_vector and lands in the except (unchanged).
+            return normalize_vector(
+                cast(Sequence[float], vector),
+                dimensions=EMBEDDING_DIMENSIONS,
+            )
         except (TypeError, ValueError) as exc:
             raise KeyError(f"stored vector is invalid for key: {key}") from exc
 

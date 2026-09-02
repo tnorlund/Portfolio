@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
 
 from receipt_embeddings.chroma_client import ChromaVectorSearchClient
 from receipt_embeddings.dynamo_client import (
     DEFAULT_REGION,
     DynamoVectorSearchClient,
+)
+from receipt_embeddings.protocols import (
+    ChromaQueryClient,
+    DynamoVectorLowLevelClient,
 )
 from receipt_embeddings.vector_client import VectorSearchClient
 
@@ -23,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 
 def vector_search_client(
-    chroma_client: Any,
+    chroma_client: VectorSearchClient | ChromaQueryClient | None,
     *,
     vector_client: VectorSearchClient | None = None,
-    dynamodb_client: Any = None,
+    dynamodb_client: DynamoVectorLowLevelClient | None = None,
     table_name: str | None = None,
 ) -> VectorSearchClient:
     """Return the configured vector backend, defaulting to DynamoDB.
@@ -67,6 +70,10 @@ def vector_search_client(
         )
         return client
     if backend == "chroma":
+        if chroma_client is None:
+            # Same exception type/message the adapter's own guard raises,
+            # so the widened Optional parameter changes no behavior.
+            raise TypeError("chroma_client must provide query()")
         return ChromaVectorSearchClient(chroma_client)
     raise ValueError("VECTOR_BACKEND must be either 'chroma' or 'dynamodb'")
 

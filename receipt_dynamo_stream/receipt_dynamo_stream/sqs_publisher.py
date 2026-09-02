@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, Protocol
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -31,6 +31,14 @@ from receipt_dynamo_stream.stream_types import MetricsRecorder
 logger = logging.getLogger(__name__)
 
 
+class _SQSBatchClient(Protocol):
+    """The one SQS surface this module uses. Local so the stream bundle
+    needs no extra dependency for a type."""
+
+    def send_message_batch(self, **kwargs: Any) -> dict[str, Any]:
+        """Send up to ten messages; may return per-entry Failed records."""
+
+
 def publish_messages(
     messages: Iterable[StreamMessage],
     metrics: Optional[MetricsRecorder] = None,
@@ -38,7 +46,7 @@ def publish_messages(
     """
     Send StreamMessage objects to collection-specific SQS queues.
     """
-    sqs: Any = boto3.client("sqs")
+    sqs: _SQSBatchClient = boto3.client("sqs")
     sent_count = 0
     lines_messages: list[tuple[dict[str, object], ChromaDBCollection]] = []
     words_messages: list[tuple[dict[str, object], ChromaDBCollection]] = []
@@ -156,7 +164,7 @@ def _build_sqs_entry(
 
 
 def send_batch_to_queue(
-    sqs: Any,
+    sqs: _SQSBatchClient,
     messages: list[tuple[dict[str, object], ChromaDBCollection | TargetQueue]],
     queue_env_var: str,
     collection: ChromaDBCollection | TargetQueue,

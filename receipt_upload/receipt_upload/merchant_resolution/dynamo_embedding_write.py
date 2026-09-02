@@ -20,11 +20,22 @@ when those entities land.
 
 import logging
 from dataclasses import replace as dataclasses_replace
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence
 
-from receipt_embeddings.label_status import word_label_statuses
+from receipt_embeddings.formatting import LineLike
+from receipt_embeddings.formatting.word_format import (
+    WordLike as ContextWordLike,
+)
+from receipt_embeddings.label_status import WordLabelLike, word_label_statuses
+from receipt_embeddings.protocols import (
+    DynamoEmbeddingClient,
+    DynamoQueryWriteClient,
+    EmbeddingTableHandle,
+    EmbeddingWriterLike,
+)
 from receipt_embeddings.sweep import delete_native_embedding_items
 from receipt_embeddings.write_requests import build_embedding_write_requests
+from receipt_embeddings.writer import EmbeddingWriteRequest
 
 logger = logging.getLogger(__name__)
 
@@ -39,15 +50,15 @@ def build_ingest_embedding_requests(
     *,
     image_id: str,
     receipt_id: int,
-    lines: Sequence[Any],
-    words: Sequence[Any],
-    word_labels: Sequence[Any],
+    lines: Sequence[LineLike],
+    words: Sequence[ContextWordLike],
+    word_labels: Sequence[WordLabelLike],
     merchant_name: str,
     place_id: str,
     row_embeddings: Sequence[Sequence[float]],
     row_line_ids_list: Sequence[Sequence[int]],
     word_embeddings_list: Sequence[Sequence[float]],
-) -> List[Any]:
+) -> List[EmbeddingWriteRequest]:
     """Build engine write requests carrying the ingest's in-memory vectors.
 
     ``row_embeddings``/``row_line_ids_list`` come from the same visual-row
@@ -75,18 +86,20 @@ def build_ingest_embedding_requests(
 
 def write_precomputed_embeddings(
     *,
-    dynamo: Any,
+    dynamo: EmbeddingTableHandle,
     image_id: str,
     receipt_id: int,
-    lines: Sequence[Any],
-    words: Sequence[Any],
-    word_labels: Sequence[Any],
-    receipt_place: Any,
+    lines: Sequence[LineLike],
+    words: Sequence[ContextWordLike],
+    word_labels: Sequence[WordLabelLike],
+    receipt_place: object,
     row_embeddings: Sequence[Sequence[float]],
     row_line_ids_list: Sequence[Sequence[int]],
     word_embeddings_list: Sequence[Sequence[float]],
-    writer_factory: Optional[Callable[[Any, str], Any]] = None,
-) -> Dict[str, Any]:
+    writer_factory: Optional[
+        Callable[[DynamoEmbeddingClient, str], EmbeddingWriterLike]
+    ] = None,
+) -> Dict[str, object]:
     """Never-raising native write of a receipt's precomputed embeddings.
 
     THE ingest persistence step post-Chroma-teardown: every vector is
@@ -152,7 +165,10 @@ def write_precomputed_embeddings(
 
 
 def _sweep_native_embedding_items(
-    raw: Any, table_name: str, image_id: str, receipt_id: int
+    raw: DynamoQueryWriteClient,
+    table_name: str,
+    image_id: str,
+    receipt_id: int,
 ) -> int:
     """Delete a receipt's existing ``#EMBEDDING`` items (with
     UnprocessedItems retries) so a rewrite can replace them — the
@@ -163,17 +179,17 @@ def _sweep_native_embedding_items(
 
 
 def write_native_embeddings(
-    dynamo: Any,
+    dynamo: EmbeddingTableHandle,
     *,
     image_id: str,
     receipt_id: int,
-    lines: Sequence[Any],
-    words: Sequence[Any],
-    word_labels: Sequence[Any],
-    receipt_place: Any,
+    lines: Sequence[LineLike],
+    words: Sequence[ContextWordLike],
+    word_labels: Sequence[WordLabelLike],
+    receipt_place: object,
     sweep_existing: bool = False,
-    openai_client: Any = None,
-) -> Dict[str, Any]:
+    openai_client: object = None,
+) -> Dict[str, object]:
     """Chroma-free native embedding write for a whole receipt.
 
     The post-teardown replacement for the vectors that

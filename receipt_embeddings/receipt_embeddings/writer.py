@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:  # circular at runtime: protocols types this seam
+    from receipt_embeddings.protocols import DynamoBatchClient
 
 from receipt_dynamo.entities import (
     ReceiptEmbedding,
@@ -46,7 +49,7 @@ class EmbeddingWriteRequest:
     vector: Sequence[float] | None = None
 
     @property
-    def key(self) -> dict[str, Any]:
+    def key(self) -> dict[str, dict[str, str]]:
         sk = f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}"
         if self.kind == "word":
             if self.word_id is None:
@@ -120,7 +123,7 @@ class EmbeddingWriteReport:
     def skipped(self) -> int:
         return len(self.skipped_existing_keys) + len(self.failures)
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, object]:
         return {
             "written": self.written,
             "skipped": self.skipped,
@@ -140,10 +143,10 @@ class EmbeddingWriter:
 
     def __init__(
         self,
-        dynamodb_client: Any,
+        dynamodb_client: "DynamoBatchClient",
         table_name: str,
         *,
-        openai_client: Any = None,
+        openai_client: object = None,
         embedder: Embedder = embed_texts,
         model: str = "text-embedding-3-small",
         max_retries: int = 3,
@@ -160,7 +163,7 @@ class EmbeddingWriter:
         self._sleep = sleep
 
     @staticmethod
-    def _key_id(key: dict[str, Any]) -> str:
+    def _key_id(key: Mapping[str, Mapping[str, str]]) -> str:
         return f"{key['PK']['S']}#{key['SK']['S']}"
 
     def _existing_keys(
@@ -361,7 +364,7 @@ class EmbeddingWriter:
         return report
 
 
-def report_incomplete(report: Any) -> bool:
+def report_incomplete(report: Mapping[str, object] | None) -> bool:
     """True when a native-write report dict signals an incomplete write.
 
     The write paths hand back small dicts (see
@@ -372,7 +375,9 @@ def report_incomplete(report: Any) -> bool:
     Accepts ``None`` (treated as incomplete-nothing → False).
     """
 
-    return bool(report) and bool(report.get("error") or report.get("failed"))
+    if not report:
+        return False
+    return bool(report.get("error") or report.get("failed"))
 
 
 __all__ = [

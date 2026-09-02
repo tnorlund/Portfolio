@@ -17,7 +17,7 @@ import os
 import sys
 import time
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +44,10 @@ from receipt_embeddings.keys import (  # noqa: E402
 )
 from receipt_embeddings.label_status import (  # noqa: E402
     word_label_statuses,
+)
+from receipt_embeddings.protocols import (  # noqa: E402
+    DynamoBatchClient,
+    WriteReportLike,
 )
 from receipt_embeddings.quotas import (  # noqa: E402
     MAX_GET_LIMIT,
@@ -500,7 +504,7 @@ EXIT_VERIFICATION_FAILURE = 4
 
 
 def determine_exit_code(
-    write_report: Any, item_verification: Mapping[str, Any]
+    write_report: WriteReportLike, item_verification: Mapping[str, Any]
 ) -> int:
     """Map an applied run's outcome to its exit code.
 
@@ -532,12 +536,12 @@ def _item_key_from_canonical(key: str) -> dict[str, Any]:
 
 
 def verify_written_items(
-    dynamodb_client: Any,
+    dynamodb_client: DynamoBatchClient,
     table_name: str,
     written_keys: Sequence[str],
     *,
     max_retries: int = 3,
-    sleep: Any = time.sleep,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
     """Strongly consistent existence check over EVERY written key.
 
