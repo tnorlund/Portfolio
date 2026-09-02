@@ -12,6 +12,7 @@ from receipt_dynamo.entities import (
     ReceiptLineEmbedding,
     ReceiptWordEmbedding,
 )
+
 from receipt_embeddings.keys import (
     canonical_from_dynamo_key,
     embedding_item_key,
