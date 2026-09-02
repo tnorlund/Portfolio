@@ -35,15 +35,24 @@ def dual_write_embeddings_enabled() -> bool:
 def _word_label_statuses(
     word_labels: Sequence[Any],
 ) -> Dict[tuple, str]:
-    """Aggregate labels per word: any VALID -> validated, else any
-    PENDING -> pending, else none (same rule as backfill + freshening)."""
+    """Aggregate labels per word with the terminal-verdict rule.
+
+    Any terminal human verdict (VALID or INVALID) -> validated, else any
+    PENDING -> pending, else none — same rule as the backfill and the
+    stream freshener. INVALID-only words must stay in the validated
+    population or the word index's label_status filter would drop
+    exactly the counterexamples similar_labeled_words needs for
+    evidence_against (E3 review P1-2; codex flip P2)."""
     by_word: Dict[tuple, List[str]] = {}
     for label in word_labels:
         key = (int(label.line_id), int(label.word_id))
         by_word.setdefault(key, []).append(str(label.validation_status))
     statuses: Dict[tuple, str] = {}
     for key, values in by_word.items():
-        if ValidationStatus.VALID.value in values:
+        if (
+            ValidationStatus.VALID.value in values
+            or ValidationStatus.INVALID.value in values
+        ):
             statuses[key] = "validated"
         elif ValidationStatus.PENDING.value in values:
             statuses[key] = "pending"
