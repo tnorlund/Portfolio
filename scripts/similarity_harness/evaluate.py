@@ -38,6 +38,7 @@ from receipt_embeddings import (  # noqa: E402
     VectorSearchClient,
 )
 from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
+
 from scripts.similarity_harness.common import DEFAULT_RECALL_K  # noqa: E402
 from scripts.similarity_harness.common import (
     MERCHANT_FAMILY,

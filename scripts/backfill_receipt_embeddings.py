@@ -55,6 +55,7 @@ from receipt_embeddings.service_limits import (  # noqa: E402
     MAX_SEARCH_RESULTS,
     WORD_INDEX,
 )
+
 from scripts.similarity_harness.capture_golden import (  # noqa: E402
     CHROMA_ENVIRONMENT,
     DEV_DATABASE,
