@@ -601,6 +601,11 @@ class UploadImages(ComponentResource):
                 "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
                 "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
                 "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
+                # Vector search backend seam (chroma | dynamodb)
+                "VECTOR_BACKEND": (
+                    pulumi.Config("portfolio").get("vector-backend")
+                    or "chroma"
+                ),
                 # Gates the EMF metrics the ingest cloud upsert emits, matching
                 # the compaction Lambda's flag.
                 "ENABLE_METRICS": "true",

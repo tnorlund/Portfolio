@@ -457,6 +457,10 @@ class LabelEvaluatorStepFunction(ComponentResource):
                 # Evaluator uses S3 snapshots (not Chroma Cloud) to avoid
                 # rate-limit contention when 40 Lambdas run concurrently.
                 "CHROMA_CLOUD_ENABLED": "false",
+                # Vector search backend seam (chroma | dynamodb)
+                "VECTOR_BACKEND": (
+                    Config("portfolio").get("vector-backend") or "chroma"
+                ),
                 **tracing_env,
                 "MAX_ISSUES_PER_LLM_CALL": "15",
                 "LLM_MAX_JITTER_SECONDS": "0.25",

@@ -103,7 +103,8 @@ class FixPlaceLambda(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -187,7 +188,8 @@ class FixPlaceLambda(ComponentResource):
                     or ("tiered" if stack == "dev" else "agent")
                 ),
                 "FIX_PLACE_TIER2_MODEL": (
-                    config.get("fix_place_tier2_model") or "openai/gpt-oss-120b"
+                    config.get("fix_place_tier2_model")
+                    or "openai/gpt-oss-120b"
                 ),
                 "FIX_PLACE_AGENT_MODEL": (
                     config.get("fix_place_agent_model") or "x-ai/grok-4.3"
@@ -200,11 +202,15 @@ class FixPlaceLambda(ComponentResource):
                 "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
                 "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
                 "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
+                # Vector search backend seam (chroma | dynamodb)
+                "VECTOR_BACKEND": (config.get("vector-backend") or "chroma"),
                 # LangSmith tracing
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": ("https://api.smith.langchain.com"),
-                "LANGCHAIN_PROJECT": (config.get("langchain_project") or "fix-place"),
+                "LANGCHAIN_PROJECT": (
+                    config.get("langchain_project") or "fix-place"
+                ),
             },
         }
 
