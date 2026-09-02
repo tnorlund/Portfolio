@@ -8,7 +8,8 @@ SearchVectors). The snapshot/delta/CompactionRun machinery is gone.
 
 Phase 1: Embed (one batched OpenAI call for visual rows + words)
 Phase 1b: Write native DynamoDB embedding items (THE persistence step —
-          a failure here fails the receipt so ingest can retry)
+          a failure here marks the receipt failed; the healing backfill
+          is the recovery primitive)
 Phase 2: Parallel pipelines
 - Lines Pipeline: merchant resolution → section assignment/verification
 - Words Pipeline: label hygiene → validation (abstains to LLM) → LLM
@@ -1220,8 +1221,11 @@ class MerchantResolvingEmbeddingProcessor:
         # PHASE 1b: Persist native DynamoDB embedding items
         # =====================================================================
         # This IS the vector corpus now (Chroma teardown): a failed or
-        # partial write fails the receipt so ingest retries, instead of
-        # leaving the receipt invisible to SearchVectors.
+        # partial write marks the receipt failed (success=False) so the
+        # handler's embedding metrics flag it, instead of silently leaving
+        # the receipt invisible to SearchVectors. Recovery is the healing
+        # backfill (the OCR-results mapping does not redrive on failure —
+        # see #1526 for the strictness follow-ups).
         native_report = write_precomputed_embeddings(
             dynamo=self.dynamo,
             image_id=image_id,
@@ -1439,9 +1443,12 @@ class MerchantResolvingEmbeddingProcessor:
             # =================================================================
             # PHASE 3: Enqueue deferred LLM validation (async mode only)
             # =================================================================
-            # Enqueue ONLY now — after the native embeddings are durable — so
-            # the consumer cannot write label changes before the corresponding
-            # word embeddings exist downstream.
+            # Enqueue after the native-write attempt so, on the healthy
+            # path, the consumer never writes label changes before the
+            # corresponding word embeddings exist downstream. Best-effort
+            # ordering: a failed native write still enqueues (the receipt
+            # is already marked failed and the backfill heals its vectors;
+            # stranding the labels PENDING would not help).
             if async_llm_payload:
                 try:
                     # Give deferred grok the same merchant context the sync path

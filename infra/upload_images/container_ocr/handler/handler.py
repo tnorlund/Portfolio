@@ -503,10 +503,10 @@ def _process_single_record(
                         1 if dual_write.get("error") else 0
                     )
 
-                    # The processor reports False when no CompactionRun was
-                    # written. Its deltas are then orphaned in S3, nothing
-                    # will merge them, and it published nothing to Chroma
-                    # Cloud -- so this is a real failure even though no
+                    # The processor reports False when the native DynamoDB
+                    # embedding write was absent or incomplete: the receipt
+                    # is then invisible to SearchVectors until the healing
+                    # backfill runs -- a real failure even though no
                     # exception was raised.
                     receipt_ok = bool(embedding_result.get("success", True))
                     if receipt_ok:
@@ -520,27 +520,21 @@ def _process_single_record(
                     else:
                         _log(
                             "ERROR: Embeddings incomplete for receipt %s: "
-                            "no compaction run was created, so its deltas "
-                            "are orphaned and nothing was published",
+                            "native embedding write absent or partial",
                             rid,
                         )
                         logger.error(
                             "Embedding incomplete for %s#%s: "
-                            "compaction_run_created=%s",
+                            "native_embeddings=%s",
                             image_id,
                             rid,
-                            embedding_result.get(
-                                "compaction_run_created", False
-                            ),
+                            embedding_result.get("native_embeddings"),
                         )
 
                     all_embedding_results.append(
                         {
                             "receipt_id": rid,
                             "success": receipt_ok,
-                            "compaction_run_created": embedding_result.get(
-                                "compaction_run_created", receipt_ok
-                            ),
                             "merchant_found": merchant_found,
                             "merchant_name": embedding_result.get(
                                 "merchant_name"

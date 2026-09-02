@@ -1286,6 +1286,8 @@ def _dual_write_outputs_native_only(
             ]
             if not row_lines:
                 continue
+            if not " ".join(line.text for line in row_lines).strip():
+                continue  # blank OCR rows are unembeddable (writer refuses)
             row_line_id_set = set(int(v) for v in line_ids)
             anchors = enrich_row_metadata_with_anchors(
                 {},
@@ -1317,6 +1319,8 @@ def _dual_write_outputs_native_only(
             )
         statuses = _word_label_statuses(labels)
         for word in words:
+            if not str(word.text).strip():
+                continue  # blank OCR words are unembeddable (writer refuses)
             requests.append(
                 EmbeddingWriteRequest(
                     kind="word",
