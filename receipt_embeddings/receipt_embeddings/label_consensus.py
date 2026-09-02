@@ -140,6 +140,7 @@ def _degraded(
     return answer
 
 
+# pylint: disable-next=too-many-statements
 def similar_labeled_words(
     vector_client: VectorSearchClient,
     load_label_rows: LabelRowLoader,
@@ -189,6 +190,7 @@ def similar_labeled_words(
                 "to enable similarity evidence."
             ),
         )
+    # pylint: disable-next=broad-exception-caught
     except Exception as exc:  # noqa: BLE001 - degrade, never raise
         return _degraded(
             word,
@@ -204,6 +206,7 @@ def similar_labeled_words(
             top_k=max(1, min(top_k, MAX_SEARCH_RESULTS)),
             filters={"label_status": "validated"},
         )
+    # pylint: disable-next=broad-exception-caught
     except Exception as exc:  # noqa: BLE001 - degrade, never raise
         return _degraded(
             word,
@@ -277,6 +280,7 @@ def similar_labeled_words(
             loader_keys.extend((*identity, name) for name in label_names)
     try:
         loaded = load_label_rows(loader_keys) if loader_keys else []
+    # pylint: disable-next=broad-exception-caught
     except Exception as exc:  # noqa: BLE001 - degrade, never raise
         return {
             **base,

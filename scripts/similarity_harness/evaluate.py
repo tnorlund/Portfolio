@@ -32,11 +32,16 @@ if _cached is not None and getattr(_cached, "__file__", None) is None:
     ]:
         del sys.modules[_name]
 
+from receipt_embeddings import (  # noqa: E402
+    FilterValue,
+    ScoredItem,
+    VectorSearchClient,
+)
+from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
 from scripts.similarity_harness.common import DEFAULT_RECALL_K  # noqa: E402
 from scripts.similarity_harness.common import (
     MERCHANT_FAMILY,
     SECTION_FAMILY,
-    WORD_FAMILY,
     canonical_json_bytes,
     content_digest,
     corpus_items,
@@ -46,13 +51,6 @@ from scripts.similarity_harness.common import (
     round_vector,
     scored_item_from_dict,
 )
-
-from receipt_embeddings import (  # noqa: E402
-    FilterValue,
-    ScoredItem,
-    VectorSearchClient,
-)
-from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
 
 DEFAULT_FIXTURE = (
     REPOSITORY_ROOT / "tests" / "fixtures" / "similarity" / "golden.json"

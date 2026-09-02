@@ -8,7 +8,6 @@ from receipt_embeddings.keys import line_canonical_key, word_canonical_key
 from receipt_embeddings.protocols import ChromaQueryClient
 from receipt_embeddings.quotas import build_chroma_where
 from receipt_embeddings.service_limits import (
-    LINE_INDEX,
     WORD_INDEX,
     physical_index_name,
     validate_top_k,

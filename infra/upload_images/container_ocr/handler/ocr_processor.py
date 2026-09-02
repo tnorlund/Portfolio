@@ -12,7 +12,6 @@ Handles:
 import json
 import logging
 import os
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import atan2, degrees
@@ -1507,9 +1506,8 @@ class OCRProcessor:
                             stale_count,
                             dual_report,
                         )
-                except (
-                    Exception
-                ) as native_exc:  # pylint: disable=broad-exception-caught
+                # pylint: disable-next=broad-exception-caught
+                except Exception as native_exc:
                     # CONTRACTUAL: surfaced, not swallowed (codex flip P1).
                     # Stale rows may already be deleted, so the job must
                     # fail retryably instead of acknowledging success
@@ -1521,7 +1519,7 @@ class OCRProcessor:
                     "Re-OCR embeddings created, compaction_run=%s",
                     compaction_run_id,
                 )
-            except Exception:
+            except Exception:  # pylint: disable=broad-exception-caught
                 logger.exception(
                     "Failed to create embeddings after re-OCR for %s#%s",
                     ocr_job.image_id,

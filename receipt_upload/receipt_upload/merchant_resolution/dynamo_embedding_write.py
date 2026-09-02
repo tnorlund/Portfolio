@@ -130,9 +130,16 @@ def maybe_dual_write_embeddings(
             word_embeddings_list=word_embeddings_list,
         )
         if writer_factory is None:
-            writer = EmbeddingWriter(dynamo._client, dynamo.table_name)
+            # EmbeddingTableHandle stores the low-level boto client here.
+            writer = EmbeddingWriter(
+                dynamo._client,  # pylint: disable=protected-access
+                dynamo.table_name,
+            )
         else:
-            writer = writer_factory(dynamo._client, dynamo.table_name)
+            writer = writer_factory(
+                dynamo._client,  # pylint: disable=protected-access
+                dynamo.table_name,
+            )
         report = writer.write(requests)
         result = {
             "enabled": True,
@@ -148,6 +155,7 @@ def maybe_dual_write_embeddings(
             result,
         )
         return result
+    # pylint: disable-next=broad-exception-caught
     except Exception as exc:  # noqa: BLE001 - never affect ingest outcome
         # CONTRACTUAL never-raise: ingest outcome is independent of the
         # dual-write leg (flag-gated; failures are reported in the dict).

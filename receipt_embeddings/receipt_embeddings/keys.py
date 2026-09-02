@@ -4,12 +4,12 @@ One module so SearchVectors keys, Dynamo PK/SK, and harness IDs cannot
 drift. The identity string shared by both backends is:
 
     IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}
-    IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}
 
-Native DynamoDB embedding items store the same identity as:
+Word items append ``#WORD#{word_id:05d}``. Native DynamoDB embedding
+items store the same identity as:
 
     PK = IMAGE#{image_id}
-    SK = RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}[#WORD#{word_id:05d}]#EMBEDDING
+    SK = RECEIPT#…#LINE#…[#WORD#…]#EMBEDDING
 """
 
 from __future__ import annotations

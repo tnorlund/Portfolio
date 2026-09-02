@@ -235,9 +235,13 @@ class EmbeddingWriter:
                         EmbeddingWriteFailure(
                             key=key_id,
                             stage="read",
-                            error="BatchGetItem remained unprocessed after retries",
+                            error=(
+                                "BatchGetItem remained unprocessed "
+                                "after retries"
+                            ),
                         )
                     )
+            # pylint: disable-next=broad-exception-caught
             except Exception as exc:  # noqa: BLE001 - isolate and report
                 # CONTRACTUAL isolate-and-report: one unreadable key
                 # must not abort skip-existing for the rest of the chunk.
@@ -316,6 +320,7 @@ class EmbeddingWriter:
                             )
                         else:
                             report.written_keys.append(key)
+            # pylint: disable-next=broad-exception-caught
             except Exception:  # noqa: BLE001 - isolate and retry singly
                 # CONTRACTUAL isolate-and-report: a batch exception does
                 # not identify the failing item. Retry singly so healthy
@@ -334,8 +339,11 @@ class EmbeddingWriter:
                             self.table_name, []
                         )
                         if unprocessed:
-                            raise RuntimeError("item remained unprocessed")
+                            raise RuntimeError(
+                                "item remained unprocessed"
+                            ) from None
                         report.written_keys.append(key)
+                    # pylint: disable-next=broad-exception-caught
                     except Exception as item_exc:  # noqa: BLE001
                         # CONTRACTUAL isolate-and-report: one poisoned
                         # item must not abort the rest of the chunk.
@@ -385,6 +393,7 @@ class EmbeddingWriter:
                 item = entity.to_item()
                 self._assert_safe_item(item)
                 to_write.append((request.canonical_key, item))
+            # pylint: disable-next=broad-exception-caught
             except Exception as exc:  # noqa: BLE001 - isolate and report
                 # CONTRACTUAL isolate-and-report: embed/validate of one
                 # request must not drop healthy siblings.

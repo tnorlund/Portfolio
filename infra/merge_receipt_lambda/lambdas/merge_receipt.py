@@ -530,8 +530,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             # CONTRACTUAL: close() failure must not block source deletion
             # after a successful dual-write.
             logger.warning(
-                "Failed to close embedding resources for compaction_run_id=%s; "
-                "proceeding with receipt deletion",
+                "Failed to close embedding resources for "
+                "compaction_run_id=%s; proceeding with receipt deletion",
                 compaction_run_id,
                 exc_info=True,
             )
@@ -581,7 +581,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("Merge complete: %s", result)
         return result
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
         logger.exception("Error merging receipts")
         return {
             "status": "error",

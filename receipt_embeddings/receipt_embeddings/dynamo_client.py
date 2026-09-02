@@ -80,7 +80,8 @@ class DynamoVectorSearchClient:
             raise ValueError("table_name must not be empty")
         if not callable(getattr(dynamodb_client, "search_vectors", None)):
             raise RuntimeError(
-                "DynamoDB client lacks SearchVectors; boto3 >= 1.43.64 is required"
+                "DynamoDB client lacks SearchVectors; "
+                "boto3 >= 1.43.64 is required"
             )
         self._client = dynamodb_client
         self.table_name = table_name
@@ -240,6 +241,7 @@ class DynamoVectorSearchClient:
                         break
                     if attempt < self._max_retries:
                         self._sleep(0.1 * (2**attempt))
+            # pylint: disable-next=broad-exception-caught
             except Exception:  # noqa: BLE001 - degrade to projection metadata
                 # CONTRACTUAL: a join failure keeps SearchVectors hits
                 # with projection metadata rather than discarding them.
@@ -360,6 +362,7 @@ class DynamoVectorSearchClient:
                         self._sleep(0.1 * (2**attempt))
                 if pending:
                     return results
+        # pylint: disable-next=broad-exception-caught
         except Exception:  # noqa: BLE001 - abstain on join failure
             # CONTRACTUAL: a failed label join leaves valid_labels_array
             # absent so consumers abstain instead of voting on partial
