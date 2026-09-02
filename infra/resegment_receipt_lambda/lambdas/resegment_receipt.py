@@ -1300,6 +1300,16 @@ def _embed_outputs(
                     receipt.receipt_id,
                     dual_report,
                 )
+                if dual_report.get("error") or dual_report.get("failed"):
+                    # Destructive-step ordering (codex flip-review P2):
+                    # cleanup deletes the source's vectors, so an
+                    # incomplete output write must fail the apply as
+                    # retryable instead of committing a vector-less
+                    # split.
+                    raise RuntimeError(
+                        "native dual-write incomplete for output "
+                        f"{receipt.receipt_id}: {dual_report}"
+                    )
             if (
                 wait_for_embeddings
                 and not result.wait_for_compaction_to_finish(
@@ -1674,7 +1684,17 @@ def apply_plan(
         # Embeddings default OFF: running them inline OOMs the deployed
         # Lambda at its memory limit, and the outputs' embeddings self-heal
         # through the normal pipeline. Opt in explicitly for tests/tools.
-        if event.get("create_embeddings", False):
+        from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501  pylint: disable=import-outside-toplevel
+            dual_write_embeddings_enabled,
+        )
+
+        # With native dual writes enabled, cleanup deletes the source's
+        # embedding rows, so outputs MUST be re-embedded regardless of
+        # the caller's flag — otherwise both split outputs vanish from
+        # semantic search (codex flip-review P1).
+        if event.get("create_embeddings", False) or (
+            dual_write_embeddings_enabled()
+        ):
             run_ids = _embed_outputs(
                 outputs=outputs,
                 dynamo_client=dynamo_client,

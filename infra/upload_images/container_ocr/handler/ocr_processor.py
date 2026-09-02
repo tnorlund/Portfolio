@@ -12,6 +12,7 @@ Handles:
 import json
 import logging
 import os
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import atan2, degrees
@@ -1458,14 +1459,31 @@ class OCRProcessor:
                             kwargs["ExclusiveStartKey"] = lek
                         for start in range(0, len(stale_keys), 25):
                             chunk = stale_keys[start : start + 25]
-                            raw.batch_write_item(
-                                RequestItems={
-                                    self.dynamo.table_name: [
-                                        {"DeleteRequest": {"Key": key}}
-                                        for key in chunk
-                                    ]
-                                }
-                            )
+                            pending = [
+                                {"DeleteRequest": {"Key": key}}
+                                for key in chunk
+                            ]
+                            # UnprocessedItems must be retried: the
+                            # skip-existing writer would treat an
+                            # undeleted key as already current and
+                            # leave a stale vector (codex flip P1).
+                            for attempt in range(8):
+                                bw = raw.batch_write_item(
+                                    RequestItems={
+                                        self.dynamo.table_name: pending
+                                    }
+                                )
+                                pending = bw.get("UnprocessedItems", {}).get(
+                                    self.dynamo.table_name, []
+                                )
+                                if not pending:
+                                    break
+                                time.sleep(0.2 * (2**attempt))
+                            if pending:
+                                raise RuntimeError(
+                                    f"{len(pending)} stale embedding "
+                                    "deletes unprocessed after retries"
+                                )
                         try:
                             reocr_place = self.dynamo.get_receipt_place(
                                 ocr_job.image_id, ocr_job.receipt_id
@@ -1474,22 +1492,52 @@ class OCRProcessor:
                             Exception
                         ):  # pylint: disable=broad-exception-caught
                             reocr_place = None
-                        dual_report = maybe_dual_write_embeddings(
-                            dynamo=self.dynamo,
-                            image_id=ocr_job.image_id,
-                            receipt_id=ocr_job.receipt_id,
-                            lines=all_lines,
-                            words=non_noise_words,
-                            word_labels=labels_for_embedding or [],
-                            receipt_place=reocr_place,
-                            row_embeddings=embedding_result.row_embeddings,
-                            row_line_ids_list=(
-                                embedding_result.row_line_ids_list
-                            ),
-                            word_embeddings_list=(
-                                embedding_result.word_embeddings_list
-                            ),
-                        )
+
+                        def _write_native():
+                            return maybe_dual_write_embeddings(
+                                dynamo=self.dynamo,
+                                image_id=ocr_job.image_id,
+                                receipt_id=ocr_job.receipt_id,
+                                lines=all_lines,
+                                words=non_noise_words,
+                                word_labels=labels_for_embedding or [],
+                                receipt_place=reocr_place,
+                                row_embeddings=(
+                                    embedding_result.row_embeddings
+                                ),
+                                row_line_ids_list=(
+                                    embedding_result.row_line_ids_list
+                                ),
+                                word_embeddings_list=(
+                                    embedding_result.word_embeddings_list
+                                ),
+                            )
+
+                        def _incomplete(report):
+                            return bool(report) and (
+                                report.get("error") or report.get("failed")
+                            )
+
+                        dual_report = _write_native()
+                        # The old rows are gone, so an incomplete
+                        # replacement must retry (the writer's
+                        # skip-existing makes retries complete the
+                        # remainder) and fail loudly if it cannot
+                        # (codex flip P1).
+                        for _retry in range(2):
+                            if not _incomplete(dual_report):
+                                break
+                            logger.warning(
+                                "Re-OCR native write incomplete, "
+                                "retrying: %s",
+                                dual_report,
+                            )
+                            dual_report = _write_native()
+                        if _incomplete(dual_report):
+                            raise RuntimeError(
+                                "re-OCR native replacement incomplete "
+                                f"after retries: {dual_report}"
+                            )
                         logger.info(
                             "Re-OCR native refresh: swept %d stale, %s",
                             len(stale_keys),
