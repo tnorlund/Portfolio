@@ -232,7 +232,10 @@ def build_chroma_source(
     missing = [name for name in CHROMA_ENVIRONMENT if not os.environ.get(name)]
     if missing:
         raise SystemExit("vector source 'chroma' needs " + ", ".join(missing))
-    database = os.environ["CHROMA_CLOUD_DATABASE"].strip()
+    # Compare the RAW value the client will actually use — a padded
+    # 'receipt_prod ' must not pass an opt-in of 'receipt_prod'
+    # (codex review P2).
+    database = os.environ["CHROMA_CLOUD_DATABASE"]
     if database != DEV_DATABASE and allow_database != database:
         raise SystemExit(
             f"refusing to touch Chroma database {database!r}; only "
@@ -851,9 +854,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         repair_report["table_name"] = args.table_name
         print(json.dumps(repair_report, indent=2, sort_keys=True))
         return int(repair_report["exit_code"])
-    requests, receipt_skips = collect_requests(
-        dynamo, receipts, fixture_vectors(fixture)
-    )
+    # A non-dev promotion must not reuse fixture vectors: the canonical
+    # fixture is captured from dev Chroma, and twin receipts share keys
+    # across stacks, so fixture seeding could silently write dev vectors
+    # into the target while reporting the opted-in source (codex review
+    # P1). The opted-in source is authoritative for manifest-only runs.
+    seed_vectors = {} if args.manifest_only else fixture_vectors(fixture)
+    requests, receipt_skips = collect_requests(dynamo, receipts, seed_vectors)
     vector_source = resolve_vector_source(args.vector_source)
 
     report: dict[str, Any] = {
