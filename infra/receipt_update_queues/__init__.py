@@ -42,22 +42,12 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 _COMPACTION_DIR = Path(__file__).parent.parent / "chromadb_compaction"
 
 
-def _old_urn(child_type: str, logical_name: str, *, chain: str) -> str:
-    """URN of a resource under its OLD chromadb_compaction parent chain."""
-    stack = pulumi.get_stack()
-    project = pulumi.get_project()
+def _old_parent(chain: str, instance_name: str) -> str:
+    """URN of the OLD parent component instance (frozen historical
+    type literals; stack/project resolved at runtime)."""
     return (
-        f"urn:pulumi:{stack}::{project}::"
-        f"chromadb:compaction:Infrastructure${chain}${child_type}"
-        f"::{logical_name}"
-    )
-
-
-def _moved(child_type: str, logical_name: str, *, chain: str, parent):
-    """ResourceOptions for an alias-preserving move from the old chain."""
-    return ResourceOptions(
-        parent=parent,
-        aliases=[Alias(urn=_old_urn(child_type, logical_name, chain=chain))],
+        f"urn:pulumi:{pulumi.get_stack()}::{pulumi.get_project()}::"
+        f"chromadb:compaction:Infrastructure${chain}::{instance_name}"
     )
 
 
@@ -95,6 +85,13 @@ class ReceiptUpdateQueues(ComponentResource):
         if stack is None:
             stack = pulumi.get_stack()
 
+        # Only the PARENT changed in this move (same logical name, same
+        # type), so Alias(parent=<old parent URN>) is the exact alias.
+        _queues_alias = [Alias(parent=_old_parent(_QUEUES_CHAIN, queues_name))]
+        _lambda_alias = [
+            Alias(parent=_old_parent(_LAMBDA_CHAIN, lambdas_name))
+        ]
+
         # ------------------------------------------------------------------
         # Queues (moved from ChromaDBQueues; logical names byte-identical)
         # ------------------------------------------------------------------
@@ -109,12 +106,7 @@ class ReceiptUpdateQueues(ComponentResource):
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
-            opts=_moved(
-                "aws:sqs/queue:Queue",
-                f"{queues_name}-summary-dlq",
-                chain=_QUEUES_CHAIN,
-                parent=self,
-            ),
+            opts=ResourceOptions(parent=self, aliases=_queues_alias),
         )
 
         self.summary_queue = aws.sqs.Queue(
@@ -134,12 +126,7 @@ class ReceiptUpdateQueues(ComponentResource):
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
-            opts=_moved(
-                "aws:sqs/queue:Queue",
-                f"{queues_name}-summary-queue",
-                chain=_QUEUES_CHAIN,
-                parent=self,
-            ),
+            opts=ResourceOptions(parent=self, aliases=_queues_alias),
         )
 
         self.line_item_dlq = aws.sqs.Queue(
@@ -153,12 +140,7 @@ class ReceiptUpdateQueues(ComponentResource):
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
-            opts=_moved(
-                "aws:sqs/queue:Queue",
-                f"{queues_name}-line-item-dlq",
-                chain=_QUEUES_CHAIN,
-                parent=self,
-            ),
+            opts=ResourceOptions(parent=self, aliases=_queues_alias),
         )
 
         self.line_item_queue = aws.sqs.Queue(
@@ -178,12 +160,7 @@ class ReceiptUpdateQueues(ComponentResource):
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
-            opts=_moved(
-                "aws:sqs/queue:Queue",
-                f"{queues_name}-line-item-queue",
-                chain=_QUEUES_CHAIN,
-                parent=self,
-            ),
+            opts=ResourceOptions(parent=self, aliases=_queues_alias),
         )
 
         # Queue policy (moved): consumer-only statements — the old
@@ -214,12 +191,7 @@ class ReceiptUpdateQueues(ComponentResource):
                     }
                 )
             ),
-            opts=_moved(
-                "aws:sqs/queuePolicy:QueuePolicy",
-                f"{queues_name}-summary-queue-policy",
-                chain=_QUEUES_CHAIN,
-                parent=self,
-            ),
+            opts=ResourceOptions(parent=self, aliases=_queues_alias),
         )
 
         # ------------------------------------------------------------------
@@ -407,12 +379,7 @@ class ReceiptUpdateQueues(ComponentResource):
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
-            opts=_moved(
-                "aws:cloudwatch/logGroup:LogGroup",
-                f"{lambdas_name}-stream-log-group",
-                chain=_LAMBDA_CHAIN,
-                parent=self,
-            ),
+            opts=ResourceOptions(parent=self, aliases=_lambda_alias),
         )
         self.summary_updater_log_group = aws.cloudwatch.LogGroup(
             f"{lambdas_name}-summary-updater-log-group",
@@ -423,12 +390,7 @@ class ReceiptUpdateQueues(ComponentResource):
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
-            opts=_moved(
-                "aws:cloudwatch/logGroup:LogGroup",
-                f"{lambdas_name}-summary-updater-log-group",
-                chain=_LAMBDA_CHAIN,
-                parent=self,
-            ),
+            opts=ResourceOptions(parent=self, aliases=_lambda_alias),
         )
         self.line_item_updater_log_group = aws.cloudwatch.LogGroup(
             f"{lambdas_name}-line-item-updater-log-group",
@@ -439,12 +401,7 @@ class ReceiptUpdateQueues(ComponentResource):
                 "Environment": stack,
                 "ManagedBy": "Pulumi",
             },
-            opts=_moved(
-                "aws:cloudwatch/logGroup:LogGroup",
-                f"{lambdas_name}-line-item-updater-log-group",
-                chain=_LAMBDA_CHAIN,
-                parent=self,
-            ),
+            opts=ResourceOptions(parent=self, aliases=_lambda_alias),
         )
 
         # ------------------------------------------------------------------
@@ -523,15 +480,7 @@ class ReceiptUpdateQueues(ComponentResource):
             layers=[dynamo_layer.arn, dynamo_stream_layer.arn],
             opts=ResourceOptions(
                 parent=self,
-                aliases=[
-                    Alias(
-                        urn=_old_urn(
-                            "aws:lambda/function:Function",
-                            f"{lambdas_name}-stream-processor",
-                            chain=_LAMBDA_CHAIN,
-                        )
-                    )
-                ],
+                aliases=_lambda_alias,
                 depends_on=[self.lambda_role, self.stream_log_group],
                 ignore_changes=["layers"],
             ),
@@ -595,15 +544,7 @@ class ReceiptUpdateQueues(ComponentResource):
             layers=[dynamo_layer.arn],
             opts=ResourceOptions(
                 parent=self,
-                aliases=[
-                    Alias(
-                        urn=_old_urn(
-                            "aws:lambda/function:Function",
-                            f"{lambdas_name}-summary-updater",
-                            chain=_LAMBDA_CHAIN,
-                        )
-                    )
-                ],
+                aliases=_lambda_alias,
                 depends_on=[
                     self.lambda_role,
                     self.summary_updater_log_group,
@@ -726,15 +667,7 @@ class ReceiptUpdateQueues(ComponentResource):
             layers=[dynamo_layer.arn],
             opts=ResourceOptions(
                 parent=self,
-                aliases=[
-                    Alias(
-                        urn=_old_urn(
-                            "aws:lambda/function:Function",
-                            f"{lambdas_name}-line-item-updater",
-                            chain=_LAMBDA_CHAIN,
-                        )
-                    )
-                ],
+                aliases=_lambda_alias,
                 depends_on=[
                     self.lambda_role,
                     self.line_item_updater_log_group,
@@ -757,12 +690,7 @@ class ReceiptUpdateQueues(ComponentResource):
             maximum_retry_attempts=3,
             maximum_record_age_in_seconds=3600,
             bisect_batch_on_function_error=True,
-            opts=_moved(
-                "aws:lambda/eventSourceMapping:EventSourceMapping",
-                f"{lambdas_name}-stream-event-source-mapping",
-                chain=_LAMBDA_CHAIN,
-                parent=self,
-            ),
+            opts=ResourceOptions(parent=self, aliases=_lambda_alias),
         )
         self.summary_event_source_mapping = aws.lambda_.EventSourceMapping(
             f"{lambdas_name}-summary-event-source-mapping",
@@ -771,12 +699,7 @@ class ReceiptUpdateQueues(ComponentResource):
             batch_size=100,
             maximum_batching_window_in_seconds=5,
             function_response_types=["ReportBatchItemFailures"],
-            opts=_moved(
-                "aws:lambda/eventSourceMapping:EventSourceMapping",
-                f"{lambdas_name}-summary-event-source-mapping",
-                chain=_LAMBDA_CHAIN,
-                parent=self,
-            ),
+            opts=ResourceOptions(parent=self, aliases=_lambda_alias),
         )
         self.line_item_event_source_mapping = aws.lambda_.EventSourceMapping(
             f"{lambdas_name}-line-item-event-source-mapping",
@@ -785,12 +708,7 @@ class ReceiptUpdateQueues(ComponentResource):
             batch_size=50,
             maximum_batching_window_in_seconds=5,
             function_response_types=["ReportBatchItemFailures"],
-            opts=_moved(
-                "aws:lambda/eventSourceMapping:EventSourceMapping",
-                f"{lambdas_name}-line-item-event-source-mapping",
-                chain=_LAMBDA_CHAIN,
-                parent=self,
-            ),
+            opts=ResourceOptions(parent=self, aliases=_lambda_alias),
         )
 
         # Exports
