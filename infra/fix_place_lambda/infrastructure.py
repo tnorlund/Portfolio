@@ -44,9 +44,6 @@ openai_api_key = config.require_secret("OPENAI_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
-chroma_cloud_api_key = config.require_secret("CHROMA_CLOUD_API_KEY")
-chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
-chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 
 
 class FixPlaceLambda(ComponentResource):
@@ -198,10 +195,6 @@ class FixPlaceLambda(ComponentResource):
                 "FIX_PLACE_AGENT_MAX_ROUNDS": "3",
                 # OpenAI (for embeddings)
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                # Chroma Cloud
-                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
-                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
-                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 # Vector search backend seam (chroma | dynamodb)
                 "VECTOR_BACKEND": (config.get("vector-backend") or "chroma"),
                 # LangSmith tracing

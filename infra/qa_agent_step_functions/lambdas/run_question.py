@@ -323,7 +323,14 @@ async def _run_all(
 
     table_name = os.environ.get("DYNAMODB_TABLE_NAME", "")
     dynamo_client = create_dynamo_client(table_name=table_name)
-    chroma_client = create_chroma_client(mode="read")
+    # Chroma teardown: on the dynamodb backend the semantic tools read the
+    # DynamoDB vector indexes through the seam and the non-semantic Chroma
+    # modes return structured "unavailable" results — never build a Chroma
+    # client (its creds are gone; constructing one killed the whole batch).
+    backend = os.environ.get("VECTOR_BACKEND", "dynamodb").strip().lower()
+    chroma_client = (
+        None if backend == "dynamodb" else create_chroma_client(mode="read")
+    )
     embed_fn = create_embed_fn()
 
     semaphore = asyncio.Semaphore(CONCURRENCY)

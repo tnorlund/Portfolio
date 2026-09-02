@@ -39,9 +39,6 @@ config = Config("portfolio")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
-chroma_cloud_api_key = config.require_secret("CHROMA_CLOUD_API_KEY")
-chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
-chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 
 # Model is a stack config so per-stack experiments (e.g. a pricier model on
 # one stack) live in IaC instead of hand-edited Lambda env that the next
@@ -303,9 +300,6 @@ class QAAgentStepFunction(ComponentResource):
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_PROJECT": "qa-agent-marquee",
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
-                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
-                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 # Vector search backend seam (chroma | dynamodb)
                 "VECTOR_BACKEND": (
                     Config("portfolio").get("vector-backend") or "chroma"

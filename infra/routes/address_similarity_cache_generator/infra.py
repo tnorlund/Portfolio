@@ -220,7 +220,6 @@ class AddressSimilarityCacheGenerator(ComponentResource):
                         pulumi.Config("portfolio").get("vector-backend")
                         or "chroma"
                     ),
-                    "CHROMADB_BUCKET": Output.from_input(chromadb_bucket_name),
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
                 },
             },

@@ -215,14 +215,7 @@ class ResegmentReceiptLambda(ComponentResource):
                     "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                     "RAW_BUCKET": raw_bucket_name,
                     "SITE_BUCKET": site_bucket_name,
-                    "CHROMADB_BUCKET": chromadb_bucket_name,
                     "OPENAI_API_KEY": openai_api_key,
-                    # Dual-run embedding writes (non-fatal, flag-gated):
-                    # resegmented outputs must reach the native vector
-                    # corpus (codex flip-review P1).
-                    "DUAL_WRITE_EMBEDDINGS": (
-                        config.get("enable-dual-write-embeddings") or "false"
-                    ),
                 },
             },
             platform="linux/arm64",

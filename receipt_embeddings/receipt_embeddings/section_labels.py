@@ -77,8 +77,19 @@ NON_ITEM_SECTION_LABELS = (
 )
 
 
+def non_item_section_filter() -> Dict[str, Any]:
+    """Legacy Chroma ``where`` clause excluding sections without products.
+
+    Kept for the remaining Chroma-shaped call sites during teardown. Rows
+    with no ``section_label`` are deliberately KEPT: on under-sectioned
+    receipts the product lines are exactly the unlabeled ones.
+    """
+    return {"section_label": {"$nin": list(NON_ITEM_SECTION_LABELS)}}
+
+
 __all__ = [
     "NON_ITEM_SECTION_LABELS",
+    "non_item_section_filter",
     "row_section_from_map",
     "sections_to_line_map",
 ]

@@ -85,8 +85,24 @@ def create_simplified_qa_tools(
                                                               product labels
             search_receipts("coffee purchase", "semantic") -> semantic search
         """
+
+        def _unavailable(mode: str) -> dict:
+            return {
+                "search_type": mode,
+                "query": query,
+                "error": (
+                    f"search_type '{mode}' is unavailable on the "
+                    "dynamodb backend (Chroma retired)"
+                ),
+                "total_matches": 0,
+                "unique_receipts": 0,
+                "results": [],
+            }
+
         try:
             if search_type == "label":
+                if chroma_client is None:
+                    return _unavailable("label")
                 # Search words collection by label
                 words_collection = chroma_client.get_collection("words")
                 results = words_collection.get(
@@ -115,6 +131,8 @@ def create_simplified_qa_tools(
                 }
 
             elif search_type == "label_lines":
+                if chroma_client is None:
+                    return _unavailable("label_lines")
                 # Search lines collection by aggregated label metadata
                 # This uses the row-based embeddings with label_* fields
                 lines_collection = chroma_client.get_collection("lines")
@@ -146,6 +164,8 @@ def create_simplified_qa_tools(
                 }
 
             elif search_type == "semantic":
+                if chroma_client is None:
+                    return _unavailable("semantic")
                 # Semantic search using embeddings
                 lines_collection = chroma_client.get_collection("lines")
 
@@ -195,6 +215,8 @@ def create_simplified_qa_tools(
                 }
 
             else:
+                if chroma_client is None:
+                    return _unavailable("text")
                 # Default: Search lines collection by text content
                 lines_collection = chroma_client.get_collection("lines")
                 results = lines_collection.get(

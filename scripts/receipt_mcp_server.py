@@ -94,6 +94,21 @@ CHROMA_NOT_CONFIGURED_MESSAGE = (
 )
 
 
+def _chroma_mode_unavailable(search_type: str, query: str) -> dict:
+    """Structured result for retired Chroma-only search modes."""
+    return {
+        "search_type": search_type,
+        "query": query,
+        "error": (
+            f"search_type '{search_type}' is unavailable on the "
+            "dynamodb backend (Chroma retired); use 'semantic' or the "
+            "DynamoDB-backed tools instead"
+        ),
+        "total_matches": 0,
+        "results": [],
+    }
+
+
 class ChromaNotConfiguredError(RuntimeError):
     """Raised when a Chroma-backed tool is called without Chroma Cloud creds."""
 
@@ -2297,22 +2312,17 @@ async def call_tool(
     try:
         dynamo_client = get_dynamo_client()
         if name in CHROMA_TOOLS:
-            try:
-                chroma_client, embed_fn = get_chroma_clients()
-            except ChromaNotConfiguredError:
-                # VECTOR_BACKEND=dynamodb serves the semantic modes from
-                # the DynamoDB vector indexes; only those may proceed
-                # without Chroma credentials.
-                if (
-                    _vector_backend() == "dynamodb"
-                    and name in ("search_receipts", "search_product_lines")
-                    and arguments.get("search_type") == "semantic"
-                ):
-                    from receipt_agent.clients.factory import create_embed_fn
+            if _vector_backend() == "dynamodb":
+                # Chroma teardown: never construct a Chroma client on the
+                # dynamodb backend. Semantic modes retrieve through the
+                # DynamoDB vector indexes; the retired Chroma-only modes
+                # answer with a structured "unavailable" result inside
+                # their impls (chroma_client is None there).
+                from receipt_agent.clients.factory import create_embed_fn
 
-                    chroma_client, embed_fn = None, create_embed_fn()
-                else:
-                    raise
+                chroma_client, embed_fn = None, create_embed_fn()
+            else:
+                chroma_client, embed_fn = get_chroma_clients()
         else:
             chroma_client = embed_fn = None
 
@@ -2708,6 +2718,8 @@ async def search_receipts_impl(
     """
     try:
         if search_type == "label":
+            if chroma_client is None:
+                return _chroma_mode_unavailable("label", query)
             words_collection = chroma_client.get_collection("words")
             results = words_collection.get(
                 where={"label": query.upper()},
@@ -2787,6 +2799,8 @@ async def search_receipts_impl(
             }
 
         else:  # text search
+            if chroma_client is None:
+                return _chroma_mode_unavailable("text", query)
             lines_collection = chroma_client.get_collection("lines")
             results = lines_collection.get(
                 where_document={"$contains": query.upper()},
@@ -2965,6 +2979,16 @@ async def get_receipt_impl(
 async def list_all_receipts_impl(chroma_client, limit: int) -> dict:
     """List all receipts."""
     try:
+        if chroma_client is None:
+            return {
+                "error": (
+                    "list_all_receipts is unavailable on the dynamodb "
+                    "backend (Chroma retired); use list_recent_uploads "
+                    "or get_receipt_summaries instead"
+                ),
+                "total_receipts": 0,
+                "receipts": [],
+            }
         lines_collection = chroma_client.get_collection("lines")
 
         # Get all receipts by querying metadata (no label filtering)
@@ -3082,10 +3106,7 @@ async def search_product_lines_impl(
     """
     import re
 
-    # Imported here, not at module scope: receipt_chroma.__init__ pulls in
-    # chromadb, and this server must stay importable without it
-    # (tests/test_receipt_mcp_lazy_chroma.py).
-    from receipt_chroma.section_labels import (
+    from receipt_embeddings.section_labels import (
         NON_ITEM_SECTION_LABELS,
         non_item_section_filter,
     )
@@ -3214,7 +3235,10 @@ async def search_product_lines_impl(
             }
 
         else:
-            # Text search (exact match; unchanged Chroma substring scan)
+            # Text search (direct Chroma substring scan; unavailable once
+            # Chroma is retired — no DynamoDB rewrite)
+            if chroma_client is None:
+                return _chroma_mode_unavailable("text", query)
             lines_collection = chroma_client.get_collection("lines")
             results = lines_collection.get(
                 where_document={"$contains": query.upper()},

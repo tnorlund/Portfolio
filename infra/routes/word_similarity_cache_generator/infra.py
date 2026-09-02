@@ -231,22 +231,7 @@ class WordSimilarityCacheGenerator(ComponentResource):
                     "VECTOR_BACKEND": (
                         portfolio_config.get("vector-backend") or "chroma"
                     ),
-                    "CHROMADB_BUCKET": Output.from_input(chromadb_bucket_name),
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
-                    # Chroma Cloud config for faster queries (skip S3 download)
-                    "CHROMA_CLOUD_ENABLED": (
-                        portfolio_config.get("CHROMA_CLOUD_ENABLED") or "false"
-                    ),
-                    "CHROMA_CLOUD_API_KEY": (
-                        portfolio_config.get_secret("CHROMA_CLOUD_API_KEY")
-                        or ""
-                    ),
-                    "CHROMA_CLOUD_TENANT": (
-                        portfolio_config.get("CHROMA_CLOUD_TENANT") or ""
-                    ),
-                    "CHROMA_CLOUD_DATABASE": (
-                        portfolio_config.get("CHROMA_CLOUD_DATABASE") or ""
-                    ),
                 },
             },
             platform="linux/arm64",

@@ -21,17 +21,18 @@ from pathlib import Path
 from typing import Optional
 
 import boto3
-from receipt_chroma import ChromaClient
-from receipt_chroma.compaction import CloudConfig
-from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo import DynamoClient
+
+# receipt_chroma is imported lazily inside the chroma-backed fetch
+# functions only: on the dynamodb backend this Lambda must import (and
+# run) without the package or the CHROMADB_BUCKET env (Chroma teardown).
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Environment variables
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
-CHROMADB_BUCKET = os.environ["CHROMADB_BUCKET"]
+CHROMADB_BUCKET = os.environ.get("CHROMADB_BUCKET", "")
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET", CHROMADB_BUCKET)
 CACHE_KEY = "word-similarity-cache/milk.json"
 TARGET_WORD = "MILK"
@@ -710,6 +711,10 @@ def _fetch_lines_from_dynamo(timing: TimingStats, dynamo_client) -> dict:
 
 def _fetch_lines_from_cloud(timing: TimingStats) -> list:
     """Fetch milk lines from Chroma Cloud with server-side filtering."""
+    # pylint: disable=import-outside-toplevel
+    from receipt_chroma import ChromaClient
+    from receipt_chroma.compaction import CloudConfig
+
     cloud_config = CloudConfig.from_env()
     if not cloud_config:
         raise ValueError("Chroma Cloud config not available")
@@ -753,6 +758,9 @@ def _fetch_lines_from_cloud(timing: TimingStats) -> list:
 
 def _fetch_lines_from_s3(timing: TimingStats, temp_dir: str) -> list:
     """Fetch lines from S3 snapshot (fallback mode)."""
+    # pylint: disable=import-outside-toplevel
+    from receipt_chroma.s3 import download_snapshot_atomic
+
     timing.use_chroma_cloud = False
 
     # Step 1: Download ChromaDB lines snapshot
@@ -776,6 +784,9 @@ def _fetch_lines_from_s3(timing: TimingStats, temp_dir: str) -> list:
 
 def _fetch_lines_from_local(timing: TimingStats, chroma_path: str) -> list:
     """Fetch target rows from an existing local ChromaDB snapshot."""
+    # pylint: disable=import-outside-toplevel
+    from receipt_chroma import ChromaClient
+
     timing.use_chroma_cloud = False
 
     step_start = time.time()
