@@ -3178,9 +3178,7 @@ async def search_product_lines_impl(
 
             for neighbor in neighbors:
                 meta = neighbor.metadata
-                section = meta.get("section_label") or meta.get(
-                    "section_type"
-                )
+                section = meta.get("section_label") or meta.get("section_type")
                 if section in non_item_sections:
                     continue
                 text = str(meta.get("text", ""))
