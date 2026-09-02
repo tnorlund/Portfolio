@@ -156,8 +156,8 @@ export default function EmailPage() {
 
       <FigureBoundary
         name="email-code-diagram"
-        intrinsicSize="220px"
-        mobileIntrinsicSize="200px"
+        intrinsicSize="230px"
+        mobileIntrinsicSize="460px"
       >
         <ClientOnly>
           <EmailCodeDiagram />
@@ -281,7 +281,11 @@ export default function EmailPage() {
         night, long before then. That is it. S3 is just the archive.
       </p>
 
-      <FigureBoundary name="email-inbox-diagram" intrinsicSize="220px">
+      <FigureBoundary
+        name="email-inbox-diagram"
+        intrinsicSize="230px"
+        mobileIntrinsicSize="350px"
+      >
         <ClientOnly>
           <EmailInboxDiagram />
         </ClientOnly>
@@ -308,7 +312,7 @@ export default function EmailPage() {
       <FigureBoundary
         name="email-replica-diagram"
         intrinsicSize="230px"
-        mobileIntrinsicSize="230px"
+        mobileIntrinsicSize="460px"
       >
         <ClientOnly>
           <EmailReplicaDiagram />

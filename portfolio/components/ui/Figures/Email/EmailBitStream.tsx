@@ -15,12 +15,12 @@ import {
 
 export type PathRef = React.RefObject<SVGPathElement | null>;
 
-export const BIT_COUNT = 12;
+export const BIT_COUNT = 15;
 export const TILT = 30; // ±30°
-export const PHASE_LEN = 450; // default travel time per leg (ms)
+export const PHASE_LEN = 500; // default travel time per leg (ms)
 export const STAGGER = 50; // pause between legs (ms)
 export const CYCLE_PAUSE = 400; // pause between storyboard loops (ms)
-export const LAUNCH_STEP = 60; // per-glyph trail spacing (ms); ~10px on an 80px rail
+export const LAUNCH_STEP = 50; // per-glyph trail spacing (ms)
 
 export type Phase<Name extends string> = {
   paths: Name[];
@@ -29,6 +29,8 @@ export type Phase<Name extends string> = {
   launch?: number;
   /** glyphs in this leg's trail (default BIT_COUNT) */
   count?: number;
+  /** glyph characters for this leg (default alternating 1/0) */
+  chars?: string[];
 };
 
 export function phaseLength<Name extends string>(p: Phase<Name>): number {
@@ -102,7 +104,7 @@ export function FanPaths({
   );
 }
 
-type Bit = { char: "0" | "1"; rot: number; pathIdx: number };
+type Bit = { char: string; rot: number; pathIdx: number };
 
 export function BitStream({
   pathRefs,
@@ -127,9 +129,7 @@ export function BitStream({
   const bits = React.useMemo<Bit[]>(
     () =>
       Array.from({ length: count }, (_, idx) => ({
-        char: (chars?.[idx % chars.length] ?? (idx % 2 === 0 ? "1" : "0")) as
-          | "0"
-          | "1",
+        char: chars?.[idx % chars.length] ?? (idx % 2 === 0 ? "1" : "0"),
         rot: ((idx * 7.3) % TILT) - TILT / 2,
         pathIdx: idx % pathRefs.length,
       })),
@@ -319,6 +319,35 @@ export function ClientIcon({ x, y }: { x: number; y: number }) {
   );
 }
 
+/** Amazon SES, from the AWS Architecture Icons set (Arch_Amazon-Simple-Email-Service_64). */
+export function SesIcon({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x - 42.5},${y - 42.5})`}>
+      <rect width="85" height="85" fill="url(#email-ses-gradient)" rx="6" />
+      <g transform="translate(2.5,2.5)">
+        <path
+          fill="white"
+          fillRule="evenodd"
+          d="M57,60.999875 C57,59.373846 55.626,57.9998214 54,57.9998214 C52.374,57.9998214 51,59.373846 51,60.999875 C51,62.625904 52.374,63.9999286 54,63.9999286 C55.626,63.9999286 57,62.625904 57,60.999875 L57,60.999875 Z M40,59.9998571 C38.374,59.9998571 37,61.3738817 37,62.9999107 C37,64.6259397 38.374,65.9999643 40,65.9999643 C41.626,65.9999643 43,64.6259397 43,62.9999107 C43,61.3738817 41.626,59.9998571 40,59.9998571 L40,59.9998571 Z M26,57.9998214 C24.374,57.9998214 23,59.373846 23,60.999875 C23,62.625904 24.374,63.9999286 26,63.9999286 C27.626,63.9999286 29,62.625904 29,60.999875 C29,59.373846 27.626,57.9998214 26,57.9998214 L26,57.9998214 Z M28.605,42.9995536 L51.395,42.9995536 L43.739,36.1104305 L40.649,38.7584778 C40.463,38.9194807 40.23,38.9994821 39.999,38.9994821 C39.768,38.9994821 39.535,38.9194807 39.349,38.7584778 L36.26,36.1104305 L28.605,42.9995536 Z M27,28.1732888 L27,41.7545313 L34.729,34.7984071 L27,28.1732888 Z M51.297,26.9992678 L28.703,26.9992678 L39.999,36.6824408 L51.297,26.9992678 Z M53,41.7545313 L53,28.1732888 L45.271,34.7974071 L53,41.7545313 Z M59,60.999875 C59,63.7099234 56.71,65.9999643 54,65.9999643 C51.29,65.9999643 49,63.7099234 49,60.999875 C49,58.6308327 50.75,56.5837961 53,56.1057876 L53,52.9997321 L41,52.9997321 L41,58.1058233 C43.25,58.5838319 45,60.6308684 45,62.9999107 C45,65.7099591 42.71,68 40,68 C37.29,68 35,65.7099591 35,62.9999107 C35,60.6308684 36.75,58.5838319 39,58.1058233 L39,52.9997321 L27,52.9997321 L27,56.1057876 C29.25,56.5837961 31,58.6308327 31,60.999875 C31,63.7099234 28.71,65.9999643 26,65.9999643 C23.29,65.9999643 21,63.7099234 21,60.999875 C21,58.6308327 22.75,56.5837961 25,56.1057876 L25,51.9997143 C25,51.4477044 25.447,50.9996964 26,50.9996964 L39,50.9996964 L39,44.9995893 L26,44.9995893 C25.447,44.9995893 25,44.5515813 25,43.9995714 L25,25.99925 C25,25.4472401 25.447,24.9992321 26,24.9992321 L54,24.9992321 C54.553,24.9992321 55,25.4472401 55,25.99925 L55,43.9995714 C55,44.5515813 54.553,44.9995893 54,44.9995893 L41,44.9995893 L41,50.9996964 L54,50.9996964 C54.553,50.9996964 55,51.4477044 55,51.9997143 L55,56.1057876 C57.25,56.5837961 59,58.6308327 59,60.999875 L59,60.999875 Z M68,39.9995 C68,45.9066055 66.177,51.5597064 62.727,56.3447919 L61.104,55.174771 C64.307,50.7316916 66,45.4845979 66,39.9995 C66,25.664244 54.337,14.0000357 40.001,14.0000357 C25.664,14.0000357 14,25.664244 14,39.9995 C14,45.4845979 15.693,50.7316916 18.896,55.174771 L17.273,56.3447919 C13.823,51.5597064 12,45.9066055 12,39.9995 C12,24.5612243 24.561,12 39.999,12 C55.438,12 68,24.5612243 68,39.9995 L68,39.9995 Z"
+        />
+      </g>
+    </g>
+  );
+}
+
+/** The Grok Bot app icon (public/grok-bot-icon.svg), in the same 85×85 slot. */
+export function GrokIcon({ x, y }: { x: number; y: number }) {
+  return (
+    <image
+      href="/grok-bot-icon.svg"
+      x={x - 46}
+      y={y - 46}
+      width="92"
+      height="92"
+    />
+  );
+}
+
 export function EmailGradients() {
   return (
     <defs>
@@ -331,8 +360,8 @@ export function EmailGradients() {
         <stop offset="1" stopColor="#f8981d" />
       </linearGradient>
       <linearGradient id="email-ses-gradient" x1="0" y1="1" x2="1" y2="0">
-        <stop offset="0" stopColor="#b0084d" />
-        <stop offset="1" stopColor="#ff4f8b" />
+        <stop offset="0" stopColor="#bd0816" />
+        <stop offset="1" stopColor="#ff5252" />
       </linearGradient>
     </defs>
   );
