@@ -30,6 +30,14 @@ for package_root in (
 ):
     sys.path.insert(0, str(package_root))
 
+from receipt_chroma.embedding.metadata.line_metadata import (  # noqa: E402
+    enrich_row_metadata_with_anchors,
+)
+from receipt_dynamo import DynamoClient  # noqa: E402
+from receipt_dynamo.constants import ValidationStatus  # noqa: E402
+from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
+    EntityNotFoundError,
+)
 from receipt_embeddings import (  # noqa: E402
     DynamoVectorSearchClient,
     EmbeddingWriter,
@@ -41,24 +49,15 @@ from receipt_embeddings.formatting import (  # noqa: E402
     get_row_embedding_inputs,
     group_lines_into_visual_rows,
 )
+from receipt_embeddings.quotas import (  # noqa: E402
+    MAX_GET_LIMIT,
+    ensure_get_ids_within_quota,
+)
 from receipt_embeddings.service_limits import (  # noqa: E402
     EMBEDDING_DIMENSIONS,
     LINE_INDEX,
     MAX_SEARCH_RESULTS,
     WORD_INDEX,
-)
-
-from receipt_chroma.embedding.metadata.line_metadata import (  # noqa: E402
-    enrich_row_metadata_with_anchors,
-)
-from receipt_dynamo import DynamoClient  # noqa: E402
-from receipt_dynamo.constants import ValidationStatus  # noqa: E402
-from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
-    EntityNotFoundError,
-)
-from receipt_embeddings.quotas import (  # noqa: E402
-    MAX_GET_LIMIT,
-    ensure_get_ids_within_quota,
 )
 from scripts.similarity_harness.capture_golden import (  # noqa: E402
     CHROMA_ENVIRONMENT,
@@ -121,8 +120,13 @@ def select_receipts(
     *,
     extra_receipts: Path | None,
     limit: int | None,
+    manifest_only: bool = False,
 ) -> list[dict[str, Any]]:
-    selected = [dict(value) for value in fixture["receipts"]]
+    if manifest_only and extra_receipts is None:
+        raise SystemExit("--manifest-only requires --extra-receipts")
+    selected = (
+        [] if manifest_only else [dict(value) for value in fixture["receipts"]]
+    )
     seen = {
         (str(value["image_id"]), int(value["receipt_id"]))
         for value in selected
@@ -759,6 +763,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help=(
+            "select receipts ONLY from --extra-receipts, ignoring the "
+            "fixture's receipt list (the fixture still supplies vectors "
+            "for --vector-source fixture/auto); required shape for a "
+            "non-dev table, where fixture receipts may not exist"
+        ),
+    )
+    parser.add_argument(
+        "--allow-table",
+        help=(
+            "explicit opt-in for a non-dev table: must EXACTLY repeat "
+            "the --table-name value to run against it (e.g. the prod "
+            "table during corpus promotion); every other safety rail "
+            "(--apply requires --limit, skip-existing, fail-closed "
+            "exits) still applies"
+        ),
+    )
+    parser.add_argument(
         "--vector-source",
         choices=("auto", "chroma", "openai", "fixture"),
         default="auto",
@@ -774,9 +798,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.table_name != DEV_TABLE:
+    if args.table_name != DEV_TABLE and args.allow_table != args.table_name:
         raise SystemExit(
-            f"refusing table {args.table_name!r}; only {DEV_TABLE!r} is allowed"
+            f"refusing table {args.table_name!r}; only {DEV_TABLE!r} is "
+            "allowed unless --allow-table exactly repeats the table name"
+        )
+    if args.table_name != DEV_TABLE and not (
+        args.manifest_only and args.extra_receipts is not None
+    ):
+        raise SystemExit(
+            "non-dev tables require --manifest-only with --extra-receipts: "
+            "fixture receipts may not exist in the target table (codex "
+            "review P1)"
         )
     if args.limit is not None and args.limit < 1:
         raise SystemExit("--limit must be at least 1")
@@ -792,6 +825,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         fixture,
         extra_receipts=args.extra_receipts,
         limit=args.limit,
+        manifest_only=args.manifest_only,
     )
     dynamo = DynamoClient(table_name=args.table_name, region=args.region)
     if args.repair_label_status:
@@ -901,6 +935,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         sample_size=args.sample_size,
     )
     exit_code = determine_exit_code(write_report, report["item_verification"])
+    if (
+        exit_code == 0
+        and not write_report.written_keys
+        and not write_report.skipped_existing_keys
+        and (receipt_skips or vector_skips)
+    ):
+        # An applied run where every requested item skipped (wrong
+        # region/account/table contents) must not report success with
+        # nothing promoted (codex review P1).
+        exit_code = EXIT_GLOBAL_WRITE_FAILURE
+        report["empty_promotion"] = True
     report["exit_code"] = exit_code
     print(json.dumps(report, indent=2, sort_keys=True))
     return exit_code
