@@ -25,6 +25,9 @@ export default function Home() {
           <Link href="/receipt">
             <button>Receipt</button>
           </Link>
+          <Link href="/email">
+            <button>Email</button>
+          </Link>
           <Link href="/rotoscope">
             <button>Rotoscope</button>
           </Link>

@@ -1,14 +1,24 @@
-"""SES inbound email pipeline for receipt ingestion.
+"""SES inbound mail archive plus the email-receipt read-replica MCP.
 
-receipts@<subdomain> -> SES receipt rule -> S3 (raw/) -> Lambda parser
--> S3 (parsed/ JSON). The private reconciliation plane consumes parsed/.
+receipts@<subdomain> -> SES receipt rule -> S3 (raw/)          # the archive
+Mac (receipts-email primary) -> S3 (replica/)                  # the replica
+S3 (replica/) -> read-only MCP Lambda -> /email/mcp gateway    # the reader
+
+AWS never parses mail. The one parser set lives in the receipts-email repo on
+the Mac: ``emlrec pull-ses`` downloads new raw/ objects, parses and
+reconciles them locally, and ``emlrec replicate`` publishes a ``VACUUM INTO``
+snapshot of the SQLite primary under replica/. The Lambda serves that
+snapshot; writes stay on the primary. (An earlier revision ran a second copy
+of every parser in a Lambda that wrote parsed/ JSON nothing consumed — see
+EMAIL_RECEIPT_INBOX.md for why it was removed.)
 
 DNS (MX + DKIM CNAMEs) is created on an isolated subdomain so the root
 domain's mail posture is untouched.
 
 CAUTION: SES allows ONE active receipt rule set per account+region.
 ``activate=True`` claims it; safe on an account with no prior SES receiving,
-but review before enabling anywhere SES receiving already exists.
+but review before enabling anywhere SES receiving already exists. The ATS
+verification inbox adds its rule to this set rather than creating another.
 """
 
 from __future__ import annotations
@@ -23,10 +33,13 @@ from pulumi import ComponentResource, ResourceOptions
 LAMBDA_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "lambdas"
 )
+REPLICA_PREFIX = "replica/"
+REPLICA_DB_KEY = f"{REPLICA_PREFIX}email_receipts.db.gz"
+REPLICA_MANIFEST_KEY = f"{REPLICA_PREFIX}manifest.json"
 
 
 class EmailReceiptInbox(ComponentResource):
-    """Inbound receipt-email pipeline: SES -> S3 -> parser Lambda -> S3."""
+    """SES -> S3 raw/ archive, S3 replica/ snapshot, read-only MCP Lambda."""
 
     def __init__(
         self,
@@ -36,6 +49,10 @@ class EmailReceiptInbox(ComponentResource):
         recipient_localpart: str = "receipts",
         activate: bool = True,
         raw_retention_days: Optional[int] = None,
+        allowed_origins: str = (
+            "https://claude.ai,https://claude.com,"
+            "https://www.cursor.com,https://cursor.com"
+        ),
         tags: Optional[dict[str, str]] = None,
         opts: Optional[ResourceOptions] = None,
     ):
@@ -106,10 +123,10 @@ class EmailReceiptInbox(ComponentResource):
             )
         # The inbound MX record is published LAST (see end of __init__): once it
         # exists, SES can accept mail, so everything a delivered message needs
-        # (bucket versioning, the S3->Lambda notification, an active rule set)
-        # must already be in place or the first message is lost/unversioned.
+        # (bucket versioning, an active rule set) must already be in place or
+        # the first message is lost/unversioned.
 
-        # --- raw + parsed mail bucket
+        # --- mail bucket: raw/ (SES writes) + replica/ (the Mac writes)
         self.bucket = aws.s3.Bucket(
             f"{name}-mail",
             bucket=f"{name}-mail-{stack}-{account_id}",
@@ -137,43 +154,45 @@ class EmailReceiptInbox(ComponentResource):
             ],
             opts=child,
         )
-        # Versioning gives replays/overwrites an immutable lineage: the handler
-        # fetches the exact event version rather than "latest" (see handler.py).
+        # Versioning gives raw/ replays an immutable lineage and lets a bad
+        # replica publish be rolled back to the previous snapshot.
         versioning = aws.s3.BucketVersioning(
             f"{name}-mail-versioning",
             bucket=self.bucket.id,
             versioning_configuration={"status": "Enabled"},
             opts=child,
         )
+        lifecycle_rules = [
+            {
+                # Every replicate uploads a new version; keep a week of
+                # rollbacks, not forever.
+                "id": "expire-replica-versions",
+                "status": "Enabled",
+                "filter": {"prefix": REPLICA_PREFIX},
+                "noncurrent_version_expiration": {"noncurrent_days": 7},
+            }
+        ]
         if raw_retention_days:
-            # Expire both prefixes on the same clock; with versioning enabled,
-            # also expire noncurrent versions so replays don't accumulate.
-            expire = {"days": raw_retention_days}
-            noncurrent = {"noncurrent_days": raw_retention_days}
-            aws.s3.BucketLifecycleConfiguration(
-                f"{name}-mail-lifecycle",
-                bucket=self.bucket.id,
-                rules=[
-                    {
-                        "id": "expire-raw",
-                        "status": "Enabled",
-                        "filter": {"prefix": "raw/"},
-                        "expiration": expire,
-                        "noncurrent_version_expiration": noncurrent,
+            lifecycle_rules.append(
+                {
+                    "id": "expire-raw",
+                    "status": "Enabled",
+                    "filter": {"prefix": "raw/"},
+                    "expiration": {"days": raw_retention_days},
+                    "noncurrent_version_expiration": {
+                        "noncurrent_days": raw_retention_days
                     },
-                    {
-                        "id": "expire-parsed",
-                        "status": "Enabled",
-                        "filter": {"prefix": "parsed/"},
-                        "expiration": expire,
-                        "noncurrent_version_expiration": noncurrent,
-                    },
-                ],
-                # Noncurrent-version expiration is meaningless until versioning
-                # is Enabled; order it after so the rule isn't applied to an
-                # unversioned bucket.
-                opts=ResourceOptions(parent=self, depends_on=[versioning]),
+                }
             )
+        aws.s3.BucketLifecycleConfiguration(
+            f"{name}-mail-lifecycle",
+            bucket=self.bucket.id,
+            rules=lifecycle_rules,
+            # Noncurrent-version expiration is meaningless until versioning
+            # is Enabled; order it after so the rule isn't applied to an
+            # unversioned bucket.
+            opts=ResourceOptions(parent=self, depends_on=[versioning]),
+        )
         bucket_policy = aws.s3.BucketPolicy(
             f"{name}-mail-ses-policy",
             bucket=self.bucket.id,
@@ -202,167 +221,6 @@ class EmailReceiptInbox(ComponentResource):
                 )
             ),
             opts=child,
-        )
-
-        # --- parser Lambda
-        role = aws.iam.Role(
-            f"{name}-parser-role",
-            assume_role_policy=pulumi.Output.json_dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Action": "sts:AssumeRole",
-                            "Effect": "Allow",
-                            "Principal": {"Service": "lambda.amazonaws.com"},
-                        }
-                    ],
-                }
-            ),
-            tags=tags,
-            opts=child,
-        )
-        logs_attach = aws.iam.RolePolicyAttachment(
-            f"{name}-parser-logs",
-            role=role.name,
-            policy_arn=aws.iam.ManagedPolicy.AWS_LAMBDA_BASIC_EXECUTION_ROLE,
-            opts=child,
-        )
-        # --- durable backstop: async S3 invokes that exhaust Lambda retries
-        # land in a DLQ instead of being silently discarded (see FunctionEvent
-        # InvokeConfig below).
-        self.dlq = aws.sqs.Queue(
-            f"{name}-parser-dlq",
-            message_retention_seconds=1209600,  # 14 days
-            tags=tags,
-            opts=child,
-        )
-        dlq = self.dlq
-        s3_policy = aws.iam.RolePolicy(
-            f"{name}-parser-s3",
-            role=role.id,
-            policy=pulumi.Output.all(self.bucket.arn, dlq.arn).apply(
-                lambda a: pulumi.Output.json_dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:GetObjectVersion",
-                                ],
-                                "Resource": f"{a[0]}/raw/*",
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": ["s3:PutObject"],
-                                "Resource": f"{a[0]}/parsed/*",
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": ["sqs:SendMessage"],
-                                "Resource": a[1],
-                            },
-                        ],
-                    }
-                )
-            ),
-            opts=child,
-        )
-        self.parser = aws.lambda_.Function(
-            f"{name}-parser",
-            runtime="python3.13",
-            handler="handler.lambda_handler",
-            role=role.arn,
-            timeout=60,
-            memory_size=256,
-            # Public ingress: cap this function's slice of the account's shared
-            # concurrency so a mail flood cannot starve every other Lambda.
-            # Throttled async S3 invokes retry; any that still exhaust the
-            # retry/age window land in the DLQ (alarmed below), and the raw
-            # email persists in S3 under raw/ independent of the async trigger,
-            # so it can be redriven from raw/ — the cap loses no mail.
-            reserved_concurrent_executions=10,
-            code=pulumi.AssetArchive(
-                {
-                    ".": pulumi.FileArchive(LAMBDA_DIR),
-                }
-            ),
-            tags=tags,
-            # The function must not exist (and thus be invokable) before its
-            # execution-role policies are attached, or early invokes fail
-            # AccessDenied on GetObject/PutObject.
-            opts=ResourceOptions(
-                parent=self, depends_on=[s3_policy, logs_attach]
-            ),
-        )
-        # Route async invokes that exhaust retries to the DLQ. Bound the retry
-        # window so a persistently failing event drains to the DLQ within the
-        # hour instead of retrying against the 6h default.
-        async_config = aws.lambda_.FunctionEventInvokeConfig(
-            f"{name}-parser-async",
-            function_name=self.parser.name,
-            maximum_retry_attempts=2,
-            maximum_event_age_in_seconds=3600,
-            destination_config={"on_failure": {"destination": dlq.arn}},
-            opts=child,
-        )
-        # The DLQ is the sole capture point for async invokes that exhaust
-        # retries or the age window under a sustained flood. Alarm on its depth
-        # so those failures surface for redrive-from-raw/ instead of silently
-        # aging out at the 14-day retention.
-        aws.cloudwatch.MetricAlarm(
-            f"{name}-parser-dlq-depth",
-            comparison_operator="GreaterThanThreshold",
-            evaluation_periods=1,
-            metric_name="ApproximateNumberOfMessagesVisible",
-            namespace="AWS/SQS",
-            period=300,
-            statistic="Maximum",
-            threshold=0,
-            alarm_description=(
-                "Async parser invokes are landing in the DLQ; redrive from "
-                "raw/ before the 14-day message retention expires."
-            ),
-            dimensions={"QueueName": dlq.name},
-            treat_missing_data="notBreaching",
-            tags=tags,
-            opts=child,
-        )
-        invoke_perm = aws.lambda_.Permission(
-            f"{name}-parser-s3-invoke",
-            action="lambda:InvokeFunction",
-            function=self.parser.name,
-            principal="s3.amazonaws.com",
-            source_arn=self.bucket.arn,
-            # S3 bucket ARNs carry no account id, so pin the owning account too:
-            # if the bucket name were reclaimed in another account after deletion,
-            # that account's bucket could not invoke this function.
-            source_account=account_id,
-            opts=child,
-        )
-        notification = aws.s3.BucketNotification(
-            f"{name}-mail-notify",
-            bucket=self.bucket.id,
-            lambda_functions=[
-                {
-                    "lambda_function_arn": self.parser.arn,
-                    "events": ["s3:ObjectCreated:*"],
-                    "filter_prefix": "raw/",
-                }
-            ],
-            # S3 validates it can invoke the target at create time, so the
-            # invoke permission must already exist. Also gate on the async
-            # config so the DLQ failure destination is in place before any
-            # delivered message can invoke the parser — otherwise an early
-            # failure exhausts the default retries and is silently discarded.
-            # activation and the MX record both depend on this notification, so
-            # this dependency propagates to the whole mail-accepting graph.
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[self.parser, invoke_perm, async_config],
-            ),
         )
 
         # --- receipt rule set
@@ -396,22 +254,21 @@ class EmailReceiptInbox(ComponentResource):
         activation = None
         if activate:
             # Activate only after the rule exists (never briefly publish an
-            # empty active set) AND after the bucket pipeline is ready, so the
-            # first stored message is versioned and triggers the parser.
+            # empty active set) AND after versioning is on, so the first
+            # stored message is versioned.
             activation = aws.ses.ActiveReceiptRuleSet(
                 f"{name}-rules-active",
                 rule_set_name=rule_set.rule_set_name,
                 opts=ResourceOptions(
                     parent=self,
-                    depends_on=[store_rule, versioning, notification],
+                    depends_on=[store_rule, versioning],
                 ),
             )
         self.activation = activation
 
         # --- inbound MX, published LAST. Once this resolves SES starts
-        # accepting mail; gating it on the active rule set plus versioning +
-        # notification means no delivered message can arrive before the
-        # storage/trigger graph exists.
+        # accepting mail; gating it on the active rule set plus versioning
+        # means no delivered message can arrive before the storage exists.
         #
         # Only publish MX once this rule set is actually the one SES will
         # evaluate. SES has a single active receipt rule set per account+region,
@@ -433,14 +290,103 @@ class EmailReceiptInbox(ComponentResource):
                 records=[f"10 inbound-smtp.{region}.amazonaws.com"],
                 opts=ResourceOptions(
                     parent=self,
-                    depends_on=[
-                        store_rule,
-                        versioning,
-                        notification,
-                        activation,
-                    ],
+                    depends_on=[store_rule, versioning, activation],
                 ),
             )
+
+        # --- read-replica MCP Lambda (stdlib only: boto3 + sqlite3)
+        mcp_role = aws.iam.Role(
+            f"{name}-mcp-role",
+            assume_role_policy=pulumi.Output.json_dumps(
+                {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Action": "sts:AssumeRole",
+                            "Effect": "Allow",
+                            "Principal": {"Service": "lambda.amazonaws.com"},
+                        }
+                    ],
+                }
+            ),
+            tags=tags,
+            opts=child,
+        )
+        mcp_logs = aws.iam.RolePolicyAttachment(
+            f"{name}-mcp-logs",
+            role=mcp_role.name,
+            policy_arn=aws.iam.ManagedPolicy.AWS_LAMBDA_BASIC_EXECUTION_ROLE,
+            opts=child,
+        )
+        # Read the replica prefix and nothing else: raw mail is never
+        # reachable from the MCP, even via query_sql.
+        mcp_policy = aws.iam.RolePolicy(
+            f"{name}-mcp-replica-read",
+            role=mcp_role.id,
+            policy=self.bucket.arn.apply(
+                lambda bucket_arn: pulumi.Output.json_dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:GetObject",
+                                    "s3:GetObjectVersion",
+                                ],
+                                "Resource": f"{bucket_arn}/{REPLICA_PREFIX}*",
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "s3:ListBucket",
+                                "Resource": bucket_arn,
+                                "Condition": {
+                                    "StringLike": {
+                                        "s3:prefix": [f"{REPLICA_PREFIX}*"]
+                                    }
+                                },
+                            },
+                        ],
+                    }
+                )
+            ),
+            opts=child,
+        )
+        self.mcp_lambda = aws.lambda_.Function(
+            f"{name}-mcp",
+            runtime="python3.13",
+            handler="mcp.lambda_handler",
+            role=mcp_role.arn,
+            # The gateway integration window is 29s; leave headroom so a
+            # cold start (download + gunzip ~5 MB) still answers in time.
+            timeout=25,
+            memory_size=512,
+            reserved_concurrent_executions=5,
+            code=pulumi.AssetArchive(
+                {
+                    "mcp.py": pulumi.FileAsset(
+                        os.path.join(LAMBDA_DIR, "mcp.py")
+                    ),
+                    "queries.py": pulumi.FileAsset(
+                        os.path.join(LAMBDA_DIR, "queries.py")
+                    ),
+                }
+            ),
+            environment={
+                "variables": {
+                    "REPLICA_BUCKET": self.bucket.bucket,
+                    "REPLICA_DB_KEY": REPLICA_DB_KEY,
+                    "REPLICA_MANIFEST_KEY": REPLICA_MANIFEST_KEY,
+                    "ALLOWED_ORIGINS": allowed_origins,
+                }
+            },
+            tags=tags,
+            opts=ResourceOptions(
+                parent=self, depends_on=[mcp_policy, mcp_logs]
+            ),
+        )
+        self.replica_db_key = REPLICA_DB_KEY
+        self.replica_manifest_key = REPLICA_MANIFEST_KEY
 
         self.register_outputs(
             {
@@ -448,7 +394,7 @@ class EmailReceiptInbox(ComponentResource):
                 "domain": self.domain,
                 "rule_set_name": self.rule_set.rule_set_name,
                 "bucket": self.bucket.bucket,
-                "parser_arn": self.parser.arn,
-                "dlq_url": self.dlq.url,
+                "replica_db_key": REPLICA_DB_KEY,
+                "mcp_lambda_arn": self.mcp_lambda.arn,
             }
         )

@@ -182,3 +182,24 @@ export const SynthesisPipeline = dynamic(
     loading: () => loadingShell("within"),
   }
 );
+
+// /email page figures — client-only, like the other bit-stream diagrams.
+export const EmailInboxDiagram = dynamic(
+  () => import("./Email/EmailInboxDiagram"),
+  { ssr: false }
+);
+export const EmailReplicaDiagram = dynamic(
+  () => import("./Email/EmailReplicaDiagram"),
+  { ssr: false }
+);
+export const EmailFunnel = dynamic(() => import("./Email/EmailFunnel"), {
+  ssr: false,
+});
+export const EmailSenderCensus = dynamic(
+  () => import("./Email/EmailSenderCensus"),
+  { ssr: false }
+);
+export const EmailCoverageChart = dynamic(
+  () => import("./Email/EmailCoverageChart"),
+  { ssr: false }
+);
