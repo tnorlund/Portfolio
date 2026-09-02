@@ -12,7 +12,6 @@ import boto3
 from receipt_chroma import ChromaClient
 from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo import DynamoClient
-
 from receipt_embeddings.keys import (
     dynamo_key_from_canonical,
     line_canonical_key,

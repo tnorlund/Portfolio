@@ -7,6 +7,12 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Literal
 
+from receipt_dynamo.entities import (
+    ReceiptEmbedding,
+    ReceiptLineEmbedding,
+    ReceiptWordEmbedding,
+)
+
 from receipt_embeddings.keys import (
     canonical_from_dynamo_key,
     embedding_item_key,
@@ -18,12 +24,6 @@ from receipt_embeddings.service_limits import (
     MAX_BATCH_GET_ITEMS,
     MAX_BATCH_WRITE_ITEMS,
     WORD_INDEX,
-)
-
-from receipt_dynamo.entities import (
-    ReceiptEmbedding,
-    ReceiptLineEmbedding,
-    ReceiptWordEmbedding,
 )
 
 EmbeddingKind = Literal["line", "word"]
