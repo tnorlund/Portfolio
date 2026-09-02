@@ -58,7 +58,6 @@ from receipt_embeddings.keys import (  # noqa: E402
     word_canonical_key,
 )
 from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
-
 from scripts.similarity_harness.common import LINE_INDEX  # noqa: E402
 from scripts.similarity_harness.common import (
     MERCHANT_FAMILY,
