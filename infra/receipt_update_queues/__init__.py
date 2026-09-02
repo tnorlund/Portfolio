@@ -264,7 +264,7 @@ class ReceiptUpdateQueues(ComponentResource):
             opts=ResourceOptions(parent=self.lambda_role),
         )
 
-        aws.iam.RolePolicy(
+        self.sqs_role_policy = aws.iam.RolePolicy(
             f"{name}-sqs-policy",
             role=self.lambda_role.id,
             policy=Output.all(
@@ -708,7 +708,15 @@ class ReceiptUpdateQueues(ComponentResource):
             batch_size=50,
             maximum_batching_window_in_seconds=5,
             function_response_types=["ReportBatchItemFailures"],
-            opts=ResourceOptions(parent=self, aliases=_lambda_alias),
+            # The role's SQS policy grants receive/delete; without the
+            # explicit dependency AWS can reject the mapping on a fresh
+            # stack when it is created before the IAM update lands
+            # (base implementation's ordering, codex P2).
+            opts=ResourceOptions(
+                parent=self,
+                aliases=_lambda_alias,
+                depends_on=[self.sqs_role_policy],
+            ),
         )
 
         # Exports
