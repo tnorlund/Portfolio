@@ -37,7 +37,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping, Optional
+from typing import Iterable, Mapping, Optional
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -50,6 +50,7 @@ from receipt_dynamo_stream.models import ParsedStreamRecord
 from receipt_dynamo_stream.parsing import parse_stream_record
 from receipt_dynamo_stream.stream_types import (
     DynamoDBStreamRecord,
+    DynamoQueryUpdateClient,
     MetricsRecorder,
 )
 
@@ -100,7 +101,7 @@ class FresheningStats:
 class _Context:
     """Shared state for one freshening pass."""
 
-    client: Any
+    client: DynamoQueryUpdateClient
     table_name: str
     stats: FresheningStats
     metrics: Optional[MetricsRecorder] = None
@@ -119,7 +120,7 @@ def apply_vector_freshening(
     records: Iterable[DynamoDBStreamRecord],
     metrics: Optional[MetricsRecorder] = None,
     *,
-    dynamo_client: Any = None,
+    dynamo_client: DynamoQueryUpdateClient | None = None,
     table_name: Optional[str] = None,
 ) -> FresheningStats:
     """Freshen embedding-item attributes for a batch of stream records.
@@ -336,7 +337,7 @@ def _list_line_embedding_sks(
 ) -> Optional[list[str]]:
     """Enumerate the receipt's line-embedding SKs (None on failure)."""
     sks: list[str] = []
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, object] = {
         "TableName": ctx.table_name,
         "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
         "FilterExpression": "#t = :t",
@@ -356,7 +357,7 @@ def _list_line_embedding_sks(
             return None
         for item in response.get("Items", []):
             sk = item.get("SK", {}).get("S")
-            if sk:
+            if isinstance(sk, str) and sk:
                 sks.append(sk)
         last_key = response.get("LastEvaluatedKey")
         if not last_key:
@@ -387,7 +388,7 @@ def _compute_word_label_status(
         f"WORD#{int(label.word_id):05d}#LABEL#"
     )
     statuses: list[str] = []
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, object] = {
         "TableName": ctx.table_name,
         "KeyConditionExpression": "PK = :pk AND begins_with(SK, :sk)",
         "ExpressionAttributeValues": {
@@ -418,7 +419,7 @@ def _update_embedding_item(
     pk: str,
     sk: str,
     update_expression: str,
-    values: dict[str, Any],
+    values: Mapping[str, object],
     entity_type: str,
     ctx: _Context,
 ) -> None:

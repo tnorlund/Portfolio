@@ -15,21 +15,30 @@ chromadb-free.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, Literal
+from typing import Literal
 
 from receipt_embeddings.formatting import (
     format_word_context_embedding_input,
     get_row_embedding_inputs,
 )
 from receipt_embeddings.keys import line_canonical_key, word_canonical_key
-from receipt_embeddings.label_status import word_label_statuses
+from receipt_embeddings.label_status import WordLabelLike, word_label_statuses
+from receipt_embeddings.protocols import (
+    EmbeddingLine,
+    EmbeddingSection,
+    EmbeddingWord,
+)
 from receipt_embeddings.writer import EmbeddingWriteRequest
 
 MissingRow = Literal["raise", "skip"]
-AnchorEnricher = Callable[[dict[str, Any], Sequence[Any]], Mapping[str, Any]]
+AnchorEnricher = Callable[
+    [dict[str, object], Sequence[EmbeddingWord]], Mapping[str, object]
+]
 
 
-def _section_by_line(sections: Sequence[Any] | None) -> dict[int, str]:
+def _section_by_line(
+    sections: Sequence[EmbeddingSection] | None,
+) -> dict[int, str]:
     result: dict[int, str] = {}
     if not sections:
         return result
@@ -50,7 +59,7 @@ def _section_type_for_row(
 
 
 def _row_specs(
-    lines: Sequence[Any],
+    lines: Sequence[EmbeddingLine],
     *,
     row_line_ids_list: Sequence[Sequence[int]] | None,
     include_embedding_input: bool,
@@ -89,12 +98,12 @@ def build_embedding_write_requests(
     *,
     image_id: str,
     receipt_id: int,
-    lines: Sequence[Any],
-    words: Sequence[Any],
-    word_labels: Sequence[Any],
+    lines: Sequence[EmbeddingLine],
+    words: Sequence[EmbeddingWord],
+    word_labels: Sequence[WordLabelLike],
     merchant_name: str = "",
     place_id: str = "",
-    sections: Sequence[Any] | None = None,
+    sections: Sequence[EmbeddingSection] | None = None,
     row_line_ids_list: Sequence[Sequence[int]] | None = None,
     row_embeddings: Sequence[Sequence[float]] | None = None,
     word_embeddings: Sequence[Sequence[float]] | None = None,
@@ -136,7 +145,7 @@ def build_embedding_write_requests(
                 f"visual row {line_ids} has no matching receipt lines"
             )
         row_line_id_set = set(line_ids)
-        anchors: Mapping[str, Any] = {}
+        anchors: Mapping[str, object] = {}
         if enrich_anchors is not None:
             anchors = enrich_anchors(
                 {},

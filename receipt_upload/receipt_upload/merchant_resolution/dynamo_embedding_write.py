@@ -15,13 +15,25 @@ be resolved yet, sections do not exist yet); the stream freshening leg
 
 import logging
 import os
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from collections.abc import Callable, Sequence
 
 from receipt_chroma.embedding.metadata.line_metadata import (
     enrich_row_metadata_with_anchors,
 )
+from receipt_embeddings.label_status import WordLabelLike
+from receipt_embeddings.protocols import (
+    DynamoBatchClient,
+    EmbeddingLine,
+    EmbeddingTableHandle,
+    EmbeddingWord,
+    ReceiptPlaceLike,
+)
 from receipt_embeddings.write_requests import build_embedding_write_requests
-from receipt_embeddings.writer import write_report_incomplete
+from receipt_embeddings.writer import (
+    EmbeddingWriter,
+    EmbeddingWriteRequest,
+    write_report_incomplete,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,15 +49,15 @@ def build_ingest_embedding_requests(
     *,
     image_id: str,
     receipt_id: int,
-    lines: Sequence[Any],
-    words: Sequence[Any],
-    word_labels: Sequence[Any],
+    lines: Sequence[EmbeddingLine],
+    words: Sequence[EmbeddingWord],
+    word_labels: Sequence[WordLabelLike],
     merchant_name: str,
     place_id: str,
     row_embeddings: Sequence[Sequence[float]],
     row_line_ids_list: Sequence[Sequence[int]],
     word_embeddings_list: Sequence[Sequence[float]],
-) -> List[Any]:
+) -> list[EmbeddingWriteRequest]:
     """Build engine write requests carrying the ingest's in-memory vectors.
 
     ``row_embeddings``/``row_line_ids_list`` come from the same visual-row
@@ -71,18 +83,20 @@ def build_ingest_embedding_requests(
 
 def maybe_dual_write_embeddings(
     *,
-    dynamo: Any,
+    dynamo: EmbeddingTableHandle,
     image_id: str,
     receipt_id: int,
-    lines: Sequence[Any],
-    words: Sequence[Any],
-    word_labels: Sequence[Any],
-    receipt_place: Any,
+    lines: Sequence[EmbeddingLine],
+    words: Sequence[EmbeddingWord],
+    word_labels: Sequence[WordLabelLike],
+    receipt_place: ReceiptPlaceLike | None,
     row_embeddings: Sequence[Sequence[float]],
     row_line_ids_list: Sequence[Sequence[int]],
     word_embeddings_list: Sequence[Sequence[float]],
-    writer_factory: Optional[Callable[[Any, str], Any]] = None,
-) -> Optional[Dict[str, Any]]:
+    writer_factory: (
+        Callable[[DynamoBatchClient, str], EmbeddingWriter] | None
+    ) = None,
+) -> dict[str, object] | None:
     """Flag-gated, never-raising dual write of the receipt's embeddings.
 
     Returns None when the flag is off (zero work, zero writer calls);
@@ -116,8 +130,6 @@ def maybe_dual_write_embeddings(
             word_embeddings_list=word_embeddings_list,
         )
         if writer_factory is None:
-            from receipt_embeddings import EmbeddingWriter
-
             writer = EmbeddingWriter(dynamo._client, dynamo.table_name)
         else:
             writer = writer_factory(dynamo._client, dynamo.table_name)

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
 
 from receipt_embeddings.keys import line_canonical_key, word_canonical_key
+from receipt_embeddings.protocols import ChromaQueryClient
 from receipt_embeddings.quotas import build_chroma_where
 from receipt_embeddings.service_limits import (
     LINE_INDEX,
@@ -17,7 +17,7 @@ from receipt_embeddings.vector_client import FilterValue, ScoredItem
 
 
 def _metadata_key(
-    metadata: Mapping[str, Any], *, index: str, position: int
+    metadata: Mapping[str, object], *, index: str, position: int
 ) -> str:
     if not {"image_id", "receipt_id", "line_id"}.issubset(metadata):
         return f"CHROMA_RESULT#{position:05d}"
@@ -38,7 +38,7 @@ def _metadata_key(
 class ChromaVectorSearchClient:
     """Normalize the current ChromaClient to ``VectorSearchClient``."""
 
-    def __init__(self, chroma_client: Any) -> None:
+    def __init__(self, chroma_client: ChromaQueryClient) -> None:
         if not callable(getattr(chroma_client, "query", None)):
             raise TypeError("chroma_client must provide query()")
         self._client = chroma_client
@@ -53,7 +53,7 @@ class ChromaVectorSearchClient:
         validate_top_k(top_k)
         physical = physical_index_name(index)
         collection_name = "words" if physical == WORD_INDEX else "lines"
-        query: dict[str, Any] = {
+        query: dict[str, object] = {
             "collection_name": collection_name,
             "query_embeddings": [list(vector)],
             "n_results": top_k,
@@ -67,7 +67,7 @@ class ChromaVectorSearchClient:
         # Same ndarray-truthiness hazard as get_vector (review P1-A):
         # chromadb may return these as numpy arrays, so never boolean-
         # test them — take the first query's row with explicit checks.
-        def _first_row(name: str) -> Sequence[Any]:
+        def _first_row(name: str) -> Sequence[object]:
             value = response.get(name)
             if value is None or len(value) == 0:
                 return []

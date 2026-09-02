@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal
 
 from receipt_dynamo.entities import (
     ReceiptEmbedding,
@@ -18,6 +18,7 @@ from receipt_embeddings.keys import (
     embedding_item_key,
 )
 from receipt_embeddings.openai import embed_texts
+from receipt_embeddings.protocols import DynamoBatchClient, DynamoItem
 from receipt_embeddings.service_limits import (
     LINE_INDEX,
     MAX_BATCH_GET_ITEMS,
@@ -50,7 +51,7 @@ class EmbeddingWriteRequest:
     vector: Sequence[float] | None = None
 
     @property
-    def key(self) -> dict[str, Any]:
+    def key(self) -> dict[str, dict[str, str]]:
         if self.kind == "word":
             if self.word_id is None:
                 raise ValueError("word requests require word_id")
@@ -127,7 +128,7 @@ class EmbeddingWriteReport:
 
         return bool(self.failures)
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, object]:
         return {
             "written": self.written,
             "skipped": self.skipped,
@@ -168,10 +169,10 @@ class EmbeddingWriter:
 
     def __init__(
         self,
-        dynamodb_client: Any,
+        dynamodb_client: DynamoBatchClient,
         table_name: str,
         *,
-        openai_client: Any = None,
+        openai_client: object | None = None,
         embedder: Embedder = embed_texts,
         model: str = "text-embedding-3-small",
         max_retries: int = 3,
@@ -188,7 +189,7 @@ class EmbeddingWriter:
         self._sleep = sleep
 
     @staticmethod
-    def _key_id(key: dict[str, Any]) -> str:
+    def _key_id(key: DynamoItem) -> str:
         return f"{key['PK']['S']}#{key['SK']['S']}"
 
     def _existing_keys(
@@ -261,7 +262,7 @@ class EmbeddingWriter:
         return vectors[0]
 
     @staticmethod
-    def _assert_safe_item(item: dict[str, Any]) -> None:
+    def _assert_safe_item(item: Mapping[str, object]) -> None:
         sk = item.get("SK", {}).get("S", "")
         item_type = item.get("TYPE", {}).get("S")
         if not sk.startswith("RECEIPT#") or not sk.endswith("#EMBEDDING"):
@@ -274,7 +275,7 @@ class EmbeddingWriter:
 
     def _write_requests(
         self,
-        values: list[tuple[str, dict[str, Any]]],
+        values: list[tuple[str, dict[str, object]]],
         report: EmbeddingWriteReport,
     ) -> None:
         for offset in range(0, len(values), MAX_BATCH_WRITE_ITEMS):
@@ -369,7 +370,7 @@ class EmbeddingWriter:
 
         existing, read_failed = self._existing_keys(unique, report)
         report.skipped_existing_keys.extend(sorted(existing))
-        to_write: list[tuple[str, dict[str, Any]]] = []
+        to_write: list[tuple[str, dict[str, object]]] = []
         for request in unique:
             key_id = self._key_id(request.key)
             if key_id in existing or key_id in read_failed:

@@ -15,6 +15,7 @@ from receipt_embeddings.keys import (
     embedding_item_key,
     parse_canonical_key,
 )
+from receipt_embeddings.protocols import DynamoVectorLowLevelClient
 from receipt_embeddings.service_limits import (
     EMBEDDING_DIMENSIONS,
     INDEX_VECTOR_ATTRIBUTES,
@@ -69,7 +70,7 @@ class DynamoVectorSearchClient:
 
     def __init__(
         self,
-        dynamodb_client: Any,
+        dynamodb_client: DynamoVectorLowLevelClient,
         table_name: str,
         *,
         max_retries: int = 3,

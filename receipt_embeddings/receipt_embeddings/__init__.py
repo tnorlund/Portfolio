@@ -13,6 +13,12 @@ from receipt_embeddings.label_status import (
     aggregate_word_label_status,
     word_label_statuses,
 )
+from receipt_embeddings.protocols import (
+    ChromaQueryClient,
+    DynamoBatchClient,
+    DynamoQueryWriteClient,
+    DynamoVectorLowLevelClient,
+)
 from receipt_embeddings.quotas import (
     MAX_GET_LIMIT,
     MAX_QUERY_EMBEDDINGS_PER_CALL,
@@ -37,7 +43,11 @@ from receipt_embeddings.writer import (
 )
 
 __all__ = [
+    "ChromaQueryClient",
     "ChromaVectorSearchClient",
+    "DynamoBatchClient",
+    "DynamoQueryWriteClient",
+    "DynamoVectorLowLevelClient",
     "DynamoVectorSearchClient",
     "EmbeddingWriteFailure",
     "EmbeddingWriteReport",

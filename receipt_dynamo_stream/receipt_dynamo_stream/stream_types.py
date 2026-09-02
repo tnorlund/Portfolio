@@ -202,6 +202,37 @@ class MetricsRecorder(Protocol):
         return None
 
 
+class DynamoQueryResponse(TypedDict, total=False):
+    """Subset of a low-level Query response used by freshening."""
+
+    Items: list[DynamoDBItem]
+    LastEvaluatedKey: DynamoDBItem
+
+
+class SQSBatchResponse(TypedDict, total=False):
+    """Subset of send_message_batch used by the publisher."""
+
+    Successful: list[Mapping[str, object]]
+    Failed: list[Mapping[str, object]]
+
+
+class DynamoQueryUpdateClient(Protocol):
+    """Low-level DynamoDB seam used by vector freshening."""
+
+    def query(self, **kwargs: object) -> DynamoQueryResponse:
+        """Page items under a key-condition prefix."""
+
+    def update_item(self, **kwargs: object) -> Mapping[str, object]:
+        """Idempotent attribute refresh on one embedding item."""
+
+
+class SQSBatchClient(Protocol):
+    """SQS seam used by the stream publisher."""
+
+    def send_message_batch(self, **kwargs: object) -> SQSBatchResponse:
+        """Send up to 10 queue entries."""
+
+
 # =============================================================================
 # Exports
 # =============================================================================
@@ -223,8 +254,12 @@ __all__ = [
     "DynamoDBKeys",
     "DynamoDBStreamEvent",
     "DynamoDBStreamRecord",
+    "DynamoQueryResponse",
+    "DynamoQueryUpdateClient",
     "LambdaContext",
     "MetricsRecorder",
+    "SQSBatchClient",
+    "SQSBatchResponse",
     "StreamProcessorResponseData",
     "StreamRecordDynamoDB",
 ]

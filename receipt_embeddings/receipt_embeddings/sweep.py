@@ -11,16 +11,16 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any
 
 from receipt_embeddings.keys import EMBEDDING_SK_SUFFIX
+from receipt_embeddings.protocols import DynamoQueryWriteClient
 from receipt_embeddings.service_limits import MAX_BATCH_WRITE_ITEMS
 
 _DEFAULT_MAX_RETRIES = 8
 
 
 def delete_native_embedding_items(
-    dynamodb_client: Any,
+    dynamodb_client: DynamoQueryWriteClient,
     table_name: str,
     image_id: str,
     receipt_id: int,
@@ -37,7 +37,7 @@ def delete_native_embedding_items(
     if any deletes remain unprocessed after retries.
     """
 
-    kwargs: dict[str, Any] = {
+    kwargs: dict[str, object] = {
         "TableName": table_name,
         "KeyConditionExpression": "PK = :p AND begins_with(SK, :s)",
         "ExpressionAttributeValues": {
@@ -46,7 +46,7 @@ def delete_native_embedding_items(
         },
         "ProjectionExpression": "PK, SK",
     }
-    keys: list[dict[str, Any]] = []
+    keys: list[dict[str, object]] = []
     while True:
         response = dynamodb_client.query(**kwargs)
         keys.extend(

@@ -17,7 +17,6 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 # Must match ``receipt_embeddings.service_limits.WORD_INDEX``. This
 # module is a leaf (stdlib only) so Lambda handlers and harnesses can
@@ -85,7 +84,7 @@ def word_canonical_key(
 word_vector_key = word_canonical_key
 
 
-def canonical_key_from_item(item: Mapping[str, Any], *, index: str) -> str:
+def canonical_key_from_item(item: Mapping[str, object], *, index: str) -> str:
     """Build a canonical key from a parsed embedding item's attributes."""
 
     image_id = str(item["image_id"])
