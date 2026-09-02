@@ -7,9 +7,6 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
-if TYPE_CHECKING:  # circular at runtime: protocols types this seam
-    from receipt_embeddings.protocols import DynamoBatchClient
-
 from receipt_dynamo.entities import (
     ReceiptEmbedding,
     ReceiptLineEmbedding,
@@ -23,6 +20,9 @@ from receipt_embeddings.service_limits import (
     MAX_BATCH_WRITE_ITEMS,
     WORD_INDEX,
 )
+
+if TYPE_CHECKING:  # circular at runtime: protocols types this seam
+    from receipt_embeddings.protocols import DynamoBatchClient
 
 EmbeddingKind = Literal["line", "word"]
 Embedder = Callable[..., list[list[float]]]
@@ -209,9 +209,13 @@ class EmbeddingWriter:
                         EmbeddingWriteFailure(
                             key=key_id,
                             stage="read",
-                            error="BatchGetItem remained unprocessed after retries",
+                            error=(
+                                "BatchGetItem remained unprocessed "
+                                "after retries"
+                            ),
                         )
                     )
+            # pylint: disable-next=broad-exception-caught
             except Exception as exc:  # noqa: BLE001 - isolate and report
                 for request in chunk:
                     key_id = self._key_id(request.key)
@@ -288,6 +292,7 @@ class EmbeddingWriter:
                             )
                         else:
                             report.written_keys.append(key)
+            # pylint: disable-next=broad-exception-caught
             except Exception:  # noqa: BLE001 - isolate and retry singly
                 # CONTRACTUAL isolate-and-report: a batch exception does not
                 # identify the failing item. Retry singly so healthy items
@@ -306,8 +311,10 @@ class EmbeddingWriter:
                             self.table_name, []
                         )
                         if unprocessed:
+                            # pylint: disable-next=raise-missing-from
                             raise RuntimeError("item remained unprocessed")
                         report.written_keys.append(key)
+                    # pylint: disable-next=broad-exception-caught
                     except Exception as item_exc:  # noqa: BLE001
                         # CONTRACTUAL isolate-and-report: one poisoned item
                         # must not abort the rest of the chunk.
@@ -357,6 +364,7 @@ class EmbeddingWriter:
                 item = entity.to_item()
                 self._assert_safe_item(item)
                 to_write.append((request.canonical_key, item))
+            # pylint: disable-next=broad-exception-caught
             except Exception as exc:  # noqa: BLE001 - isolate and report
                 report.failures.append(
                     EmbeddingWriteFailure(

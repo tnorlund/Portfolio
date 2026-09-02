@@ -50,7 +50,7 @@ def aggregate_word_label_status(statuses: Sequence[str]) -> LabelStatusName:
 def word_label_statuses(
     labels: Sequence[WordLabelLike],
 ) -> dict[tuple[int, int], LabelStatusName]:
-    """Aggregate labels per (line_id, word_id) with the terminal-verdict rule."""
+    """Aggregate labels per (line_id, word_id): terminal-verdict rule."""
 
     by_word: dict[tuple[int, int], list[str]] = {}
     for label in labels:

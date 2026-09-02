@@ -232,7 +232,8 @@ class ReceiptWordEmbedding:
             "SK": {
                 "S": (
                     f"RECEIPT#{self.receipt_id:05d}#"
-                    f"LINE#{self.line_id:05d}#WORD#{self.word_id:05d}#EMBEDDING"
+                    f"LINE#{self.line_id:05d}#"
+                    f"WORD#{self.word_id:05d}#EMBEDDING"
                 )
             },
         }

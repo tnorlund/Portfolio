@@ -35,11 +35,11 @@ import logging
 import os
 from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:  # heavy imports stay lazy in this Lambda by design
-    from receipt_embeddings.protocols import EmbeddingTableHandle
-
 import boto3
 from PIL import Image as PIL_Image
+
+if TYPE_CHECKING:  # heavy imports stay lazy in this Lambda by design
+    from receipt_embeddings.protocols import EmbeddingTableHandle
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -81,6 +81,8 @@ def _delete_native_embedding_items(
         return 0
 
 
+# Validation-heavy Lambda entrypoint; `context` is the AWS-provided arg.
+# pylint: disable-next=too-many-return-statements,unused-argument
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Lambda handler to merge receipt fragments into a single receipt.
@@ -132,6 +134,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
 
         # Import here to avoid cold start overhead if validation fails
+        # pylint: disable=import-outside-toplevel
         from receipt_agent.lifecycle.receipt_manager import delete_receipt
         from receipt_dynamo import DynamoClient
         from receipt_upload.combine import (
@@ -151,6 +154,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             upload_all_cdn_formats,
             upload_png_to_s3,
         )
+
+        # pylint: enable=import-outside-toplevel
 
         # Initialize clients
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")
@@ -469,9 +474,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 word_labels=new_labels or [],
                 receipt_place=receipt_place,
             )
-        except (
-            Exception
-        ) as native_exc:  # pylint: disable=broad-exception-caught
+        # pylint: disable-next=broad-exception-caught
+        except Exception as native_exc:
             # CONTRACTUAL: synthesized into the report so the
             # abort-before-source-deletion check below sees it.
             logger.exception("Native embeddings write raised")

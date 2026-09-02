@@ -48,3 +48,30 @@ target-version = ["py313"]
 [tool.isort]
 profile = "black"
 line_length = 79
+
+[tool.pylint.format]
+max-line-length = 79
+
+[tool.pylint.messages_control]
+disable = [
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-locals",
+    "too-many-instance-attributes",
+    "too-many-branches",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "duplicate-code",
+]
+
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk"]
+
+[tool.pylint.design]
+max-args = 10
+max-locals = 20
+
+[tool.pylint.imports]
+allow-any-import-level = ["boto3"]

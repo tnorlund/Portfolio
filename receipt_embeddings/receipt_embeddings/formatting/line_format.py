@@ -55,7 +55,7 @@ def group_lines_into_visual_rows(
         lines: All lines in the receipt
 
     Returns:
-        List of visual rows, each row being a list of lines sorted left-to-right.
+        List of visual rows, each a list of lines sorted left-to-right.
         Rows are ordered top-to-bottom (highest y first).
     """
     if not lines:
@@ -277,7 +277,7 @@ def format_line_context_embedding_input(
 
 
 def parse_prev_next_from_formatted(fmt: str) -> tuple[str, str]:
-    """Parse previous and next lines from formatted embedding input (DEPRECATED).
+    """Parse prev/next lines from formatted embedding input (DEPRECATED).
 
     Given a string like:
       "<TARGET>LINE TEXT</TARGET> <POS>…</POS> "

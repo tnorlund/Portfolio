@@ -12,7 +12,6 @@ Handles:
 import json
 import logging
 import os
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import atan2, degrees
@@ -1390,10 +1389,12 @@ class OCRProcessor:
             from receipt_dynamo.data.shared_exceptions import (  # noqa: E501  pylint: disable=import-outside-toplevel
                 EntityNotFoundError,
             )
-            from receipt_embeddings import (  # noqa: E501  pylint: disable=import-outside-toplevel
-                report_incomplete,
-            )
-            from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501  pylint: disable=import-outside-toplevel
+
+            # pylint: disable-next=import-outside-toplevel
+            from receipt_embeddings import report_incomplete
+
+            # pylint: disable-next=line-too-long,import-outside-toplevel
+            from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501
                 write_native_embeddings,
             )
 
@@ -1437,9 +1438,8 @@ class OCRProcessor:
                 try:
                     dual_report = _write_native()
                     last_exc = None
-                except (
-                    Exception
-                ) as write_exc:  # pylint: disable=broad-exception-caught
+                # pylint: disable-next=broad-exception-caught
+                except Exception as write_exc:
                     # CONTRACTUAL retry: a raise is treated like an
                     # incomplete report; exhaustion surfaces below.
                     last_exc = write_exc
@@ -1465,9 +1465,8 @@ class OCRProcessor:
                     f"after retries: {dual_report}"
                 )
             logger.info("Re-OCR native refresh: %s", dual_report)
-        except (
-            Exception
-        ) as native_exc:  # pylint: disable=broad-exception-caught
+        # pylint: disable-next=broad-exception-caught
+        except Exception as native_exc:
             # CONTRACTUAL: surfaced, not swallowed (codex flip P1) —
             # stale rows may already be swept, so the job must fail
             # retryably instead of acknowledging a partial corpus.

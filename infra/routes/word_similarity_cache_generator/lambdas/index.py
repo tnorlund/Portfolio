@@ -75,7 +75,8 @@ def normalize_merchant(name: str) -> str:
     return _MERCHANT_DISPLAY_OVERRIDES.get(key, " ".join((name or "").split()))
 
 
-# Pattern to match price-like tokens (used to extract product name from row text)
+# Pattern to match price-like tokens (used to extract the product
+# name from row text)
 def find_milk_line(
     lines,
     target_word: str = "MILK",
@@ -499,6 +500,7 @@ def find_price_on_visual_line(target_line_id, words, labels):
         valid.sort(key=lambda lbl: str(lbl.timestamp_added), reverse=True)
         return valid[0]
 
+    # pylint: disable-next=invalid-name
     Y_FALLBACK_TOLERANCE = 0.025  # ~2x typical tolerance
     for word in words:
         cy = word.calculate_centroid()[1]
@@ -836,7 +838,8 @@ def handler(_event, _context):
     temp_dir = tempfile.mkdtemp()
 
     try:
-        # Use larger connection pool to match parallel workers (50) + headroom for retries
+        # Use a larger connection pool to match parallel workers (50)
+        # plus headroom for retries
         dynamo_client = DynamoClient(
             DYNAMODB_TABLE_NAME, max_pool_connections=100
         )
@@ -972,7 +975,8 @@ def handler(_event, _context):
                     milk_line_id = chromadb_line_id
 
                 t0 = time.time()
-                # Use the actual milk line_id for price lookup (not ChromaDB's primary line)
+                # Use the actual milk line_id for the price lookup
+                # (not the row's primary line)
                 line_total, unit_price = find_price_on_visual_line(
                     milk_line_id, details.words, details.labels
                 )
@@ -1121,16 +1125,17 @@ def handler(_event, _context):
             """Convert dollar amount to approximate words."""
             if amount < 100:
                 return f"{int(amount)} dollars"
-            elif amount < 1000:
+            if amount < 1000:
                 hundreds = int(amount // 100) * 100
                 return f"{hundreds} dollars"
-            else:
-                thousands = int(amount // 1000)
-                return f"{thousands} thousand dollars"
+            thousands = int(amount // 1000)
+            return f"{thousands} thousand dollars"
 
         commentary = (
-            f"${grand_total:.2f}. That's... significantly more than I expected. "
-            f'I knew I liked milk, but I didn\'t think I "{dollars_to_words(grand_total)} a year" liked milk.'
+            f"${grand_total:.2f}. That's... significantly more than "
+            "I expected. "
+            "I knew I liked milk, but I didn't think I "
+            f'"{dollars_to_words(grand_total)} a year" liked milk.'
         )
 
         response_data = {
@@ -1165,7 +1170,8 @@ def handler(_event, _context):
             )
 
         logger.info(
-            "Cache generation complete: %d receipts, %d summary rows (total %.2fs)",
+            "Cache generation complete: %d receipts, %d summary rows "
+            "(total %.2fs)",
             len(results),
             len(summary_table),
             timing.total,

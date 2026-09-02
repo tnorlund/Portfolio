@@ -132,11 +132,19 @@ def write_precomputed_embeddings(
             word_embeddings_list=word_embeddings_list,
         )
         if writer_factory is None:
+            # Lazy: keeps the module importable without the writer chain.
+            # pylint: disable-next=import-outside-toplevel
             from receipt_embeddings import EmbeddingWriter
 
-            writer = EmbeddingWriter(dynamo._client, dynamo.table_name)
+            writer = EmbeddingWriter(
+                dynamo._client,  # pylint: disable=protected-access
+                dynamo.table_name,
+            )
         else:
-            writer = writer_factory(dynamo._client, dynamo.table_name)
+            writer = writer_factory(
+                dynamo._client,  # pylint: disable=protected-access
+                dynamo.table_name,
+            )
         report = writer.write(requests)
         result = {
             "requests": len(requests),
@@ -151,6 +159,7 @@ def write_precomputed_embeddings(
             result,
         )
         return result
+    # pylint: disable-next=broad-exception-caught
     except Exception as exc:  # noqa: BLE001 - caller decides fatality
         # CONTRACTUAL never-raise: ingest marks the receipt failed from
         # the returned report; raising here would bypass that contract.
