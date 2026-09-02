@@ -121,8 +121,13 @@ def select_receipts(
     *,
     extra_receipts: Path | None,
     limit: int | None,
+    manifest_only: bool = False,
 ) -> list[dict[str, Any]]:
-    selected = [dict(value) for value in fixture["receipts"]]
+    if manifest_only and extra_receipts is None:
+        raise SystemExit("--manifest-only requires --extra-receipts")
+    selected = (
+        [] if manifest_only else [dict(value) for value in fixture["receipts"]]
+    )
     seen = {
         (str(value["image_id"]), int(value["receipt_id"]))
         for value in selected
@@ -759,6 +764,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help=(
+            "select receipts ONLY from --extra-receipts, ignoring the "
+            "fixture's receipt list (the fixture still supplies vectors "
+            "for --vector-source fixture/auto); required shape for a "
+            "non-dev table, where fixture receipts may not exist"
+        ),
+    )
+    parser.add_argument(
+        "--allow-table",
+        help=(
+            "explicit opt-in for a non-dev table: must EXACTLY repeat "
+            "the --table-name value to run against it (e.g. the prod "
+            "table during corpus promotion); every other safety rail "
+            "(--apply requires --limit, skip-existing, fail-closed "
+            "exits) still applies"
+        ),
+    )
+    parser.add_argument(
         "--vector-source",
         choices=("auto", "chroma", "openai", "fixture"),
         default="auto",
@@ -774,9 +799,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.table_name != DEV_TABLE:
+    if args.table_name != DEV_TABLE and args.allow_table != args.table_name:
         raise SystemExit(
-            f"refusing table {args.table_name!r}; only {DEV_TABLE!r} is allowed"
+            f"refusing table {args.table_name!r}; only {DEV_TABLE!r} is "
+            "allowed unless --allow-table exactly repeats the table name"
         )
     if args.limit is not None and args.limit < 1:
         raise SystemExit("--limit must be at least 1")
@@ -792,6 +818,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         fixture,
         extra_receipts=args.extra_receipts,
         limit=args.limit,
+        manifest_only=args.manifest_only,
     )
     dynamo = DynamoClient(table_name=args.table_name, region=args.region)
     if args.repair_label_status:
