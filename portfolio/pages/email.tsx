@@ -13,7 +13,7 @@ import {
   EmailReplicaDiagram,
   EmailSenderCensus,
 } from "../components/ui/Figures";
-import { AWSLogo, GrokBotLogo, PulumiLogo } from "../components/ui/Logos";
+import { AWSLogo, ClaudeLogo, GrokBotLogo, PulumiLogo } from "../components/ui/Logos";
 import styles from "../styles/Receipt.module.css";
 
 interface FigureBoundaryProps {
@@ -172,12 +172,28 @@ export default function EmailPage() {
 
       <h1>The Receipt Reader Gets Parsed Rows</h1>
 
+      <FigureBoundary name="claude-logo" intrinsicSize="150px">
+        <ClientOnly>
+          <AnimatedInView>
+            <ClaudeLogo />
+          </AnimatedInView>
+        </ClientOnly>
+      </FigureBoundary>
+
       <p>
-        The same pattern already existed for a very different agent. The{" "}
+        The other agent is Claude, and it reads through MCP. The{" "}
         <Link href="/receipt">receipt page</Link> answers one question: how
         much did I spend on milk? It only knows about paper. Half of what I
         buy never prints a receipt. DoorDash, Apple, Amazon, Venmo, PayPal,
-        Uber. Those live in my inbox too, and Claude wants to read them.
+        Uber. Those live in my inbox too, and Claude wants them.
+      </p>
+
+      <p>
+        So the same pattern applies, with a wider aperture. Claude never
+        opens the mailbox. It calls a small MCP server that answers
+        questions about receipts as rows: merchant, date, cents, line
+        items. One copy of that server runs on my Mac. The other lives in
+        AWS, and the rest of this section is about how the rows get there.
       </p>
 
       <h2>Thirteen Years of Email</h2>

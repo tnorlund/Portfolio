@@ -55,6 +55,7 @@ describe("EmailPage", () => {
       "grok-bot-logo",
       "email-forwarding-rules",
       "email-code-diagram",
+      "claude-logo",
       "email-funnel",
       "email-sender-census",
       "email-coverage",
