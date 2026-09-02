@@ -239,6 +239,8 @@ class EmbeddingWriter:
                         )
                     )
             except Exception as exc:  # noqa: BLE001 - isolate and report
+                # CONTRACTUAL isolate-and-report: one unreadable key
+                # must not abort skip-existing for the rest of the chunk.
                 for request in chunk:
                     key_id = self._key_id(request.key)
                     read_failed.add(key_id)
@@ -314,9 +316,10 @@ class EmbeddingWriter:
                             )
                         else:
                             report.written_keys.append(key)
-            except Exception:
-                # A batch exception does not identify the failing item. Retry
-                # singly so healthy items still land and failures are attributable.
+            except Exception:  # noqa: BLE001 - isolate and retry singly
+                # CONTRACTUAL isolate-and-report: a batch exception does
+                # not identify the failing item. Retry singly so healthy
+                # items still land and failures are attributable.
                 for key, item in chunk:
                     try:
                         response = self._client.batch_write_item(
@@ -334,6 +337,8 @@ class EmbeddingWriter:
                             raise RuntimeError("item remained unprocessed")
                         report.written_keys.append(key)
                     except Exception as item_exc:  # noqa: BLE001
+                        # CONTRACTUAL isolate-and-report: one poisoned
+                        # item must not abort the rest of the chunk.
                         report.failures.append(
                             EmbeddingWriteFailure(
                                 key=key, stage="write", error=str(item_exc)
@@ -381,6 +386,8 @@ class EmbeddingWriter:
                 self._assert_safe_item(item)
                 to_write.append((request.canonical_key, item))
             except Exception as exc:  # noqa: BLE001 - isolate and report
+                # CONTRACTUAL isolate-and-report: embed/validate of one
+                # request must not drop healthy siblings.
                 report.failures.append(
                     EmbeddingWriteFailure(
                         key=key_id, stage="embed", error=str(exc)

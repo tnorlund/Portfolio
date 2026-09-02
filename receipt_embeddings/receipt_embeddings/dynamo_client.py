@@ -241,6 +241,8 @@ class DynamoVectorSearchClient:
                     if attempt < self._max_retries:
                         self._sleep(0.1 * (2**attempt))
             except Exception:  # noqa: BLE001 - degrade to projection metadata
+                # CONTRACTUAL: a join failure keeps SearchVectors hits
+                # with projection metadata rather than discarding them.
                 continue
         self.last_join_read_units = consumed
         joined: list[ScoredItem] = []
@@ -359,6 +361,9 @@ class DynamoVectorSearchClient:
                 if pending:
                     return results
         except Exception:  # noqa: BLE001 - abstain on join failure
+            # CONTRACTUAL: a failed label join leaves valid_labels_array
+            # absent so consumers abstain instead of voting on partial
+            # evidence.
             return results
 
         self.last_join_read_units = consumed

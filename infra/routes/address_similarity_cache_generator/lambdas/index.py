@@ -551,7 +551,7 @@ def handler(_event, _context):
                 else:
                     # Multi-dimensional array or list-like, convert to list
                     embeddings = list(embeddings_raw)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
                 embeddings = []
         else:
             embeddings = (

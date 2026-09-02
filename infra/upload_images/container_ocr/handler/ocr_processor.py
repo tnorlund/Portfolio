@@ -1457,13 +1457,10 @@ class OCRProcessor:
                             # correct; the freshener fills it when a
                             # PLACE row lands.
                             reocr_place = None
-                        except Exception:
-                            # A transient lookup failure must NOT
-                            # rewrite every vector with blank
-                            # merchant/place (no later PLACE event
-                            # would heal it) — fail the refresh
-                            # retryably instead (codex P2).
-                            raise
+                        # Any other lookup failure (throttles, network)
+                        # must NOT rewrite every vector with blank
+                        # merchant/place — it raises into the outer
+                        # native_refresh_error handler (codex P2).
 
                         def _write_native():
                             return maybe_dual_write_embeddings(
@@ -1513,10 +1510,10 @@ class OCRProcessor:
                 except (
                     Exception
                 ) as native_exc:  # pylint: disable=broad-exception-caught
-                    # Surfaced, not swallowed (codex flip P1): stale
-                    # rows may already be deleted, so the job must fail
-                    # retryably instead of acknowledging success with a
-                    # partial native corpus.
+                    # CONTRACTUAL: surfaced, not swallowed (codex flip P1).
+                    # Stale rows may already be deleted, so the job must
+                    # fail retryably instead of acknowledging success
+                    # with a partial native corpus.
                     logger.exception("Re-OCR native embedding refresh failed")
                     native_refresh_error = str(native_exc)
                 embedding_result.close()

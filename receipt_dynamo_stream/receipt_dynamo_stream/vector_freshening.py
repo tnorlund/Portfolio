@@ -151,7 +151,9 @@ def apply_vector_freshening(
         # pylint: disable-next=broad-exception-caught
         try:
             _freshen_record(record, ctx)
-        except Exception:  # graceful degradation: never crash the handler
+        except Exception:  # noqa: BLE001 - never crash the stream handler
+            # CONTRACTUAL never-raise: a bad record must not abort
+            # the rest of the batch or the SQS publish legs.
             logger.exception(
                 "Vector freshening failed for stream record",
                 extra={"event_id": record.get("eventID")},

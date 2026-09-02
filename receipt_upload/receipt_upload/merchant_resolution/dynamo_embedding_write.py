@@ -149,6 +149,8 @@ def maybe_dual_write_embeddings(
         )
         return result
     except Exception as exc:  # noqa: BLE001 - never affect ingest outcome
+        # CONTRACTUAL never-raise: ingest outcome is independent of the
+        # dual-write leg (flag-gated; failures are reported in the dict).
         logger.exception(
             "Dual-write embeddings failed for %s#%s (non-fatal)",
             image_id,
