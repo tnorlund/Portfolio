@@ -52,6 +52,7 @@ from merge_receipt_lambda import create_merge_receipt_lambda
 from networking import PublicVpc
 from notifications import NotificationSystem
 from raw_bucket import raw_bucket  # Import the actual bucket instance
+from receipt_update_queues import ReceiptUpdateQueues
 from resegment_receipt_lambda import create_resegment_receipt_lambda
 from s3_website import site_bucket  # Import the site bucket instance
 from security import ChromaSecurity
@@ -208,6 +209,22 @@ chromadb_infrastructure = create_chromadb_compaction_infrastructure(
     alert_topic_arn=notification_system.critical_error_topic_arn,
 )
 
+# Summary/line-item update pipeline + stream processor, relocated out of
+# the chromadb component (alias-preserving move: same logical names, same
+# physical queues/Lambdas). lines/words URLs still feed the stream
+# processor until the compaction stack is deleted.
+receipt_update_queues = ReceiptUpdateQueues(
+    f"receipt-updates-{pulumi.get_stack()}",
+    queues_name=f"chromadb-{pulumi.get_stack()}-queues",
+    lambdas_name=f"chromadb-{pulumi.get_stack()}",
+    dynamodb_table_arn=dynamodb_table.arn,
+    dynamodb_stream_arn=dynamodb_table.stream_arn,
+    lines_queue_url=chromadb_infrastructure.chromadb_queues.lines_queue_url,
+    words_queue_url=chromadb_infrastructure.chromadb_queues.words_queue_url,
+    lines_queue_arn=chromadb_infrastructure.chromadb_queues.lines_queue_arn,
+    words_queue_arn=chromadb_infrastructure.chromadb_queues.words_queue_arn,
+)
+
 # Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
 s3_gateway_endpoint = aws.ec2.VpcEndpoint(
     f"s3-gateway-{pulumi.get_stack()}",
@@ -331,8 +348,8 @@ upload_images = UploadImages(
     label_validation_project_name=label_validation_project_name,
     # Post-re-OCR line-item refresh (summary recompute -> stream ->
     # LINE_ITEMS stage)
-    summary_queue_url=chromadb_infrastructure.chromadb_queues.summary_queue_url,
-    summary_queue_arn=chromadb_infrastructure.chromadb_queues.summary_queue_arn,
+    summary_queue_url=receipt_update_queues.summary_queue_url,
+    summary_queue_arn=receipt_update_queues.summary_queue_arn,
 )
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
@@ -1075,7 +1092,7 @@ pulumi.export(
 )
 pulumi.export(
     "stream_processor_function_arn",
-    chromadb_infrastructure.stream_processor_arn,
+    receipt_update_queues.stream_processor_arn,
 )
 pulumi.export(
     "enhanced_compaction_function_arn",
