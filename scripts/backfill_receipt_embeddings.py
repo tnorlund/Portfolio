@@ -828,7 +828,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         except SystemExit:
             raise
-        except Exception:
+        except Exception:  # noqa: BLE001 - cleanup then re-raise
             close_source()
             raise
     elif vector_source == "fixture":

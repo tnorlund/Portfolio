@@ -132,7 +132,9 @@ def enrich_line_metadata_with_anchors(
             metadata["normalized_full_address"] = anchor_address
         if anchor_url:
             metadata["normalized_url"] = anchor_url
-    except Exception:
+    except Exception:  # noqa: BLE001 - best-effort enrichment
+        # CONTRACTUAL never-raise: anchors are optional metadata; a
+        # malformed extracted_data blob must not fail the embedding write.
         logger.debug("Anchor enrichment failed for line", exc_info=True)
 
     return metadata

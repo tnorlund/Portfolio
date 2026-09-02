@@ -152,6 +152,8 @@ def write_precomputed_embeddings(
         )
         return result
     except Exception as exc:  # noqa: BLE001 - caller decides fatality
+        # CONTRACTUAL never-raise: ingest marks the receipt failed from
+        # the returned report; raising here would bypass that contract.
         logger.exception(
             "Native embeddings write failed for %s#%s",
             image_id,
