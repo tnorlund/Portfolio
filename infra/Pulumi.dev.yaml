@@ -69,3 +69,4 @@ config:
   chromadb:enable-line-item-refine: "true"
   portfolio:enable-dual-write-embeddings: "true"
   portfolio:vector-backend: dynamodb
+  chromadb:enable-compaction: "false"

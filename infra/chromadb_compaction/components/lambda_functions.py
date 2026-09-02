@@ -963,10 +963,22 @@ class HybridLambdaDeployment(ComponentResource):
         # Standard queues support batch_size up to 10,000 and batching windows.
         # Lambda sorts messages (REMOVE first) and uses within-batch deduplication
         # to prevent orphaned embeddings.
+        #
+        # chromadb:enable-compaction gates ONLY these two mappings (the
+        # 10GB enhanced-compaction Lambda's sole invokers). A stack that
+        # reads vectors from DynamoDB (VECTOR_BACKEND=dynamodb) can set
+        # it "false" to stop the compaction spend without touching the
+        # stream processor or the summary/line-item updaters. Reversible:
+        # flip back to true and re-deploy (queue messages older than the
+        # 4-day retention are lost; recover via the embeddings backfill).
+        compaction_enabled = (
+            Config("chromadb").get("enable-compaction") or "true"
+        ).lower() != "false"
         self.lines_event_source_mapping = aws.lambda_.EventSourceMapping(
             f"{name}-lines-event-source-mapping",
             event_source_arn=chromadb_queues.lines_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
+            enabled=compaction_enabled,
             batch_size=1000,  # Standard queues support up to 10,000
             maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
             function_response_types=["ReportBatchItemFailures"],
@@ -983,6 +995,7 @@ class HybridLambdaDeployment(ComponentResource):
             f"{name}-words-event-source-mapping",
             event_source_arn=chromadb_queues.words_queue_arn,
             function_name=self.enhanced_compaction_function.arn,
+            enabled=compaction_enabled,
             batch_size=1000,  # Standard queues support up to 10,000
             maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
             function_response_types=["ReportBatchItemFailures"],
