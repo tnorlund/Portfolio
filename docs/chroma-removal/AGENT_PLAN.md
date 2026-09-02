@@ -78,6 +78,15 @@ Flag flips, prod backfill, Phase 4 ordered teardown, VPC deletion (after EIP
 allowlist check), Chroma Cloud account closure — driven by you with the spec's
 §5 checklist; agents prepare the PRs, you sequence the merges and deploys.
 
+### Stack 3 — post-teardown packaging (after Phase 4)
+
+| ID | Task | Base | Eval / acceptance |
+|---|---|---|---|
+| **Z1** | Zip-package post-Chroma Lambdas (not LayoutLM / SageMaker) | Phase 4 complete; no `receipt_chroma` in the image | `python scripts/lambda_zip_budget.py` shows zero `chroma_blocked` rows for the converted functions; unzipped size on AL2023 arm64 **< 200 MB**; `pulumi preview` on `tnorlund/portfolio/dev` shows only the intended `PackageType` replacements; LayoutLM Dockerfile still installs CPU PyTorch |
+
+Do **not** start Z1 while Dockerfiles still `pip install receipt_chroma`.
+Classifier: [ZIP_LAMBDA_FOLLOWUP.md](ZIP_LAMBDA_FOLLOWUP.md).
+
 ## Comparing implementations
 
 One scorecard, run identically per candidate branch:
