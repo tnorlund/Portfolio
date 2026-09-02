@@ -43,3 +43,11 @@ Sprouts match is stacked geometry PRs (constraint → pairing → fragment join 
 qty-echo / ITEMS tail → zone-gap), then remaining-error EDA plus other-merchant
 uplift. Follow `.cursor/skills/sprouts-line-item-stack/SKILL.md`. Do not chase
 187/187; bottle-return refunds stay no-baseline.
+
+## Branch note: polish/chroma-removal-cleanup
+
+This branch exists for the Chroma-removal polish pass. **Read
+`docs/chroma-removal/POLISH_BRIEF.md` before doing anything** — it defines
+the mission, a hard scope fence (live teardown work is landing on `main`
+concurrently), the deduplication inventory, and behavior invariants that
+must not change.
