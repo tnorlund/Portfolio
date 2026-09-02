@@ -219,6 +219,13 @@ class MergeReceiptLambda(ComponentResource):
                 "VECTOR_BACKEND": (
                     Config("portfolio").get("vector-backend") or "chroma"
                 ),
+                # Dual-run embedding writes to DynamoDB (non-fatal,
+                # flag-gated) — merged receipts must reach the native
+                # vector corpus too (issue #1517).
+                "DUAL_WRITE_EMBEDDINGS": (
+                    Config("portfolio").get("enable-dual-write-embeddings")
+                    or "false"
+                ),
             },
         }
 
