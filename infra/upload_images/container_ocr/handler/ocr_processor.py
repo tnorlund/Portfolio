@@ -1430,61 +1430,19 @@ class OCRProcessor:
                     )
 
                     if dual_write_embeddings_enabled():
-                        raw = (
+                        from receipt_embeddings.sweep import (  # noqa: E501  pylint: disable=import-outside-toplevel
+                            delete_native_embedding_items,
+                        )
+
+                        raw_client = (
                             self.dynamo._client
                         )  # pylint: disable=protected-access
-                        kwargs = {
-                            "TableName": self.dynamo.table_name,
-                            "KeyConditionExpression": (
-                                "PK = :p AND begins_with(SK, :s)"
-                            ),
-                            "ExpressionAttributeValues": {
-                                ":p": {"S": f"IMAGE#{ocr_job.image_id}"},
-                                ":s": {
-                                    "S": (f"RECEIPT#{ocr_job.receipt_id:05d}#")
-                                },
-                            },
-                            "ProjectionExpression": "PK, SK",
-                        }
-                        stale_keys = []
-                        while True:
-                            resp = raw.query(**kwargs)
-                            stale_keys.extend(
-                                {"PK": item["PK"], "SK": item["SK"]}
-                                for item in resp.get("Items", [])
-                                if item["SK"]["S"].endswith("#EMBEDDING")
-                            )
-                            lek = resp.get("LastEvaluatedKey")
-                            if not lek:
-                                break
-                            kwargs["ExclusiveStartKey"] = lek
-                        for start in range(0, len(stale_keys), 25):
-                            chunk = stale_keys[start : start + 25]
-                            pending = [
-                                {"DeleteRequest": {"Key": key}}
-                                for key in chunk
-                            ]
-                            # UnprocessedItems must be retried: the
-                            # skip-existing writer would treat an
-                            # undeleted key as already current and
-                            # leave a stale vector (codex flip P1).
-                            for attempt in range(8):
-                                bw = raw.batch_write_item(
-                                    RequestItems={
-                                        self.dynamo.table_name: pending
-                                    }
-                                )
-                                pending = bw.get("UnprocessedItems", {}).get(
-                                    self.dynamo.table_name, []
-                                )
-                                if not pending:
-                                    break
-                                time.sleep(0.2 * (2**attempt))
-                            if pending:
-                                raise RuntimeError(
-                                    f"{len(pending)} stale embedding "
-                                    "deletes unprocessed after retries"
-                                )
+                        stale_count = delete_native_embedding_items(
+                            raw_client,
+                            self.dynamo.table_name,
+                            ocr_job.image_id,
+                            ocr_job.receipt_id,
+                        )
                         from receipt_dynamo.data.shared_exceptions import (  # noqa: E501  pylint: disable=import-outside-toplevel
                             EntityNotFoundError,
                         )
@@ -1553,7 +1511,7 @@ class OCRProcessor:
                             )
                         logger.info(
                             "Re-OCR native refresh: swept %d stale, %s",
-                            len(stale_keys),
+                            stale_count,
                             dual_report,
                         )
                 except (

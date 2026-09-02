@@ -40,6 +40,8 @@ from typing import Any
 import boto3
 from PIL import Image as PIL_Image
 
+from receipt_embeddings.sweep import delete_native_embedding_items
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -58,48 +60,24 @@ def _delete_native_embedding_items(
     fragment queryable via SearchVectors (codex review P1). Returns the
     number of items deleted; never raises.
     """
-    deleted = 0
     try:
-        raw = client._client  # pylint: disable=protected-access
-        kwargs = {
-            "TableName": client.table_name,
-            "KeyConditionExpression": "PK = :p AND begins_with(SK, :s)",
-            "ExpressionAttributeValues": {
-                ":p": {"S": f"IMAGE#{image_id}"},
-                ":s": {"S": f"RECEIPT#{receipt_id:05d}#"},
-            },
-            "ProjectionExpression": "PK, SK",
-        }
-        keys = []
-        while True:
-            response = raw.query(**kwargs)
-            keys.extend(
-                {"PK": item["PK"], "SK": item["SK"]}
-                for item in response.get("Items", [])
-                if item["SK"]["S"].endswith("#EMBEDDING")
-            )
-            last_key = response.get("LastEvaluatedKey")
-            if not last_key:
-                break
-            kwargs["ExclusiveStartKey"] = last_key
-        for start in range(0, len(keys), 25):
-            chunk = keys[start : start + 25]
-            raw.batch_write_item(
-                RequestItems={
-                    client.table_name: [
-                        {"DeleteRequest": {"Key": key}} for key in chunk
-                    ]
-                }
-            )
-            deleted += len(chunk)
+        return delete_native_embedding_items(
+            client._client,  # pylint: disable=protected-access
+            client.table_name,
+            image_id,
+            receipt_id,
+        )
     except Exception:  # pylint: disable=broad-exception-caught
+        # Contractual never-raise: merge must still abort retryably
+        # BEFORE source deletion via the caller; a sweeper failure
+        # only logs (orphaned vectors may remain queryable).
         logger.exception(
             "Failed to delete native embedding items for %s#%s "
             "(orphaned vectors may remain queryable)",
             image_id,
             receipt_id,
         )
-    return deleted
+        return 0
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
