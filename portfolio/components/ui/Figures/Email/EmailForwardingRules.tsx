@@ -104,24 +104,24 @@ const STYLE = `
          --efr-text:#f5f5f7; --efr-muted:#98989d; --efr-link:#5aa3ff; --efr-active:#3a3a3c;
          --efr-shadow:0 18px 50px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06); }
 }
-.efr-modal { display:grid; grid-template-columns: 236px minmax(0,1fr); background:var(--efr-bg);
+.efr-modal { display:grid; grid-template-columns: 222px minmax(0,1fr); background:var(--efr-bg);
   color:var(--efr-text); border-radius:18px; overflow:hidden; box-shadow:var(--efr-shadow);
   font-family:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-size:15px; line-height:1.4; -webkit-font-smoothing:antialiased;
+  font-size:15px; line-height:1.35; -webkit-font-smoothing:antialiased;
   opacity:0; transform:translateY(14px) scale(.97); transition:opacity .45s ease, transform .45s cubic-bezier(.2,.7,.2,1); }
-.efr-side { background:var(--efr-side); padding:22px 14px 20px 22px; }
-.efr-close { color:var(--efr-muted); font-size:24px; line-height:1; font-weight:600; margin:0 0 22px 4px; }
+.efr-side { background:var(--efr-side); padding:20px 12px 18px 18px; border-right:1px solid var(--efr-line); }
+.efr-close { color:var(--efr-text); display:flex; margin:2px 0 26px 8px; }
 .efr-side ul { list-style:none; margin:0; padding:0; }
-.efr-side li { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:9px; color:var(--efr-text); font-size:15px; }
+.efr-side li { display:flex; align-items:center; gap:10px; margin:0; padding:5px 12px; border-radius:8px; color:var(--efr-text); font-size:15px; line-height:1.25; }
 .efr-side li svg { color:var(--efr-link); }
 .efr-side li[data-active="true"] { background:var(--efr-active); }
-.efr-main { padding:22px 22px 18px; min-width:0; display:flex; flex-direction:column; }
-.efr-head { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--efr-line); padding-bottom:12px; }
-.efr-head h3 { margin:0; font-size:22px; font-weight:700; letter-spacing:-.2px; color:var(--efr-text); }
+.efr-main { padding:20px 18px 16px; min-width:0; display:flex; flex-direction:column; }
+.efr-head { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--efr-line); padding-bottom:10px; }
+.efr-head h3 { margin:0; font-size:20px; font-weight:700; letter-spacing:-.2px; color:var(--efr-text); }
 .efr-head .efr-plus { color:var(--efr-link); display:flex; }
-.efr-list { list-style:none; margin:14px 0 0; padding:0 2px 0 0; flex:1 1 auto; min-height:0; max-height:470px; overflow-y:auto; }
-.efr-list li { background:var(--efr-row); border:1px solid var(--efr-line); border-radius:10px; padding:13px 14px 13px 16px;
-  margin-bottom:10px; display:flex; justify-content:space-between; gap:14px; align-items:center;
+.efr-list { list-style:none; margin:14px 0 0; padding:0 2px 0 0; flex:1 1 auto; min-height:0; max-height:420px; overflow-y:auto; }
+.efr-list li { background:var(--efr-row); border:1px solid var(--efr-line); border-radius:8px; padding:8px 10px 8px 12px;
+  margin:0 0 10px; display:flex; justify-content:space-between; gap:12px; align-items:center; line-height:1.3;
   opacity:0; transform:translateY(6px); transition:opacity .35s ease, transform .35s ease, border-color .15s ease; cursor:default; }
 .efr[data-in="true"] .efr-modal { opacity:1; transform:none; }
 .efr[data-in="true"] .efr-list li { opacity:1; transform:none; }
@@ -163,11 +163,15 @@ const EmailForwardingRules: React.FC = () => {
         aria-label="iCloud Mail rules: each rule forwards one sender to one agent-facing address"
       >
         <aside className="efr-side" aria-hidden="true">
-          <div className="efr-close">×</div>
+          <div className="efr-close" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 18 18">
+              <path d="M3 3l12 12M15 3L3 15" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none" />
+            </svg>
+          </div>
           <ul>
             {SIDEBAR.map((item) => (
               <li key={item} data-active={item === "Rules" ? "true" : undefined}>
-                <Glyph name={item} size={18} />
+                <Glyph name={item} size={17} />
                 {item}
               </li>
             ))}
@@ -177,7 +181,7 @@ const EmailForwardingRules: React.FC = () => {
           <div className="efr-head">
             <h3>Rules</h3>
             <span className="efr-plus" title="Add New Rule">
-              <Glyph name="Plus" size={18} />
+              <Glyph name="Plus" size={16} />
             </span>
           </div>
           <ul className="efr-list" onMouseLeave={() => setHot(null)}>
@@ -195,7 +199,7 @@ const EmailForwardingRules: React.FC = () => {
                   <b>{ADDRESS[rule.to]}</b>
                 </div>
                 <span className="efr-handle">
-                  <Glyph name="DragHandle" size={16} />
+                  <Glyph name="DragHandle" size={15} />
                 </span>
               </li>
             ))}
