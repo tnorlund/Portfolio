@@ -78,10 +78,12 @@ jobs:
                   python3 -m venv .venv-parity
                   source .venv-parity/bin/activate
                   pip install --quiet --no-deps -e receipt_dynamo \
+                    -e receipt_embeddings \
                     -e receipt_upload
-                  # boto3/Pillow are imported by the packages' __init__
-                  # chains, not by the decoder itself.
-                  pip install --quiet boto3 Pillow
+                  # boto3/Pillow/numpy/openai are imported by the packages'
+                  # __init__ chains (receipt_embeddings pulls the openai SDK
+                  # via its writer), not by the decoder itself.
+                  pip install --quiet boto3 Pillow numpy openai
                   python receipt_ocr_swift/Scripts/generate_line_items_parity.py \
                     --check
 

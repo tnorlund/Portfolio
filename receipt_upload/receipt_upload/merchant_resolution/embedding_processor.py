@@ -1,23 +1,21 @@
 """
 Merchant-resolving embedding processor for unified upload container.
 
-Updated: 2026-01-18 - Force rebuild with latest parallel pipelines implementation
+Chroma-free (teardown PR #4): embeddings are computed once per receipt and
+persisted as native DynamoDB ``*_EMBEDDING`` items; every similarity read
+goes through the ``receipt_embeddings`` vector-search seam (DynamoDB
+SearchVectors). The snapshot/delta/CompactionRun machinery is gone.
 
-This processor uses PARALLEL PIPELINES for optimal performance:
+Phase 1: Embed (one batched OpenAI call for visual rows + words)
+Phase 1b: Write native DynamoDB embedding items (THE persistence step —
+          a failure here marks the receipt failed; the healing backfill
+          is the recovery primitive)
+Phase 2: Parallel pipelines
+- Lines Pipeline: merchant resolution → section assignment/verification
+- Words Pipeline: label hygiene → validation (abstains to LLM) → LLM
 
-Phase 1: Download + Embed (4 concurrent ops)
-- Download lines snapshot from S3
-- Download words snapshot from S3
-- Embed lines via OpenAI
-- Embed words via OpenAI
-
-Phase 2: Parallel Pipelines
-- Lines Pipeline: merchant resolution → build payload → upsert → upload delta
-- Words Pipeline: label validation → build payload → upsert → upload delta
-
-Phase 3: Create CompactionRun (DynamoDB stream triggers async compaction)
-
-Phase 4: Enrich receipt place (AFTER compaction run to avoid race conditions)
+Phase 3: Enqueue deferred LLM validation (async mode only)
+Phase 4: Enrich receipt place
 
 Tracing:
 - The process_embeddings method creates a parent trace per receipt
@@ -27,31 +25,14 @@ Tracing:
 import json
 import logging
 import os
-import pickle
-import shutil
-import tempfile
 import time
 import uuid
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime, timezone
-from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple, Type
 
 import boto3
 from receipt_agent.constants import CORE_LABELS
-from receipt_chroma import ChromaClient
-from receipt_chroma.embedding import (
-    build_words_payload,
-    create_compaction_run,
-    download_and_embed_parallel,
-    upload_lines_delta,
-    upload_words_delta,
-    upsert_payload_to_cloud,
-)
-from receipt_chroma.embedding.cloud_upsert import (
-    DEFAULT_REQUEST_TIMEOUT,
-    emit_within_budget,
-)
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
@@ -74,7 +55,7 @@ from receipt_upload.label_validation.llm_runner import (
     run_llm_validation_sync,
 )
 from receipt_upload.merchant_resolution.dynamo_embedding_write import (
-    maybe_dual_write_embeddings,
+    write_precomputed_embeddings,
 )
 from receipt_upload.merchant_resolution.resolver import (
     MerchantResolver,
@@ -104,26 +85,26 @@ def _enqueue_async_llm_validation(
     image_id: str,
     receipt_id: int,
     run_id: str,
-    chromadb_bucket: str,
+    staging_bucket: str,
 ) -> None:
     """Stage the grok payload on S3 and enqueue a pointer for the consumer.
 
     The payload (word context + pre-computed similar-evidence + the pending
-    label entities) is too large and Chroma-derived to recompute downstream, so
-    it goes to S3; the SQS message is just a small pointer. Raises on any failure
-    so the caller can fall back to inline validation (labels are never left
+    label entities) is too large to recompute downstream, so it goes to S3;
+    the SQS message is just a small pointer. Raises on any failure so the
+    caller can fall back to inline validation (labels are never left
     dangling PENDING).
     """
-    import json
-
     queue_url = (os.environ.get("LLM_VALIDATION_QUEUE_URL") or "").strip()
     if not queue_url:
         raise RuntimeError("LLM_VALIDATION_QUEUE_URL is not set")
+    if not staging_bucket:
+        raise RuntimeError("no staging bucket configured for async LLM")
 
     key = f"llm-validation/{run_id}/{image_id}_{receipt_id:05d}.json"
     s3 = boto3.client("s3")
     s3.put_object(
-        Bucket=chromadb_bucket,
+        Bucket=staging_bucket,
         Key=key,
         Body=json.dumps(payload).encode("utf-8"),
         ContentType="application/json",
@@ -133,7 +114,7 @@ def _enqueue_async_llm_validation(
         QueueUrl=queue_url,
         MessageBody=json.dumps(
             {
-                "s3_bucket": chromadb_bucket,
+                "s3_bucket": staging_bucket,
                 "s3_key": key,
                 "image_id": image_id,
                 "receipt_id": receipt_id,
@@ -148,9 +129,7 @@ def _enqueue_async_llm_validation(
 # and demonstrably flips these (a right-column LINE_TOTAL re-tagged UNIT_PRICE on
 # the Trader Joe's June21 receipt). We trust geometry for these and keep them off
 # the LLM hand-off — which also shrinks grok's payload and the upload critical
-# path. Chroma (embedding + position aware) still gets a vote; only the LLM
-# reassignment is suppressed. Semantic/text roles (PRODUCT_NAME, etc.) and
-# model-proposed currency labels are unaffected.
+# path.
 _GEOMETRY_SPATIAL_ROLES = {"LINE_TOTAL", "UNIT_PRICE", "QUANTITY"}
 _GEOMETRY_PROPOSER = "geometry_line_items"
 
@@ -158,320 +137,59 @@ _GEOMETRY_PROPOSER = "geometry_line_items"
 # replay loop re-applies redact_pii (imported above) as defense-in-depth.
 
 
-def _chroma_cloud_config() -> Optional[Dict[str, str]]:
-    """Return Chroma Cloud connection config from env, or None if not enabled.
+def _embed_receipt_vectors(
+    lines: List[ReceiptLine],
+    words: List[ReceiptWord],
+    openai_client: Any = None,
+    model: Optional[str] = None,
+    openai_api_key: Optional[str] = None,
+) -> Tuple[List[List[float]], List[List[int]], List[List[float]]]:
+    """Embed a receipt's visual rows and words in one batched OpenAI call.
 
-    When set, the upload path queries the persistent Chroma Cloud DB instead of
-    downloading the ~674MB S3 snapshot per receipt. The batch step functions keep
-    using the local S3 snapshot (high query volume would hammer Cloud's rate
-    limits); the snapshot+delta+compaction machinery stays and keeps BOTH
-    backends in sync. Reads here are low-volume (~tens of queries/receipt).
+    Returns ``(row_embeddings, row_line_ids_list, word_embeddings_list)``
+    with ``word_embeddings_list[i]`` aligned to ``words[i]`` and the row
+    lists aligned to each other. Uses the SAME ingest formatting as the
+    native corpus (visual-row context for lines, spatial context for
+    words), so query vectors and stored vectors share one representation.
     """
-    if os.environ.get("CHROMA_CLOUD_ENABLED", "").strip().lower() != "true":
-        return None
-    api_key = (os.environ.get("CHROMA_CLOUD_API_KEY") or "").strip()
-    tenant = (os.environ.get("CHROMA_CLOUD_TENANT") or "").strip()
-    database = (os.environ.get("CHROMA_CLOUD_DATABASE") or "").strip()
-    if not (api_key and tenant and database):
-        return None
-    return {"api_key": api_key, "tenant": tenant, "database": database}
+    # pylint: disable=import-outside-toplevel
+    from receipt_embeddings.formatting import (
+        format_word_context_embedding_input,
+        get_row_embedding_inputs,
+    )
+    from receipt_embeddings.openai.realtime import embed_texts
 
+    if openai_client is None:
+        from openai import OpenAI
 
-def _make_read_client(
-    local_dir: Optional[str], cloud_cfg: Optional[Dict[str, str]]
-):
-    """Build a ChromaClient for READS: Chroma Cloud when configured, else the
-    local S3 snapshot at ``local_dir``."""
-    if cloud_cfg:
-        return ChromaClient(
-            mode="read",
-            cloud_api_key=cloud_cfg["api_key"],
-            cloud_tenant=cloud_cfg["tenant"],
-            cloud_database=cloud_cfg["database"],
-            # Chroma leaves its Cloud session unbounded; without this a
-            # stalled read hangs until the Lambda itself times out.
-            cloud_request_timeout=DEFAULT_REQUEST_TIMEOUT,
+        openai_client = (
+            OpenAI(api_key=openai_api_key) if openai_api_key else OpenAI()
         )
-    return ChromaClient(
-        persist_directory=local_dir,
-        mode="write",
-        metadata_only=True,
+
+    model = model or os.environ.get(
+        "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
     )
 
+    row_inputs: List[str] = []
+    row_line_ids_list: List[List[int]] = []
+    for embedding_input, line_ids in get_row_embedding_inputs(lines):
+        row_inputs.append(embedding_input)
+        row_line_ids_list.append([int(v) for v in line_ids])
 
-_METRICS_NAMESPACE = "EmbeddingWorkflow"
+    word_inputs = [
+        format_word_context_embedding_input(word, words) for word in words
+    ]
 
-# How stale a worker's label snapshot may be before the direct Cloud write is
-# skipped in favour of compaction's ordered path. Well above ingest p90
-# (40.8s) so healthy runs always publish, and far below the Lambda's 900s
-# ceiling so a stalled run cannot publish minutes-old labels.
-_DEFAULT_MAX_LABEL_AGE_SECONDS = 300.0
-
-
-def _emit_emf_metrics(
-    metrics: Dict[str, Any],
-    dimensions: Optional[Dict[str, str]] = None,
-    units: Optional[Dict[str, str]] = None,
-    properties: Optional[Dict[str, Any]] = None,
-) -> None:
-    """Write metrics to stdout in CloudWatch Embedded Metric Format.
-
-    Mirrors the compaction handler's EMF conventions (same namespace, same
-    ENABLE_METRICS gate) without pulling in its Lambda-local ``utils``
-    package, which is not bundled into the upload container.
-    """
-    if os.environ.get("ENABLE_METRICS", "true").strip().lower() != "true":
-        return
-
-    unit_for = units or {}
-    emf: Dict[str, Any] = {
-        "_aws": {
-            "Timestamp": int(time.time() * 1000),
-            "CloudWatchMetrics": [
-                {
-                    "Namespace": _METRICS_NAMESPACE,
-                    "Dimensions": (
-                        [list(dimensions.keys())] if dimensions else [[]]
-                    ),
-                    "Metrics": [
-                        {"Name": name, "Unit": unit_for.get(name, "Count")}
-                        for name in metrics
-                    ],
-                }
-            ],
-        }
-    }
-    if dimensions:
-        emf.update(dimensions)
-    emf.update(metrics)
-    if properties:
-        emf.update(properties)
-
-    print(json.dumps(emf))
-
-
-def _stage_cloud_payload(
-    payload: Dict[str, Any],
-    collection_name: str,
-    cloud_cfg: Optional[Dict[str, str]],
-) -> Optional[str]:
-    """Park a payload on local disk for the parent to publish later.
-
-    A record is only recoverable once its CompactionRun exists, and that row
-    is written by the parent after both workers finish. So a worker cannot
-    publish its own payload -- it hands it back instead. The handoff goes
-    through a file because Phase 2 runs on processes outside Lambda (see
-    ``_get_phase2_executor_class``), where an in-memory reference would not
-    survive; the file is local to the host either way and the parent deletes
-    it in its finally block.
-
-    Returns the path, or None when Cloud is disabled or staging failed --
-    both of which just mean this receipt waits for compaction.
-    """
-    if not cloud_cfg:
-        return None
-
-    handle: Optional[int] = None
-    path: Optional[str] = None
-    try:
-        handle, path = tempfile.mkstemp(
-            prefix=f"cloud-publish-{collection_name}-", suffix=".pkl"
+    inputs = row_inputs + word_inputs
+    vectors = embed_texts(openai_client, inputs, model) if inputs else []
+    if len(vectors) != len(inputs):
+        raise RuntimeError(
+            f"embedding batch returned {len(vectors)} vectors for "
+            f"{len(inputs)} inputs"
         )
-        with os.fdopen(handle, "wb") as staged:
-            handle = None  # fdopen owns the descriptor now
-            pickle.dump(payload, staged, protocol=pickle.HIGHEST_PROTOCOL)
-        staged_path, path = path, None
-        return staged_path
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.exception(
-            "Could not stage %s payload for Chroma Cloud publication",
-            collection_name,
-        )
-        return None
-    finally:
-        # Anything still owned here failed partway: close the descriptor and
-        # remove the half-written file rather than leaving it in /tmp, which
-        # a warm Lambda keeps across invocations.
-        if handle is not None:
-            try:
-                os.close(handle)
-            except OSError:
-                pass
-        _discard_staged_payload(path)
-
-
-def _publish_staged_payload(
-    path: Optional[str],
-    collection_name: str,
-    cloud_cfg: Optional[Dict[str, str]],
-    image_id: str,
-    receipt_id: int,
-    labels_fetched_at: Optional[float] = None,
-) -> None:
-    """Publish a payload a worker staged, once its CompactionRun is durable."""
-    if not path or not cloud_cfg:
-        return
-    try:
-        with open(path, "rb") as staged:
-            payload = pickle.load(staged)
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.exception(
-            "Could not read staged %s payload; leaving publication to "
-            "compaction",
-            collection_name,
-        )
-        return
-
-    _upsert_to_cloud_nonfatal(
-        payload=payload,
-        collection_name=collection_name,
-        cloud_cfg=cloud_cfg,
-        image_id=image_id,
-        receipt_id=receipt_id,
-        labels_fetched_at=labels_fetched_at,
-    )
-
-
-def _discard_staged_payload(path: Optional[str]) -> None:
-    """Remove a staged payload file, published or not."""
-    if not path:
-        return
-    try:
-        os.unlink(path)
-    except FileNotFoundError:
-        pass
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.warning("Could not remove staged payload %s", path)
-
-
-def _max_label_age_seconds() -> float:
-    """Age past which a worker's label snapshot is too stale to publish."""
-    raw = os.environ.get("INGEST_CLOUD_UPSERT_MAX_LABEL_AGE_SECONDS", "")
-    try:
-        return float(raw) if raw.strip() else _DEFAULT_MAX_LABEL_AGE_SECONDS
-    except ValueError:
-        return _DEFAULT_MAX_LABEL_AGE_SECONDS
-
-
-def _upsert_to_cloud_nonfatal(
-    payload: Dict[str, Any],
-    collection_name: str,
-    cloud_cfg: Optional[Dict[str, str]],
-    image_id: str,
-    receipt_id: int,
-    labels_fetched_at: Optional[float] = None,
-) -> None:
-    """Publish freshly embedded vectors to Chroma Cloud, best effort.
-
-    Call this only once the collection's delta tarball is durable in S3.
-    The delta and its CompactionRun are the backstop; this write just makes
-    the same vectors queryable now instead of after the next compaction
-    merge, which holds a global per-collection lock and can lag by minutes.
-
-    Known race (full fix is Phase 2): compaction routes a receipt's label
-    and place updates through the same FIFO group as its CompactionRun, so
-    those updates are ordered against each other. A direct write is not in
-    that order. If a label update lands in Cloud after this worker read its
-    labels, publishing here would overwrite the newer value with the older
-    snapshot, and the delta -- ordered after the already-consumed label
-    event -- would not repair it. Until records carry a revision token, the
-    mitigation is a bound on how stale the snapshot may be: past that, skip
-    the direct write and let compaction publish in FIFO order.
-
-    Nothing escapes this function; telemetry is inside the guard because a
-    failed metric write must not fail an ingest that already succeeded.
-    """
-    if not cloud_cfg:
-        return
-
-    try:
-        if labels_fetched_at is not None:
-            age = time.monotonic() - labels_fetched_at
-            max_age = _max_label_age_seconds()
-            if age > max_age:
-                _emit_emf_metrics(
-                    {"IngestCloudUpsertSkipped": 1},
-                    dimensions={"collection": collection_name},
-                    properties={
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                        "reason": "stale_risk",
-                        "label_age_seconds": round(age, 3),
-                    },
-                )
-                _log(
-                    f"Skipping Chroma Cloud upsert ({collection_name}): "
-                    f"label snapshot is {age:.1f}s old (limit {max_age:.0f}s); "
-                    "leaving publication to compaction's ordered path"
-                )
-                return
-
-        result = upsert_payload_to_cloud(
-            payload=payload,
-            collection_name=collection_name,
-            cloud_config=cloud_cfg,
-        )
-
-        if not result.enabled:
-            return
-
-        metric_name = (
-            "IngestCloudUpsertSuccess"
-            if result.success
-            else "IngestCloudUpsertFailure"
-        )
-        summary = (
-            f"Chroma Cloud upsert ({collection_name}): "
-            f"{result.upserted}/{result.attempted} records in "
-            f"{result.duration_seconds:.2f}s"
-            + (f" — FAILED: {result.error}" if not result.success else "")
-        )
-        emit_metrics = partial(
-            _emit_emf_metrics,
-            {
-                metric_name: 1,
-                "IngestCloudUpsertRecords": result.upserted,
-                "IngestCloudUpsertFailedBatches": result.failed_batches,
-                "IngestCloudUpsertDropped": result.dropped,
-                "IngestCloudUpsertTruncated": result.truncated,
-                "IngestCloudUpsertLatency": round(result.duration_seconds, 3),
-            },
-            dimensions={"collection": collection_name},
-            units={"IngestCloudUpsertLatency": "Seconds"},
-            properties={
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "attempted": result.attempted,
-                "deadline_exceeded": result.deadline_exceeded,
-                "backpressure": result.backpressure,
-                "drop_reasons": result.drop_reasons,
-                "error": result.error,
-            },
-        )
-
-        if result.telemetry_must_be_bounded:
-            # Something upstream is stuck -- the budget is spent, or earlier
-            # attempts have not returned. Reporting that must not block on
-            # the same I/O: a stalled stdout would hand it back to ingest.
-            emit_within_budget(emit_metrics)
-            emit_within_budget(_log, summary)
-        else:
-            emit_metrics()
-            _log(summary)
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.exception("Chroma Cloud upsert raised for %s", collection_name)
-        try:
-            _emit_emf_metrics(
-                {"IngestCloudUpsertFailure": 1},
-                dimensions={"collection": collection_name},
-                properties={
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "error": f"{type(e).__name__}: {e}",
-                },
-            )
-        except Exception:  # pylint: disable=broad-exception-caught
-            logger.exception("Failed to emit cloud upsert failure metric")
+    row_embeddings = vectors[: len(row_inputs)]
+    word_embeddings_list = vectors[len(row_inputs) :]
+    return row_embeddings, row_line_ids_list, word_embeddings_list
 
 
 def _prepare_pending_core_labels(
@@ -646,7 +364,6 @@ def _log(msg: str) -> None:
 
 
 def _run_lines_pipeline_worker(
-    local_lines_dir: str,
     lines_data: List[Dict[str, Any]],
     words_data: List[Dict[str, Any]],
     word_labels_data: List[Dict[str, Any]],
@@ -654,18 +371,15 @@ def _run_lines_pipeline_worker(
     row_line_ids_list: List[List[int]],
     image_id: str,
     receipt_id: int,
-    run_id: str,
-    chromadb_bucket: str,
     table_name: str,
     google_places_api_key: Optional[str],
     langsmith_headers: Optional[Dict[str, str]] = None,
-    labels_fetched_at: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Worker function for lines pipeline (runs in separate process).
 
-    Creates its own ChromaClient and runs merchant resolution.
-    Returns serializable dict with results.
+    Runs merchant resolution and section assignment/verification against
+    the DynamoDB vector-search seam. Returns serializable dict with results.
 
     Args:
         row_embeddings: Embeddings for each visual row
@@ -673,20 +387,13 @@ def _run_lines_pipeline_worker(
         langsmith_headers: Optional headers from parent RunTree for trace context
     """
     # Import inside worker to avoid pickling issues
-    from receipt_chroma.embedding.formatting import (
-        build_receipt_rows,
-        group_lines_into_visual_rows,
-    )
-    from receipt_chroma.embedding.records import (
-        RowEmbeddingRecord,
-        build_row_payload,
-    )
     from receipt_dynamo import DynamoClient
     from receipt_dynamo.entities import (
         ReceiptLine,
         ReceiptWord,
         ReceiptWordLabel,
     )
+    from receipt_embeddings.formatting import build_receipt_rows
 
     from receipt_upload.merchant_resolution.resolver import (
         MerchantResolver,
@@ -697,266 +404,215 @@ def _run_lines_pipeline_worker(
         assign_and_persist_sections,
     )
     from receipt_upload.section_verifier import verify_receipt_sections
+    from receipt_upload.vector_search import vector_search_client
 
     def _do_lines_work() -> Dict[str, Any]:
-        """Run the lines pipeline: merchant resolution, build payload, upsert, upload."""
+        """Run the lines pipeline: merchant resolution + section pipeline."""
         # Reconstruct entities from dicts using **unpacking
         lines = [ReceiptLine(**d) for d in lines_data]
         words = [ReceiptWord(**d) for d in words_data]
         word_labels = [ReceiptWordLabel(**d) for d in word_labels_data]
 
-        # READ client: Chroma Cloud when enabled (no snapshot download), else the
-        # local S3 snapshot. The delta WRITE below is self-contained (builds its
-        # own dir from the payload), so cloud mode needs no local snapshot.
-        cloud_cfg = _chroma_cloud_config()
-        client = _make_read_client(local_lines_dir, cloud_cfg)
+        # Build embedding cache: all lines in a row share the same embedding
+        line_embedding_cache: Dict[int, List[float]] = {}
+        for row_line_ids, emb in zip(
+            row_line_ids_list, row_embeddings, strict=True
+        ):
+            for line_id in row_line_ids:
+                line_embedding_cache[line_id] = emb
 
-        try:
-            # Build embedding cache: all lines in a row share the same embedding
-            line_embedding_cache: Dict[int, List[float]] = {}
-            for row_line_ids, emb in zip(
-                row_line_ids_list, row_embeddings, strict=True
-            ):
-                for line_id in row_line_ids:
-                    line_embedding_cache[line_id] = emb
+        # Create resolver and run merchant resolution
+        dynamo = DynamoClient(table_name)
 
-            # Create resolver and run merchant resolution
-            dynamo = DynamoClient(table_name)
+        # One vector-search backend for the whole worker, bound to the SAME
+        # table as the rest of the session (never the from_env fallback).
+        vector_client = vector_search_client(
+            None,
+            dynamodb_client=dynamo._client,  # pylint: disable=protected-access
+            table_name=table_name,
+        )
 
-            # Create places client if API key provided
-            places_client = None
-            if google_places_api_key:
-                try:
-                    from receipt_places import PlacesClient
+        # Create places client if API key provided
+        places_client = None
+        if google_places_api_key:
+            try:
+                from receipt_places import PlacesClient
 
-                    places_client = PlacesClient(api_key=google_places_api_key)
-                except ImportError:
-                    pass
+                places_client = PlacesClient(api_key=google_places_api_key)
+            except ImportError:
+                pass
 
-            resolver = MerchantResolver(
-                dynamo_client=dynamo,
-                places_client=places_client,
+        resolver = MerchantResolver(
+            dynamo_client=dynamo,
+            places_client=places_client,
+            vector_client=vector_client,
+        )
+
+        # Capture the resolver's stdout (its `_log` print()s, incl. the
+        # Tier attempts) so the main process can re-emit it — but ONLY when
+        # running in a real subprocess (ProcessPoolExecutor child), whose
+        # stdout does NOT reach CloudWatch on its own. In Lambda, Phase 2 uses
+        # a THREAD executor, where redirect_stdout mutates process-global
+        # sys.stdout and would swallow concurrent prints from the words
+        # pipeline. In that case skip the capture: the resolver's prints reach
+        # CloudWatch directly (same process).
+        import contextlib
+        import io as _io
+        import multiprocessing
+
+        in_subprocess = multiprocessing.current_process().name != "MainProcess"
+        resolver_log_buf = _io.StringIO()
+        capture_cm = (
+            contextlib.redirect_stdout(resolver_log_buf)
+            if in_subprocess
+            else contextlib.nullcontext()
+        )
+        with capture_cm:
+            merchant_result = resolver.resolve(
+                lines_client=None,
+                lines=lines,
+                words=words,
+                image_id=image_id,
+                receipt_id=receipt_id,
+                line_embeddings=line_embedding_cache,
+                word_labels=word_labels,
             )
 
-            # Capture the resolver's stdout (its `_log` print()s, incl. the
-            # Tier attempts) so the main process can re-emit it — but ONLY when
-            # running in a real subprocess (ProcessPoolExecutor child), whose
-            # stdout does NOT reach CloudWatch on its own. In Lambda, Phase 2 uses
-            # a THREAD executor, where redirect_stdout mutates process-global
-            # sys.stdout and would swallow concurrent prints from the words
-            # pipeline. In that case skip the capture: the resolver's prints reach
-            # CloudWatch directly (same process).
-            import contextlib
-            import io as _io
-            import multiprocessing
-
-            in_subprocess = (
-                multiprocessing.current_process().name != "MainProcess"
-            )
-            resolver_log_buf = _io.StringIO()
-            capture_cm = (
-                contextlib.redirect_stdout(resolver_log_buf)
-                if in_subprocess
-                else contextlib.nullcontext()
-            )
-            with capture_cm:
-                merchant_result = resolver.resolve(
-                    lines_client=client,
-                    lines=lines,
-                    words=words,
-                    image_id=image_id,
-                    receipt_id=receipt_id,
-                    line_embeddings=line_embedding_cache,
-                    word_labels=word_labels,
-                )
-
-            # Group lines into visual rows
-            visual_rows = group_lines_into_visual_rows(lines)
-
-            # Create RowEmbeddingRecord objects
-            row_records = [
-                RowEmbeddingRecord(row_lines=tuple(row), embedding=emb)
-                for row, emb in zip(visual_rows, row_embeddings, strict=True)
-            ]
-
-            # Write-time validation: verify merchant_name against
-            # receipt OCR text before writing to ChromaDB.  This
-            # prevents poisoned names from propagating.
-            validated_merchant_name = merchant_result.merchant_name
-            if validated_merchant_name and not merchant_name_matches_receipt(
-                validated_merchant_name, lines
-            ):
-                logging.getLogger(__name__).warning(
-                    "Write-time validation: merchant_name %r rejected "
-                    "— no token overlap with receipt OCR text for %s#%d",
-                    validated_merchant_name,
-                    image_id,
-                    receipt_id,
-                )
-                validated_merchant_name = None
-
-            # D2: assign persisted visual rows synchronously before the row
-            # embedding payload is built, so the first Chroma delta already
-            # carries deterministic section metadata. D1 guarantees rows at
-            # ingest; reconstruction keeps legacy/dev replays compatible.
-            persisted_rows = dynamo.get_receipt_rows_from_receipt(
-                image_id, receipt_id
-            )
-            row_source = "persisted"
-            if not persisted_rows:
-                persisted_rows = build_receipt_rows(lines, words)
-                row_source = "reconstructed"
-            # Structured provenance: reconstructed rows mean D1 ingest did not
-            # persist rows for this receipt (legacy/dev replay) — observable,
-            # never behavior-changing. Uses the module-level logger: `logging`
-            # is shadowed as a local of the enclosing worker by the tracing
-            # block's late imports and may be unbound on the no-tracing path.
-            logger.info(
-                "[ROW_PROVENANCE] image_id=%s receipt_id=%s row_source=%s "
-                "row_count=%d",
+        # Write-time validation: verify merchant_name against
+        # receipt OCR text before persisting it. This prevents
+        # poisoned names from propagating.
+        validated_merchant_name = merchant_result.merchant_name
+        if validated_merchant_name and not merchant_name_matches_receipt(
+            validated_merchant_name, lines
+        ):
+            logging.getLogger(__name__).warning(
+                "Write-time validation: merchant_name %r rejected "
+                "— no token overlap with receipt OCR text for %s#%d",
+                validated_merchant_name,
                 image_id,
                 receipt_id,
-                row_source,
-                len(persisted_rows),
             )
-            created_sections, section_by_line = assign_and_persist_sections(
+            validated_merchant_name = None
+
+        # D2: assign persisted visual rows synchronously so section
+        # metadata is deterministic. D1 guarantees rows at ingest;
+        # reconstruction keeps legacy/dev replays compatible.
+        persisted_rows = dynamo.get_receipt_rows_from_receipt(
+            image_id, receipt_id
+        )
+        row_source = "persisted"
+        if not persisted_rows:
+            persisted_rows = build_receipt_rows(lines, words)
+            row_source = "reconstructed"
+        # Structured provenance: reconstructed rows mean D1 ingest did not
+        # persist rows for this receipt (legacy/dev replay) — observable,
+        # never behavior-changing.
+        logger.info(
+            "[ROW_PROVENANCE] image_id=%s receipt_id=%s row_source=%s "
+            "row_count=%d",
+            image_id,
+            receipt_id,
+            row_source,
+            len(persisted_rows),
+        )
+        created_sections, section_by_line = assign_and_persist_sections(
+            dynamo,
+            persisted_rows,
+            lines,
+            validated_merchant_name,
+        )
+
+        rows_by_id = {row.row_id: row for row in persisted_rows}
+        embedding_rows = [
+            rows_by_id[row_line_ids[0]] for row_line_ids in row_line_ids_list
+        ]
+        verification_stats: Dict[str, Any] = {}
+        try:
+            verified = verify_receipt_sections(
+                None,
                 dynamo,
-                persisted_rows,
-                lines,
-                validated_merchant_name,
+                embedding_rows,
+                row_embeddings,
+                vector_client=vector_client,
             )
+            from collections import Counter as _Counter
 
-            rows_by_id = {row.row_id: row for row in persisted_rows}
-            embedding_rows = [
-                rows_by_id[record.primary_line.line_id]
-                for record in row_records
-            ]
-            verification_stats: Dict[str, Any] = {}
-            try:
-                verified = verify_receipt_sections(
-                    client,
-                    dynamo,
-                    embedding_rows,
-                    row_embeddings,
+            # NOTE: exact model_source match against the deterministic
+            # producer set (also in
+            # section_verifier._record_verification) -- the cloud
+            # assigner and the Mac worker running the same assigner on
+            # device. Provenance must ship in a separate additive field,
+            # never a model_source suffix.
+            status_counts = _Counter(
+                section.verification_status
+                for section in dynamo.get_receipt_sections_from_receipt(
+                    image_id, receipt_id
                 )
-                from collections import Counter as _Counter
-
-                # NOTE: exact model_source match against the deterministic
-                # producer set (also in
-                # section_verifier._record_verification) -- the cloud
-                # assigner and the Mac worker running the same assigner on
-                # device. Provenance must ship in a separate additive field,
-                # never a model_source suffix.
-                status_counts = _Counter(
-                    section.verification_status
-                    for section in dynamo.get_receipt_sections_from_receipt(
-                        image_id, receipt_id
-                    )
-                    if section.model_source in VERIFIABLE_MODEL_SOURCES
-                    and section.verification_status
-                )
-                verification_stats = {
-                    "verified_row_count": len(verified),
-                    "verification_agreed_count": status_counts.get(
-                        "AGREED", 0
-                    ),
-                    "verification_disagreement_count": status_counts.get(
-                        "DISAGREED", 0
-                    ),
-                    "verification_abstained_count": status_counts.get(
-                        "ABSTAINED", 0
-                    ),
-                }
-            # Verification is independent evidence; an unavailable neighbor
-            # index must not discard the deterministic section proposal.
-            except Exception as error:
-                logging.getLogger(__name__).exception(
-                    "Section KNN verification failed for %s#%d: %s",
-                    image_id,
-                    receipt_id,
-                    error,
-                )
-                verification_stats = {"verification_error": str(error)}
-
-            # Build row payload with validated merchant name
-            line_payload = build_row_payload(
-                row_records,
-                words,
-                all_labels=word_labels,
-                merchant_name=validated_merchant_name,
-                section_by_line=section_by_line,
+                if section.model_source in VERIFIABLE_MODEL_SOURCES
+                and section.verification_status
             )
-
-            # Upsert into the local snapshot client (skip in cloud mode — the
-            # read client is Cloud and the delta upload below is self-contained).
-            if not cloud_cfg:
-                client.upsert(collection_name="lines", **line_payload)
-
-            # Upload delta to S3
-            import boto3
-
-            s3_client = boto3.client("s3")
-            prefix = upload_lines_delta(
-                line_payload=line_payload,
-                run_id=run_id,
-                chromadb_bucket=chromadb_bucket,
-                s3_client=s3_client,
-            )
-
-            # Hand the payload back for the parent to publish to Chroma Cloud
-            # once the CompactionRun exists. Publishing here would put records
-            # in Cloud that nothing can reconcile if the other pipeline or the
-            # CompactionRun write then fails.
-            cloud_payload_path = _stage_cloud_payload(
-                line_payload, "lines", cloud_cfg
-            )
-
-            # Return serializable result
-            return {
-                "success": True,
-                "lines_prefix": prefix,
-                "cloud_payload_path": cloud_payload_path,
-                # Metrics-only observability (no behavior change): visual-row
-                # provenance and deterministic section-proposal stats.
-                "row_count": len(persisted_rows),
-                "row_source": row_source,
-                "section_proposed_count": len(created_sections),
-                "section_mean_confidence": (
-                    sum(s.confidence or 0.0 for s in created_sections)
-                    / len(created_sections)
-                    if created_sections
-                    else None
+            verification_stats = {
+                "verified_row_count": len(verified),
+                "verification_agreed_count": status_counts.get("AGREED", 0),
+                "verification_disagreement_count": status_counts.get(
+                    "DISAGREED", 0
                 ),
-                "merchant_name": validated_merchant_name,
-                "place_id": merchant_result.place_id,
-                "resolution_tier": merchant_result.resolution_tier,
-                "confidence": merchant_result.confidence,
-                "phone": merchant_result.phone,
-                "address": merchant_result.address,
-                "source_image_id": merchant_result.source_image_id,
-                "source_receipt_id": merchant_result.source_receipt_id,
-                **verification_stats,
-                "similarity_matches": [
-                    {
-                        "image_id": m.image_id,
-                        "receipt_id": m.receipt_id,
-                        "merchant_name": m.merchant_name,
-                        "embedding_similarity": m.embedding_similarity,
-                        "metadata_boost": m.metadata_boost,
-                        "total_confidence": m.total_confidence,
-                    }
-                    for m in (merchant_result.similarity_matches or [])[:5]
-                ],
-                "resolver_logs": resolver_log_buf.getvalue(),
+                "verification_abstained_count": status_counts.get(
+                    "ABSTAINED", 0
+                ),
             }
-        finally:
-            client.close()
+        # Verification is independent evidence; an unavailable neighbor
+        # index must not discard the deterministic section proposal.
+        except Exception as error:
+            logging.getLogger(__name__).exception(
+                "Section KNN verification failed for %s#%d: %s",
+                image_id,
+                receipt_id,
+                error,
+            )
+            verification_stats = {"verification_error": str(error)}
+
+        # Return serializable result
+        return {
+            "success": True,
+            # Metrics-only observability (no behavior change): visual-row
+            # provenance and deterministic section-proposal stats.
+            "row_count": len(persisted_rows),
+            "row_source": row_source,
+            "section_proposed_count": len(created_sections),
+            "section_mean_confidence": (
+                sum(s.confidence or 0.0 for s in created_sections)
+                / len(created_sections)
+                if created_sections
+                else None
+            ),
+            "merchant_name": validated_merchant_name,
+            "place_id": merchant_result.place_id,
+            "resolution_tier": merchant_result.resolution_tier,
+            "confidence": merchant_result.confidence,
+            "phone": merchant_result.phone,
+            "address": merchant_result.address,
+            "source_image_id": merchant_result.source_image_id,
+            "source_receipt_id": merchant_result.source_receipt_id,
+            **verification_stats,
+            "similarity_matches": [
+                {
+                    "image_id": m.image_id,
+                    "receipt_id": m.receipt_id,
+                    "merchant_name": m.merchant_name,
+                    "embedding_similarity": m.embedding_similarity,
+                    "metadata_boost": m.metadata_boost,
+                    "total_confidence": m.total_confidence,
+                }
+                for m in (merchant_result.similarity_matches or [])[:5]
+            ],
+            "resolver_logs": resolver_log_buf.getvalue(),
+        }
 
     # Execute with LangSmith tracing context if headers provided
     # tracing_context(parent=...) can accept headers directly for distributed tracing
     # CRITICAL: Must flush traces before process exits - each process has its own
     # background thread for sending traces to LangSmith
-    traced_result: Optional[Dict[str, Any]] = None
     if langsmith_headers:
         try:
             import logging
@@ -995,323 +651,303 @@ def _run_lines_pipeline_worker(
             logging.getLogger(__name__).exception(
                 "[LINES_WORKER] ERROR in tracing: %s", e
             )
-            # The pipeline reruns below and stages a fresh payload. Drop the
-            # one this attempt staged -- its path is about to be discarded
-            # with the result, and nobody else will clean it up.
-            if traced_result:
-                _discard_staged_payload(
-                    traced_result.get("cloud_payload_path")
-                )
     return _do_lines_work()
 
 
 def _run_words_pipeline_worker(
-    local_words_dir: str,
     words_data: List[Dict[str, Any]],
     word_labels_data: List[Dict[str, Any]],
     word_embeddings_list: List[List[float]],
     image_id: str,
     receipt_id: int,
-    run_id: str,
-    chromadb_bucket: str,
     table_name: str,
     langsmith_headers: Optional[Dict[str, str]] = None,
-    labels_fetched_at: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """
-    Worker function for words pipeline (runs in separate process).
+    """Worker function for words pipeline (runs in separate process).
 
-    Creates its own ChromaClient and runs label validation.
-    Returns serializable dict with results.
-
-    Args:
-        langsmith_headers: Optional headers from parent RunTree for trace context
+    Runs label hygiene + validation. The lightweight similarity validator
+    abstains (its Chroma surface is retired), so pending labels route to
+    the LLM validator exactly as they did in production before teardown.
     """
     # Import inside worker to avoid pickling issues
     from receipt_dynamo import DynamoClient
     from receipt_dynamo.constants import ValidationStatus
     from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
 
+    from receipt_upload.vector_search import vector_search_client
+
     def _do_words_work() -> Dict[str, Any]:
         # Reconstruct entities from dicts using **unpacking
         words = [ReceiptWord(**d) for d in words_data]
         word_labels = [ReceiptWordLabel(**d) for d in word_labels_data]
 
-        # READ client: Chroma Cloud when enabled (no snapshot download), else the
-        # local S3 snapshot. Label validation queries this; the delta WRITE below
-        # is self-contained, so cloud mode needs no local snapshot.
-        cloud_cfg = _chroma_cloud_config()
-        client = _make_read_client(local_words_dir, cloud_cfg)
+        # Build embedding cache
+        word_embedding_cache: Dict[Tuple[int, int], List[float]] = {
+            (w.line_id, w.word_id): emb
+            for w, emb in zip(words, word_embeddings_list, strict=True)
+        }
 
+        # Run label validation
+        dynamo = DynamoClient(table_name)
+        vector_client = vector_search_client(
+            None,
+            dynamodb_client=dynamo._client,  # pylint: disable=protected-access
+            table_name=table_name,
+        )
+        validation_stats: Dict[str, Any] = {}
+        # Built when LLM_VALIDATION_ASYNC is on; enqueued by the caller AFTER
+        # the native embeddings are durable. None otherwise.
+        async_llm_payload: Optional[Dict[str, Any]] = None
+
+        pending_labels = _prepare_pending_core_labels(
+            dynamo=dynamo,
+            word_labels=word_labels,
+            label_proposed_by="non_core_label_guard",
+            words=words,
+        )
+
+        # Deterministic geometry line-item proposals (PRODUCT_NAME / LINE_TOTAL
+        # / UNIT_PRICE). The first-pass model doesn't emit these — geometry
+        # bounds the line-item region by the receipt's own header/totals anchor
+        # labels and labels by column. Emitted as PENDING so the validators
+        # below confirm them, same as any other proposed label.
+        from receipt_upload.line_items import (
+            dedupe_grand_total,
+            propose_line_item_labels,
+            propose_product_names,
+            reclassify_mislabeled_totals,
+        )
+
+        # Receipts restate the grand total several times (balance / total /
+        # tendered amount); the first-pass model tags every copy GRAND_TOTAL.
+        # Keep one canonical copy and invalidate the equal-valued duplicates
+        # BEFORE validation, so they neither corrupt arithmetic nor inflate the
+        # LLM validator's workload. Conservative: only exact-value duplicates.
+        #
+        # The section layer (swift-worker-v1) has usually already decided
+        # which row is the printed TOTAL_LINE vs the PAYMENT (tender)
+        # restatement, so hand dedupe the sections as its primary tiebreak
+        # — keyword/lowest-y alone kept the tender-row copy and invalidated
+        # the printed "TOTAL" row. Sections are advisory: any read failure
+        # (or a receipt with none yet) falls back to the old election.
         try:
-            # Build embedding cache
-            word_embedding_cache: Dict[Tuple[int, int], List[float]] = {
-                (w.line_id, w.word_id): emb
-                for w, emb in zip(words, word_embeddings_list, strict=True)
-            }
+            receipt_sections = dynamo.get_receipt_sections_from_receipt(
+                image_id, receipt_id
+            )
+        except Exception:  # pylint: disable=broad-except
+            receipt_sections = []
+        for dup in dedupe_grand_total(
+            words, word_labels, sections=receipt_sections
+        ):
+            dup.validation_status = ValidationStatus.INVALID.value
+            dup.label_proposed_by = "dedupe_grand_total"
+            dup.reasoning = (
+                "Redundant GRAND_TOTAL: the receipt restates the final total "
+                "on multiple rows; the canonical copy (TOTAL_LINE section / "
+                "keyword-anchored / lowest) is kept."
+            )
+            dynamo.update_receipt_word_label(dup)
+            _remove_label_from_list(pending_labels, dup)
 
-            # Run label validation
-            dynamo = DynamoClient(table_name)
-            validation_stats: Dict[str, Any] = {}
-            # Built when LLM_VALIDATION_ASYNC is on; enqueued by the caller AFTER
-            # the words delta + compaction run exist (Phase 3b). None otherwise.
-            async_llm_payload: Optional[Dict[str, Any]] = None
+        # First-pass models emit SUBTOTAL/TAX when line totals coincidentally
+        # sum to the grand total and no Subtotal/Tax keyword anchors a real
+        # totals block (the Trader Joe's IMG_2826 case). Reclassify those
+        # PENDING labels to LINE_TOTAL — but ONLY when arithmetic proves it
+        # (Σ line totals == GRAND_TOTAL only with them counted as line items).
+        # Human VALID/INVALID labels are never touched.
+        reclassifications, locked_line_totals = reclassify_mislabeled_totals(
+            words, word_labels
+        )
+        for old_label, new_label in reclassifications:
+            # Invalidate (don't delete) the mislabeled total — preserves the
+            # audit trail and is consistent with "INVALID currency labels are
+            # deliberate" — then add the arithmetic-confirmed LINE_TOTAL.
+            old_label.validation_status = ValidationStatus.INVALID.value
+            old_label.reasoning = (
+                f"Reclassified to LINE_TOTAL by {new_label.label_proposed_by}: "
+                "this price is a line-item total, not a receipt total "
+                "(arithmetic reconciliation)."
+            )
+            dynamo.update_receipt_word_label(old_label)
+            # Drop the invalidated total from the pending set so the
+            # validators don't re-validate it back to SUBTOTAL/TAX.
+            _remove_label_from_list(pending_labels, old_label)
+            dynamo.add_receipt_word_label(new_label)
+            word_labels.append(new_label)
+        for lt_label in locked_line_totals:
+            # Arithmetic confirms these are line totals; lock them VALID and
+            # pull them from pending so the LLM can't "correct" them to TAX.
+            lt_label.validation_status = ValidationStatus.VALID.value
+            lt_label.label_proposed_by = "arithmetic_totals_reclass"
+            lt_label.reasoning = "Arithmetic-confirmed line total (Σ line totals == GRAND_TOTAL)."
+            dynamo.update_receipt_word_label(lt_label)
+            _remove_label_from_list(pending_labels, lt_label)
 
-            pending_labels = _prepare_pending_core_labels(
-                dynamo=dynamo,
-                word_labels=word_labels,
-                label_proposed_by="non_core_label_guard",
-                words=words,
+        for li_label in propose_line_item_labels(words, word_labels):
+            dynamo.add_receipt_word_label(li_label)
+            word_labels.append(li_label)
+            # Arithmetic-verified line items (Σ line_total = receipt total) are
+            # already VALID; only route the unverified PENDING ones through the
+            # validators.
+            if li_label.validation_status == ValidationStatus.PENDING.value:
+                pending_labels.append(li_label)
+
+        # Semantic recovery: the model emits no PRODUCT_NAME and geometry only
+        # catches product names that share an OCR row with a price. A kNN over
+        # validated product words (UNSCOPED — merchant-scoping hurts recall)
+        # proposes the rest as PENDING for the validators to confirm.
+        for pn_label in propose_product_names(
+            words,
+            word_labels,
+            None,
+            word_embedding_cache,
+            vector_client=vector_client,
+        ):
+            dynamo.add_receipt_word_label(pn_label)
+            word_labels.append(pn_label)
+            pending_labels.append(pn_label)
+
+        if pending_labels:
+            from receipt_upload.label_validation import ValidationDecision
+
+            # No similarity backend: the validator abstains on every label
+            # (KEEP_PENDING), which routes them to the LLM — identical to
+            # the retired words collection whose filter surface matched
+            # nothing in production. The cache still serves the LLM
+            # evidence path's embedding lookups.
+            lightweight_validator = LightweightLabelValidator(
+                words_client=None,
+                word_embeddings=word_embedding_cache,
             )
 
-            # Deterministic geometry line-item proposals (PRODUCT_NAME / LINE_TOTAL
-            # / UNIT_PRICE). The first-pass model doesn't emit these — geometry
-            # bounds the line-item region by the receipt's own header/totals anchor
-            # labels and labels by column. Emitted as PENDING so the Chroma + LLM
-            # validators below confirm them, same as any other proposed label.
-            from receipt_upload.line_items import (
-                dedupe_grand_total,
-                propose_line_item_labels,
-                propose_product_names,
-                reclassify_mislabeled_totals,
-            )
+            similarity_validated = 0
+            llm_needed = []
 
-            # Receipts restate the grand total several times (balance / total /
-            # tendered amount); the first-pass model tags every copy GRAND_TOTAL.
-            # Keep one canonical copy and invalidate the equal-valued duplicates
-            # BEFORE validation, so they neither corrupt arithmetic nor inflate the
-            # LLM validator's workload. Conservative: only exact-value duplicates.
-            #
-            # The section layer (swift-worker-v1) has usually already decided
-            # which row is the printed TOTAL_LINE vs the PAYMENT (tender)
-            # restatement, so hand dedupe the sections as its primary tiebreak
-            # — keyword/lowest-y alone kept the tender-row copy and invalidated
-            # the printed "TOTAL" row. Sections are advisory: any read failure
-            # (or a receipt with none yet) falls back to the old election.
-            try:
-                receipt_sections = dynamo.get_receipt_sections_from_receipt(
-                    image_id, receipt_id
-                )
-            except Exception:  # pylint: disable=broad-except
-                receipt_sections = []
-            for dup in dedupe_grand_total(
-                words, word_labels, sections=receipt_sections
-            ):
-                dup.validation_status = ValidationStatus.INVALID.value
-                dup.label_proposed_by = "dedupe_grand_total"
-                dup.reasoning = (
-                    "Redundant GRAND_TOTAL: the receipt restates the final total "
-                    "on multiple rows; the canonical copy (TOTAL_LINE section / "
-                    "keyword-anchored / lowest) is kept."
-                )
-                dynamo.update_receipt_word_label(dup)
-                _remove_label_from_list(pending_labels, dup)
+            def _run_similarity_validation_loop():
+                """Run similarity validation for all pending labels."""
+                nonlocal similarity_validated
+                for label in pending_labels:
+                    word = next(
+                        (
+                            w
+                            for w in words
+                            if w.line_id == label.line_id
+                            and w.word_id == label.word_id
+                        ),
+                        None,
+                    )
+                    if not word:
+                        continue
 
-            # First-pass models emit SUBTOTAL/TAX when line totals coincidentally
-            # sum to the grand total and no Subtotal/Tax keyword anchors a real
-            # totals block (the Trader Joe's IMG_2826 case). Reclassify those
-            # PENDING labels to LINE_TOTAL — but ONLY when arithmetic proves it
-            # (Σ line totals == GRAND_TOTAL only with them counted as line items).
-            # Human VALID/INVALID labels are never touched.
-            reclassifications, locked_line_totals = (
-                reclassify_mislabeled_totals(words, word_labels)
-            )
-            for old_label, new_label in reclassifications:
-                # Invalidate (don't delete) the mislabeled total — preserves the
-                # audit trail and is consistent with "INVALID currency labels are
-                # deliberate" — then add the arithmetic-confirmed LINE_TOTAL.
-                old_label.validation_status = ValidationStatus.INVALID.value
-                old_label.reasoning = (
-                    f"Reclassified to LINE_TOTAL by {new_label.label_proposed_by}: "
-                    "this price is a line-item total, not a receipt total "
-                    "(arithmetic reconciliation)."
-                )
-                dynamo.update_receipt_word_label(old_label)
-                # Drop the invalidated total from the pending set so the Chroma/LLM
-                # validators don't re-validate it back to SUBTOTAL/TAX.
-                _remove_label_from_list(pending_labels, old_label)
-                dynamo.add_receipt_word_label(new_label)
-                word_labels.append(new_label)
-            for lt_label in locked_line_totals:
-                # Arithmetic confirms these are line totals; lock them VALID and
-                # pull them from pending so the LLM can't "correct" them to TAX.
-                lt_label.validation_status = ValidationStatus.VALID.value
-                lt_label.label_proposed_by = "arithmetic_totals_reclass"
-                lt_label.reasoning = "Arithmetic-confirmed line total (Σ line totals == GRAND_TOTAL)."
-                dynamo.update_receipt_word_label(lt_label)
-                _remove_label_from_list(pending_labels, lt_label)
+                    if label.label == "AMOUNT":
+                        llm_needed.append((word, label))
+                        continue
 
-            for li_label in propose_line_item_labels(words, word_labels):
-                dynamo.add_receipt_word_label(li_label)
-                word_labels.append(li_label)
-                # Arithmetic-verified line items (Σ line_total = receipt total) are
-                # already VALID; only route the unverified PENDING ones through the
-                # Chroma + LLM validators.
-                if (
-                    li_label.validation_status
-                    == ValidationStatus.PENDING.value
-                ):
-                    pending_labels.append(li_label)
+                    result = lightweight_validator.validate_label(
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        line_id=label.line_id,
+                        word_id=label.word_id,
+                        predicted_label=label.label,
+                    )
 
-            # Semantic recovery: the model emits no PRODUCT_NAME and geometry only
-            # catches product names that share an OCR row with a price. A kNN over
-            # validated product words (UNSCOPED — merchant-scoping hurts recall)
-            # proposes the rest as PENDING for the validators to confirm.
-            for pn_label in propose_product_names(
-                words, word_labels, client, word_embedding_cache
-            ):
-                dynamo.add_receipt_word_label(pn_label)
-                word_labels.append(pn_label)
-                pending_labels.append(pn_label)
-
-            if pending_labels:
-                from receipt_upload.label_validation import ValidationDecision
-
-                lightweight_validator = LightweightLabelValidator(
-                    words_client=client,
-                    word_embeddings=word_embedding_cache,
-                )
-
-                chroma_validated = 0
-                llm_needed = []
-
-                # Wrap ChromaDB validation loop in a trace for visibility
-                def _run_chroma_validation_loop():
-                    """Run ChromaDB similarity validation for all pending labels."""
-                    nonlocal chroma_validated
-                    for label in pending_labels:
-                        word = next(
-                            (
-                                w
-                                for w in words
-                                if w.line_id == label.line_id
-                                and w.word_id == label.word_id
-                            ),
-                            None,
+                    if result.decision in (
+                        ValidationDecision.AUTO_VALIDATE,
+                        ValidationDecision.AUTO_INVALID,
+                    ):
+                        # Update the label object with validation results
+                        label.validation_status = (
+                            ValidationStatus.VALID.value
+                            if result.decision
+                            == ValidationDecision.AUTO_VALIDATE
+                            else ValidationStatus.INVALID.value
                         )
-                        if not word:
+                        label.label_proposed_by = (
+                            f"chroma_{result.decision.value}"
+                        )
+                        dynamo.update_receipt_word_label(label)
+                        similarity_validated += 1
+                    else:
+                        # Don't let the text-only LLM reassign a geometry
+                        # column role (LINE_TOTAL/UNIT_PRICE/QUANTITY): the
+                        # role is positional, grok flips them wrong, and
+                        # skipping them keeps grok's payload (and latency)
+                        # down. Commit a TERMINAL status (not PENDING) so an
+                        # abstained geometry role isn't stuck forever —
+                        # but as NEEDS_REVIEW, not VALID: neither arithmetic
+                        # nor similarity confirmed it, so we don't assert it
+                        # as validated, just remove it from the PENDING/LLM
+                        # path.
+                        if (
+                            label.label in _GEOMETRY_SPATIAL_ROLES
+                            and label.label_proposed_by == _GEOMETRY_PROPOSER
+                        ):
+                            label.validation_status = (
+                                ValidationStatus.NEEDS_REVIEW.value
+                            )
+                            label.label_proposed_by = "geometry_trusted"
+                            dynamo.update_receipt_word_label(label)
+                            similarity_validated += 1
                             continue
+                        llm_needed.append((word, label))
 
-                        if label.label == "AMOUNT":
-                            llm_needed.append((word, label))
-                            continue
+            # Apply traceable decorator if available
+            try:
+                import os
 
-                        result = lightweight_validator.validate_label(
+                from langsmith.run_helpers import traceable
+
+                project = os.environ.get(
+                    "LANGCHAIN_PROJECT", "receipt-label-validation"
+                )
+                traced_loop = traceable(
+                    name="chroma_label_validation",
+                    project_name=project,
+                    metadata={
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "pending_count": len(pending_labels),
+                    },
+                )(_run_similarity_validation_loop)
+                traced_loop()
+            except ImportError:
+                _run_similarity_validation_loop()
+
+            # LLM (grok) validation for labels similarity couldn't
+            # auto-resolve. This is the slowest single step on the upload
+            # critical path (~10s synchronous LLM call). Default: validate
+            # inline. When LLM_VALIDATION_ASYNC is on, BUILD the hand-off
+            # payload here but do NOT enqueue yet — the caller enqueues only
+            # after the native embeddings are durable, so the consumer can't
+            # write label changes before the word embeddings exist
+            # downstream (see Phase 3 in _process_embeddings_impl).
+            llm_validated = 0
+            llm_deferred = 0
+            if llm_needed:
+                if _llm_validation_async_enabled():
+                    try:
+                        async_llm_payload = build_async_payload(
+                            llm_needed=llm_needed,
+                            words=words,
                             image_id=image_id,
                             receipt_id=receipt_id,
-                            line_id=label.line_id,
-                            word_id=label.word_id,
-                            predicted_label=label.label,
+                            table_name=table_name,
+                            lightweight_validator=lightweight_validator,
+                            word_embedding_cache=word_embedding_cache,
+                            merchant_name=None,
                         )
-
-                        if result.decision in (
-                            ValidationDecision.AUTO_VALIDATE,
-                            ValidationDecision.AUTO_INVALID,
-                        ):
-                            # Update the label object with validation results
-                            label.validation_status = (
-                                ValidationStatus.VALID.value
-                                if result.decision
-                                == ValidationDecision.AUTO_VALIDATE
-                                else ValidationStatus.INVALID.value
-                            )
-                            label.label_proposed_by = (
-                                f"chroma_{result.decision.value}"
-                            )
-                            dynamo.update_receipt_word_label(label)
-                            chroma_validated += 1
-                        else:
-                            # Don't let the text-only LLM reassign a geometry
-                            # column role (LINE_TOTAL/UNIT_PRICE/QUANTITY): the
-                            # role is positional, grok flips them wrong, and
-                            # skipping them keeps grok's payload (and latency)
-                            # down. Commit a TERMINAL status (not PENDING) so a
-                            # Chroma-abstained geometry role isn't stuck forever —
-                            # but as NEEDS_REVIEW, not VALID: neither arithmetic
-                            # nor Chroma confirmed it, so we don't assert it as
-                            # validated, just remove it from the PENDING/LLM path.
-                            if (
-                                label.label in _GEOMETRY_SPATIAL_ROLES
-                                and label.label_proposed_by
-                                == _GEOMETRY_PROPOSER
-                            ):
-                                label.validation_status = (
-                                    ValidationStatus.NEEDS_REVIEW.value
-                                )
-                                label.label_proposed_by = "geometry_trusted"
-                                dynamo.update_receipt_word_label(label)
-                                chroma_validated += 1
-                                continue
-                            llm_needed.append((word, label))
-
-                # Apply traceable decorator if available
-                try:
-                    import os
-
-                    from langsmith.run_helpers import traceable
-
-                    project = os.environ.get(
-                        "LANGCHAIN_PROJECT", "receipt-label-validation"
-                    )
-                    traced_loop = traceable(
-                        name="chroma_label_validation",
-                        project_name=project,
-                        metadata={
-                            "image_id": image_id,
-                            "receipt_id": receipt_id,
-                            "pending_count": len(pending_labels),
-                        },
-                    )(_run_chroma_validation_loop)
-                    traced_loop()
-                except ImportError:
-                    _run_chroma_validation_loop()
-
-                # LLM (grok) validation for labels Chroma couldn't auto-resolve.
-                # This is the slowest single step on the upload critical path
-                # (~10s synchronous LLM call). Default: validate inline. When
-                # LLM_VALIDATION_ASYNC is on, BUILD the hand-off payload here but
-                # do NOT enqueue yet — the caller enqueues only after the words
-                # delta is uploaded and the compaction run is created, so the
-                # consumer can't write label changes before the word embeddings
-                # exist downstream (see Phase 3b in _process_embeddings_impl).
-                llm_validated = 0
-                llm_deferred = 0
-                if llm_needed:
-                    if _llm_validation_async_enabled():
-                        try:
-                            async_llm_payload = build_async_payload(
-                                llm_needed=llm_needed,
-                                words=words,
-                                image_id=image_id,
-                                receipt_id=receipt_id,
-                                table_name=table_name,
-                                lightweight_validator=lightweight_validator,
-                                word_embedding_cache=word_embedding_cache,
-                                merchant_name=None,
-                            )
-                            llm_deferred = len(llm_needed)
-                        except Exception as e:
-                            # Never leave labels dangling PENDING: if the payload
-                            # build fails, validate inline. Distinct marker so a
-                            # log metric filter can alarm.
-                            logger.warning(
-                                "[LLM_ASYNC_FALLBACK] payload build failed for "
-                                "%s#%s (%s); running validation inline",
-                                image_id,
-                                receipt_id,
-                                e,
-                            )
-                            llm_validated = run_llm_validation_sync(
-                                llm_needed=llm_needed,
-                                words=words,
-                                image_id=image_id,
-                                receipt_id=receipt_id,
-                                dynamo=dynamo,
-                                word_labels=word_labels,
-                                lightweight_validator=lightweight_validator,
-                                word_embedding_cache=word_embedding_cache,
-                            )
-                    else:
+                        llm_deferred = len(llm_needed)
+                    except Exception as e:
+                        # Never leave labels dangling PENDING: if the payload
+                        # build fails, validate inline. Distinct marker so a
+                        # log metric filter can alarm.
+                        logger.warning(
+                            "[LLM_ASYNC_FALLBACK] payload build failed for "
+                            "%s#%s (%s); running validation inline",
+                            image_id,
+                            receipt_id,
+                            e,
+                        )
                         llm_validated = run_llm_validation_sync(
                             llm_needed=llm_needed,
                             words=words,
@@ -1322,61 +958,35 @@ def _run_words_pipeline_worker(
                             lightweight_validator=lightweight_validator,
                             word_embedding_cache=word_embedding_cache,
                         )
+                else:
+                    llm_validated = run_llm_validation_sync(
+                        llm_needed=llm_needed,
+                        words=words,
+                        image_id=image_id,
+                        receipt_id=receipt_id,
+                        dynamo=dynamo,
+                        word_labels=word_labels,
+                        lightweight_validator=lightweight_validator,
+                        word_embedding_cache=word_embedding_cache,
+                    )
 
-                validation_stats = {
-                    "pending_labels": len(pending_labels),
-                    "chroma_validated": chroma_validated,
-                    "llm_validated": llm_validated,
-                    "llm_deferred": llm_deferred,
-                }
-
-            # Build words payload
-            word_payload, _ = build_words_payload(
-                receipt_words=words,
-                word_embeddings_list=word_embeddings_list,
-                word_labels=word_labels,
-                merchant_name=None,
-            )
-
-            # Upsert into the local snapshot client (skip in cloud mode — the
-            # read client is Cloud and the delta upload below is self-contained).
-            if not cloud_cfg:
-                client.upsert(collection_name="words", **word_payload)
-
-            # Upload delta to S3
-            import boto3
-
-            s3_client = boto3.client("s3")
-            prefix = upload_words_delta(
-                word_payload=word_payload,
-                run_id=run_id,
-                chromadb_bucket=chromadb_bucket,
-                s3_client=s3_client,
-            )
-
-            # Hand the payload back for the parent to publish to Chroma Cloud
-            # once the CompactionRun exists. Publishing here would put records
-            # in Cloud that nothing can reconcile if the other pipeline or the
-            # CompactionRun write then fails.
-            cloud_payload_path = _stage_cloud_payload(
-                word_payload, "words", cloud_cfg
-            )
-
-            return {
-                "success": True,
-                "words_prefix": prefix,
-                "cloud_payload_path": cloud_payload_path,
-                "async_llm_payload": async_llm_payload,
-                **validation_stats,
+            validation_stats = {
+                "pending_labels": len(pending_labels),
+                "chroma_validated": similarity_validated,
+                "llm_validated": llm_validated,
+                "llm_deferred": llm_deferred,
             }
-        finally:
-            client.close()
+
+        return {
+            "success": True,
+            "async_llm_payload": async_llm_payload,
+            **validation_stats,
+        }
 
     # Execute with LangSmith tracing context if headers provided
     # tracing_context(parent=...) can accept headers directly for distributed tracing
     # CRITICAL: Must flush traces before process exits - each process has its own
     # background thread for sending traces to LangSmith
-    traced_result: Optional[Dict[str, Any]] = None
     if langsmith_headers:
         try:
             import logging
@@ -1415,13 +1025,6 @@ def _run_words_pipeline_worker(
             logging.getLogger(__name__).exception(
                 "[WORDS_WORKER] ERROR in tracing: %s", e
             )
-            # The pipeline reruns below and stages a fresh payload. Drop the
-            # one this attempt staged -- its path is about to be discarded
-            # with the result, and nobody else will clean it up.
-            if traced_result:
-                _discard_staged_payload(
-                    traced_result.get("cloud_payload_path")
-                )
     return _do_words_work()
 
 
@@ -1430,32 +1033,39 @@ class MerchantResolvingEmbeddingProcessor:
     Generate embeddings and resolve merchant information for a receipt.
 
     This processor:
-    1. Generates embeddings using receipt_chroma orchestration
-    2. Queries the merged snapshot+delta clients for merchant resolution
-    3. Updates DynamoDB with merchant information
-    4. Creates CompactionRun record (DynamoDB stream triggers async compaction)
+    1. Generates embeddings with one batched OpenAI call
+    2. Persists them as native DynamoDB embedding items (the vector corpus)
+    3. Resolves merchant information via DynamoDB vector search
+    4. Updates DynamoDB with merchant information
     """
 
     def __init__(
         self,
         table_name: str,
-        chromadb_bucket: str,
+        chromadb_bucket: Optional[str] = None,
         google_places_api_key: Optional[str] = None,
         openai_api_key: Optional[str] = None,
+        llm_staging_bucket: Optional[str] = None,
     ):
         """
         Initialize the processor.
 
         Args:
             table_name: DynamoDB table name
-            chromadb_bucket: S3 bucket for ChromaDB snapshots/deltas
+            chromadb_bucket: Deprecated (Chroma teardown); accepted and
+                ignored so existing callers keep working
             google_places_api_key: Google Places API key for Tier 2 resolution
             openai_api_key: OpenAI API key for embeddings
+            llm_staging_bucket: S3 bucket for staging the async-LLM payload
+                (defaults to the ``RAW_BUCKET`` env var)
         """
+        del chromadb_bucket  # retired with the Chroma write path
         self.dynamo = DynamoClient(table_name)
-        self.chromadb_bucket = chromadb_bucket
         self.openai_api_key = openai_api_key
         self.google_places_api_key = google_places_api_key
+        self.llm_staging_bucket = (
+            llm_staging_bucket or os.environ.get("RAW_BUCKET") or ""
+        )
 
         # Initialize Places client if API key provided
         self.places_client = None
@@ -1474,9 +1084,6 @@ class MerchantResolvingEmbeddingProcessor:
             dynamo_client=self.dynamo,
             places_client=self.places_client,
         )
-
-        # S3 client for snapshot downloads
-        self.s3_client = boto3.client("s3")
 
     def process_embeddings(
         self,
@@ -1499,7 +1106,7 @@ class MerchantResolvingEmbeddingProcessor:
             words: Optional list of ReceiptWord entities (fetched if not provided)
 
         Returns:
-            Dict with success status, merchant info, and compaction run details
+            Dict with success status, merchant info, and native-write details
         """
         # Create traced wrapper for hierarchical tracing
         traceable = _get_traceable()
@@ -1544,11 +1151,10 @@ class MerchantResolvingEmbeddingProcessor:
         Implementation of process_embeddings using parallel pipelines.
 
         This implementation runs TWO PARALLEL PIPELINES:
-        - Lines Pipeline: merchant resolution → build → upsert → upload
-        - Words Pipeline: label validation → build → upsert → upload
+        - Lines Pipeline: merchant resolution → sections
+        - Words Pipeline: label validation
 
-        This allows merchant resolution to complete as soon as lines are ready,
-        rather than waiting for all I/O to complete first.
+        This allows merchant resolution to complete as soon as lines are ready.
         """
         # Fetch lines/words if not provided
         if lines is None or words is None:
@@ -1564,12 +1170,8 @@ class MerchantResolvingEmbeddingProcessor:
         else:
             _log(f"Using provided {len(lines)} lines and {len(words)} words")
 
-        # Get word labels for enrichment. The read time bounds how stale the
-        # workers' label snapshot can be when they publish to Chroma Cloud
-        # outside compaction's FIFO ordering; CLOCK_MONOTONIC is system-wide,
-        # so this stays comparable inside the pipeline subprocesses.
+        # Get word labels for enrichment
         word_labels: List[ReceiptWordLabel] = []
-        labels_fetched_at = time.monotonic()
         try:
             word_labels, _ = self.dynamo.list_receipt_word_labels_for_receipt(
                 image_id, receipt_id
@@ -1592,54 +1194,39 @@ class MerchantResolvingEmbeddingProcessor:
         )
 
         # =====================================================================
-        # PHASE 1: Download snapshots + embed in parallel (4 concurrent ops)
+        # PHASE 1: Embed (one batched OpenAI call)
         # =====================================================================
         try:
-            from openai import OpenAI
-
-            openai_client = OpenAI()
-            model = os.environ.get(
-                "OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"
-            )
-
-            # When Chroma Cloud is enabled, the workers query Cloud for reads, so
-            # skip the ~30s/receipt S3 snapshot download (still embed — those are
-            # the query vectors).
-            cloud_cfg = _chroma_cloud_config()
             (
-                local_lines_dir,
-                local_words_dir,
                 row_embeddings,
                 row_line_ids_list,
                 word_embeddings_list,
-            ) = download_and_embed_parallel(
-                receipt_lines=lines,
-                receipt_words=words,
-                chromadb_bucket=self.chromadb_bucket,
-                s3_client=self.s3_client,
-                openai_client=openai_client,
-                model=model,
-                skip_snapshot_download=bool(cloud_cfg),
+            ) = _embed_receipt_vectors(
+                lines, words, openai_api_key=self.openai_api_key
             )
             _log(
                 "Phase 1 complete: generated embeddings "
-                f"(rows={len(row_embeddings)}, words={len(word_embeddings_list)}); "
-                f"snapshot_download={'SKIPPED (Chroma Cloud)' if cloud_cfg else 'S3'}"
+                f"(rows={len(row_embeddings)}, words={len(word_embeddings_list)})"
             )
         except Exception as e:
-            _log(f"ERROR: Failed to download/embed: {e}")
-            logger.exception("Download/embed failed")
+            _log(f"ERROR: Failed to embed: {e}")
+            logger.exception("Embedding failed")
             return {
                 "success": False,
                 "error": str(e),
                 "merchant_found": False,
             }
 
-        # Dual-run (SPEC §3.4): write the same in-memory vectors as native
-        # DynamoDB embedding items. Deliberately placed before the Chroma
-        # pipeline legs so a Chroma failure never blocks the Dynamo write;
-        # flag-gated and never-raising, so it can't affect ingest either.
-        dual_write_report = maybe_dual_write_embeddings(
+        # =====================================================================
+        # PHASE 1b: Persist native DynamoDB embedding items
+        # =====================================================================
+        # This IS the vector corpus now (Chroma teardown): a failed or
+        # partial write marks the receipt failed (success=False) so the
+        # handler's embedding metrics flag it, instead of silently leaving
+        # the receipt invisible to SearchVectors. Recovery is the healing
+        # backfill (the OCR-results mapping does not redrive on failure —
+        # see #1526 for the strictness follow-ups).
+        native_report = write_precomputed_embeddings(
             dynamo=self.dynamo,
             image_id=image_id,
             receipt_id=receipt_id,
@@ -1651,26 +1238,27 @@ class MerchantResolvingEmbeddingProcessor:
             row_line_ids_list=row_line_ids_list,
             word_embeddings_list=word_embeddings_list,
         )
+        native_write_ok = not (
+            native_report.get("error") or native_report.get("failed")
+        )
+        if not native_write_ok:
+            _log(f"ERROR: Native embedding write incomplete: {native_report}")
+        else:
+            _log(f"Phase 1b complete: native embeddings {native_report}")
 
         # Track resources for cleanup
         merchant_result = MerchantResult()
         validation_stats: Dict[str, Any] = {}
         lines_stats: Dict[str, Any] = {}
-        lines_prefix: Optional[str] = None
-        words_prefix: Optional[str] = None
-        lines_cloud_payload: Optional[str] = None
-        words_cloud_payload: Optional[str] = None
-        compaction_run_created = False
 
         try:
             # =================================================================
             # PHASE 2: Run parallel pipelines using ProcessPoolExecutor
-            # Lines: merchant_resolution → build → upsert → upload
-            # Words: label_validation → build → upsert → upload
+            # Lines: merchant_resolution → sections
+            # Words: label_validation
             #
             # ProcessPoolExecutor provides TRUE parallelism by running each
-            # pipeline in a separate process, avoiding Python GIL limitations
-            # and ChromaDB SQLite lock contention.
+            # pipeline in a separate process, avoiding Python GIL limitations.
             # =================================================================
             _log("Starting Phase 2: parallel pipelines (ProcessPoolExecutor)")
 
@@ -1716,7 +1304,6 @@ class MerchantResolvingEmbeddingProcessor:
 
                 lines_future = executor.submit(
                     _run_lines_pipeline_worker,
-                    local_lines_dir=local_lines_dir,
                     lines_data=lines_data,
                     words_data=words_data,
                     word_labels_data=word_labels_data,
@@ -1724,27 +1311,20 @@ class MerchantResolvingEmbeddingProcessor:
                     row_line_ids_list=row_line_ids_list,
                     image_id=image_id,
                     receipt_id=receipt_id,
-                    run_id=run_id,
-                    chromadb_bucket=self.chromadb_bucket,
                     table_name=table_name,
                     google_places_api_key=self.google_places_api_key,
                     langsmith_headers=langsmith_headers,
-                    labels_fetched_at=labels_fetched_at,
                 )
 
                 words_future = executor.submit(
                     _run_words_pipeline_worker,
-                    local_words_dir=local_words_dir,
                     words_data=words_data,
                     word_labels_data=word_labels_data,
                     word_embeddings_list=word_embeddings_list,
                     image_id=image_id,
                     receipt_id=receipt_id,
-                    run_id=run_id,
-                    chromadb_bucket=self.chromadb_bucket,
                     table_name=table_name,
                     langsmith_headers=langsmith_headers,
-                    labels_fetched_at=labels_fetched_at,
                 )
 
                 # Wait for both to complete
@@ -1758,10 +1338,6 @@ class MerchantResolvingEmbeddingProcessor:
                 # Get results and reconstruct objects
                 try:
                     lines_result = lines_future.result()
-                    lines_prefix = lines_result.get("lines_prefix")
-                    lines_cloud_payload = lines_result.get(
-                        "cloud_payload_path"
-                    )
 
                     # Observability-only stats from the lines pipeline: row
                     # provenance, section proposals, verification outcomes.
@@ -1842,15 +1418,10 @@ class MerchantResolvingEmbeddingProcessor:
                     _log(f"WARNING: Lines pipeline failed: {e}")
                     logger.exception("Lines pipeline error")
                     merchant_result = MerchantResult()
-                    lines_prefix = None
 
                 async_llm_payload = None
                 try:
                     words_result = words_future.result()
-                    words_prefix = words_result.get("words_prefix")
-                    words_cloud_payload = words_result.get(
-                        "cloud_payload_path"
-                    )
                     async_llm_payload = words_result.get("async_llm_payload")
                     if words_result.get("success"):
                         validation_stats = {
@@ -1859,8 +1430,6 @@ class MerchantResolvingEmbeddingProcessor:
                             if k
                             not in (
                                 "success",
-                                "words_prefix",
-                                "cloud_payload_path",
                                 "async_llm_payload",
                             )
                         }
@@ -1868,71 +1437,18 @@ class MerchantResolvingEmbeddingProcessor:
                     _log(f"WARNING: Words pipeline failed: {e}")
                     logger.exception("Words pipeline error")
                     validation_stats = {}
-                    words_prefix = None
 
             _log("Phase 2 complete: parallel pipelines finished")
 
             # =================================================================
-            # PHASE 3: Create compaction run (after both deltas uploaded)
+            # PHASE 3: Enqueue deferred LLM validation (async mode only)
             # =================================================================
-            if lines_prefix and words_prefix:
-                try:
-                    create_compaction_run(
-                        run_id=run_id,
-                        image_id=image_id,
-                        receipt_id=receipt_id,
-                        lines_prefix=lines_prefix,
-                        words_prefix=words_prefix,
-                        dynamo_client=self.dynamo,
-                    )
-                    compaction_run_created = True
-                    _log(f"Phase 3 complete: created compaction run {run_id}")
-                except Exception as e:
-                    _log(f"ERROR: Failed to create compaction run: {e}")
-                    logger.exception("Compaction run creation failed")
-            else:
-                _log(
-                    "WARNING: Skipping compaction run - missing delta prefixes"
-                )
-
-            # =================================================================
-            # PHASE 3a: Publish both collections to Chroma Cloud
-            # =================================================================
-            # Only now is every record recoverable: both deltas are in S3 and
-            # the CompactionRun that points at them is durable. Publishing
-            # earlier -- per collection, as this originally did -- could leave
-            # Cloud holding one collection, or both, with no event that would
-            # ever reconcile them. Without the run, publication waits for a
-            # later ingest rather than going out unbacked.
-            if compaction_run_created:
-                _publish_staged_payload(
-                    lines_cloud_payload,
-                    "lines",
-                    cloud_cfg,
-                    image_id,
-                    receipt_id,
-                    labels_fetched_at,
-                )
-                _publish_staged_payload(
-                    words_cloud_payload,
-                    "words",
-                    cloud_cfg,
-                    image_id,
-                    receipt_id,
-                    labels_fetched_at,
-                )
-            elif lines_cloud_payload or words_cloud_payload:
-                _log(
-                    "Skipping Chroma Cloud publication - no durable "
-                    "compaction run to reconcile the records"
-                )
-
-            # =================================================================
-            # PHASE 3b: Enqueue deferred LLM validation (async mode only)
-            # =================================================================
-            # Enqueue ONLY now — after the words delta is uploaded and the
-            # compaction run exists — so the consumer cannot write label changes
-            # before the corresponding word embeddings are in place downstream.
+            # Enqueue after the native-write attempt so, on the healthy
+            # path, the consumer never writes label changes before the
+            # corresponding word embeddings exist downstream. Best-effort
+            # ordering: a failed native write still enqueues (the receipt
+            # is already marked failed and the backfill heals its vectors;
+            # stranding the labels PENDING would not help).
             if async_llm_payload:
                 try:
                     # Give deferred grok the same merchant context the sync path
@@ -1945,12 +1461,12 @@ class MerchantResolvingEmbeddingProcessor:
                         image_id=image_id,
                         receipt_id=receipt_id,
                         run_id=run_id,
-                        chromadb_bucket=self.chromadb_bucket,
+                        staging_bucket=self.llm_staging_bucket,
                     )
-                    _log("Phase 3b complete: enqueued deferred LLM validation")
+                    _log("Phase 3 complete: enqueued deferred LLM validation")
                 except Exception as e:
                     # Enqueue failed (systemic SQS/S3/IAM). Don't strand labels:
-                    # validate inline from the same payload (no Chroma needed).
+                    # validate inline from the same payload.
                     logger.warning(
                         "[LLM_ASYNC_FALLBACK] enqueue failed for %s#%s (%s); "
                         "validating inline",
@@ -2008,7 +1524,7 @@ class MerchantResolvingEmbeddingProcessor:
                 ),
             )
 
-            # Enrich receipt place AFTER compaction run is created
+            # Enrich receipt place with the resolved merchant
             if merchant_result.place_id:
                 _log(
                     f"Enriching receipt with merchant: {merchant_result.merchant_name} "
@@ -2030,30 +1546,12 @@ class MerchantResolvingEmbeddingProcessor:
             _log(f"WARNING: Processing failed: {e}")
             logger.exception("Processing failed")
 
-        finally:
-            # Staged Cloud payloads are consumed above; drop them whether or
-            # not they were published.
-            _discard_staged_payload(lines_cloud_payload)
-            _discard_staged_payload(words_cloud_payload)
-
-            # Clean up temp directories
-            # Note: ChromaClients are created and closed within worker processes
-            try:
-                if local_lines_dir and os.path.exists(local_lines_dir):
-                    shutil.rmtree(local_lines_dir, ignore_errors=True)
-            except Exception as e:
-                logger.warning("Error cleaning up lines_dir: %s", e)
-            try:
-                if local_words_dir and os.path.exists(local_words_dir):
-                    shutil.rmtree(local_words_dir, ignore_errors=True)
-            except Exception as e:
-                logger.warning("Error cleaning up words_dir: %s", e)
-
         return {
-            # A receipt is only fully processed once its CompactionRun exists;
-            # without it the deltas are orphaned and nothing will merge them.
-            "success": compaction_run_created,
-            "compaction_run_created": compaction_run_created,
+            # A receipt is only fully processed once its native embedding
+            # items are durable; without them it is invisible to
+            # SearchVectors and nothing downstream will heal it.
+            "success": native_write_ok,
+            "native_embeddings": native_report,
             "run_id": run_id,
             "lines_count": len(lines),
             "words_count": len(words),
@@ -2062,7 +1560,6 @@ class MerchantResolvingEmbeddingProcessor:
             "merchant_place_id": merchant_result.place_id,
             "merchant_resolution_tier": merchant_result.resolution_tier,
             "merchant_confidence": merchant_result.confidence,
-            "dual_write": dual_write_report,
             **validation_stats,
             **lines_stats,
         }
@@ -2128,7 +1625,7 @@ class MerchantResolvingEmbeddingProcessor:
                     from receipt_dynamo.entities import ReceiptPlace
 
                     # Persist the resolver's match-quality signals. These
-                    # were historically dropped, so every chroma-resolved
+                    # were historically dropped, so every similarity-resolved
                     # place was stored with confidence=0.0 / empty status,
                     # making low-confidence places impossible to filter or
                     # audit later.
@@ -2161,7 +1658,6 @@ class MerchantResolvingEmbeddingProcessor:
                     )
                 elif merchant_result.place_id:
                     # Have place_id but no merchant_name - log for debugging
-                    # This can happen when ChromaDB matches don't have merchant_name
                     _log(
                         f"Skipping receipt place creation - have place_id "
                         f"({merchant_result.place_id}) but no merchant_name"
@@ -2170,4 +1666,4 @@ class MerchantResolvingEmbeddingProcessor:
         except Exception as e:
             _log(f"ERROR: Failed to enrich receipt place: {e}")
             logger.exception("Place enrichment failed")
-            # Don't raise - this is a dual-write, metadata update may have succeeded
+            # Don't raise - this is best-effort metadata enrichment

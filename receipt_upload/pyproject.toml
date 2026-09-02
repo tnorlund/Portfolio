@@ -29,8 +29,7 @@ classifiers = [
 ]
 dependencies = [
   "receipt-dynamo",  # Local package for DynamoDB entities and operations
-  "receipt-chroma",  # Local package for ChromaDB embedding operations
-  "receipt-embeddings",  # Shared Chroma/Dynamo vector-search interface
+  "receipt-embeddings",  # Backend-neutral vector search + embedding writers
   "receipt-places",  # Local package for Google Places API
   "numpy>=1.26.0,<3.0.0",
   "Pillow>=11.2.1",

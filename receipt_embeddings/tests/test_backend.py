@@ -23,8 +23,20 @@ class _InjectedVectorClient:
         return []
 
 
-def test_chroma_is_the_default_backend(monkeypatch) -> None:
+def test_dynamodb_is_the_default_backend(monkeypatch) -> None:
+    # Chroma teardown: an unset VECTOR_BACKEND now means DynamoDB.
     monkeypatch.delenv("VECTOR_BACKEND", raising=False)
+    expected = _InjectedVectorClient()
+    monkeypatch.setattr(
+        DynamoVectorSearchClient,
+        "from_env",
+        classmethod(lambda cls: expected),
+    )
+    assert vector_search_client(_RawChroma()) is expected
+
+
+def test_chroma_backend_is_still_selectable(monkeypatch) -> None:
+    monkeypatch.setenv("VECTOR_BACKEND", "chroma")
     assert isinstance(
         vector_search_client(_RawChroma()), ChromaVectorSearchClient
     )

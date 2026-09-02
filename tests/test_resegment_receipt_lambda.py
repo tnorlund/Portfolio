@@ -47,6 +47,18 @@ def mock_aws_services():
     yield
 
 
+@pytest.fixture(autouse=True)
+def _stub_native_embeddings(monkeypatch):
+    """Chroma teardown: apply_plan ALWAYS writes native embeddings for the
+    outputs (realtime OpenAI embeds via the engine writer). Stub it so
+    these moto tests stay offline; the dedicated test asserts it runs."""
+    monkeypatch.setattr(
+        resegment_receipt,
+        "_dual_write_outputs_native_only",
+        lambda **kwargs: None,
+    )
+
+
 def _create_table(table_name: str) -> None:
     client = boto3.client("dynamodb", region_name="us-east-1")
     client.create_table(
@@ -328,7 +340,6 @@ def test_plan_and_apply_split_is_idempotent_and_preserves_labels():
         s3_client=s3_client,
         raw_bucket=raw_bucket,
         site_bucket=site_bucket,
-        chromadb_bucket=chromadb_bucket,
     )
 
     assert result["status"] == "APPLIED"
@@ -347,7 +358,6 @@ def test_plan_and_apply_split_is_idempotent_and_preserves_labels():
         s3_client=s3_client,
         raw_bucket=raw_bucket,
         site_bucket=site_bucket,
-        chromadb_bucket=chromadb_bucket,
     )
     assert repeated == result
 
@@ -573,7 +583,6 @@ def test_photo_v2_plan_visualizes_revises_and_blocks_layered_apply():
             s3_client=s3_client,
             raw_bucket=raw_bucket,
             site_bucket=site_bucket,
-            chromadb_bucket=chromadb_bucket,
         )
 
     scan_image = client.get_image(image_id)
@@ -608,7 +617,6 @@ def test_photo_v2_plan_visualizes_revises_and_blocks_layered_apply():
         s3_client=s3_client,
         raw_bucket=raw_bucket,
         site_bucket=site_bucket,
-        chromadb_bucket=chromadb_bucket,
     )
     assert layered_result["status"] == "APPLIED"
     assert client.get_receipt_item_type_counts(image_id, 1) == {}
@@ -764,7 +772,6 @@ def test_apply_retries_after_transient_commit_failure(monkeypatch):
         "s3_client": s3_client,
         "raw_bucket": raw_bucket,
         "site_bucket": "resegment-site",
-        "chromadb_bucket": "resegment-chroma",
     }
 
     with pytest.raises(
@@ -828,7 +835,6 @@ def test_apply_recovers_from_crash_during_committing(monkeypatch):
         s3_client=s3_client,
         raw_bucket=raw_bucket,
         site_bucket="resegment-site",
-        chromadb_bucket="resegment-chroma",
     )
 
     assert result["status"] == "APPLIED"
@@ -879,7 +885,6 @@ def test_apply_survives_commit_exception_after_transaction_landed(monkeypatch):
         s3_client=s3_client,
         raw_bucket=raw_bucket,
         site_bucket="resegment-site",
-        chromadb_bucket="resegment-chroma",
     )
 
     assert result["status"] == "APPLIED"
@@ -1041,7 +1046,6 @@ def test_apply_bails_at_execution_lock_when_head_changed(monkeypatch):
             s3_client=s3_client,
             raw_bucket=raw_bucket,
             site_bucket="resegment-site",
-            chromadb_bucket="resegment-chroma",
         )
 
     # The source survived and no output rows were reserved or staged.
@@ -1086,7 +1090,6 @@ def test_apply_recovery_serializes_on_stale_etag(monkeypatch):
             s3_client=s3_client,
             raw_bucket=raw_bucket,
             site_bucket="resegment-site",
-            chromadb_bucket="resegment-chroma",
         )
 
     # The loser must not have released the (winner's) reservations.
@@ -1149,7 +1152,6 @@ def test_apply_reverifies_source_fingerprint_before_commit(monkeypatch):
             s3_client=s3_client,
             raw_bucket=raw_bucket,
             site_bucket="resegment-site",
-            chromadb_bucket="resegment-chroma",
         )
 
     # Nothing committed: the source is intact and the outputs were rolled back.
@@ -1201,7 +1203,6 @@ def test_apply_rejects_visible_regions_on_rectangular_stored_plan():
             s3_client=s3_client,
             raw_bucket=raw_bucket,
             site_bucket="resegment-site",
-            chromadb_bucket="resegment-chroma",
         )
     # No destruction: the source still exists.
     assert client.get_receipt(image_id, 1).receipt_id == 1
@@ -1242,7 +1243,6 @@ def test_v1_plan_binds_source_image_identity():
             s3_client=s3_client,
             raw_bucket=raw_bucket,
             site_bucket="resegment-site",
-            chromadb_bucket="resegment-chroma",
         )
     # Rejected before any destructive work.
     assert client.get_receipt(image_id, 1).receipt_id == 1
@@ -1264,11 +1264,14 @@ def test_apply_defaults_to_no_inline_embeddings(monkeypatch):
         raw_bucket=raw_bucket,
     )
 
-    def forbidden_embed(**kwargs):
-        del kwargs
-        raise AssertionError("embeddings must not run by default")
-
-    monkeypatch.setattr(resegment_receipt, "_embed_outputs", forbidden_embed)
+    # Chroma teardown: the native embedding write is mandatory before the
+    # destructive commit — assert it RUNS (the autouse stub records calls).
+    native_calls = []
+    monkeypatch.setattr(
+        resegment_receipt,
+        "_dual_write_outputs_native_only",
+        lambda **kwargs: native_calls.append(kwargs),
+    )
 
     result = apply_plan(
         {"plan_id": plan["plan_id"], "plan_hash": plan["plan_hash"]},
@@ -1276,12 +1279,15 @@ def test_apply_defaults_to_no_inline_embeddings(monkeypatch):
         s3_client=s3_client,
         raw_bucket=raw_bucket,
         site_bucket="resegment-site",
-        chromadb_bucket="resegment-chroma",
     )
 
     assert result["status"] == "APPLIED"
     assert result["compaction_run_ids"] == []
     assert result["output_receipt_ids"] == [2, 3]
+    assert len(native_calls) == 1
+    assert [
+        output["receipt"].receipt_id for output in native_calls[0]["outputs"]
+    ] == [2, 3]
 
 
 @mock_aws
@@ -1332,7 +1338,6 @@ def test_failed_apply_never_clobbers_another_workers_lock(monkeypatch):
             s3_client=s3_client,
             raw_bucket=raw_bucket,
             site_bucket="resegment-site",
-            chromadb_bucket="resegment-chroma",
         )
 
     # The loser left the new lock holder's status and token untouched.

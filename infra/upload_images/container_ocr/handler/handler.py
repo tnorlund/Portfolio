@@ -385,7 +385,6 @@ def _process_single_record(
         site_bucket=os.environ["SITE_BUCKET"],
         ocr_job_queue_url=os.environ["OCR_JOB_QUEUE_URL"],
         ocr_results_queue_url=os.environ["OCR_RESULTS_QUEUE_URL"],
-        chromadb_bucket=os.environ.get("CHROMADB_BUCKET", ""),
     )
 
     # Step 1: Process OCR (parse, classify, store in DynamoDB)
@@ -453,7 +452,6 @@ def _process_single_record(
             dual_write_failed = 0
             embedding_processor = MerchantResolvingEmbeddingProcessor(
                 table_name=os.environ["DYNAMO_TABLE_NAME"],
-                chromadb_bucket=os.environ["CHROMADB_BUCKET"],
                 google_places_api_key=os.environ.get("GOOGLE_PLACES_API_KEY"),
                 openai_api_key=os.environ.get("OPENAI_API_KEY"),
             )
@@ -497,16 +495,18 @@ def _process_single_record(
                     if merchant_found:
                         total_merchants_found += 1
 
-                    dual_write = embedding_result.get("dual_write") or {}
+                    dual_write = (
+                        embedding_result.get("native_embeddings") or {}
+                    )
                     dual_write_written += dual_write.get("written", 0)
                     dual_write_failed += dual_write.get("failed", 0) + (
                         1 if dual_write.get("error") else 0
                     )
 
-                    # The processor reports False when no CompactionRun was
-                    # written. Its deltas are then orphaned in S3, nothing
-                    # will merge them, and it published nothing to Chroma
-                    # Cloud -- so this is a real failure even though no
+                    # The processor reports False when the native DynamoDB
+                    # embedding write was absent or incomplete: the receipt
+                    # is then invisible to SearchVectors until the healing
+                    # backfill runs -- a real failure even though no
                     # exception was raised.
                     receipt_ok = bool(embedding_result.get("success", True))
                     if receipt_ok:
@@ -520,27 +520,21 @@ def _process_single_record(
                     else:
                         _log(
                             "ERROR: Embeddings incomplete for receipt %s: "
-                            "no compaction run was created, so its deltas "
-                            "are orphaned and nothing was published",
+                            "native embedding write absent or partial",
                             rid,
                         )
                         logger.error(
                             "Embedding incomplete for %s#%s: "
-                            "compaction_run_created=%s",
+                            "native_embeddings=%s",
                             image_id,
                             rid,
-                            embedding_result.get(
-                                "compaction_run_created", False
-                            ),
+                            embedding_result.get("native_embeddings"),
                         )
 
                     all_embedding_results.append(
                         {
                             "receipt_id": rid,
                             "success": receipt_ok,
-                            "compaction_run_created": embedding_result.get(
-                                "compaction_run_created", receipt_ok
-                            ),
                             "merchant_found": merchant_found,
                             "merchant_name": embedding_result.get(
                                 "merchant_name"

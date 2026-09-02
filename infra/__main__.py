@@ -44,7 +44,6 @@ from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
 from fix_place_lambda import create_fix_place_lambda
-from label_refresh_lambda import create_label_refresh_lambda
 from merge_receipt_lambda import create_merge_receipt_lambda
 
 # Using the optimized docker-build based base images with scoped contexts
@@ -1298,29 +1297,10 @@ pulumi.export(
     "trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.name
 )
 
-# Label Refresh Lambda — subscribes to the DynamoDB stream and
-# automatically re-evaluates ReceiptWord labels whenever a word's
-# text changes (e.g. after the Mac worker writes new OCR text from
-# a regional re-OCR job). Closes the loop so labels don't go stale.
-#
-# Per-stack rollout switch — defaults to True (dry-run) so first
-# deploy is observe-only. Flip per stack with:
-#   pulumi config set portfolio:label_refresh_dry_run false --stack dev
-# Then verify dev for 48h before flipping prod.
-_label_refresh_dry_run = pulumi.Config("portfolio").get_bool(
-    "label_refresh_dry_run"
-)
-label_refresh_lambda = create_label_refresh_lambda(
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    dynamodb_stream_arn=dynamodb_table.stream_arn,
-    dry_run=True if _label_refresh_dry_run is None else _label_refresh_dry_run,
-)
-pulumi.export("label_refresh_lambda_arn", label_refresh_lambda.lambda_arn)
-pulumi.export(
-    "label_refresh_lambda_name", label_refresh_lambda.lambda_function.name
-)
-pulumi.export("label_refresh_dlq_url", label_refresh_lambda.dlq_url)
+# Label Refresh Lambda: RETIRED (Chroma teardown PR #4). It re-evaluated
+# labels on word-text changes by querying the Chroma words collection's
+# label_{X} filter surface, which matched nothing in production; the
+# pipeline-consolidation plan called for its removal.
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport

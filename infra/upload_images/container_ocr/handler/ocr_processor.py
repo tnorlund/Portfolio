@@ -95,14 +95,12 @@ class OCRProcessor:
         site_bucket: str,
         ocr_job_queue_url: str,
         ocr_results_queue_url: str,
-        chromadb_bucket: str = "",
     ):
         self.table_name = table_name
         self.raw_bucket = raw_bucket
         self.site_bucket = site_bucket
         self.ocr_job_queue_url = ocr_job_queue_url
         self.ocr_results_queue_url = ocr_results_queue_url
-        self.chromadb_bucket = chromadb_bucket
         self.dynamo = DynamoClient(table_name)
 
     def process_ocr_job(self, image_id: str, job_id: str) -> Dict[str, Any]:
@@ -1380,202 +1378,94 @@ class OCRProcessor:
                     "Failed to enqueue summary recompute (non-fatal)"
                 )
 
-        # Re-embed the full receipt so ChromaDB reflects corrected text.
-        # Same pattern as the merge receipt lambda: generate embeddings,
-        # upload deltas to S3, create CompactionRun (DynamoDB stream
-        # triggers the enhanced compactor asynchronously).
-        compaction_run_id = None
+        # Re-embed the full receipt so the native DynamoDB vector corpus
+        # reflects corrected text (Chroma teardown): write_native_embeddings
+        # sweeps the stale *_EMBEDDING items (with UnprocessedItems retries)
+        # and rewrites from the receipt's current text in ONE batched OpenAI
+        # call. Failure is surfaced, not swallowed (codex flip P1): the
+        # stale rows may already be gone, so the job must fail retryably
+        # instead of acknowledging success with a partial native corpus.
         native_refresh_error = None
-        if self.chromadb_bucket:
+        try:
+            from receipt_dynamo.data.shared_exceptions import (  # noqa: E501  pylint: disable=import-outside-toplevel
+                EntityNotFoundError,
+            )
+            from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501  pylint: disable=import-outside-toplevel
+                write_native_embeddings,
+            )
+
+            all_lines = self.dynamo.list_receipt_lines_from_receipt(
+                ocr_job.image_id, ocr_job.receipt_id
+            )
+
             try:
-                from receipt_chroma.embedding import (
-                    EmbeddingConfig,
-                    create_embeddings_and_compaction_run,
-                )
-
-                all_lines = self.dynamo.list_receipt_lines_from_receipt(
+                reocr_place = self.dynamo.get_receipt_place(
                     ocr_job.image_id, ocr_job.receipt_id
                 )
-                all_words = self.dynamo.list_receipt_words_from_receipt(
-                    ocr_job.image_id, ocr_job.receipt_id
-                )
-                non_noise_words = [
-                    w for w in all_words if not getattr(w, "is_noise", False)
-                ] or all_words
+            except EntityNotFoundError:
+                # Genuinely no place yet — blank metadata is correct; the
+                # freshener fills it when a PLACE row lands.
+                reocr_place = None
+            except Exception:
+                # A transient lookup failure must NOT rewrite every vector
+                # with blank merchant/place (no later PLACE event would
+                # heal it) — fail the refresh retryably instead (codex P2).
+                raise
 
-                embedding_config = EmbeddingConfig(
+            def _write_native():
+                return write_native_embeddings(
+                    self.dynamo,
                     image_id=ocr_job.image_id,
                     receipt_id=ocr_job.receipt_id,
-                    chromadb_bucket=self.chromadb_bucket,
-                    dynamo_client=self.dynamo,
-                    receipt_word_labels=(
-                        labels_for_embedding if labels_for_embedding else None
+                    lines=all_lines,
+                    words=self.dynamo.list_receipt_words_from_receipt(
+                        ocr_job.image_id, ocr_job.receipt_id
                     ),
+                    word_labels=labels_for_embedding or [],
+                    receipt_place=reocr_place,
+                    sweep_existing=True,
                 )
-                embedding_result = create_embeddings_and_compaction_run(
-                    receipt_lines=all_lines,
-                    receipt_words=non_noise_words,
-                    config=embedding_config,
-                )
-                compaction_run_id = embedding_result.compaction_run.run_id
-                # Native corpus refresh (codex flip-review P1): re-OCR
-                # changes text, and the engine writer skips existing
-                # keys, so stale native embedding rows must be swept
-                # before the dual write re-creates them with the fresh
-                # vectors computed above. Flag-gated and never-raising.
+
+            # The old rows are swept, so an incomplete replacement must
+            # retry (the writer's skip-existing makes retries complete
+            # the remainder) and fail loudly if it cannot (codex flip P1).
+            dual_report = None
+            last_exc: Optional[Exception] = None
+            for _attempt in range(3):
                 try:
-                    from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501  pylint: disable=import-outside-toplevel
-                        dual_write_embeddings_enabled,
-                        maybe_dual_write_embeddings,
-                    )
-
-                    if dual_write_embeddings_enabled():
-                        raw = (
-                            self.dynamo._client
-                        )  # pylint: disable=protected-access
-                        kwargs = {
-                            "TableName": self.dynamo.table_name,
-                            "KeyConditionExpression": (
-                                "PK = :p AND begins_with(SK, :s)"
-                            ),
-                            "ExpressionAttributeValues": {
-                                ":p": {"S": f"IMAGE#{ocr_job.image_id}"},
-                                ":s": {
-                                    "S": (f"RECEIPT#{ocr_job.receipt_id:05d}#")
-                                },
-                            },
-                            "ProjectionExpression": "PK, SK",
-                        }
-                        stale_keys = []
-                        while True:
-                            resp = raw.query(**kwargs)
-                            stale_keys.extend(
-                                {"PK": item["PK"], "SK": item["SK"]}
-                                for item in resp.get("Items", [])
-                                if item["SK"]["S"].endswith("#EMBEDDING")
-                            )
-                            lek = resp.get("LastEvaluatedKey")
-                            if not lek:
-                                break
-                            kwargs["ExclusiveStartKey"] = lek
-                        for start in range(0, len(stale_keys), 25):
-                            chunk = stale_keys[start : start + 25]
-                            pending = [
-                                {"DeleteRequest": {"Key": key}}
-                                for key in chunk
-                            ]
-                            # UnprocessedItems must be retried: the
-                            # skip-existing writer would treat an
-                            # undeleted key as already current and
-                            # leave a stale vector (codex flip P1).
-                            for attempt in range(8):
-                                bw = raw.batch_write_item(
-                                    RequestItems={
-                                        self.dynamo.table_name: pending
-                                    }
-                                )
-                                pending = bw.get("UnprocessedItems", {}).get(
-                                    self.dynamo.table_name, []
-                                )
-                                if not pending:
-                                    break
-                                time.sleep(0.2 * (2**attempt))
-                            if pending:
-                                raise RuntimeError(
-                                    f"{len(pending)} stale embedding "
-                                    "deletes unprocessed after retries"
-                                )
-                        from receipt_dynamo.data.shared_exceptions import (  # noqa: E501  pylint: disable=import-outside-toplevel
-                            EntityNotFoundError,
-                        )
-
-                        try:
-                            reocr_place = self.dynamo.get_receipt_place(
-                                ocr_job.image_id, ocr_job.receipt_id
-                            )
-                        except EntityNotFoundError:
-                            # Genuinely no place yet — blank metadata is
-                            # correct; the freshener fills it when a
-                            # PLACE row lands.
-                            reocr_place = None
-                        except Exception:
-                            # A transient lookup failure must NOT
-                            # rewrite every vector with blank
-                            # merchant/place (no later PLACE event
-                            # would heal it) — fail the refresh
-                            # retryably instead (codex P2).
-                            raise
-
-                        def _write_native():
-                            return maybe_dual_write_embeddings(
-                                dynamo=self.dynamo,
-                                image_id=ocr_job.image_id,
-                                receipt_id=ocr_job.receipt_id,
-                                lines=all_lines,
-                                words=non_noise_words,
-                                word_labels=labels_for_embedding or [],
-                                receipt_place=reocr_place,
-                                row_embeddings=(
-                                    embedding_result.row_embeddings
-                                ),
-                                row_line_ids_list=(
-                                    embedding_result.row_line_ids_list
-                                ),
-                                word_embeddings_list=(
-                                    embedding_result.word_embeddings_list
-                                ),
-                            )
-
-                        def _incomplete(report):
-                            return bool(report) and (
-                                report.get("error") or report.get("failed")
-                            )
-
-                        dual_report = _write_native()
-                        # The old rows are gone, so an incomplete
-                        # replacement must retry (the writer's
-                        # skip-existing makes retries complete the
-                        # remainder) and fail loudly if it cannot
-                        # (codex flip P1).
-                        for _retry in range(2):
-                            if not _incomplete(dual_report):
-                                break
-                            logger.warning(
-                                "Re-OCR native write incomplete, "
-                                "retrying: %s",
-                                dual_report,
-                            )
-                            dual_report = _write_native()
-                        if _incomplete(dual_report):
-                            raise RuntimeError(
-                                "re-OCR native replacement incomplete "
-                                f"after retries: {dual_report}"
-                            )
-                        logger.info(
-                            "Re-OCR native refresh: swept %d stale, %s",
-                            len(stale_keys),
-                            dual_report,
-                        )
+                    dual_report = _write_native()
+                    last_exc = None
                 except (
                     Exception
-                ) as native_exc:  # pylint: disable=broad-exception-caught
-                    # Surfaced, not swallowed (codex flip P1): stale
-                    # rows may already be deleted, so the job must fail
-                    # retryably instead of acknowledging success with a
-                    # partial native corpus.
-                    logger.exception("Re-OCR native embedding refresh failed")
-                    native_refresh_error = str(native_exc)
-                embedding_result.close()
-                logger.info(
-                    "Re-OCR embeddings created, compaction_run=%s",
-                    compaction_run_id,
+                ) as write_exc:  # pylint: disable=broad-exception-caught
+                    last_exc = write_exc
+                    dual_report = None
+                    logger.warning(
+                        "Re-OCR native write raised, retrying: %s",
+                        write_exc,
+                    )
+                    continue
+                if not dual_report.get("failed"):
+                    break
+                logger.warning(
+                    "Re-OCR native write incomplete, retrying: %s",
+                    dual_report,
                 )
-            except Exception:
-                logger.exception(
-                    "Failed to create embeddings after re-OCR for %s#%s",
-                    ocr_job.image_id,
-                    ocr_job.receipt_id,
+            if dual_report is None:
+                raise RuntimeError(
+                    "re-OCR native replacement raised on every attempt"
+                ) from last_exc
+            if dual_report.get("failed"):
+                raise RuntimeError(
+                    "re-OCR native replacement incomplete "
+                    f"after retries: {dual_report}"
                 )
+            logger.info("Re-OCR native refresh: %s", dual_report)
+        except (
+            Exception
+        ) as native_exc:  # pylint: disable=broad-exception-caught
+            logger.exception("Re-OCR native embedding refresh failed")
+            native_refresh_error = str(native_exc)
 
         if native_refresh_error is not None:
             self._update_routing_decision_with_error(ocr_routing_decision)
@@ -1588,7 +1478,6 @@ class OCRProcessor:
                 "image_id": ocr_job.image_id,
                 "receipt_id": ocr_job.receipt_id,
                 "image_type": "REGIONAL_REOCR",
-                "compaction_run_id": compaction_run_id,
             }
 
         return {
@@ -1607,7 +1496,6 @@ class OCRProcessor:
             "labels_revalidated": len(labels_to_revalidate),
             "labels_deleted": len(labels_to_delete),
             "lines_rebuilt": len(lines_to_update),
-            "compaction_run_id": compaction_run_id,
         }
 
     def _process_swift_single_pass(
