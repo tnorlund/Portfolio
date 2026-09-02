@@ -107,6 +107,7 @@ export function BitStream({
   initialDelay = 0,
   chars,
   pause,
+  count = BIT_COUNT,
 }: {
   pathRefs: PathRef[];
   dir: 1 | -1;
@@ -115,17 +116,19 @@ export function BitStream({
   initialDelay?: number;
   chars?: string[];
   pause?: boolean;
+  /** glyphs in the trail; defaults to BIT_COUNT */
+  count?: number;
 }) {
   const bits = React.useMemo<Bit[]>(
     () =>
-      Array.from({ length: BIT_COUNT }, (_, idx) => ({
+      Array.from({ length: count }, (_, idx) => ({
         char: (chars?.[idx % chars.length] ?? (idx % 2 === 0 ? "1" : "0")) as
           | "0"
           | "1",
         rot: ((idx * 7.3) % TILT) - TILT / 2,
         pathIdx: idx % pathRefs.length,
       })),
-    [pathRefs.length, chars],
+    [pathRefs.length, chars, count],
   );
 
   const springs = useSprings(bits.length, (i) => ({

@@ -184,6 +184,10 @@ export const SynthesisPipeline = dynamic(
 );
 
 // /email page figures — client-only, like the other bit-stream diagrams.
+export const EmailCodeDiagram = dynamic(
+  () => import("./Email/EmailCodeDiagram"),
+  { ssr: false },
+);
 export const EmailForwardingRules = dynamic(
   () => import("./Email/EmailForwardingRules"),
   { ssr: false },

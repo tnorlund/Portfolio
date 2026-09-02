@@ -1,3 +1,4 @@
+export { default as EmailCodeDiagram } from "./EmailCodeDiagram";
 export { default as EmailCoverageChart } from "./EmailCoverageChart";
 export { default as EmailFunnel } from "./EmailFunnel";
 export { default as EmailForwardingRules } from "./EmailForwardingRules";
