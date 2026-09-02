@@ -1416,6 +1416,90 @@ class OCRProcessor:
                     config=embedding_config,
                 )
                 compaction_run_id = embedding_result.compaction_run.run_id
+                # Native corpus refresh (codex flip-review P1): re-OCR
+                # changes text, and the engine writer skips existing
+                # keys, so stale native embedding rows must be swept
+                # before the dual write re-creates them with the fresh
+                # vectors computed above. Flag-gated and never-raising.
+                try:
+                    from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501  pylint: disable=import-outside-toplevel
+                        dual_write_embeddings_enabled,
+                        maybe_dual_write_embeddings,
+                    )
+
+                    if dual_write_embeddings_enabled():
+                        raw = (
+                            self.dynamo._client
+                        )  # pylint: disable=protected-access
+                        kwargs = {
+                            "TableName": self.dynamo.table_name,
+                            "KeyConditionExpression": (
+                                "PK = :p AND begins_with(SK, :s)"
+                            ),
+                            "ExpressionAttributeValues": {
+                                ":p": {"S": f"IMAGE#{ocr_job.image_id}"},
+                                ":s": {
+                                    "S": (f"RECEIPT#{ocr_job.receipt_id:05d}#")
+                                },
+                            },
+                            "ProjectionExpression": "PK, SK",
+                        }
+                        stale_keys = []
+                        while True:
+                            resp = raw.query(**kwargs)
+                            stale_keys.extend(
+                                {"PK": item["PK"], "SK": item["SK"]}
+                                for item in resp.get("Items", [])
+                                if item["SK"]["S"].endswith("#EMBEDDING")
+                            )
+                            lek = resp.get("LastEvaluatedKey")
+                            if not lek:
+                                break
+                            kwargs["ExclusiveStartKey"] = lek
+                        for start in range(0, len(stale_keys), 25):
+                            chunk = stale_keys[start : start + 25]
+                            raw.batch_write_item(
+                                RequestItems={
+                                    self.dynamo.table_name: [
+                                        {"DeleteRequest": {"Key": key}}
+                                        for key in chunk
+                                    ]
+                                }
+                            )
+                        try:
+                            reocr_place = self.dynamo.get_receipt_place(
+                                ocr_job.image_id, ocr_job.receipt_id
+                            )
+                        except (
+                            Exception
+                        ):  # pylint: disable=broad-exception-caught
+                            reocr_place = None
+                        dual_report = maybe_dual_write_embeddings(
+                            dynamo=self.dynamo,
+                            image_id=ocr_job.image_id,
+                            receipt_id=ocr_job.receipt_id,
+                            lines=all_lines,
+                            words=non_noise_words,
+                            word_labels=labels_for_embedding or [],
+                            receipt_place=reocr_place,
+                            row_embeddings=embedding_result.row_embeddings,
+                            row_line_ids_list=(
+                                embedding_result.row_line_ids_list
+                            ),
+                            word_embeddings_list=(
+                                embedding_result.word_embeddings_list
+                            ),
+                        )
+                        logger.info(
+                            "Re-OCR native refresh: swept %d stale, %s",
+                            len(stale_keys),
+                            dual_report,
+                        )
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.exception(
+                        "Re-OCR native embedding refresh failed "
+                        "(non-fatal; Chroma leg unaffected)"
+                    )
                 embedding_result.close()
                 logger.info(
                     "Re-OCR embeddings created, compaction_run=%s",

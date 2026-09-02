@@ -84,6 +84,12 @@ DERIVED_RECOMPUTED_TYPES = {
     "RECEIPT_ROW",
     "RECEIPT_SECTION",
     "RECEIPT_SUMMARY",
+    # Native vector items (SPEC §3.2): machine-derived from lines/words.
+    # Cleanup's full-SK-prefix sweep deletes them with the source, and
+    # _embed_outputs dual-writes fresh ones for the outputs (flag-gated,
+    # same vectors as the Chroma leg) — codex flip-review P1.
+    "RECEIPT_LINE_EMBEDDING",
+    "RECEIPT_WORD_EMBEDDING",
 }
 
 
@@ -1259,16 +1265,41 @@ def _embed_outputs(
             receipt_place=output["place"],
             receipt_word_labels=output["labels"] or None,
         )
+        embed_words = [
+            word for word in output["words"] if not word.is_noise
+        ] or output["words"]
         result = create_embeddings_and_compaction_run(
             receipt_lines=output["lines"],
-            receipt_words=[
-                word for word in output["words"] if not word.is_noise
-            ]
-            or output["words"],
+            receipt_words=embed_words,
             config=config,
         )
         try:
             run_ids.append(result.compaction_run.run_id)
+            # Dual-run leg (codex flip-review P1): output receipts must
+            # reach the native vector corpus too — reuse the vectors
+            # this embed just computed (flag-gated, never-raising).
+            from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501  pylint: disable=import-outside-toplevel
+                maybe_dual_write_embeddings,
+            )
+
+            dual_report = maybe_dual_write_embeddings(
+                dynamo=dynamo_client,
+                image_id=receipt.image_id,
+                receipt_id=receipt.receipt_id,
+                lines=output["lines"],
+                words=embed_words,
+                word_labels=output["labels"] or [],
+                receipt_place=output["place"],
+                row_embeddings=result.row_embeddings,
+                row_line_ids_list=result.row_line_ids_list,
+                word_embeddings_list=result.word_embeddings_list,
+            )
+            if dual_report is not None:
+                logger.info(
+                    "Dual-write embeddings report for output %s: %s",
+                    receipt.receipt_id,
+                    dual_report,
+                )
             if (
                 wait_for_embeddings
                 and not result.wait_for_compaction_to_finish(
