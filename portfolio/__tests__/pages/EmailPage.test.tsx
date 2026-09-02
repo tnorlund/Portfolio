@@ -49,6 +49,7 @@ describe("EmailPage", () => {
       "email-sender-census",
       "email-coverage",
       "aws-logo",
+      "email-forwarding-rules",
       "email-inbox-diagram",
       "email-replica-diagram",
       "pulumi-logo",

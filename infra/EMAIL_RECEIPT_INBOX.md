@@ -1,8 +1,8 @@
 # Email receipt inbox and read replica
 
 ```text
-iCloud/Gmail forward -> receipts@in.tylernorlund.com -> SES receipt rule
-                     -> s3://email-receipt-inbox-mail-<stack>-<acct>/raw/     (archive)
+iCloud per-sender rules -> receipts@in.tylernorlund.com -> SES receipt rule
+                        -> s3://email-receipt-inbox-mail-<stack>-<acct>/raw/  (30-day archive)
 
 Mac (~/receipts-email, the primary)
   emlrec pull-ses    downloads new raw/ objects, applies the SES trust gate,
@@ -20,6 +20,13 @@ AWS Lambda email-receipt-inbox-mcp (zip, python3.13, stdlib + boto3)
 The SQLite file on the Mac is the primary. AWS holds two things: the raw
 mail archive SES writes, and a read replica of the primary that a tiny Lambda
 serves over MCP. AWS never parses mail.
+
+What leaves the inbox is decided by iCloud Mail rules, one "Forward messages
+from <sender>" rule per receipt sender (the same mechanism the ATS inbox uses
+for the five Greenhouse senders). iCloud exposes those rules only in its web
+UI; enrolling a new merchant means adding a parser in `receipts-email` and a
+rule there. The `github.com` rule was the noise source (receipts and
+notifications share `noreply@github.com`) and has been removed.
 
 ## What changed and why
 
@@ -42,9 +49,10 @@ store rule with scanning, the bucket, its public-access block, encryption,
 versioning, and the bucket policy pinned to the exact receipt-rule ARN.
 
 Added: a `replica/` prefix (with a seven-day noncurrent-version expiry so
-nightly publishes don't accumulate forever), a read-only MCP Lambda whose
-role can read `replica/*` and nothing else, and an `/email/mcp` route with
-its own Cognito scope.
+nightly publishes don't accumulate forever), a 30-day `raw/` retention window
+(`raw_retention_days=30`; the Mac holds the durable copy after the nightly
+pull), a read-only MCP Lambda whose role can read `replica/*` and nothing
+else, and an `/email/mcp` route with its own Cognito scope.
 
 ## The trust gate moved, it did not disappear
 

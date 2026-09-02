@@ -1141,7 +1141,9 @@ if ats_inbox_enabled and not email_inbox_enabled:
 if email_inbox_enabled:
     from email_receipt_inbox import EmailReceiptInbox
 
-    email_inbox = EmailReceiptInbox("email-receipt-inbox")
+    # Raw mail only needs to outlive a few missed nightly pulls; the Mac
+    # keeps the durable copy under ~/receipts-email/mail/ses/.
+    email_inbox = EmailReceiptInbox("email-receipt-inbox", raw_retention_days=30)
     pulumi.export("email_receipt_inbox_address", email_inbox.address)
     pulumi.export("email_receipt_inbox_bucket", email_inbox.bucket.bucket)
     pulumi.export("email_receipt_replica_db_key", email_inbox.replica_db_key)

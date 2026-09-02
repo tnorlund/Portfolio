@@ -6,6 +6,7 @@ import ClientOnly from "../components/ClientOnly";
 import AnimatedInView from "../components/ui/AnimatedInView";
 import {
   EmailCoverageChart,
+  EmailForwardingRules,
   EmailFunnel,
   EmailInboxDiagram,
   EmailReplicaDiagram,
@@ -182,10 +183,29 @@ export default function EmailPage() {
       </FigureBoundary>
 
       <p>
-        iCloud forwards my inbox to an address on an isolated subdomain that
-        Amazon SES receives for. SES requires TLS, runs the spam and virus
-        scans, stamps the DMARC result on the message, and drops the raw
-        email in a private S3 bucket. That is it. S3 is just the archive.
+        iCloud has a rules screen. Each rule forwards mail from one sender to
+        one address on an isolated subdomain that Amazon SES receives for.
+        Receipt senders go to the receipts address. The five Greenhouse
+        senders that carry job-application codes go to a different address
+        that a different agent reads. Nothing else leaves my inbox. That list
+        is the whole permission model, and I can read it on one screen.
+      </p>
+
+      <FigureBoundary
+        name="email-forwarding-rules"
+        intrinsicSize="620px"
+        mobileIntrinsicSize="760px"
+      >
+        <ClientOnly>
+          <EmailForwardingRules />
+        </ClientOnly>
+      </FigureBoundary>
+
+      <p>
+        SES requires TLS, runs the spam and virus scans, stamps the DMARC
+        result on the message, and drops the raw email in a private S3
+        bucket. Raw mail expires after 30 days. My Mac pulls it down every
+        night, long before then. That is it. S3 is just the archive.
       </p>
 
       <FigureBoundary name="email-inbox-diagram" intrinsicSize="220px">
@@ -196,8 +216,9 @@ export default function EmailPage() {
 
       <p>
         Since it went live in July: 1,189 messages forwarded, 14 failed the
-        trust gate, and 59 were receipts. 756 of them, 64 percent, were
-        GitHub notifications yelling at me.
+        trust gate, and 59 were receipts. 756 of them were GitHub
+        notifications, because GitHub sends its ten receipts a year from the
+        same address as everything else it says. That rule is gone now.
       </p>
 
       <h1>The Read Replica</h1>
