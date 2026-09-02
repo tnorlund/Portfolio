@@ -23,7 +23,6 @@ from datetime import datetime
 from typing import Any, Callable, Optional
 
 from langchain_core.tools import tool
-
 from receipt_embeddings.backend import vector_search_client
 from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 from receipt_embeddings.section_labels import (
