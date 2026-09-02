@@ -52,6 +52,7 @@ describe("EmailPage", () => {
       (el) => el.getAttribute("data-figure-boundary"),
     );
     expect(names).toEqual([
+      "grok-bot-logo",
       "email-forwarding-rules",
       "email-code-diagram",
       "email-funnel",

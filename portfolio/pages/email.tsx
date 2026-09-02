@@ -13,7 +13,7 @@ import {
   EmailReplicaDiagram,
   EmailSenderCensus,
 } from "../components/ui/Figures";
-import { AWSLogo, PulumiLogo } from "../components/ui/Logos";
+import { AWSLogo, GrokBotLogo, PulumiLogo } from "../components/ui/Logos";
 import styles from "../styles/Receipt.module.css";
 
 interface FigureBoundaryProps {
@@ -114,21 +114,33 @@ export default function EmailPage() {
 
       <h1>The Job Bot Gets One Code</h1>
 
+      <FigureBoundary name="grok-bot-logo" intrinsicSize="200px">
+        <ClientOnly>
+          <GrokBotLogo />
+        </ClientOnly>
+      </FigureBoundary>
+
+      <p>
+        Grok Bot lives in my Dock like any other app. It fills out forms,
+        stops before Submit, and waits for me. The one thing it cannot do
+        on its own is read the code Greenhouse emails me.
+      </p>
+
       <p>
         iCloud has a rules screen. Each rule forwards mail from one sender to
         one address on an isolated subdomain that Amazon SES receives for.
         The five Greenhouse senders that carry verification codes go to one
-        address. Nothing else does. That list is the whole permission model,
-        and I can read it on one screen.
+        address. Those five rules are the bot&apos;s entire view of my mail,
+        and I can read them on one screen.
       </p>
 
       <FigureBoundary
         name="email-forwarding-rules"
-        intrinsicSize="760px"
-        mobileIntrinsicSize="800px"
+        intrinsicSize="620px"
+        mobileIntrinsicSize="560px"
       >
         <ClientOnly>
-          <EmailForwardingRules />
+          <EmailForwardingRules destination="ats" />
         </ClientOnly>
       </FigureBoundary>
 

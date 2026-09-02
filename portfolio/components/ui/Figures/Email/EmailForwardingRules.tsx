@@ -131,6 +131,7 @@ const STYLE = `
 .efr-note { border-top:1px solid var(--efr-line); margin-top:auto; padding-top:12px; color:var(--efr-muted); font-size:13px; line-height:1.45; }
 .efr-note a { color:var(--efr-link); text-decoration:none; display:inline-flex; align-items:center; gap:2px; }
 .efr-dest { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
+.efr-dest[data-single="true"] { grid-template-columns:1fr; max-width:560px; margin-left:auto; margin-right:auto; }
 .efr-dest div { border:1.5px solid rgba(var(--text-color-rgb),.18); border-radius:12px; padding:12px 14px; font-size:13.5px;
   color:var(--text-color); transition:border-color .15s ease, background-color .15s ease; }
 .efr-dest div[data-hot="true"] { border-color:var(--color-blue); background:rgba(var(--color-blue-rgb),.08); }
@@ -145,9 +146,20 @@ const STYLE = `
 }
 `;
 
-const EmailForwardingRules: React.FC = () => {
+interface EmailForwardingRulesProps {
+  /** Show only the rules that feed one destination (and its card). */
+  destination?: Destination;
+}
+
+const EmailForwardingRules: React.FC<EmailForwardingRulesProps> = ({
+  destination,
+}) => {
   const { containerRef, shouldAnimate } = useViewportAnimation(false);
   const [hot, setHot] = React.useState<Destination | null>(null);
+  const rules = destination ? RULES.filter((r) => r.to === destination) : RULES;
+  const destinations = destination
+    ? DESTINATIONS.filter((d) => d.key === destination)
+    : DESTINATIONS;
 
   return (
     <div
@@ -185,7 +197,7 @@ const EmailForwardingRules: React.FC = () => {
             </span>
           </div>
           <ul className="efr-list" onMouseLeave={() => setHot(null)}>
-            {RULES.map((rule, i) => (
+            {rules.map((rule, i) => (
               <li
                 key={rule.from}
                 data-hot={hot === rule.to ? "true" : undefined}
@@ -219,8 +231,8 @@ const EmailForwardingRules: React.FC = () => {
           </div>
         </div>
       </div>
-      <div className="efr-dest">
-        {DESTINATIONS.map((d) => (
+      <div className="efr-dest" data-single={destination ? "true" : undefined}>
+        {destinations.map((d) => (
           <div key={d.key} data-hot={hot === d.key ? "true" : undefined}>
             <code>{ADDRESS[d.key]}</code>
             <p>
