@@ -94,7 +94,7 @@ def _index_with_neighbors() -> FakeVectorIndex:
             _word_item(IMAGE, 1, 2, 3, [1.0, 0.0]),
             _word_item(OTHER, 1, 1, 1, [1.0, 0.0], text="3.94"),
             _word_item(OTHER, 2, 1, 1, [0.99, 0.01], merchant_name="Costco"),
-            # cosine distance 1.0 -> similarity 0.0, below the 0.80 cut
+            # cosine distance 1.0 -> similarity 0.0, below the 0.60 cut
             _word_item(OTHER, 3, 1, 1, [0.0, 1.0], text="far away"),
         ]
     )
@@ -241,7 +241,7 @@ def test_consensus_reaches_valid_with_enough_agreement() -> None:
 def test_same_merchant_boost_applies_only_with_target_merchant() -> None:
     # A neighbor whose cosine similarity is exactly 0.8 (vector
     # [0.8, 0.6] against [1, 0]: dot = 0.8, unit norms), so cosine
-    # distance 0.2 and seam similarity 1 - 0.2 = 0.8 — right at the
+    # distance 0.2 and seam similarity 1 - 0.2 = 0.8 — above the 0.60
     # cut, and low enough that the +0.10 boost is visible below the
     # 1.0 clamp.
     def index() -> FakeVectorIndex:
@@ -383,24 +383,40 @@ def test_invalid_only_neighbor_surfaces_as_evidence_against() -> None:
 
 def test_weak_similarity_neighbor_is_excluded_at_threshold() -> None:
     """Regression (E3 review P2-C): a true cosine similarity of 0.60
-    (distance 0.40) must not pass min_similarity=0.80. The retired
+    (distance 0.40) must not pass min_similarity=0.80 — the retired
     validator's ``1 - d/2`` halving inflated it to 0.80 and let it
-    through."""
-    index = FakeVectorIndex(
-        [
-            _word_item(IMAGE, 1, 2, 3, [1.0, 0.0]),
-            # dot([1,0],[0.6,0.8]) = 0.6 on unit vectors: cosine
-            # similarity 0.60, cosine distance 0.40.
-            _word_item(OTHER, 1, 1, 1, [0.6, 0.8]),
-        ]
-    )
+    through. At the recalibrated default (0.60 — the same effective
+    distance cut the old tool applied) that neighbor is admitted by
+    design, and a weaker one is still excluded."""
+
+    def index(vector: list[float]) -> FakeVectorIndex:
+        return FakeVectorIndex(
+            [
+                _word_item(IMAGE, 1, 2, 3, [1.0, 0.0]),
+                _word_item(OTHER, 1, 1, 1, vector),
+            ]
+        )
+
     rows = [_row(OTHER, 1, 1, 1, "GRAND_TOTAL", "VALID")]
 
-    result = _call(index, rows)
+    # dot([1,0],[0.6,0.8]) = 0.6 on unit vectors: cosine similarity
+    # 0.60, distance 0.40 — the P2-C scale check, pinned to the old
+    # 0.80 threshold explicitly.
+    strict = _call(index([0.6, 0.8]), rows, min_similarity=0.80)
+    assert strict["neighbors_after_cut"] == 0
+    assert strict["evidence_for"] == []
+    assert strict["recommended_status"] == "PENDING"
 
-    assert result["neighbors_after_cut"] == 0
-    assert result["evidence_for"] == []
-    assert result["recommended_status"] == "PENDING"
+    # The recalibrated default admits the same neighbor (the old cut
+    # of distance <= 0.40 is similarity >= 0.60 on this scale)...
+    at_default = _call(index([0.6, 0.8]), rows)
+    assert at_default["neighbors_after_cut"] == 1
+    assert at_default["evidence_for"][0]["similarity"] == pytest.approx(0.6)
+
+    # ...and still cuts a weaker one (similarity 0.50 < 0.60).
+    weak = _call(index([0.5, 0.8660254]), rows)
+    assert weak["neighbors_after_cut"] == 0
+    assert weak["evidence_for"] == []
 
 
 def test_chroma_ndarray_responses_yield_real_evidence() -> None:

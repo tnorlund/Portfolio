@@ -25,7 +25,13 @@ from receipt_embeddings.vector_client import VectorSearchClient
 # evidence is judged the way the old validator intended (spec §3.7).
 # Similarity itself is computed on the seam's cosine-distance contract
 # (1 - distance), NOT the old tool's raw-L2 halving (review P2-C).
-MIN_SIMILARITY = 0.80
+# MIN_SIMILARITY is therefore recalibrated to the corrected scale: the
+# old tool's 0.80 cut on its halved scale admitted neighbors up to
+# cosine distance 0.40, which is similarity 0.60 here. Keeping 0.80 on
+# the corrected scale silently demanded distance <= 0.20 — on the live
+# dev corpus real same-kind neighbors sit at 0.63-0.80 similarity, so
+# every probe returned zero evidence (2026-09-01 live re-probe).
+MIN_SIMILARITY = 0.60
 MIN_MATCHES = 3
 CONSENSUS_THRESHOLD = 0.80
 SAME_MERCHANT_BOOST = 0.10

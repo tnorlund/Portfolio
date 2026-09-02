@@ -792,7 +792,8 @@ Replaces the retired validate_word_similarity tool. Given a specific word
 
 1. Reads the word's stored embedding vector (no OpenAI call)
 2. Searches validated word embeddings for nearest neighbors
-3. Applies the similarity cut the old validator intended (0.80)
+3. Applies the old validator's effective similarity cut (0.60 on the
+   corrected cosine scale; its 0.80 was on a halved scale)
 4. Joins each surviving neighbor's ReceiptWordLabel rows
 5. Returns evidence FOR (VALID rows) and AGAINST (INVALID rows) the
    candidate label -- each neighbor carrying its original reasoning and
