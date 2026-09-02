@@ -306,6 +306,10 @@ class QAAgentStepFunction(ComponentResource):
                 "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
                 "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
                 "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
+                # Vector search backend seam (chroma | dynamodb)
+                "VECTOR_BACKEND": (
+                    Config("portfolio").get("vector-backend") or "chroma"
+                ),
                 "BATCH_BUCKET": self.batch_bucket.id,
             },
         }

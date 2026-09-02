@@ -252,6 +252,8 @@ class McpServerLambda(ComponentResource):
                 "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
                 "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
                 "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
+                # Vector search backend seam (chroma | dynamodb)
+                "VECTOR_BACKEND": (config.get("vector-backend") or "chroma"),
                 # Google Places API
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 # LangSmith tracing

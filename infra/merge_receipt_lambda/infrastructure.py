@@ -215,6 +215,10 @@ class MergeReceiptLambda(ComponentResource):
                 "SITE_BUCKET": site_bucket_name,
                 "CHROMADB_BUCKET": chromadb_bucket_name,
                 "OPENAI_API_KEY": openai_api_key,
+                # Vector search backend seam (chroma | dynamodb)
+                "VECTOR_BACKEND": (
+                    Config("portfolio").get("vector-backend") or "chroma"
+                ),
             },
         }
 

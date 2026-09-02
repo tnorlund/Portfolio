@@ -67,3 +67,4 @@ config:
   portfolio:email_receipt_inbox_enabled: "true"
   portfolio:ats_verification_inbox_enabled: "true"
   chromadb:enable-line-item-refine: "true"
+  portfolio:enable-dual-write-embeddings: "true"

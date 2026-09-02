@@ -419,6 +419,7 @@ class UploadImages(ComponentResource):
                                         "dynamodb:UpdateItem",
                                         "dynamodb:DeleteItem",
                                         "dynamodb:BatchWriteItem",
+                                        "dynamodb:SearchVectors",
                                     ],
                                     "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
                                 },
@@ -576,6 +577,10 @@ class UploadImages(ComponentResource):
             "ephemeral_storage": 4096,  # 4GB for ChromaDB snapshot downloads (words=3.1GB)
             "environment": {
                 "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                # DynamoVectorSearchClient.from_env reads this spelling;
+                # without it the client falls back to the hard-coded dev
+                # table (codex review P1).
+                "DYNAMODB_TABLE_NAME": dynamodb_table.name,
                 "S3_BUCKET": image_bucket.bucket,
                 "RAW_BUCKET": raw_bucket.bucket,
                 "SITE_BUCKET": site_bucket.bucket,
@@ -601,6 +606,11 @@ class UploadImages(ComponentResource):
                 "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
                 "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
                 "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
+                # Vector search backend seam (chroma | dynamodb)
+                "VECTOR_BACKEND": (
+                    pulumi.Config("portfolio").get("vector-backend")
+                    or "chroma"
+                ),
                 # Gates the EMF metrics the ingest cloud upsert emits, matching
                 # the compaction Lambda's flag.
                 "ENABLE_METRICS": "true",
