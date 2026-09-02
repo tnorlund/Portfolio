@@ -93,47 +93,54 @@ const DESTINATIONS: {
   },
 ];
 
-/* The modal is always dark, like the real thing, so it reads as a
- * screenshot in both site themes. */
+/* Two palettes, both sampled from icloud.com's Settings modal. The site
+ * switches theme with prefers-color-scheme (see globals.css), so we do too. */
 const STYLE = `
-.efr { --efr-bg:#1d1d1f; --efr-side:#232325; --efr-row:#2b2b2d; --efr-line:#3a3a3c;
-       --efr-text:#f2f2f4; --efr-muted:#9b9ba1; --efr-link:#5aa3ff; --efr-active:#2f2f33; }
-.efr-modal { display:grid; grid-template-columns: 180px minmax(0,1fr); background:var(--efr-bg);
-  opacity:0; transform:translateY(14px) scale(.97); transition:opacity .45s ease, transform .45s cubic-bezier(.2,.7,.2,1);
-  color:var(--efr-text); border-radius:14px; overflow:hidden; box-shadow:0 12px 40px rgba(0,0,0,.45);
-  font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  font-size:14px; line-height:1.35; }
-.efr-side { background:var(--efr-side); padding:18px 12px 14px; }
-.efr-close { width:14px; height:14px; margin:0 0 14px 4px; color:var(--efr-muted); font-size:18px; line-height:14px; }
+.efr { --efr-bg:#ffffff; --efr-side:#f5f5f7; --efr-row:#f5f5f7; --efr-line:#e3e3e8;
+       --efr-text:#1d1d1f; --efr-muted:#6e6e73; --efr-link:#0a7aff; --efr-active:#e5e5ea;
+       --efr-shadow:0 18px 50px rgba(0,0,0,.22), 0 0 0 1px rgba(0,0,0,.06); }
+@media (prefers-color-scheme: dark) {
+  .efr { --efr-bg:#1c1c1e; --efr-side:#1c1c1e; --efr-row:#2c2c2e; --efr-line:#3a3a3c;
+         --efr-text:#f5f5f7; --efr-muted:#98989d; --efr-link:#5aa3ff; --efr-active:#3a3a3c;
+         --efr-shadow:0 18px 50px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.06); }
+}
+.efr-modal { display:grid; grid-template-columns: 236px minmax(0,1fr); background:var(--efr-bg);
+  color:var(--efr-text); border-radius:18px; overflow:hidden; box-shadow:var(--efr-shadow);
+  font-family:-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size:15px; line-height:1.4; -webkit-font-smoothing:antialiased;
+  opacity:0; transform:translateY(14px) scale(.97); transition:opacity .45s ease, transform .45s cubic-bezier(.2,.7,.2,1); }
+.efr-side { background:var(--efr-side); padding:22px 14px 20px 22px; }
+.efr-close { color:var(--efr-muted); font-size:24px; line-height:1; font-weight:600; margin:0 0 22px 4px; }
 .efr-side ul { list-style:none; margin:0; padding:0; }
-.efr-side li { display:flex; align-items:center; gap:6px; padding:6px 8px; border-radius:8px; color:var(--efr-text); }
+.efr-side li { display:flex; align-items:center; gap:10px; padding:8px 12px; border-radius:9px; color:var(--efr-text); font-size:15px; }
 .efr-side li svg { color:var(--efr-link); }
 .efr-side li[data-active="true"] { background:var(--efr-active); }
-.efr-main { padding:18px 18px 14px; min-width:0; display:flex; flex-direction:column; }
-.efr-head { display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid var(--efr-line); padding-bottom:8px; }
-.efr-head h3 { margin:0; font-size:17px; font-weight:700; color:var(--efr-text); }
-.efr-head .efr-plus { color:var(--efr-link); }
-.efr-list { list-style:none; margin:12px 0 0; padding:0 4px 0 0; flex:1 1 auto; min-height:0; max-height:470px; overflow-y:auto; }
-.efr-list li { background:var(--efr-row); border:1px solid var(--efr-line); border-radius:9px; padding:9px 12px;
-  margin-bottom:8px; display:flex; justify-content:space-between; gap:12px; align-items:center;
+.efr-main { padding:22px 22px 18px; min-width:0; display:flex; flex-direction:column; }
+.efr-head { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--efr-line); padding-bottom:12px; }
+.efr-head h3 { margin:0; font-size:22px; font-weight:700; letter-spacing:-.2px; color:var(--efr-text); }
+.efr-head .efr-plus { color:var(--efr-link); display:flex; }
+.efr-list { list-style:none; margin:14px 0 0; padding:0 2px 0 0; flex:1 1 auto; min-height:0; max-height:470px; overflow-y:auto; }
+.efr-list li { background:var(--efr-row); border:1px solid var(--efr-line); border-radius:10px; padding:13px 14px 13px 16px;
+  margin-bottom:10px; display:flex; justify-content:space-between; gap:14px; align-items:center;
   opacity:0; transform:translateY(6px); transition:opacity .35s ease, transform .35s ease, border-color .15s ease; cursor:default; }
 .efr[data-in="true"] .efr-modal { opacity:1; transform:none; }
 .efr[data-in="true"] .efr-list li { opacity:1; transform:none; }
 .efr-list li[data-hot="true"] { border-color:var(--efr-link); }
 .efr-list li b { font-weight:400; color:var(--efr-link); overflow-wrap:anywhere; }
-.efr-list li .efr-handle { color:var(--efr-muted); flex:none; }
-.efr-note { border-top:1px solid var(--efr-line); margin-top:auto; padding-top:10px; color:var(--efr-muted); font-size:12.5px; }
+.efr-list li .efr-handle { color:var(--efr-muted); flex:none; display:flex; }
+.efr-note { border-top:1px solid var(--efr-line); margin-top:auto; padding-top:12px; color:var(--efr-muted); font-size:13px; line-height:1.45; }
 .efr-note a { color:var(--efr-link); text-decoration:none; display:inline-flex; align-items:center; gap:2px; }
-.efr-dest { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
-.efr-dest div { border:1.5px solid rgba(var(--text-color-rgb),.18); border-radius:10px; padding:10px 12px; font-size:13px;
+.efr-dest { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
+.efr-dest div { border:1.5px solid rgba(var(--text-color-rgb),.18); border-radius:12px; padding:12px 14px; font-size:13.5px;
   color:var(--text-color); transition:border-color .15s ease, background-color .15s ease; }
 .efr-dest div[data-hot="true"] { border-color:var(--color-blue); background:rgba(var(--color-blue-rgb),.08); }
-.efr-dest code { font-size:12px; }
+.efr-dest code { font-size:12.5px; }
 .efr-dest p { margin:4px 0 0; opacity:.8; }
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .efr-modal { grid-template-columns: 1fr; }
   .efr-side { display:none; }
-  .efr-list { max-height:320px; }
+  .efr-main { padding:18px 16px 14px; }
+  .efr-list { max-height:340px; }
   .efr-dest { grid-template-columns: 1fr; }
 }
 `;
@@ -147,7 +154,7 @@ const EmailForwardingRules: React.FC = () => {
       ref={containerRef}
       className="efr"
       data-in={shouldAnimate ? "true" : "false"}
-      style={{ maxWidth: 720, margin: "1em auto", width: "100%" }}
+      style={{ maxWidth: 880, margin: "1em auto", width: "100%" }}
     >
       <style>{STYLE}</style>
       <div
@@ -160,7 +167,7 @@ const EmailForwardingRules: React.FC = () => {
           <ul>
             {SIDEBAR.map((item) => (
               <li key={item} data-active={item === "Rules" ? "true" : undefined}>
-                <Glyph name={item} />
+                <Glyph name={item} size={18} />
                 {item}
               </li>
             ))}
@@ -170,7 +177,7 @@ const EmailForwardingRules: React.FC = () => {
           <div className="efr-head">
             <h3>Rules</h3>
             <span className="efr-plus" title="Add New Rule">
-              <Glyph name="Plus" size={14} />
+              <Glyph name="Plus" size={18} />
             </span>
           </div>
           <ul className="efr-list" onMouseLeave={() => setHot(null)}>
@@ -188,7 +195,7 @@ const EmailForwardingRules: React.FC = () => {
                   <b>{ADDRESS[rule.to]}</b>
                 </div>
                 <span className="efr-handle">
-                  <Glyph name="DragHandle" size={14} />
+                  <Glyph name="DragHandle" size={16} />
                 </span>
               </li>
             ))}
@@ -203,7 +210,7 @@ const EmailForwardingRules: React.FC = () => {
               rel="noopener noreferrer"
             >
               Learn more
-              <Glyph name="ExternalLink" size={11} />
+              <Glyph name="ExternalLink" size={12} />
             </a>
           </div>
         </div>

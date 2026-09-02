@@ -193,8 +193,8 @@ export default function EmailPage() {
 
       <FigureBoundary
         name="email-forwarding-rules"
-        intrinsicSize="620px"
-        mobileIntrinsicSize="760px"
+        intrinsicSize="760px"
+        mobileIntrinsicSize="800px"
       >
         <ClientOnly>
           <EmailForwardingRules />
