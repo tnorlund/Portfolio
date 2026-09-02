@@ -218,16 +218,26 @@ def resolve_vector_source(choice: str) -> str:
     return choice
 
 
-def build_chroma_source() -> ChromaVectorSource:
-    """Validate credentials + dev-database guard, then open the client."""
+def build_chroma_source(
+    allow_database: str | None = None,
+) -> ChromaVectorSource:
+    """Validate credentials + dev-database guard, then open the client.
+
+    ``allow_database`` must EXACTLY repeat the configured
+    ``CHROMA_CLOUD_DATABASE`` to read from a non-dev database (the prod
+    corpus promotion reads prod Chroma). The source is read-only either
+    way — the guard exists so credentials pasted into the wrong shell
+    can't silently source vectors from the wrong environment.
+    """
     missing = [name for name in CHROMA_ENVIRONMENT if not os.environ.get(name)]
     if missing:
         raise SystemExit("vector source 'chroma' needs " + ", ".join(missing))
     database = os.environ["CHROMA_CLOUD_DATABASE"].strip()
-    if database != DEV_DATABASE:
+    if database != DEV_DATABASE and allow_database != database:
         raise SystemExit(
-            f"refusing to touch Chroma database {database!r}; "
-            f"only {DEV_DATABASE!r} is allowed"
+            f"refusing to touch Chroma database {database!r}; only "
+            f"{DEV_DATABASE!r} is allowed unless --allow-chroma-database "
+            "exactly repeats the database name"
         )
     return ChromaVectorSource()
 
@@ -773,6 +783,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--allow-chroma-database",
+        help=(
+            "explicit opt-in for a non-dev Chroma vector source: must "
+            "EXACTLY repeat the CHROMA_CLOUD_DATABASE value (reads are "
+            "the only Chroma operation either way)"
+        ),
+    )
+    parser.add_argument(
         "--allow-table",
         help=(
             "explicit opt-in for a non-dev table: must EXACTLY repeat "
@@ -874,7 +892,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     vector_skips: list[dict[str, str]] = []
     close_source = lambda: None  # noqa: E731 - trivial closer
     if vector_source == "chroma":
-        source = build_chroma_source()
+        source = build_chroma_source(allow_database=args.allow_chroma_database)
         close_source = source.close
         try:
             stored = source.vectors_for(
