@@ -81,7 +81,8 @@ class DynamoVectorSearchClient:
             raise ValueError("table_name must not be empty")
         if not callable(getattr(dynamodb_client, "search_vectors", None)):
             raise RuntimeError(
-                "DynamoDB client lacks SearchVectors; boto3 >= 1.43.64 is required"
+                "DynamoDB client lacks SearchVectors; "
+                "boto3 >= 1.43.64 is required"
             )
         self._client = dynamodb_client
         self.table_name = table_name
@@ -248,6 +249,7 @@ class DynamoVectorSearchClient:
                         break
                     if attempt < self._max_retries:
                         self._sleep(0.1 * (2**attempt))
+            # pylint: disable-next=broad-exception-caught
             except Exception:  # noqa: BLE001 - degrade to projection metadata
                 continue
         self.last_join_read_units = consumed
@@ -266,6 +268,7 @@ class DynamoVectorSearchClient:
             )
         return joined
 
+    # pylint: disable-next=too-many-statements
     def _join_word_label_metadata(
         self, results: list[ScoredItem]
     ) -> list[ScoredItem]:
@@ -367,6 +370,7 @@ class DynamoVectorSearchClient:
                         self._sleep(0.1 * (2**attempt))
                 if pending:
                     return results
+        # pylint: disable-next=broad-exception-caught
         except Exception:  # noqa: BLE001 - abstain on join failure
             return results
 

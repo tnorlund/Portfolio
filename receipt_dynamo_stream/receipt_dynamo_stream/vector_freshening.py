@@ -123,6 +123,7 @@ class _Context:
         value: int = 1,
         dimensions: Optional[Mapping[str, str]] = None,
     ) -> None:
+        """Increment a named metric when a recorder is configured."""
         if self.metrics:
             self.metrics.count(name, value, dimensions)
 
@@ -159,9 +160,9 @@ def apply_vector_freshening(
     )
 
     for record in records:
-        # pylint: disable-next=broad-exception-caught
         try:
             _freshen_record(record, ctx)
+        # pylint: disable-next=broad-exception-caught
         except Exception:  # graceful degradation: never crash the handler
             # CONTRACTUAL never-raise: one bad stream record must not
             # abort the rest of the batch or the SQS publish legs.
@@ -432,6 +433,7 @@ def _compute_word_label_status(
     return aggregate_word_label_status(statuses)
 
 
+# pylint: disable-next=too-many-arguments,too-many-positional-arguments
 def _update_embedding_item(
     pk: str,
     sk: str,

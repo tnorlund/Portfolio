@@ -63,7 +63,8 @@ def is_url_line(line):
         if pattern in text:
             return True
 
-    # Check if it's mostly a domain-like string (contains dots and no spaces, or very few)
+    # Check if it's mostly a domain-like string (contains dots and no
+    # spaces, or very few)
     if "." in text and text.count(" ") <= 1:
         # Likely a domain
         return True
@@ -97,7 +98,8 @@ def calculate_bounding_box_for_lines(lines):
     """Calculate a bounding box that contains all the given lines.
 
     Finds the min/max x and y coordinates from all line corners and creates
-    a single bounding box with corners (tl, tr, bl, br) that encompasses all lines.
+    a single bounding box with corners (tl, tr, bl, br) that spans all
+    lines.
 
     Excludes URL/website lines from the bounding box calculation.
 
@@ -111,14 +113,16 @@ def calculate_bounding_box_for_lines(lines):
     if not lines:
         return None
 
-    # Filter out URL lines and empty/whitespace lines - they shouldn't be part of the address bounding box
+    # Filter out URL lines and empty/whitespace lines - they shouldn't
+    # be part of the address bounding box
     address_lines = [
         line
         for line in lines
         if not is_url_line(line) and not is_empty_or_whitespace_line(line)
     ]
 
-    # If all lines were filtered out, fall back to using all non-empty lines (edge case)
+    # If all lines were filtered out, fall back to using all non-empty
+    # lines (edge case)
     if not address_lines:
         address_lines = [
             line for line in lines if not is_empty_or_whitespace_line(line)
@@ -127,7 +131,8 @@ def calculate_bounding_box_for_lines(lines):
             # Last resort: use all lines
             address_lines = lines
         logger.warning(
-            "All lines were filtered out (URLs/empty), using %d lines for bounding box calculation",
+            "All lines were filtered out (URLs/empty), using %d lines "
+            "for bounding box calculation",
             len(address_lines),
         )
 
@@ -286,7 +291,7 @@ def handler(_event, _context):
         if VECTOR_BACKEND == "dynamodb":
             download_result = {"status": "downloaded"}
         else:
-            # pylint: disable=import-outside-toplevel
+            # pylint: disable-next=import-outside-toplevel
             from receipt_chroma.s3 import download_snapshot_atomic
 
             logger.info(
@@ -320,7 +325,7 @@ def handler(_event, _context):
         if VECTOR_BACKEND == "dynamodb":
             chroma_client = _DynamoLinesClient(DYNAMODB_TABLE_NAME)
         else:
-            # pylint: disable=import-outside-toplevel
+            # pylint: disable-next=import-outside-toplevel
             from receipt_chroma import ChromaClient
 
             chroma_client = ChromaClient(
@@ -342,7 +347,8 @@ def handler(_event, _context):
                 "body": json.dumps(
                     {
                         "error": (
-                            "Collection 'lines' not found in ChromaDB snapshot. "
+                            "Collection 'lines' not found in ChromaDB "
+                            "snapshot. "
                             f"Available collections: {available_collections}"
                         )
                     }
@@ -407,7 +413,8 @@ def handler(_event, _context):
         # Group address labels by line_id
         address_line_ids = {label.line_id for label in original_receipt_labels}
 
-        # Find consecutive groups of address lines (addresses are usually consecutive)
+        # Find consecutive groups of address lines (addresses are
+        # usually consecutive)
         # Sort line_ids to find consecutive ranges
         sorted_line_ids = sorted(address_line_ids)
 
@@ -416,7 +423,8 @@ def handler(_event, _context):
         if sorted_line_ids:
             current_group = [sorted_line_ids[0]]
             for i in range(1, len(sorted_line_ids)):
-                # If this line_id is consecutive with the previous one, add to current group
+                # If this line_id is consecutive with the previous one,
+                # add to the current group
                 if sorted_line_ids[i] == sorted_line_ids[i - 1] + 1:
                     current_group.append(sorted_line_ids[i])
                 else:
@@ -436,7 +444,8 @@ def handler(_event, _context):
         if not selected_group and address_groups:
             selected_group = address_groups[0]
             logger.warning(
-                "Selected label line_id %d not in any address group, using first group: %s",
+                "Selected label line_id %d not in any address group, "
+                "using first group: %s",
                 selected_label.line_id,
                 selected_group,
             )
@@ -450,7 +459,8 @@ def handler(_event, _context):
             )
 
         # Get lines and words for the selected address group
-        # Filter out URL lines and empty/whitespace lines - they shouldn't be part of the address
+        # Filter out URL lines and empty/whitespace lines - they
+        # shouldn't be part of the address
         address_context_lines = [
             line
             for line in original_lines
@@ -477,7 +487,8 @@ def handler(_event, _context):
         ]
 
         logger.info(
-            "Selected address group: line_ids=%s, line_count=%d, word_count=%d, label_count=%d",
+            "Selected address group: line_ids=%s, line_count=%d, "
+            "word_count=%d, label_count=%d",
             selected_group,
             len(address_context_lines),
             len(address_context_words),
@@ -668,14 +679,16 @@ def handler(_event, _context):
                     similar_address_groups.append(current_group)
 
                 # Select the first (or largest) address group
-                # This handles cases where an address appears twice on a receipt
+                # This handles cases where an address appears twice on
+                # a receipt
                 if similar_address_groups:
                     # Use the largest group, or first if all same size
                     selected_similar_group = max(
                         similar_address_groups, key=len
                     )
                     logger.debug(
-                        "Selected address group for similar receipt: line_ids=%s (from %d groups)",
+                        "Selected address group for similar receipt: "
+                        "line_ids=%s (from %d groups)",
                         selected_similar_group,
                         len(similar_address_groups),
                     )
@@ -683,7 +696,8 @@ def handler(_event, _context):
                     # Fallback: use all address line_ids
                     selected_similar_group = list(similar_address_line_ids)
                     logger.warning(
-                        "No consecutive groups found, using all address line_ids: %s",
+                        "No consecutive groups found, using all "
+                        "address line_ids: %s",
                         selected_similar_group,
                     )
 
@@ -817,9 +831,8 @@ def handler(_event, _context):
         try:
             shutil.rmtree(temp_dir)
             logger.info("Cleaned up temporary directory: %s", temp_dir)
-        except (
-            Exception
-        ) as cleanup_error:  # pylint: disable=broad-exception-caught
+        # pylint: disable-next=broad-exception-caught
+        except Exception as cleanup_error:
             # CONTRACTUAL best-effort teardown in finally.
             logger.warning(
                 "Failed to cleanup temp directory: %s", cleanup_error

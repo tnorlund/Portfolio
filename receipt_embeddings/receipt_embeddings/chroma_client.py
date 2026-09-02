@@ -8,7 +8,6 @@ from typing import Any
 from receipt_embeddings.protocols import ChromaQueryClient
 from receipt_embeddings.quotas import build_chroma_where
 from receipt_embeddings.service_limits import (
-    LINE_INDEX,
     WORD_INDEX,
     physical_index_name,
     validate_top_k,
