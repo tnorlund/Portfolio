@@ -97,7 +97,7 @@ pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
 security = ChromaSecurity("chroma", vpc_id=public_vpc.vpc_id)
 pulumi.export("sg_lambda_id", security.sg_lambda_id)
 
-# Task 3 snapshot bucket not used; shared_chromadb_buckets provides storage
+# Task 3 snapshot bucket retired with the Chroma teardown (PR #6)
 
 # --- Removed Config reading for VPC resources ---
 
@@ -123,9 +123,6 @@ notification_system = NotificationSystem(
         "Purpose": "Infrastructure Monitoring",
     },
 )
-
-# Import shared ChromaDB bucket (created in chromadb_buckets.py for route access)
-from chromadb_buckets import shared_chromadb_buckets
 
 # Shared resources for the label evaluator pipeline (S3 buckets used by the EMR
 # analytics and Step Function components created ~1300 lines below).
@@ -197,7 +194,7 @@ pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
 # ChromaDB compaction stack DELETED (teardown PR #3 of the Chroma
 # removal): the 10GB enhanced-compaction Lambda, lines/words queues,
 # docker pipeline and alarms are gone. The shared snapshot bucket
-# (shared_chromadb_buckets) survives until the bucket-teardown PR.
+# followed in the bucket-teardown PR (#6) — no Chroma storage remains.
 
 # Summary/line-item update pipeline + stream processor (Chroma-free;
 # relocated in #1530). Without lines/words env vars the stream
@@ -278,7 +275,6 @@ from routes.word_similarity_cache_generator.infra import (
 )
 
 word_similarity_cache_generator = create_word_similarity_cache_generator(
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     vpc_subnet_ids=nat.private_subnet_ids.apply(lambda ids: [ids[0]]),
     lambda_security_group_id=security.sg_lambda_id,
 )
@@ -327,7 +323,6 @@ upload_images = UploadImages(
     "upload-images",
     raw_bucket=raw_bucket,
     site_bucket=site_bucket,
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
     vpc_subnet_ids=upload_images_subnets,
     security_group_id=security.sg_lambda_id,
     label_validation_project_name=label_validation_project_name,
@@ -1067,22 +1062,11 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
 # pulumi.export("instance_registry_table_name", instance_registry.table_name)
 # pulumi.export("ml_packages_built", ml_package_builder.packages)
 
-# ChromaDB bucket export (compaction stack deleted in teardown PR #3)
-pulumi.export("chromadb_bucket_name", shared_chromadb_buckets.bucket_name)
 pulumi.export(
     "stream_processor_function_arn",
     receipt_update_queues.stream_processor_arn,
 )
 
-# Keep historical stack-output names; the bucket is the shared one.
-pulumi.export(
-    "embedding_chromadb_bucket_name",
-    shared_chromadb_buckets.bucket_name,
-)
-pulumi.export(
-    "embedding_chromadb_bucket_arn",
-    shared_chromadb_buckets.bucket_arn,
-)
 
 # Export label cache updater if successfully imported
 try:
@@ -1258,8 +1242,6 @@ merge_receipt_lambda = create_merge_receipt_lambda(
     raw_bucket_name=raw_bucket.bucket,
     site_bucket_name=site_bucket.bucket,
     image_bucket_name=upload_images.image_bucket.bucket,
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
 )
 pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
 pulumi.export(
@@ -1273,8 +1255,6 @@ resegment_receipt_lambda = create_resegment_receipt_lambda(
     raw_bucket_name=raw_bucket.bucket,
     site_bucket_name=site_bucket.bucket,
     image_bucket_name=upload_images.image_bucket.bucket,
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
 )
 pulumi.export(
     "resegment_receipt_lambda_arn", resegment_receipt_lambda.lambda_arn
