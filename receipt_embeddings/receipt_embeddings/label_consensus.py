@@ -17,6 +17,7 @@ from collections.abc import Callable, Mapping
 from typing import Any, Optional
 
 from receipt_dynamo.constants import CORE_LABEL_NAMES
+
 from receipt_embeddings.keys import word_vector_key
 from receipt_embeddings.service_limits import MAX_SEARCH_RESULTS, WORD_INDEX
 from receipt_embeddings.vector_client import VectorSearchClient
