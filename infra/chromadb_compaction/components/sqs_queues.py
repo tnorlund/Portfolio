@@ -202,79 +202,10 @@ class ChromaDBQueues(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create receipt summary update dead letter queue
-        self.summary_dlq = aws.sqs.Queue(
-            f"{name}-summary-dlq",
-            message_retention_seconds=1209600,  # 14 days
-            visibility_timeout_seconds=300,  # 5 minutes
-            receive_wait_time_seconds=0,  # Short polling
-            tags={
-                "Project": "ChromaDB",
-                "Component": "Summary-DLQ",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Create receipt summary update queue
-        # Uses delay_seconds=15 to batch multiple label changes for the same receipt
-        self.summary_queue = aws.sqs.Queue(
-            f"{name}-summary-queue",
-            message_retention_seconds=345600,  # 4 days
-            visibility_timeout_seconds=120,  # 2x summary updater Lambda timeout (60s)
-            receive_wait_time_seconds=20,  # Long polling
-            delay_seconds=15,  # 15-second delay for batching multiple changes
-            redrive_policy=Output.all(self.summary_dlq.arn).apply(
-                lambda args: json.dumps(
-                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 3}
-                )
-            ),
-            tags={
-                "Project": "ChromaDB",
-                "Component": "Summary-Queue",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(parent=self),
-        )
-
-        # Line-item recompute DLQ + queue (mirrors the summary pair; the
-        # consumer rewrites RECEIPT_LINE_ITEM rows when a receipt's summary
-        # changes).
-        self.line_item_dlq = aws.sqs.Queue(
-            f"{name}-line-item-dlq",
-            message_retention_seconds=1209600,  # 14 days
-            visibility_timeout_seconds=300,
-            receive_wait_time_seconds=0,
-            tags={
-                "Project": "ChromaDB",
-                "Component": "LineItem-DLQ",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(parent=self),
-        )
-
-        self.line_item_queue = aws.sqs.Queue(
-            f"{name}-line-item-queue",
-            message_retention_seconds=345600,  # 4 days
-            visibility_timeout_seconds=240,  # 2x line-item Lambda timeout
-            receive_wait_time_seconds=20,
-            delay_seconds=15,  # batch bursts of summary rewrites
-            redrive_policy=Output.all(self.line_item_dlq.arn).apply(
-                lambda args: json.dumps(
-                    {"deadLetterTargetArn": args[0], "maxReceiveCount": 3}
-                )
-            ),
-            tags={
-                "Project": "ChromaDB",
-                "Component": "LineItem-Queue",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(parent=self),
-        )
+        # Summary and line-item queues MOVED to infra/receipt_update_queues
+        # (alias-preserving relocation; teardown PR #2 of the Chroma
+        # removal) — they are Chroma-independent and must outlive this
+        # component's deletion.
 
         # Create queue policies with least-privilege access
         self.lines_queue_policy = aws.sqs.QueuePolicy(
@@ -295,28 +226,13 @@ class ChromaDBQueues(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        self.summary_queue_policy = aws.sqs.QueuePolicy(
-            f"{name}-summary-queue-policy",
-            queue_url=self.summary_queue.url,
-            policy=_create_queue_policy_document(
-                self.summary_queue.arn, self._producer_role_arns
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
         # Export useful properties
         self.lines_queue_url = self.lines_queue.url
         self.lines_queue_arn = self.lines_queue.arn
         self.words_queue_url = self.words_queue.url
         self.words_queue_arn = self.words_queue.arn
-        self.summary_queue_url = self.summary_queue.url
-        self.summary_queue_arn = self.summary_queue.arn
         self.lines_dlq_arn = self.lines_dlq.arn
         self.words_dlq_arn = self.words_dlq.arn
-        self.summary_dlq_arn = self.summary_dlq.arn
-        self.line_item_queue_url = self.line_item_queue.url
-        self.line_item_queue_arn = self.line_item_queue.arn
-        self.line_item_dlq_arn = self.line_item_dlq.arn
 
         # Register outputs
         self.register_outputs(
@@ -325,14 +241,8 @@ class ChromaDBQueues(ComponentResource):
                 "lines_queue_arn": self.lines_queue_arn,
                 "words_queue_url": self.words_queue_url,
                 "words_queue_arn": self.words_queue_arn,
-                "summary_queue_url": self.summary_queue_url,
-                "summary_queue_arn": self.summary_queue_arn,
                 "lines_dlq_arn": self.lines_dlq_arn,
                 "words_dlq_arn": self.words_dlq_arn,
-                "summary_dlq_arn": self.summary_dlq_arn,
-                "line_item_queue_url": self.line_item_queue_url,
-                "line_item_queue_arn": self.line_item_queue_arn,
-                "line_item_dlq_arn": self.line_item_dlq_arn,
             }
         )
 

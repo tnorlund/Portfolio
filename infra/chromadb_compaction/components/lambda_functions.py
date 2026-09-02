@@ -220,19 +220,9 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self, depends_on=[self.lambda_role]),
         )
 
-        # Create CloudWatch log groups (auto-generated names)
-        self.stream_log_group = aws.cloudwatch.LogGroup(
-            f"{name}-stream-log-group",
-            retention_in_days=14,
-            tags={
-                "Project": "ChromaDB",
-                "Component": "StreamProcessor",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(parent=self),
-        )
-
+        # Stream processor, summary/line-item updaters and their log
+        # groups/ESMs MOVED to infra/receipt_update_queues (alias-
+        # preserving relocation; teardown PR #2 of the Chroma removal).
         self.compaction_log_group = aws.cloudwatch.LogGroup(
             f"{name}-compaction-log-group",
             retention_in_days=14,
@@ -245,145 +235,6 @@ class HybridLambdaDeployment(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Create zip-based Lambda for stream processing
-        self.stream_processor_function = aws.lambda_.Function(
-            f"{name}-stream-processor",
-            runtime="python3.13",
-            architectures=["arm64"],
-            code=pulumi.AssetArchive(
-                {
-                    "stream_processor.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "stream_processor.py"
-                        )
-                    ),
-                    # Ensure utils are packaged
-                    "utils/__init__.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "utils"
-                            / "__init__.py"
-                        )
-                    ),
-                    "utils/aws_clients.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "utils"
-                            / "aws_clients.py"
-                        )
-                    ),
-                    "utils/logging.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "utils"
-                            / "logging.py"
-                        )
-                    ),
-                    "utils/metrics.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "utils"
-                            / "metrics.py"
-                        )
-                    ),
-                    "utils/response.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "utils"
-                            / "response.py"
-                        )
-                    ),
-                    "utils/timeout_handler.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "utils"
-                            / "timeout_handler.py"
-                        )
-                    ),
-                    "utils/tracing.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "utils"
-                            / "tracing.py"
-                        )
-                    ),
-                    "utils/sqs_batching.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "utils"
-                            / "sqs_batching.py"
-                        )
-                    ),
-                    "utils/lambda_types.py": pulumi.FileAsset(
-                        str(
-                            Path(__file__).parent.parent
-                            / "lambdas"
-                            / "utils"
-                            / "lambda_types.py"
-                        )
-                    ),
-                }
-            ),
-            handler="stream_processor.lambda_handler",
-            role=self.lambda_role.arn,
-            timeout=120,  # 2 minutes timeout (reduced from 5 to prevent long hangs)
-            memory_size=256,  # Lightweight processing
-            # Removed reserved_concurrent_executions to allow parallel processing
-            # Stream processor can safely process multiple images in parallel
-            # No VPC config - stream processor only needs AWS service access (DynamoDB, SQS, CloudWatch)
-            environment={
-                "variables": {
-                    "LINES_QUEUE_URL": chromadb_queues.lines_queue_url,
-                    "WORDS_QUEUE_URL": chromadb_queues.words_queue_url,
-                    "RECEIPT_SUMMARY_QUEUE_URL": chromadb_queues.summary_queue_url,
-                    "LINE_ITEM_QUEUE_URL": chromadb_queues.line_item_queue_url,
-                    # Enables the inline vector-attr freshening leg
-                    # (receipt_dynamo_stream.vector_freshening); the leg is
-                    # inert when unset. Table name derived from the ARN
-                    # already passed to this component.
-                    "DYNAMO_TABLE_NAME": Output.from_input(
-                        dynamodb_table_arn
-                    ).apply(lambda arn: arn.split("/")[-1]),
-                    "LOG_LEVEL": "INFO",
-                    # Stream processing configuration (aligned with code and infrastructure)
-                    "MAX_RECORDS_PER_INVOCATION": "10",  # Matches DynamoDB Stream batch_size
-                    "LAMBDA_TIMEOUT_SECONDS": "120",  # Matches Lambda timeout setting
-                    "MAX_CONSECUTIVE_FAILURES": "10",  # Circuit breaker threshold
-                }
-            },
-            description=(
-                "Processes DynamoDB stream events for ChromaDB metadata "
-                "synchronization"
-            ),
-            tags={
-                "Project": "ChromaDB",
-                "Component": "StreamProcessor",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-                # Required for the layer updater to auto-attach new versions
-                "environment": stack,
-            },
-            layers=[dynamo_layer.arn, dynamo_stream_layer.arn],
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[
-                    self.lambda_role,
-                    self.stream_log_group,
-                ],
-                ignore_changes=["layers"],
-            ),
-        )
-
         # Use the Lambda function created by DockerImageComponent
         self.enhanced_compaction_function = (
             self.docker_image.docker_image.lambda_function
@@ -394,364 +245,14 @@ class HybridLambdaDeployment(ComponentResource):
             name, dynamodb_stream_arn, chromadb_queues
         )
 
-        # Receipt Summary Updater Lambda (zip-based)
-        # Processes SQS messages to recompute ReceiptSummary when labels change
-        summary_updater_code = pulumi.AssetArchive(
-            {
-                "handler.py": pulumi.FileAsset(
-                    str(
-                        Path(__file__).parent.parent.parent
-                        / "receipt_summary_updater"
-                        / "handler.py"
-                    )
-                ),
-                "summary_processor.py": pulumi.FileAsset(
-                    str(
-                        Path(__file__).parent.parent.parent
-                        / "receipt_summary_updater"
-                        / "summary_processor.py"
-                    )
-                ),
-                # Tender classifier: bundled from the canonical source
-                # (stdlib-only module) rather than copied, so the logic
-                # cannot fork. Same pattern as the line-item updater.
-                "receipt_upload/__init__.py": pulumi.StringAsset(
-                    "# deploy-time stub: only tender is bundled; the real\n"
-                    "# receipt_upload __init__ pulls PIL and the full "
-                    "package.\n"
-                ),
-                "receipt_upload/tender.py": pulumi.FileAsset(
-                    str(
-                        Path(__file__).parent.parent.parent.parent
-                        / "receipt_upload"
-                        / "receipt_upload"
-                        / "tender.py"
-                    )
-                ),
-            }
-        )
-
-        self.summary_updater_log_group = aws.cloudwatch.LogGroup(
-            f"{name}-summary-updater-log-group",
-            retention_in_days=14,
-            tags={
-                "Project": "ChromaDB",
-                "Component": "SummaryUpdater",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(parent=self),
-        )
-
-        self.summary_updater_function = aws.lambda_.Function(
-            f"{name}-summary-updater",
-            runtime="python3.13",
-            architectures=["arm64"],
-            code=summary_updater_code,
-            handler="handler.lambda_handler",
-            role=self.lambda_role.arn,
-            timeout=60,  # 60s; SQS visibility is 2x (120s) for retry headroom
-            memory_size=256,  # Lightweight processing
-            environment={
-                "variables": {
-                    "DYNAMODB_TABLE_NAME": Output.all(
-                        dynamodb_table_arn
-                    ).apply(lambda args: args[0].split("/")[-1]),
-                    "LOG_LEVEL": "INFO",
-                }
-            },
-            description=(
-                "Recomputes ReceiptSummary when ReceiptWordLabel or "
-                "ReceiptPlace records change"
-            ),
-            tags={
-                "Project": "ChromaDB",
-                "Component": "SummaryUpdater",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-                "environment": stack,
-            },
-            layers=[dynamo_layer.arn],
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[
-                    self.lambda_role,
-                    self.summary_updater_log_group,
-                ],
-                ignore_changes=["layers"],
-            ),
-        )
-
-        # Event source mapping for summary queue
-        self.summary_event_source_mapping = aws.lambda_.EventSourceMapping(
-            f"{name}-summary-event-source-mapping",
-            event_source_arn=chromadb_queues.summary_queue_arn,
-            function_name=self.summary_updater_function.arn,
-            batch_size=100,  # Process up to 100 messages per invocation
-            maximum_batching_window_in_seconds=5,  # Batch for up to 5 seconds
-            function_response_types=["ReportBatchItemFailures"],
-            opts=ResourceOptions(parent=self),
-        )
-
-        # ------------------------------------------------------------------
-        # Line-item updater: rewrites RECEIPT_LINE_ITEM rows when a
-        # receipt's summary changes. Bundles the CANONICAL extraction
-        # modules from receipt_upload as FileAssets -- no copies live in
-        # the repo, so the logic cannot fork (the build_receipt_rows
-        # shadowing lesson).
-        # ------------------------------------------------------------------
-        _repo_root = Path(__file__).parent.parent.parent.parent
-        line_item_updater_code = pulumi.AssetArchive(
-            {
-                "handler.py": pulumi.FileAsset(
-                    _repo_root
-                    / "infra"
-                    / "receipt_line_item_updater"
-                    / "handler.py"
-                ),
-                "line_item_processor.py": pulumi.FileAsset(
-                    _repo_root
-                    / "infra"
-                    / "receipt_line_item_updater"
-                    / "line_item_processor.py"
-                ),
-                "receipt_upload/__init__.py": pulumi.StringAsset(
-                    "# deploy-time stub: only line_items is bundled; the real\n"
-                    "# receipt_upload __init__ pulls PIL and the full package.\n"
-                ),
-                # Must be non-empty: an empty StringAsset serializes with no
-                # "text" field and crashes the Python SDK when the engine
-                # echoes the archive back ("Invalid asset encountered when
-                # unmarshalling resource property").
-                "receipt_upload/line_items/__init__.py": pulumi.StringAsset(
-                    "# namespace stub\n"
-                ),
-                "receipt_upload/line_items/geometry.py": pulumi.FileAsset(
-                    _repo_root
-                    / "receipt_upload"
-                    / "receipt_upload"
-                    / "line_items"
-                    / "geometry.py"
-                ),
-                "receipt_upload/line_items/blocks.py": pulumi.FileAsset(
-                    _repo_root
-                    / "receipt_upload"
-                    / "receipt_upload"
-                    / "line_items"
-                    / "blocks.py"
-                ),
-                # Producer stamps shared with the Mac worker's ingest path;
-                # the consistency checker needs them to tell worker-written
-                # rows from its own recompute.
-                "receipt_upload/line_items/provenance.py": pulumi.FileAsset(
-                    _repo_root
-                    / "receipt_upload"
-                    / "receipt_upload"
-                    / "line_items"
-                    / "provenance.py"
-                ),
-                "receipt_upload/line_items/reocr.py": pulumi.FileAsset(
-                    _repo_root
-                    / "receipt_upload"
-                    / "receipt_upload"
-                    / "line_items"
-                    / "reocr.py"
-                ),
-                "receipt_upload/line_items/reocr_strategy.py": pulumi.FileAsset(
-                    _repo_root
-                    / "receipt_upload"
-                    / "receipt_upload"
-                    / "line_items"
-                    / "reocr_strategy.py"
-                ),
-                # reocr.py imports geometry.transformations directly; the
-                # real geometry __init__ pulls the full package.
-                "receipt_upload/geometry/__init__.py": pulumi.StringAsset(
-                    "# namespace stub\n"
-                ),
-                "receipt_upload/geometry/transformations.py": pulumi.FileAsset(
-                    _repo_root
-                    / "receipt_upload"
-                    / "receipt_upload"
-                    / "geometry"
-                    / "transformations.py"
-                ),
-                "receipt_upload/line_items/assets/block_role_priors_v1.json": pulumi.FileAsset(
-                    _repo_root
-                    / "receipt_upload"
-                    / "receipt_upload"
-                    / "line_items"
-                    / "assets"
-                    / "block_role_priors_v1.json"
-                ),
-                "receipt_upload/line_items/assets/block_role_priors_v2.json": pulumi.FileAsset(
-                    _repo_root
-                    / "receipt_upload"
-                    / "receipt_upload"
-                    / "line_items"
-                    / "assets"
-                    / "block_role_priors_v2.json"
-                ),
-                "receipt_upload/line_items/assets/reocr_ladder.json": pulumi.FileAsset(
-                    _repo_root
-                    / "receipt_upload"
-                    / "receipt_upload"
-                    / "line_items"
-                    / "assets"
-                    / "reocr_ladder.json"
-                ),
-            }
-        )
-
-        self.line_item_updater_log_group = aws.cloudwatch.LogGroup(
-            f"{name}-line-item-updater-log-group",
-            retention_in_days=14,
-            tags={
-                "Project": "ChromaDB",
-                "Component": "LineItemUpdater",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-            },
-            opts=ResourceOptions(parent=self),
-        )
-
-        self.line_item_updater_function = aws.lambda_.Function(
-            f"{name}-line-item-updater",
-            runtime="python3.13",
-            architectures=["arm64"],
-            code=line_item_updater_code,
-            handler="handler.lambda_handler",
-            role=self.lambda_role.arn,
-            timeout=120,  # extraction fetches words+sections; queue vis is 2x
-            memory_size=512,
-            environment={
-                "variables": {
-                    "DYNAMODB_TABLE_NAME": Output.all(
-                        dynamodb_table_arn
-                    ).apply(lambda args: args[0].split("/")[-1]),
-                    "LOG_LEVEL": "INFO",
-                    # Deterministic name (trigger_reocr_lambda is created
-                    # later in __main__, so no resource ref is possible):
-                    # TriggerReOCRLambda names it
-                    # "{component}-{stack}-trigger-reocr" with
-                    # component="trigger-reocr".
-                    "TRIGGER_REOCR_FUNCTION_NAME": (
-                        f"trigger-reocr-{stack}-trigger-reocr"
-                    ),
-                    # LINE_ITEM_REFINE (Tier 3): deterministic queue NAME
-                    # (the queue is created later in __main__ by
-                    # UploadImages, so no resource ref is possible); the
-                    # processor resolves the URL at runtime. Rollout is
-                    # gated: an outdated worker binary fails refine jobs
-                    # noisily, so enable only after workers update.
-                    "OCR_JOB_QUEUE_NAME": (f"upload-images-{stack}-ocr-queue"),
-                    "ENABLE_LINE_ITEM_REFINE": (
-                        pulumi.Config("chromadb").get(
-                            "enable-line-item-refine"
-                        )
-                        or "false"
-                    ),
-                }
-            },
-            description=(
-                "Rewrites RECEIPT_LINE_ITEM rows via the band-block decoder "
-                "when a receipt's summary changes"
-            ),
-            tags={
-                "Project": "ChromaDB",
-                "Component": "LineItemUpdater",
-                "Environment": stack,
-                "ManagedBy": "Pulumi",
-                "environment": stack,
-            },
-            layers=[dynamo_layer.arn],
-            opts=ResourceOptions(
-                parent=self,
-                depends_on=[
-                    self.lambda_role,
-                    self.line_item_updater_log_group,
-                ],
-                ignore_changes=["layers"],
-            ),
-        )
-
-        # Reconciliation-mismatch re-OCR: the updater invokes the trigger
-        # Lambda (deterministic name, wildcard account/region — the
-        # resource is created later in __main__).
-        aws.iam.RolePolicy(
-            f"{name}-line-item-invoke-reocr-policy",
-            role=self.lambda_role.id,
-            policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": "lambda:InvokeFunction",
-                            "Resource": (
-                                "arn:aws:lambda:*:*:function:"
-                                f"trigger-reocr-{stack}-trigger-reocr"
-                            ),
-                        }
-                    ],
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # LINE_ITEM_REFINE (Tier 3): the updater enqueues Mac-worker
-        # refine jobs on the OCR job queue (deterministic name, wildcard
-        # account/region — the queue is created later in __main__).
-        aws.iam.RolePolicy(
-            f"{name}-line-item-refine-queue-policy",
-            role=self.lambda_role.id,
-            policy=json.dumps(
-                {
-                    "Version": "2012-10-17",
-                    "Statement": [
-                        {
-                            "Effect": "Allow",
-                            "Action": [
-                                "sqs:SendMessage",
-                                "sqs:GetQueueUrl",
-                            ],
-                            "Resource": (
-                                "arn:aws:sqs:*:*:"
-                                f"upload-images-{stack}-ocr-queue"
-                            ),
-                        }
-                    ],
-                }
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        self.line_item_event_source_mapping = aws.lambda_.EventSourceMapping(
-            f"{name}-line-item-event-source-mapping",
-            event_source_arn=chromadb_queues.line_item_queue_arn,
-            function_name=self.line_item_updater_function.arn,
-            batch_size=50,
-            maximum_batching_window_in_seconds=5,
-            function_response_types=["ReportBatchItemFailures"],
-            # The inline sqs_policy grants receive/delete on the queue;
-            # without the explicit dependency AWS can reject the mapping
-            # when it is created before the IAM update lands.
-            opts=ResourceOptions(parent=self, depends_on=[self.sqs_policy]),
-        )
-
         # Export useful properties
-        self.stream_processor_arn = self.stream_processor_function.arn
         self.enhanced_compaction_arn = self.enhanced_compaction_function.arn
-        self.summary_updater_arn = self.summary_updater_function.arn
-        self.line_item_updater_arn = self.line_item_updater_function.arn
         self.role_arn = self.lambda_role.arn
 
         # Register outputs
         self.register_outputs(
             {
-                "stream_processor_arn": self.stream_processor_arn,
                 "enhanced_compaction_arn": self.enhanced_compaction_arn,
-                "summary_updater_arn": self.summary_updater_arn,
                 "role_arn": self.role_arn,
                 "docker_image_uri": self.docker_image.image_uri,
             }
@@ -775,20 +276,6 @@ class HybridLambdaDeployment(ComponentResource):
                     {
                         "Version": "2012-10-17",
                         "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "dynamodb:DescribeStream",
-                                    "dynamodb:GetRecords",
-                                    "dynamodb:GetShardIterator",
-                                    "dynamodb:ListStreams",
-                                ],
-                                "Resource": [
-                                    args[0],  # Table ARN
-                                    # Stream ARN pattern
-                                    f"{args[0]}/stream/*",
-                                ],
-                            },
                             {
                                 "Effect": "Allow",
                                 "Action": [
@@ -852,10 +339,6 @@ class HybridLambdaDeployment(ComponentResource):
                 chromadb_queues.words_queue_arn,
                 chromadb_queues.lines_dlq_arn,
                 chromadb_queues.words_dlq_arn,
-                chromadb_queues.summary_queue_arn,
-                chromadb_queues.summary_dlq_arn,
-                chromadb_queues.line_item_queue_arn,
-                chromadb_queues.line_item_dlq_arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -875,10 +358,6 @@ class HybridLambdaDeployment(ComponentResource):
                                     args[1],  # Words queue ARN
                                     args[2],  # Lines DLQ ARN
                                     args[3],  # Words DLQ ARN
-                                    args[4],  # Summary queue ARN
-                                    args[5],  # Summary DLQ ARN
-                                    args[6],  # Line-item queue ARN
-                                    args[7],  # Line-item DLQ ARN
                                 ],
                             }
                         ],
@@ -943,21 +422,6 @@ class HybridLambdaDeployment(ComponentResource):
         chromadb_queues: ChromaDBQueues,
     ):
         """Create event source mappings for both Lambda functions."""
-
-        # DynamoDB stream to stream processor
-        self.stream_event_source_mapping = aws.lambda_.EventSourceMapping(
-            f"{name}-stream-event-source-mapping",
-            event_source_arn=dynamodb_stream_arn,
-            function_name=self.stream_processor_function.arn,
-            starting_position="LATEST",
-            batch_size=10,  # Max batch size for DynamoDB streams
-            maximum_batching_window_in_seconds=5,  # Batch more records per invocation (up to 5 seconds)
-            parallelization_factor=5,  # Process up to 5 shards in parallel (increases throughput)
-            maximum_retry_attempts=3,
-            maximum_record_age_in_seconds=3600,
-            bisect_batch_on_function_error=True,
-            opts=ResourceOptions(parent=self),
-        )
 
         # SQS queues to enhanced compaction handler
         # Standard queues support batch_size up to 10,000 and batching windows.
