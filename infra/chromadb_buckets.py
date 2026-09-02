@@ -10,7 +10,7 @@
 
 import pulumi
 
-from chromadb_compaction import ChromaDBBuckets
+from chromadb_shared_buckets import ChromaDBBuckets
 
 # Create the bucket here (same as __main__.py was doing)
 # This ensures routes can import it before __main__.py runs
