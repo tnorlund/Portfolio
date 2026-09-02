@@ -18,6 +18,7 @@ from typing import Any, Optional
 
 from receipt_dynamo.constants import CORE_LABEL_NAMES
 
+from receipt_embeddings.keys import word_vector_key
 from receipt_embeddings.service_limits import MAX_SEARCH_RESULTS, WORD_INDEX
 from receipt_embeddings.vector_client import VectorSearchClient
 
@@ -42,17 +43,6 @@ DEFAULT_TOP_K = 25
 #: (missing keys silently omitted — DynamoClient.get_receipt_word_labels
 #: is the production implementation).
 LabelRowLoader = Callable[[list[tuple[str, int, int, int, str]]], list[Any]]
-
-
-def word_vector_key(
-    image_id: str, receipt_id: int, line_id: int, word_id: int
-) -> str:
-    """Canonical word-vector key shared by both backends."""
-
-    return (
-        f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-        f"#LINE#{line_id:05d}#WORD#{word_id:05d}"
-    )
 
 
 def _distance_to_similarity(distance: float) -> float:

@@ -34,14 +34,22 @@ from receipt_chroma.embedding.metadata.line_metadata import (  # noqa: E402
     enrich_row_metadata_with_anchors,
 )
 from receipt_dynamo import DynamoClient  # noqa: E402
-from receipt_dynamo.constants import ValidationStatus  # noqa: E402
 from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
     EntityNotFoundError,
 )
+from scripts.similarity_harness.capture_golden import (  # noqa: E402
+    CHROMA_ENVIRONMENT,
+    DEV_DATABASE,
+)
+from scripts.similarity_harness.common import validate_fixture  # noqa: E402
+
 from receipt_embeddings import (  # noqa: E402
     DynamoVectorSearchClient,
     EmbeddingWriter,
     EmbeddingWriteRequest,
+    line_canonical_key,
+    word_canonical_key,
+    word_label_statuses,
 )
 from receipt_embeddings.formatting import (  # noqa: E402
     format_visual_row,
@@ -49,6 +57,7 @@ from receipt_embeddings.formatting import (  # noqa: E402
     get_row_embedding_inputs,
     group_lines_into_visual_rows,
 )
+from receipt_embeddings.keys import dynamo_key_from_canonical  # noqa: E402
 from receipt_embeddings.quotas import (  # noqa: E402
     MAX_GET_LIMIT,
     ensure_get_ids_within_quota,
@@ -59,11 +68,6 @@ from receipt_embeddings.service_limits import (  # noqa: E402
     MAX_SEARCH_RESULTS,
     WORD_INDEX,
 )
-from scripts.similarity_harness.capture_golden import (  # noqa: E402
-    CHROMA_ENVIRONMENT,
-    DEV_DATABASE,
-)
-from scripts.similarity_harness.common import validate_fixture  # noqa: E402
 
 DEV_TABLE = "ReceiptsTable-dc5be22"
 DEFAULT_REGION = "us-east-1"
@@ -281,31 +285,6 @@ def _classify_receipt_skip(exc: Exception) -> str:
     return f"error:{type(exc).__name__}"
 
 
-def _label_statuses(labels: Sequence[Any]) -> dict[tuple[int, int], str]:
-    """Same rule as the stream freshener: any terminal human verdict
-    (VALID or INVALID) -> validated, else any PENDING -> pending, else
-    none. INVALID-only words must stay in the validated population or
-    the word index's filter would drop exactly the counterexamples
-    similar_labeled_words needs for evidence_against (E3 review P1-2).
-    """
-    by_word: dict[tuple[int, int], list[str]] = {}
-    for label in labels:
-        key = (int(label.line_id), int(label.word_id))
-        by_word.setdefault(key, []).append(str(label.validation_status))
-    statuses: dict[tuple[int, int], str] = {}
-    for key, values in by_word.items():
-        if (
-            ValidationStatus.VALID.value in values
-            or ValidationStatus.INVALID.value in values
-        ):
-            statuses[key] = "validated"
-        elif ValidationStatus.PENDING.value in values:
-            statuses[key] = "pending"
-        else:
-            statuses[key] = "none"
-    return statuses
-
-
 def _section_by_line(sections: Sequence[Any]) -> dict[int, str]:
     result: dict[int, str] = {}
     for section in sections:
@@ -339,10 +318,10 @@ def build_requests(
         row_inputs, visual_rows, strict=True
     ):
         primary_line_id = int(line_ids[0])
-        canonical_key = (
-            f"IMAGE#{details.receipt.image_id}#"
-            f"RECEIPT#{details.receipt.receipt_id:05d}#"
-            f"LINE#{primary_line_id:05d}"
+        canonical_key = line_canonical_key(
+            details.receipt.image_id,
+            details.receipt.receipt_id,
+            primary_line_id,
         )
         section_values = {
             section_by_line.get(int(line_id), "") for line_id in line_ids
@@ -385,11 +364,10 @@ def build_requests(
             )
         )
 
-    statuses = _label_statuses(details.labels)
+    statuses = word_label_statuses(details.labels)
     for word in details.words:
-        canonical_key = (
-            f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#"
-            f"LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
+        canonical_key = word_canonical_key(
+            word.image_id, word.receipt_id, word.line_id, word.word_id
         )
         requests.append(
             EmbeddingWriteRequest(
@@ -488,7 +466,7 @@ def repair_label_status(
     label events, so items backfilled before the terminal-verdict rule
     (INVALID-only -> validated) keep their stale classification forever.
     This mode re-aggregates each in-scope word's current
-    ``ReceiptWordLabel`` rows with the SAME ``_label_statuses`` rule the
+    ``ReceiptWordLabel`` rows with the SAME ``word_label_statuses`` rule the
     writer uses and UpdateItems only the ``label_status`` attribute
     where it differs — idempotent (a second run plans zero updates), no
     vector writes, never creates items (``attribute_exists`` guard),
@@ -525,7 +503,7 @@ def repair_label_status(
         except Exception as exc:  # noqa: BLE001 - isolate one receipt
             receipt_skips.append({"receipt": receipt_key, "reason": str(exc)})
             continue
-        statuses = _label_statuses(labels)
+        statuses = word_label_statuses(labels)
         for item in embeddings:
             if not isinstance(item, ReceiptWordEmbedding):
                 continue
@@ -613,14 +591,6 @@ def determine_exit_code(
     return 0
 
 
-def _item_key_from_canonical(key: str) -> dict[str, Any]:
-    image_part, _, item_part = key.partition("#RECEIPT#")
-    return {
-        "PK": {"S": image_part},
-        "SK": {"S": f"RECEIPT#{item_part}#EMBEDDING"},
-    }
-
-
 def verify_written_items(
     dynamodb_client: Any,
     table_name: str,
@@ -639,7 +609,7 @@ def verify_written_items(
     """
     if not written_keys:
         return {"status": "not_needed", "checked": 0, "missing_keys": []}
-    unaccounted = {key: _item_key_from_canonical(key) for key in written_keys}
+    unaccounted = {key: dynamo_key_from_canonical(key) for key in written_keys}
     all_keys = list(unaccounted.items())
     for offset in range(0, len(all_keys), 100):
         chunk = all_keys[offset : offset + 100]

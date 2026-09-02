@@ -645,6 +645,13 @@ def _fetch_lines_from_dynamo(timing: TimingStats, dynamo_client) -> dict:
     in-memory dairy filter below clearly intends to consider.
     Returns the same ``{ids, metadatas}`` shape the Chroma paths return.
     """
+    # receipt_embeddings.__init__ pulls the writer/OpenAI stack; import
+    # the leaf keys module only on this Dynamo path so Chroma-mode
+    # handlers (and unit tests that stub receipt_dynamo) still load.
+    from receipt_embeddings.keys import (  # pylint: disable=import-outside-toplevel
+        parse_embedding_pk_sk,
+    )
+
     step_start = time.time()
     client = dynamo_client._client  # pylint: disable=protected-access
     rows = []
@@ -664,20 +671,19 @@ def _fetch_lines_from_dynamo(timing: TimingStats, dynamo_client) -> dict:
                 continue
             pk = item["PK"]["S"]  # IMAGE#<uuid>
             sk = item["SK"]["S"]  # RECEIPT#NNNNN#LINE#NNNNN#EMBEDDING
-            parts = sk.split("#")
-            if len(parts) < 4 or not sk.endswith("#EMBEDDING"):
+            parsed = parse_embedding_pk_sk(pk, sk)
+            if parsed is None or parsed.word_id is not None:
                 continue
-            image_id = pk.split("#", 1)[1]
-            receipt_id = int(parts[1])
-            line_id = int(parts[3])
+            image_id = parsed.image_id
+            receipt_id = parsed.receipt_id
+            line_id = parsed.line_id
             row_line_ids = [
                 int(value["N"])
                 for value in item.get("row_line_ids", {}).get("L", [])
             ] or [line_id]
             rows.append(
                 (
-                    f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-                    f"#LINE#{line_id:05d}",
+                    parsed.canonical(),
                     {
                         "text": text,
                         "image_id": image_id,

@@ -20,7 +20,8 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 from receipt_chroma.embedding.metadata.line_metadata import (
     enrich_row_metadata_with_anchors,
 )
-from receipt_dynamo.constants import ValidationStatus
+from receipt_embeddings import EmbeddingWriteRequest
+from receipt_embeddings.label_status import word_label_statuses
 
 logger = logging.getLogger(__name__)
 
@@ -30,35 +31,6 @@ DUAL_WRITE_ENV_VAR = "DUAL_WRITE_EMBEDDINGS"
 def dual_write_embeddings_enabled() -> bool:
     """True only when DUAL_WRITE_EMBEDDINGS is the string "true"."""
     return os.environ.get(DUAL_WRITE_ENV_VAR, "").strip().lower() == "true"
-
-
-def _word_label_statuses(
-    word_labels: Sequence[Any],
-) -> Dict[tuple, str]:
-    """Aggregate labels per word with the terminal-verdict rule.
-
-    Any terminal human verdict (VALID or INVALID) -> validated, else any
-    PENDING -> pending, else none — same rule as the backfill and the
-    stream freshener. INVALID-only words must stay in the validated
-    population or the word index's label_status filter would drop
-    exactly the counterexamples similar_labeled_words needs for
-    evidence_against (E3 review P1-2; codex flip P2)."""
-    by_word: Dict[tuple, List[str]] = {}
-    for label in word_labels:
-        key = (int(label.line_id), int(label.word_id))
-        by_word.setdefault(key, []).append(str(label.validation_status))
-    statuses: Dict[tuple, str] = {}
-    for key, values in by_word.items():
-        if (
-            ValidationStatus.VALID.value in values
-            or ValidationStatus.INVALID.value in values
-        ):
-            statuses[key] = "validated"
-        elif ValidationStatus.PENDING.value in values:
-            statuses[key] = "pending"
-        else:
-            statuses[key] = "none"
-    return statuses
 
 
 def build_ingest_embedding_requests(
@@ -80,8 +52,6 @@ def build_ingest_embedding_requests(
     grouping that produced the vectors, so rows are never re-derived here
     (no risk of misaligning a vector with a different grouping).
     """
-    from receipt_embeddings import EmbeddingWriteRequest
-
     lines_by_id = {int(line.line_id): line for line in lines}
     requests: List[Any] = []
 
@@ -126,7 +96,7 @@ def build_ingest_embedding_requests(
             )
         )
 
-    statuses = _word_label_statuses(word_labels)
+    statuses = word_label_statuses(word_labels)
     for word, vector in zip(words, word_embeddings_list, strict=True):
         requests.append(
             EmbeddingWriteRequest(

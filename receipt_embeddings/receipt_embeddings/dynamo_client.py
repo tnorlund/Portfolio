@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
@@ -11,6 +10,11 @@ from typing import Any
 from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
 from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
 
+from receipt_embeddings.keys import (
+    canonical_key_from_item,
+    embedding_item_key,
+    parse_canonical_key,
+)
 from receipt_embeddings.service_limits import (
     EMBEDDING_DIMENSIONS,
     INDEX_VECTOR_ATTRIBUTES,
@@ -28,10 +32,6 @@ from receipt_embeddings.vector_client import FilterValue, ScoredItem
 
 DEFAULT_TABLE_NAME = "ReceiptsTable-dc5be22"
 DEFAULT_REGION = "us-east-1"
-_CANONICAL_KEY = re.compile(
-    r"^IMAGE#(?P<image_id>[^#]+)#RECEIPT#(?P<receipt_id>[0-9]+)#"
-    r"LINE#(?P<line_id>[0-9]+)(?:#WORD#(?P<word_id>[0-9]+))?$"
-)
 # Fetch-join ruling (spec §3.2/§3.3 amendment): the line index's projection
 # omits fields the resolver's phone/address tiers need, so line retrieval is
 # SearchVectors -> strongly consistent BatchGetItem of the neighbor items ->
@@ -62,16 +62,6 @@ _WORD_LABEL_JOIN_ATTRIBUTES = (
     "label_proposed_by",
     "timestamp_added",
 )
-
-
-def _canonical_key(item: Mapping[str, Any], *, index: str) -> str:
-    image_id = str(item["image_id"])
-    receipt_id = int(item["receipt_id"])
-    line_id = int(item["line_id"])
-    prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-    if index == WORD_INDEX:
-        return f"{prefix}#WORD#{int(item['word_id']):05d}"
-    return prefix
 
 
 class DynamoVectorSearchClient:
@@ -145,7 +135,7 @@ class DynamoVectorSearchClient:
                 continue
             try:
                 item = parse_dynamodb_map(dict(raw_item))
-                key = _canonical_key(item, index=physical)
+                key = canonical_key_from_item(item, index=physical)
                 metadata = {
                     name: value
                     for name, value in item.items()
@@ -197,19 +187,12 @@ class DynamoVectorSearchClient:
             return results
         keys_by_id: dict[str, dict[str, Any]] = {}
         for result in results:
-            match = _CANONICAL_KEY.fullmatch(result.key)
-            if match is None or match.group("word_id") is not None:
+            parsed = parse_canonical_key(result.key)
+            if parsed is None or parsed.word_id is not None:
                 continue
-            values = match.groupdict()
-            keys_by_id[result.key] = {
-                "PK": {"S": f"IMAGE#{values['image_id']}"},
-                "SK": {
-                    "S": (
-                        f"RECEIPT#{int(values['receipt_id']):05d}#"
-                        f"LINE#{int(values['line_id']):05d}#EMBEDDING"
-                    )
-                },
-            }
+            keys_by_id[result.key] = embedding_item_key(
+                parsed.image_id, parsed.receipt_id, parsed.line_id
+            )
         if not keys_by_id:
             return results
         names = {
@@ -241,7 +224,7 @@ class DynamoVectorSearchClient:
                     ):
                         parsed = parse_dynamodb_map(dict(item))
                         try:
-                            joined_key = _canonical_key(
+                            joined_key = canonical_key_from_item(
                                 parsed, index=LINE_INDEX
                             )
                         except (KeyError, TypeError, ValueError):
@@ -300,15 +283,14 @@ class DynamoVectorSearchClient:
         rows_by_key: dict[str, list[dict[str, Any]]] = {}
         hydratable: set[str] = set()
         for result in results:
-            match = _CANONICAL_KEY.fullmatch(result.key)
-            if match is None or match.group("word_id") is None:
+            parsed = parse_canonical_key(result.key)
+            if parsed is None or parsed.word_id is None:
                 continue
-            values = match.groupdict()
-            pk = f"IMAGE#{values['image_id']}"
+            pk = f"IMAGE#{parsed.image_id}"
             prefix = (
-                f"RECEIPT#{int(values['receipt_id']):05d}#"
-                f"LINE#{int(values['line_id']):05d}#"
-                f"WORD#{int(values['word_id']):05d}#LABEL#"
+                f"RECEIPT#{parsed.receipt_id:05d}#"
+                f"LINE#{parsed.line_id:05d}#"
+                f"WORD#{parsed.word_id:05d}#LABEL#"
             )
             hydratable.add(result.key)
             for label in CORE_LABEL_NAMES:
@@ -400,27 +382,21 @@ class DynamoVectorSearchClient:
         return joined
 
     def get_vector(self, key: str) -> list[float]:
-        match = _CANONICAL_KEY.fullmatch(key)
-        if match is None:
+        parsed = parse_canonical_key(key)
+        if parsed is None:
             raise KeyError(f"invalid receipt vector key: {key}")
-        values = match.groupdict()
-        word_id = values["word_id"]
-        sk = (
-            f"RECEIPT#{int(values['receipt_id']):05d}#"
-            f"LINE#{int(values['line_id']):05d}"
-        )
-        if word_id is None:
+        if parsed.word_id is None:
             vector_attribute = INDEX_VECTOR_ATTRIBUTES[LINE_INDEX]
         else:
-            sk += f"#WORD#{int(word_id):05d}"
             vector_attribute = INDEX_VECTOR_ATTRIBUTES[WORD_INDEX]
-        sk += "#EMBEDDING"
         response = self._client.get_item(
             TableName=self.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{values['image_id']}"},
-                "SK": {"S": sk},
-            },
+            Key=embedding_item_key(
+                parsed.image_id,
+                parsed.receipt_id,
+                parsed.line_id,
+                parsed.word_id,
+            ),
             ProjectionExpression="#vector",
             ExpressionAttributeNames={"#vector": vector_attribute},
             ConsistentRead=True,

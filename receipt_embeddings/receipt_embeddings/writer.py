@@ -13,6 +13,10 @@ from receipt_dynamo.entities import (
     ReceiptWordEmbedding,
 )
 
+from receipt_embeddings.keys import (
+    canonical_from_dynamo_key,
+    embedding_item_key,
+)
 from receipt_embeddings.openai import embed_texts
 from receipt_embeddings.service_limits import (
     LINE_INDEX,
@@ -47,22 +51,19 @@ class EmbeddingWriteRequest:
 
     @property
     def key(self) -> dict[str, Any]:
-        sk = f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}"
         if self.kind == "word":
             if self.word_id is None:
                 raise ValueError("word requests require word_id")
-            sk += f"#WORD#{self.word_id:05d}"
-        elif self.kind != "line":
+            return embedding_item_key(
+                self.image_id, self.receipt_id, self.line_id, self.word_id
+            )
+        if self.kind != "line":
             raise ValueError(f"unsupported embedding kind: {self.kind!r}")
-        return {
-            "PK": {"S": f"IMAGE#{self.image_id}"},
-            "SK": {"S": f"{sk}#EMBEDDING"},
-        }
+        return embedding_item_key(self.image_id, self.receipt_id, self.line_id)
 
     @property
     def canonical_key(self) -> str:
-        key = self.key
-        return f"{key['PK']['S']}#{key['SK']['S'].removesuffix('#EMBEDDING')}"
+        return canonical_from_dynamo_key(self.key)
 
     @property
     def index(self) -> str:

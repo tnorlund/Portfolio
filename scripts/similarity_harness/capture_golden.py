@@ -72,6 +72,10 @@ from receipt_embeddings import (  # noqa: E402
     VectorItem,
     ensure_query_embeddings_within_quota,
 )
+from receipt_embeddings.keys import (  # noqa: E402
+    line_canonical_key,
+    word_canonical_key,
+)
 from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
 
 DEFAULT_FIXTURE = (
@@ -281,13 +285,13 @@ def _clustered_vector(cluster: str, identity: str) -> list[float]:
 
 
 def _line_key(image_id: str, receipt_id: int, line_id: int) -> str:
-    return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+    return line_canonical_key(image_id, receipt_id, line_id)
 
 
 def _word_key(
     image_id: str, receipt_id: int, line_id: int, word_id: int
 ) -> str:
-    return f"{_line_key(image_id, receipt_id, line_id)}#WORD#{word_id:05d}"
+    return word_canonical_key(image_id, receipt_id, line_id, word_id)
 
 
 def _query_record(

@@ -42,10 +42,10 @@ from typing import Any, Iterable, Mapping, Optional
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_section import ReceiptSection
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+from receipt_dynamo.word_label_status import aggregate_word_label_status
 from receipt_dynamo_stream.models import ParsedStreamRecord
 from receipt_dynamo_stream.parsing import parse_stream_record
 from receipt_dynamo_stream.stream_types import (
@@ -377,13 +377,9 @@ def _compute_word_label_status(
 ) -> Optional[str]:
     """Aggregate the word's current labels into a label_status value.
 
-    Same rule as the backfill: any terminal human verdict (VALID or
-    INVALID) -> validated, else any PENDING -> pending, else none.
-    INVALID-only words must stay in the validated population or the
-    word index's ``label_status = validated`` filter would drop exactly
-    the counterexamples similar_labeled_words needs for
-    ``evidence_against`` (E3 review P1-2). Returns None if the label
-    query fails.
+    Delegates to ``receipt_dynamo.word_label_status`` (the single
+    implementation of the terminal-verdict rule). Returns None if the
+    label query fails.
     """
     prefix = (
         f"RECEIPT#{int(label.receipt_id):05d}#"
@@ -415,14 +411,7 @@ def _compute_word_label_status(
             break
         kwargs["ExclusiveStartKey"] = last_key
 
-    if (
-        ValidationStatus.VALID.value in statuses
-        or ValidationStatus.INVALID.value in statuses
-    ):
-        return "validated"
-    if ValidationStatus.PENDING.value in statuses:
-        return "pending"
-    return "none"
+    return aggregate_word_label_status(statuses)
 
 
 def _update_embedding_item(

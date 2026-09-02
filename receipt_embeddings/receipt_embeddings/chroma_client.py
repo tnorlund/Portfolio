@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from receipt_embeddings.keys import line_canonical_key, word_canonical_key
 from receipt_embeddings.quotas import build_chroma_where
 from receipt_embeddings.service_limits import (
     LINE_INDEX,
@@ -20,14 +21,18 @@ def _metadata_key(
 ) -> str:
     if not {"image_id", "receipt_id", "line_id"}.issubset(metadata):
         return f"CHROMA_RESULT#{position:05d}"
-    prefix = (
-        f"IMAGE#{metadata['image_id']}#"
-        f"RECEIPT#{int(metadata['receipt_id']):05d}#"
-        f"LINE#{int(metadata['line_id']):05d}"
-    )
     if index == WORD_INDEX:
-        return f"{prefix}#WORD#{int(metadata['word_id']):05d}"
-    return prefix
+        return word_canonical_key(
+            str(metadata["image_id"]),
+            int(metadata["receipt_id"]),
+            int(metadata["line_id"]),
+            int(metadata["word_id"]),
+        )
+    return line_canonical_key(
+        str(metadata["image_id"]),
+        int(metadata["receipt_id"]),
+        int(metadata["line_id"]),
+    )
 
 
 class ChromaVectorSearchClient:

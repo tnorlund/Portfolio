@@ -13,6 +13,11 @@ from receipt_chroma import ChromaClient
 from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo import DynamoClient
 
+from receipt_embeddings.keys import (
+    dynamo_key_from_canonical,
+    line_canonical_key,
+)
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -196,13 +201,10 @@ class _DynamoLinesClient:
         del collection_name, include
         out = {"ids": [], "embeddings": [], "metadatas": [], "documents": []}
         for key in ids:
-            image_part, _, rest = key.partition("#RECEIPT#")
+            dynamo_key = dynamo_key_from_canonical(key)
             item = self._client.get_item(
                 TableName=self._table,
-                Key={
-                    "PK": {"S": image_part},
-                    "SK": {"S": f"RECEIPT#{rest}#EMBEDDING"},
-                },
+                Key=dynamo_key,
                 ProjectionExpression="line_vector",
             ).get("Item")
             if not item:
@@ -470,10 +472,10 @@ def handler(_event, _context):
         # Step 3: Construct line ID and get embedding from ChromaDB
         # Line ID format:
         # IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}
-        line_id = (
-            f"IMAGE#{selected_label.image_id}#"
-            f"RECEIPT#{selected_label.receipt_id:05d}#"
-            f"LINE#{selected_label.line_id:05d}"
+        line_id = line_canonical_key(
+            selected_label.image_id,
+            selected_label.receipt_id,
+            selected_label.line_id,
         )
 
         logger.info("Fetching embedding for line ID: %s", line_id)

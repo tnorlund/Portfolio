@@ -1257,14 +1257,13 @@ def _dual_write_outputs_native_only(
     from receipt_chroma.embedding.metadata.line_metadata import (
         enrich_row_metadata_with_anchors,
     )
+
     from receipt_embeddings import EmbeddingWriter, EmbeddingWriteRequest
     from receipt_embeddings.formatting import (
         format_word_context_embedding_input,
         get_row_embedding_inputs,
     )
-    from receipt_upload.merchant_resolution.dynamo_embedding_write import (
-        _word_label_statuses,
-    )
+    from receipt_embeddings.label_status import word_label_statuses
 
     for output in outputs:
         receipt = output["receipt"]
@@ -1315,7 +1314,7 @@ def _dual_write_outputs_native_only(
                     ),
                 )
             )
-        statuses = _word_label_statuses(labels)
+        statuses = word_label_statuses(labels)
         for word in words:
             requests.append(
                 EmbeddingWriteRequest(
