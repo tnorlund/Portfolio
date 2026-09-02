@@ -1385,6 +1385,7 @@ class OCRProcessor:
         # upload deltas to S3, create CompactionRun (DynamoDB stream
         # triggers the enhanced compactor asynchronously).
         compaction_run_id = None
+        native_refresh_error = None
         if self.chromadb_bucket:
             try:
                 from receipt_chroma.embedding import (
@@ -1543,11 +1544,15 @@ class OCRProcessor:
                             len(stale_keys),
                             dual_report,
                         )
-                except Exception:  # pylint: disable=broad-exception-caught
-                    logger.exception(
-                        "Re-OCR native embedding refresh failed "
-                        "(non-fatal; Chroma leg unaffected)"
-                    )
+                except (
+                    Exception
+                ) as native_exc:  # pylint: disable=broad-exception-caught
+                    # Surfaced, not swallowed (codex flip P1): stale
+                    # rows may already be deleted, so the job must fail
+                    # retryably instead of acknowledging success with a
+                    # partial native corpus.
+                    logger.exception("Re-OCR native embedding refresh failed")
+                    native_refresh_error = str(native_exc)
                 embedding_result.close()
                 logger.info(
                     "Re-OCR embeddings created, compaction_run=%s",
@@ -1559,6 +1564,20 @@ class OCRProcessor:
                     ocr_job.image_id,
                     ocr_job.receipt_id,
                 )
+
+        if native_refresh_error is not None:
+            self._update_routing_decision_with_error(ocr_routing_decision)
+            return {
+                "success": False,
+                "error": (
+                    "native vector refresh failed after re-OCR "
+                    f"(retryable): {native_refresh_error}"
+                ),
+                "image_id": ocr_job.image_id,
+                "receipt_id": ocr_job.receipt_id,
+                "image_type": "REGIONAL_REOCR",
+                "compaction_run_id": compaction_run_id,
+            }
 
         return {
             "success": True,

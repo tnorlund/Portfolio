@@ -1242,6 +1242,118 @@ def _stage_outputs(
             dynamo_client.add_receipt_place(output["place"])
 
 
+def _dual_write_outputs_native_only(
+    *, outputs: list[dict[str, Any]], dynamo_client: Any
+) -> None:
+    """Write output receipts' native embedding items without Chroma.
+
+    Memory-light replacement for the OOM-prone ``_embed_outputs`` when
+    only the DynamoDB corpus needs refreshing: build vector-less write
+    requests (the engine writer embeds realtime via OpenAI) using the
+    same formatting the ingest path uses. Raises on an incomplete
+    write so the apply fails BEFORE commit deletes the source vectors.
+    """
+    # pylint: disable=import-outside-toplevel
+    from receipt_chroma.embedding.metadata.line_metadata import (
+        enrich_row_metadata_with_anchors,
+    )
+    from receipt_embeddings import EmbeddingWriter, EmbeddingWriteRequest
+    from receipt_embeddings.formatting import (
+        format_word_context_embedding_input,
+        get_row_embedding_inputs,
+    )
+    from receipt_upload.merchant_resolution.dynamo_embedding_write import (
+        _word_label_statuses,
+    )
+
+    for output in outputs:
+        receipt = output["receipt"]
+        lines = output["lines"]
+        words = [
+            word for word in output["words"] if not word.is_noise
+        ] or output["words"]
+        labels = output["labels"] or []
+        place = output["place"]
+        merchant_name = str(getattr(place, "merchant_name", "") or "")
+        place_id = str(getattr(place, "place_id", "") or "")
+        lines_by_id = {int(line.line_id): line for line in lines}
+        requests: list[Any] = []
+        for embedding_input, line_ids in get_row_embedding_inputs(lines):
+            row_lines = [
+                lines_by_id[line_id]
+                for line_id in line_ids
+                if line_id in lines_by_id
+            ]
+            if not row_lines:
+                continue
+            row_line_id_set = set(int(v) for v in line_ids)
+            anchors = enrich_row_metadata_with_anchors(
+                {},
+                [
+                    word
+                    for word in words
+                    if int(word.line_id) in row_line_id_set
+                ],
+            )
+            requests.append(
+                EmbeddingWriteRequest(
+                    kind="line",
+                    image_id=receipt.image_id,
+                    receipt_id=receipt.receipt_id,
+                    line_id=int(line_ids[0]),
+                    text=" ".join(line.text for line in row_lines),
+                    embedding_input=embedding_input,
+                    merchant_name=merchant_name,
+                    place_id=place_id,
+                    row_line_ids=tuple(int(v) for v in line_ids),
+                    section_type="",
+                    normalized_phone_10=str(
+                        anchors.get("normalized_phone_10", "")
+                    ),
+                    normalized_full_address=str(
+                        anchors.get("normalized_full_address", "")
+                    ),
+                )
+            )
+        statuses = _word_label_statuses(labels)
+        for word in words:
+            requests.append(
+                EmbeddingWriteRequest(
+                    kind="word",
+                    image_id=receipt.image_id,
+                    receipt_id=receipt.receipt_id,
+                    line_id=int(word.line_id),
+                    word_id=int(word.word_id),
+                    text=word.text,
+                    embedding_input=format_word_context_embedding_input(
+                        word, words
+                    ),
+                    merchant_name=merchant_name,
+                    label_status=statuses.get(
+                        (int(word.line_id), int(word.word_id)), "none"
+                    ),
+                )
+            )
+        writer = EmbeddingWriter(
+            dynamo_client._client,  # pylint: disable=protected-access
+            dynamo_client.table_name,
+        )
+        report = writer.write(requests)
+        if report.failures:
+            raise RuntimeError(
+                "native output embedding write incomplete for receipt "
+                f"{receipt.receipt_id}: {len(report.failures)} failures "
+                "— aborting before commit so the split is retryable"
+            )
+        logger.info(
+            "Native-only output embeddings for %s: written=%d "
+            "skipped_existing=%d",
+            receipt.receipt_id,
+            report.written,
+            len(report.skipped_existing_keys),
+        )
+
+
 def _embed_outputs(
     *,
     outputs: list[dict[str, Any]],
@@ -1688,13 +1800,7 @@ def apply_plan(
             dual_write_embeddings_enabled,
         )
 
-        # With native dual writes enabled, cleanup deletes the source's
-        # embedding rows, so outputs MUST be re-embedded regardless of
-        # the caller's flag — otherwise both split outputs vanish from
-        # semantic search (codex flip-review P1).
-        if event.get("create_embeddings", False) or (
-            dual_write_embeddings_enabled()
-        ):
+        if event.get("create_embeddings", False):
             run_ids = _embed_outputs(
                 outputs=outputs,
                 dynamo_client=dynamo_client,
@@ -1702,6 +1808,18 @@ def apply_plan(
                 wait_for_embeddings=bool(
                     event.get("wait_for_embeddings", True)
                 ),
+            )
+        elif dual_write_embeddings_enabled():
+            # With native dual writes enabled, cleanup deletes the
+            # source's embedding rows, so outputs MUST get native
+            # replacements — but NOT via _embed_outputs, whose Chroma
+            # snapshot work OOMs the deployed Lambda (the documented
+            # reason embeddings default off). This light path embeds
+            # realtime via the engine writer and touches no Chroma;
+            # the Chroma leg self-heals through the normal pipeline
+            # (codex flip-review P1).
+            _dual_write_outputs_native_only(
+                outputs=outputs, dynamo_client=dynamo_client
             )
 
         # Re-verify the source fingerprint immediately before the commit (M2):
