@@ -52,10 +52,6 @@ from receipt_chroma.embedding.cloud_upsert import (
     DEFAULT_REQUEST_TIMEOUT,
     emit_within_budget,
 )
-from receipt_dynamo import DynamoClient
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
-
 from receipt_upload.label_validation import (
     LightweightLabelValidator,
 )
@@ -83,6 +79,10 @@ from receipt_upload.merchant_resolution.resolver import (
 from receipt_upload.merchant_resolution.resolver import (
     redact_pii as _redact_pii,
 )
+
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 
 logger = logging.getLogger(__name__)
 
@@ -681,13 +681,6 @@ def _run_lines_pipeline_worker(
         RowEmbeddingRecord,
         build_row_payload,
     )
-    from receipt_dynamo import DynamoClient
-    from receipt_dynamo.entities import (
-        ReceiptLine,
-        ReceiptWord,
-        ReceiptWordLabel,
-    )
-
     from receipt_upload.merchant_resolution.resolver import (
         MerchantResolver,
         merchant_name_matches_receipt,
@@ -697,6 +690,13 @@ def _run_lines_pipeline_worker(
         assign_and_persist_sections,
     )
     from receipt_upload.section_verifier import verify_receipt_sections
+
+    from receipt_dynamo import DynamoClient
+    from receipt_dynamo.entities import (
+        ReceiptLine,
+        ReceiptWord,
+        ReceiptWordLabel,
+    )
 
     def _do_lines_work() -> Dict[str, Any]:
         """Run the lines pipeline: merchant resolution, build payload, upsert, upload."""

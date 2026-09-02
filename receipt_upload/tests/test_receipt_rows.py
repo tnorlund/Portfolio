@@ -3,7 +3,6 @@
 from unittest.mock import Mock, call, patch
 
 import pytest
-
 from receipt_upload.receipt_processing.rows import persist_receipt_rows
 
 

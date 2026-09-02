@@ -3,10 +3,10 @@
 from types import SimpleNamespace
 
 import pytest
+from receipt_embeddings.write_requests import build_embedding_write_requests
+
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
-
-from receipt_embeddings.write_requests import build_embedding_write_requests
 
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"
 

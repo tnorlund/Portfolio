@@ -3,13 +3,13 @@
 from datetime import datetime, timezone
 
 import pytest
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptRow, ReceiptSection
 from receipt_embeddings import ScoredItem
-
 from receipt_upload.line_items.provenance import SWIFT_WORKER_MODEL_SOURCE
 from receipt_upload.section_assignment import MODEL_SOURCE
 from receipt_upload.section_verifier import verify_receipt_sections
+
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptRow, ReceiptSection
 
 _UPLOAD = "00000000-0000-4000-8000-000000000001"
 _NEIGHBOR = "00000000-0000-4000-8000-000000000002"

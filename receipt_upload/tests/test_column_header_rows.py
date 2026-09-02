@@ -24,7 +24,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 from receipt_upload.line_items.geometry import is_column_header_row
 
 # Every distinct boilerplate item NAME the dev + prod sweep produced

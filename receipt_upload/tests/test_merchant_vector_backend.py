@@ -8,14 +8,14 @@ from unittest.mock import MagicMock
 import boto3
 import pytest
 from botocore.stub import Stubber
+from receipt_embeddings import DynamoVectorSearchClient, ScoredItem
+from receipt_upload.merchant_resolution.resolver import MerchantResolver
+
 from receipt_dynamo.entities import (
     EMBEDDING_DIMENSIONS,
     ReceiptLine,
     ReceiptLineEmbedding,
 )
-from receipt_embeddings import DynamoVectorSearchClient, ScoredItem
-
-from receipt_upload.merchant_resolution.resolver import MerchantResolver
 
 NEIGHBOR_IMAGE_ID = "3a2b1c04-84f1-4ab3-9b05-7dc6edebc1b7"
 

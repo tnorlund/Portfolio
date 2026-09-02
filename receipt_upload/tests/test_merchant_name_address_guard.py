@@ -10,7 +10,6 @@ grouped under its own address instead of under Trader Joe's.
 """
 
 import pytest
-
 from receipt_upload.merchant_resolution.resolver import (
     looks_like_street_address,
     place_name_is_address_derived,

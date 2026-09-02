@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 from PIL import Image, ImageDraw
-
 from receipt_upload.font_analysis import _dbscan, analyze_receipt_fonts
 
 

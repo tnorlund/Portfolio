@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+
 from receipt_dynamo.constants import ValidationStatus
 
 pytest.importorskip(
@@ -14,6 +15,12 @@ pytest.importorskip(
     reason="imports the backfill script's chroma source; the CI receipt_embeddings leg is chromadb-free",
 )
 
+from receipt_embeddings import ScoredItem
+from receipt_embeddings.writer import (
+    EmbeddingWriteFailure,
+    EmbeddingWriteReport,
+    EmbeddingWriteRequest,
+)
 from scripts.backfill_receipt_embeddings import (
     EXIT_GLOBAL_WRITE_FAILURE,
     EXIT_VERIFICATION_FAILURE,
@@ -27,13 +34,6 @@ from scripts.backfill_receipt_embeddings import (
     resolve_vector_source,
     verify_written_items,
     wait_for_written_keys,
-)
-
-from receipt_embeddings import ScoredItem
-from receipt_embeddings.writer import (
-    EmbeddingWriteFailure,
-    EmbeddingWriteReport,
-    EmbeddingWriteRequest,
 )
 
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"
@@ -145,6 +145,8 @@ def test_repair_label_status_reclassifies_existing_word_embeddings(
     already-correct words ignored, never creating items."""
     boto3 = pytest.importorskip("boto3")
     moto = pytest.importorskip("moto")
+    from scripts.backfill_receipt_embeddings import repair_label_status
+
     from receipt_dynamo import DynamoClient
     from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
     from receipt_dynamo.entities.receipt_embedding import (
@@ -152,7 +154,6 @@ def test_repair_label_status_reclassifies_existing_word_embeddings(
         ReceiptWordEmbedding,
     )
     from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-    from scripts.backfill_receipt_embeddings import repair_label_status
 
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")

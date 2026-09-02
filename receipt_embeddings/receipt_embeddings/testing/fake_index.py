@@ -8,7 +8,6 @@ from numbers import Real
 
 import numpy as np
 from numpy.typing import NDArray
-
 from receipt_embeddings.service_limits import MAX_SEARCH_RESULTS
 from receipt_embeddings.vector_client import (
     FilterValue,

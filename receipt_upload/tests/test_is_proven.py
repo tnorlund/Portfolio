@@ -8,7 +8,6 @@ produced the pilot's false accept, is not proven.
 """
 
 import pytest
-
 from receipt_upload.line_items.geometry import (
     PROVEN_CENT_TOLERANCE,
     is_proven,

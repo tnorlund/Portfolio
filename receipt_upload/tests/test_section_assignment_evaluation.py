@@ -3,9 +3,10 @@
 from types import SimpleNamespace
 
 import pytest
-from receipt_dynamo.constants import ValidationStatus
 from scripts.build_section_order_priors import build_model
 from scripts.evaluate_section_assignment import _score_predictions
+
+from receipt_dynamo.constants import ValidationStatus
 
 
 def test_missing_predictions_are_scored_as_unassigned_mismatches() -> None:

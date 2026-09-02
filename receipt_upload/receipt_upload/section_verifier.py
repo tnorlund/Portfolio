@@ -16,13 +16,13 @@ from typing import Any, Protocol
 
 import numpy as np
 from receipt_chroma import propagate_knn
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities import ReceiptRow, ReceiptSection
 from receipt_embeddings import VectorSearchClient
 from receipt_embeddings.service_limits import LINE_INDEX
-
 from receipt_upload.section_assignment import VERIFIABLE_MODEL_SOURCES
 from receipt_upload.vector_search import vector_search_client as _vector_client
+
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities import ReceiptRow, ReceiptSection
 
 VERIFICATION_SOURCE = "glyphstudio-knn-v1"
 KNN_NEIGHBORS = 15

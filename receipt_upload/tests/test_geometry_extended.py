@@ -4,7 +4,6 @@ import math
 from unittest.mock import Mock, patch
 
 import pytest
-
 from receipt_upload.geometry import (  # From edge_detection.py; From hull_operations.py; From transformations.py; From utils.py
     compute_edge,
     compute_final_receipt_tilt,

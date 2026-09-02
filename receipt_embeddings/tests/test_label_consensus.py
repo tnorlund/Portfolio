@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from typing import Any, Optional
 
 import pytest
-
 from receipt_embeddings.label_consensus import (
     MIN_MATCHES,
     MIN_SIMILARITY,

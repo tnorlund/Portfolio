@@ -33,6 +33,14 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Optional, Sequence
 
+from receipt_upload.line_items.geometry import (
+    extract_items,
+    is_column_header_row,
+    is_proven,
+    reconcile_extracted_items,
+)
+from receipt_upload.line_items.reconstructor import dedupe_grand_total
+
 from receipt_dynamo.amounts import (
     looks_like_receipt_amount,
     parse_receipt_amount,
@@ -42,14 +50,6 @@ from receipt_dynamo.entities.receipt_summary import (
     find_printed_subtotal_words,
     find_printed_tax_words,
 )
-
-from receipt_upload.line_items.geometry import (
-    extract_items,
-    is_column_header_row,
-    is_proven,
-    reconcile_extracted_items,
-)
-from receipt_upload.line_items.reconstructor import dedupe_grand_total
 
 # The provenance marker for every label this module derives. Distinct from
 # every LLM proposer ("llm_valid", "llm_needs_review", "*_analyzer_llm")

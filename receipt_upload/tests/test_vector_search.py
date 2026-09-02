@@ -5,7 +5,6 @@ from receipt_embeddings import (
     ChromaVectorSearchClient,
     DynamoVectorSearchClient,
 )
-
 from receipt_upload.vector_search import vector_search_client
 
 

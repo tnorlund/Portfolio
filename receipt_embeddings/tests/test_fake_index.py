@@ -5,7 +5,6 @@ from __future__ import annotations
 import math
 
 import pytest
-
 from receipt_embeddings import VectorItem, VectorSearchClient
 from receipt_embeddings.testing import FakeVectorIndex
 

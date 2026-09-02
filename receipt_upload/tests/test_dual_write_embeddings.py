@@ -11,7 +11,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
 from receipt_upload.merchant_resolution.dynamo_embedding_write import (
     DUAL_WRITE_ENV_VAR,
     build_ingest_embedding_requests,
@@ -19,6 +18,8 @@ from receipt_upload.merchant_resolution.dynamo_embedding_write import (
     maybe_dual_write_embeddings,
     write_report_incomplete,
 )
+
+from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
 
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"
 

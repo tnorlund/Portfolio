@@ -11,14 +11,14 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from openai import OpenAI
-from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
-from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.entities import BatchSummary
-
 from receipt_embeddings.formatting.line_format import (
     get_primary_line_id,
     group_lines_into_visual_rows,
 )
+
+from receipt_dynamo.constants import BatchStatus, EmbeddingStatus
+from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities import BatchSummary
 
 logger = logging.getLogger(__name__)
 

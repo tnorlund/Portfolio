@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-
 from receipt_upload.label_section_gate import (
     VERDICT_ABSTAIN,
     VERDICT_LOW_PRIOR,

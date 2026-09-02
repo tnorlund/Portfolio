@@ -6,18 +6,18 @@ import boto3
 import pytest
 from botocore.exceptions import ClientError
 from botocore.stub import Stubber
-from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
-from receipt_dynamo.entities import (
-    EMBEDDING_DIMENSIONS,
-    ReceiptLineEmbedding,
-    ReceiptWordEmbedding,
-)
-
 from receipt_embeddings import ChromaVectorSearchClient
 from receipt_embeddings.dynamo_client import (
     _LINE_JOIN_ATTRIBUTES,
     _WORD_LABEL_JOIN_ATTRIBUTES,
     DynamoVectorSearchClient,
+)
+
+from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
+from receipt_dynamo.entities import (
+    EMBEDDING_DIMENSIONS,
+    ReceiptLineEmbedding,
+    ReceiptWordEmbedding,
 )
 
 TABLE = "ReceiptsTable-dc5be22"

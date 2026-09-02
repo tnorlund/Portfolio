@@ -11,9 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple
 
-from receipt_dynamo import DynamoClient
-
 from receipt_upload.dedup._ddb import paginate, raw_client
+
+from receipt_dynamo import DynamoClient
 
 # Per-env buckets that differ; the dev<->prod counterpart is the mapped value.
 # ``upload-images-image-bucket-4bcea7e`` is SHARED by both envs and is omitted

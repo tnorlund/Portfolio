@@ -27,7 +27,6 @@ from __future__ import annotations
 import re
 
 import pytest
-
 from receipt_upload.line_items.geometry import (
     extract_items,
     is_settlement_row,

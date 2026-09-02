@@ -52,7 +52,6 @@ row before anyone goes looking; RATE_ROWS is where to add it.
 from __future__ import annotations
 
 import pytest
-
 from receipt_upload.line_items.geometry import (
     PER_UNIT_RATE_RE,
     is_unit_rate_row,

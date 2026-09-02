@@ -1,7 +1,6 @@
 """Visual evidence tests for PHOTO and SCAN re-segmentation."""
 
 from PIL import Image
-
 from receipt_upload.resegment import build_preview_bundle
 
 

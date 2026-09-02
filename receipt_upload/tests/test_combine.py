@@ -1,15 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from receipt_dynamo.constants import MerchantValidationStatus, ValidationStatus
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
-from receipt_dynamo.entities import (
-    Receipt,
-    ReceiptPlace,
-    ReceiptWord,
-    ReceiptWordLabel,
-)
-
 from receipt_upload.combine import (
     calculate_min_area_rect,
     clone_receipt_place_for_receipt,
@@ -22,6 +13,15 @@ from receipt_upload.combine import (
 )
 from receipt_upload.combine.records_builder import (
     _get_receipt_to_image_transform,
+)
+
+from receipt_dynamo.constants import MerchantValidationStatus, ValidationStatus
+from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
+from receipt_dynamo.entities import (
+    Receipt,
+    ReceiptPlace,
+    ReceiptWord,
+    ReceiptWordLabel,
 )
 
 TEST_IMAGE_ID = "123e4567-e89b-42d3-a456-426614174000"

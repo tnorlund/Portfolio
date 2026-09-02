@@ -1,7 +1,6 @@
 """Regression tests for safe receipt re-segmentation planning."""
 
 import pytest
-
 from receipt_upload.resegment import (
     ResegmentPlanError,
     build_source_fingerprint,

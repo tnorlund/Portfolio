@@ -20,7 +20,6 @@ import time
 from typing import Any
 
 import pytest
-
 from receipt_embeddings.keys import parse_embedding_pk_sk
 
 pytestmark = pytest.mark.performance

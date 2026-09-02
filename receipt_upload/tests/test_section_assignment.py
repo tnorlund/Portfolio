@@ -8,9 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
-from receipt_dynamo.constants import SectionType, ValidationStatus
-from receipt_dynamo.entities import ReceiptRow, ReceiptSection
-
 from receipt_upload.section_assignment import (
     MODEL_SOURCE,
     RowFeatures,
@@ -20,6 +17,9 @@ from receipt_upload.section_assignment import (
     learn_prior,
     load_prior_model,
 )
+
+from receipt_dynamo.constants import SectionType, ValidationStatus
+from receipt_dynamo.entities import ReceiptRow, ReceiptSection
 
 _IMAGE_ID = "00000000-0000-4000-8000-000000000001"
 _FIXTURE = Path(__file__).parent / "fixtures/upload_determinism_golden.json"

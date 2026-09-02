@@ -7,9 +7,6 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
-from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
-
 from receipt_embeddings.keys import (
     canonical_key_from_item,
     embedding_item_key,
@@ -30,6 +27,9 @@ from receipt_embeddings.service_limits import (
     validate_top_k,
 )
 from receipt_embeddings.vector_client import FilterValue, ScoredItem
+
+from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
+from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
 
 DEFAULT_TABLE_NAME = "ReceiptsTable-dc5be22"
 DEFAULT_REGION = "us-east-1"

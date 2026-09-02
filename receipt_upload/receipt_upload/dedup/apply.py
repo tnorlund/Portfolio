@@ -23,15 +23,15 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
-from receipt_dynamo.constants import ValidationStatus
-from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
-
 from receipt_upload.dedup._ddb import (
     AWS_ERRORS,
     DYNAMO_ERRORS,
     paginate,
     raw_client,
 )
+
+from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
 
 @dataclass
@@ -396,9 +396,9 @@ def main() -> None:
     # Imported here (CLI entry only) to keep the importable module free of a
     # hard receipt_dynamo client dependency.
     # pylint: disable=import-outside-toplevel
-    from receipt_dynamo import DynamoClient
-
     from receipt_upload.dedup.dossiers import ENV_TABLE
+
+    from receipt_dynamo import DynamoClient
 
     if args.rollback:
         if not args.env:

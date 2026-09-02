@@ -15,13 +15,13 @@ import time
 from typing import Any
 
 import pytest
-from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
-
 from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 from receipt_embeddings.service_limits import (
     LINE_INDEX,
     search_vector_attribute_values,
 )
+
+from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
 
 pytestmark = pytest.mark.performance
 
