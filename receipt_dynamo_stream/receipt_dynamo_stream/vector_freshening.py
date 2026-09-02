@@ -37,7 +37,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Iterable, Mapping, Optional, Protocol
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -96,11 +96,23 @@ class FresheningStats:
         }
 
 
+class _FresheningDynamoClient(Protocol):
+    """Low-level DynamoDB surface this leg uses (query + conditional
+    update). Local so the stream-processor bundle — which does not carry
+    ``receipt_embeddings`` — stays importable."""
+
+    def query(self, **kwargs: Any) -> Mapping[str, Any]:
+        """Page embedding/label keys under a receipt prefix."""
+
+    def update_item(self, **kwargs: Any) -> Mapping[str, Any]:
+        """Idempotent conditional attribute refresh."""
+
+
 @dataclass
 class _Context:
     """Shared state for one freshening pass."""
 
-    client: Any
+    client: _FresheningDynamoClient
     table_name: str
     stats: FresheningStats
     metrics: Optional[MetricsRecorder] = None
@@ -119,7 +131,7 @@ def apply_vector_freshening(
     records: Iterable[DynamoDBStreamRecord],
     metrics: Optional[MetricsRecorder] = None,
     *,
-    dynamo_client: Any = None,
+    dynamo_client: Optional[_FresheningDynamoClient] = None,
     table_name: Optional[str] = None,
 ) -> FresheningStats:
     """Freshen embedding-item attributes for a batch of stream records.
@@ -422,7 +434,7 @@ def _update_embedding_item(
     pk: str,
     sk: str,
     update_expression: str,
-    values: dict[str, Any],
+    values: Mapping[str, Mapping[str, str]],
     entity_type: str,
     ctx: _Context,
 ) -> None:

@@ -14,13 +14,13 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Callable, Mapping
-from typing import Any, Optional
+from typing import Optional, cast
 
 from receipt_dynamo.constants import CORE_LABEL_NAMES
 
 from receipt_embeddings.keys import word_vector_key
 from receipt_embeddings.service_limits import MAX_SEARCH_RESULTS, WORD_INDEX
-from receipt_embeddings.vector_client import VectorSearchClient
+from receipt_embeddings.vector_client import ScoredItem, VectorSearchClient
 
 # The retired validate_word_similarity tool's thresholds, kept so the
 # evidence is judged the way the old validator intended (spec §3.7).
@@ -42,7 +42,7 @@ DEFAULT_TOP_K = 25
 #: label) tuples and returns the ``ReceiptWordLabel`` rows that exist
 #: (missing keys silently omitted — DynamoClient.get_receipt_word_labels
 #: is the production implementation).
-LabelRowLoader = Callable[[list[tuple[str, int, int, int, str]]], list[Any]]
+LabelRowLoader = Callable[[list[tuple[str, int, int, int, str]]], list[object]]
 
 
 def _distance_to_similarity(distance: float) -> float:
@@ -60,20 +60,22 @@ def _distance_to_similarity(distance: float) -> float:
 
 
 def _neighbor_identity(
-    metadata: Mapping[str, Any],
+    metadata: Mapping[str, object],
 ) -> Optional[tuple[str, int, int, int]]:
     try:
+        # The casts are annotation-only; the except guard below is the
+        # real contract for malformed metadata (unchanged behavior).
         return (
             str(metadata["image_id"]),
-            int(metadata["receipt_id"]),
-            int(metadata["line_id"]),
-            int(metadata["word_id"]),
+            int(cast("int | str", metadata["receipt_id"])),
+            int(cast("int | str", metadata["line_id"])),
+            int(cast("int | str", metadata["word_id"])),
         )
     except (KeyError, TypeError, ValueError):
         return None
 
 
-def _row_record(row: Any) -> dict[str, Any]:
+def _row_record(row: object) -> dict[str, object]:
     """Normalize an adapter-hydrated dict or ReceiptWordLabel-like row."""
 
     if isinstance(row, Mapping):
@@ -95,11 +97,11 @@ def _row_record(row: Any) -> dict[str, Any]:
 
 def _evidence_entry(
     identity: tuple[str, int, int, int],
-    metadata: Mapping[str, Any],
+    metadata: Mapping[str, object],
     similarity: float,
     same_merchant: Optional[bool],
-    row: Mapping[str, Any],
-) -> dict[str, Any]:
+    row: Mapping[str, object],
+) -> dict[str, object]:
     return {
         "image_id": identity[0],
         "receipt_id": identity[1],
@@ -117,14 +119,14 @@ def _evidence_entry(
 
 
 def _degraded(
-    word: dict[str, Any],
+    word: dict[str, object],
     label: str,
     *,
     reason: str,
     error_type: Optional[str] = None,
     found_vector: bool = True,
-) -> dict[str, Any]:
-    answer: dict[str, Any] = {
+) -> dict[str, object]:
+    answer: dict[str, object] = {
         "word": word,
         "label": label,
         "found_vector": found_vector,
@@ -152,7 +154,7 @@ def similar_labeled_words(
     top_k: int = DEFAULT_TOP_K,
     min_similarity: float = MIN_SIMILARITY,
     target_merchant: Optional[str] = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Collect similarity evidence for/against a candidate word label.
 
     1. Read the target word's stored vector (no OpenAI call).
@@ -212,7 +214,7 @@ def similar_labeled_words(
             reason=f"Neighbor search failed: {exc}",
         )
 
-    survivors: list[tuple[tuple[str, int, int, int], Any, float]] = []
+    survivors: list[tuple[tuple[str, int, int, int], ScoredItem, float]] = []
     for neighbor in neighbors:
         if neighbor.key == target_key:
             continue
@@ -261,7 +263,7 @@ def similar_labeled_words(
     # core-label rows and attached them as ``label_rows``. Only
     # neighbors without that metadata (the Chroma backend, or a
     # degraded join) and non-core candidate labels reach the loader.
-    rows_by_word: dict[tuple[str, int, int, int], list[dict[str, Any]]] = {}
+    rows_by_word: dict[tuple[str, int, int, int], list[dict[str, object]]] = {}
     loader_keys: list[tuple[str, int, int, int, str]] = []
     for identity, neighbor, _similarity in survivors:
         hydrated = neighbor.metadata.get("label_rows")
@@ -290,17 +292,17 @@ def similar_labeled_words(
     for row in loaded:
         try:
             row_key = (
-                str(row.image_id),
-                int(row.receipt_id),
-                int(row.line_id),
-                int(row.word_id),
+                str(getattr(row, "image_id")),
+                int(getattr(row, "receipt_id")),
+                int(getattr(row, "line_id")),
+                int(getattr(row, "word_id")),
             )
         except (AttributeError, TypeError, ValueError):
             continue
         rows_by_word.setdefault(row_key, []).append(_row_record(row))
 
-    evidence_for: list[dict[str, Any]] = []
-    evidence_against: list[dict[str, Any]] = []
+    evidence_for: list[dict[str, object]] = []
+    evidence_against: list[dict[str, object]] = []
     alternatives: Counter[str] = Counter()
     votes_for = 0.0
     votes_against = 0.0
@@ -333,11 +335,18 @@ def similar_labeled_words(
                         )
                     )
                     votes_against += weight
-            elif status == "VALID" and row_label:
+            elif (
+                status == "VALID" and isinstance(row_label, str) and row_label
+            ):
                 alternatives[row_label] += 1
 
     for entries in (evidence_for, evidence_against):
-        entries.sort(key=lambda e: (-e["similarity"], e["image_id"]))
+        entries.sort(
+            key=lambda e: (
+                -cast(float, e["similarity"]),
+                cast(str, e["image_id"]),
+            )
+        )
 
     total_matches = len(evidence_for) + len(evidence_against)
     total_votes = votes_for + votes_against

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from receipt_embeddings.protocols import ChromaQueryClient
 from receipt_embeddings.quotas import build_chroma_where
 from receipt_embeddings.service_limits import (
     LINE_INDEX,
@@ -33,7 +34,7 @@ def _metadata_key(
 class ChromaVectorSearchClient:
     """Normalize the current ChromaClient to ``VectorSearchClient``."""
 
-    def __init__(self, chroma_client: Any) -> None:
+    def __init__(self, chroma_client: ChromaQueryClient) -> None:
         if not callable(getattr(chroma_client, "query", None)):
             raise TypeError("chroma_client must provide query()")
         self._client = chroma_client

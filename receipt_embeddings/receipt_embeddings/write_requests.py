@@ -23,25 +23,32 @@ Invariants (corpus contract — do not relax):
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from typing import Any, Literal
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import Literal, cast
 
 from receipt_embeddings.formatting import (
+    LineLike,
     format_word_context_embedding_input,
     get_row_embedding_inputs,
 )
+from receipt_embeddings.formatting.word_format import (
+    WordLike as ContextWordLike,
+)
 from receipt_embeddings.keys import line_canonical_key, word_canonical_key
-from receipt_embeddings.label_status import word_label_statuses
+from receipt_embeddings.label_status import WordLabelLike, word_label_statuses
 from receipt_embeddings.line_metadata import (
     enrich_row_metadata_with_anchors,
 )
+from receipt_embeddings.protocols import SectionLike
 from receipt_embeddings.writer import EmbeddingWriteRequest
 
 MissingRow = Literal["raise", "skip"]
-AnchorEnricher = Callable[[dict[str, Any], Sequence[Any]], Mapping[str, Any]]
+# The real enricher takes concrete entity types; the seam stays loose on
+# parameters (contravariance) and only pins the anchor-mapping result.
+AnchorEnricher = Callable[..., Mapping[str, object]]
 
 
-def _section_by_line(sections: Sequence[Any] | None) -> dict[int, str]:
+def _section_by_line(sections: Sequence[SectionLike] | None) -> dict[int, str]:
     result: dict[int, str] = {}
     if not sections:
         return result
@@ -62,7 +69,7 @@ def _section_type_for_row(
 
 
 def _row_specs(
-    lines: Sequence[Any],
+    lines: Sequence[LineLike],
     *,
     row_line_ids_list: Sequence[Sequence[int]] | None,
     include_embedding_input: bool,
@@ -101,12 +108,12 @@ def build_embedding_write_requests(
     *,
     image_id: str,
     receipt_id: int,
-    lines: Sequence[Any],
-    words: Sequence[Any],
-    word_labels: Sequence[Any],
+    lines: Sequence[LineLike],
+    words: Sequence[ContextWordLike],
+    word_labels: Sequence[WordLabelLike],
     merchant_name: str = "",
     place_id: str = "",
-    sections: Sequence[Any] | None = None,
+    sections: Sequence[SectionLike] | None = None,
     row_line_ids_list: Sequence[Sequence[int]] | None = None,
     row_embeddings: Sequence[Sequence[float]] | None = None,
     word_embeddings: Sequence[Sequence[float]] | None = None,
@@ -125,7 +132,9 @@ def build_embedding_write_requests(
     """
 
     if enrich_anchors is None:
-        enrich_anchors = enrich_row_metadata_with_anchors
+        # The concrete enricher's entity annotations are narrower than the
+        # duck seam; the cast is annotation-only (same callable, same call).
+        enrich_anchors = cast(AnchorEnricher, enrich_row_metadata_with_anchors)
 
     lines_by_id = {int(line.line_id): line for line in lines}
     section_by_line = _section_by_line(sections)
@@ -135,6 +144,9 @@ def build_embedding_write_requests(
         include_embedding_input=include_embedding_input,
     )
     requests: list[EmbeddingWriteRequest] = []
+    row_iter: Iterable[
+        tuple[tuple[list[int], str | None], Sequence[float] | None]
+    ]
     if row_embeddings is not None:
         row_iter = zip(specs, row_embeddings, strict=True)
     else:
@@ -190,6 +202,7 @@ def build_embedding_write_requests(
         )
 
     statuses = word_label_statuses(word_labels)
+    word_iter: Iterable[tuple[ContextWordLike, Sequence[float] | None]]
     if word_embeddings is not None:
         word_iter = zip(words, word_embeddings, strict=True)
     else:

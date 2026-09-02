@@ -45,6 +45,7 @@ from PIL import Image as PILImage
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
+    from receipt_embeddings.protocols import EmbeddingTableHandle
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -1243,7 +1244,7 @@ def _stage_outputs(
 
 
 def _dual_write_outputs_native_only(
-    *, outputs: list[dict[str, Any]], dynamo_client: Any
+    *, outputs: list[dict[str, Any]], dynamo_client: "EmbeddingTableHandle"
 ) -> None:
     """Write output receipts' native embedding items without Chroma.
 
