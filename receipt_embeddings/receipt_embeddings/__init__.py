@@ -33,6 +33,7 @@ from receipt_embeddings.writer import (
     EmbeddingWriter,
     EmbeddingWriteReport,
     EmbeddingWriteRequest,
+    write_report_incomplete,
 )
 
 __all__ = [
@@ -60,4 +61,5 @@ __all__ = [
     "word_canonical_key",
     "word_label_statuses",
     "word_vector_key",
+    "write_report_incomplete",
 ]

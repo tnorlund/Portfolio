@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -121,6 +121,12 @@ class EmbeddingWriteReport:
     def skipped(self) -> int:
         return len(self.skipped_existing_keys) + len(self.failures)
 
+    @property
+    def incomplete(self) -> bool:
+        """True when any item failed validate, read, embed, or write."""
+
+        return bool(self.failures)
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "written": self.written,
@@ -134,6 +140,27 @@ class EmbeddingWriteReport:
                 for value in self.failures
             ],
         }
+
+
+def write_report_incomplete(
+    report: EmbeddingWriteReport | Mapping[str, object] | None,
+) -> bool:
+    """True when a dual-write or engine report is missing or failed.
+
+    ``None`` (flag-off dual-write) is complete. The dict shape from
+    ``maybe_dual_write_embeddings`` is incomplete when it carries
+    ``error`` or a non-zero ``failed`` count. An
+    ``EmbeddingWriteReport`` is incomplete iff it has failures.
+
+    Callers keep their own response to this predicate (never-raise vs
+    abort-before-delete); this helper only names the shared check.
+    """
+
+    if report is None:
+        return False
+    if isinstance(report, EmbeddingWriteReport):
+        return report.incomplete
+    return bool(report.get("error") or report.get("failed"))
 
 
 class EmbeddingWriter:
@@ -367,4 +394,5 @@ __all__ = [
     "EmbeddingWriteReport",
     "EmbeddingWriteRequest",
     "EmbeddingWriter",
+    "write_report_incomplete",
 ]

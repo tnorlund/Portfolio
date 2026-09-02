@@ -1290,7 +1290,7 @@ def _dual_write_outputs_native_only(
             dynamo_client.table_name,
         )
         report = writer.write(requests)
-        if report.failures:
+        if report.incomplete:
             raise RuntimeError(
                 "native output embedding write incomplete for receipt "
                 f"{receipt.receipt_id}: {len(report.failures)} failures "
@@ -1343,6 +1343,7 @@ def _embed_outputs(
             # this embed just computed (flag-gated, never-raising).
             from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501  pylint: disable=import-outside-toplevel
                 maybe_dual_write_embeddings,
+                write_report_incomplete,
             )
 
             dual_report = maybe_dual_write_embeddings(
@@ -1363,7 +1364,7 @@ def _embed_outputs(
                     receipt.receipt_id,
                     dual_report,
                 )
-                if dual_report.get("error") or dual_report.get("failed"):
+                if write_report_incomplete(dual_report):
                     # Destructive-step ordering (codex flip-review P2):
                     # cleanup deletes the source's vectors, so an
                     # incomplete output write must fail the apply as

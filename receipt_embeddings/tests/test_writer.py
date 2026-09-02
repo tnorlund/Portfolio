@@ -8,6 +8,11 @@ import pytest
 from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
 
 from receipt_embeddings import EmbeddingWriter, EmbeddingWriteRequest
+from receipt_embeddings.writer import (
+    EmbeddingWriteFailure,
+    EmbeddingWriteReport,
+    write_report_incomplete,
+)
 
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"
 TABLE = "ReceiptsTable-dc5be22"
@@ -198,3 +203,22 @@ def test_line_anchor_fields_flow_through_writer_to_stored_item() -> None:
     assert stored["normalized_full_address"] == {
         "S": "123 MAIN ST HENDERSON NV 89014"
     }
+
+
+@pytest.mark.unit
+def test_write_report_incomplete_covers_engine_and_dual_write_shapes() -> None:
+    complete = EmbeddingWriteReport(written_keys=["a"])
+    failed = EmbeddingWriteReport(
+        failures=[EmbeddingWriteFailure(key="a", stage="write", error="boom")]
+    )
+    assert complete.incomplete is False
+    assert failed.incomplete is True
+    assert write_report_incomplete(None) is False
+    assert write_report_incomplete(complete) is False
+    assert write_report_incomplete(failed) is True
+    assert write_report_incomplete({"failed": 0}) is False
+    assert write_report_incomplete({"failed": 2}) is True
+    assert (
+        write_report_incomplete({"error": "dynamo down", "failed": 0}) is True
+    )
+    assert write_report_incomplete({"enabled": True, "written": 1}) is False

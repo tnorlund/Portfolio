@@ -21,6 +21,7 @@ from receipt_chroma.embedding.metadata.line_metadata import (
     enrich_row_metadata_with_anchors,
 )
 from receipt_embeddings.write_requests import build_embedding_write_requests
+from receipt_embeddings.writer import write_report_incomplete
 
 logger = logging.getLogger(__name__)
 
@@ -154,4 +155,5 @@ __all__ = [
     "build_ingest_embedding_requests",
     "dual_write_embeddings_enabled",
     "maybe_dual_write_embeddings",
+    "write_report_incomplete",
 ]

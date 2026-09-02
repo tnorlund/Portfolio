@@ -478,6 +478,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # pylint: disable=import-outside-toplevel
         from receipt_upload.merchant_resolution.dynamo_embedding_write import (
             maybe_dual_write_embeddings,
+            write_report_incomplete,
         )
 
         dual_report = maybe_dual_write_embeddings(
@@ -498,7 +499,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             # receipts are deleted below, so an incomplete native write
             # must abort the merge as retryable BEFORE deletion — never
             # report success with the merged receipt missing vectors.
-            if dual_report.get("error") or dual_report.get("failed"):
+            if write_report_incomplete(dual_report):
                 try:
                     embedding_result.close()
                 except Exception:  # pylint: disable=broad-exception-caught

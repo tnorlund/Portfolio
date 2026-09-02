@@ -18,6 +18,7 @@ from receipt_upload.merchant_resolution.dynamo_embedding_write import (
     build_ingest_embedding_requests,
     dual_write_embeddings_enabled,
     maybe_dual_write_embeddings,
+    write_report_incomplete,
 )
 
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"
@@ -196,6 +197,9 @@ class TestMaybeDualWriteEmbeddings:
         )
         assert result["error"] == "dynamo down"
         assert result["written"] == 0
+        assert write_report_incomplete(result) is True
+        assert write_report_incomplete(None) is False
+        assert write_report_incomplete({"failed": 0}) is False
 
 
 @pytest.mark.unit

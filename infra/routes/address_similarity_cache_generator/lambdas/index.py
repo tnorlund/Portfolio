@@ -16,6 +16,7 @@ from receipt_dynamo import DynamoClient
 from receipt_embeddings.keys import (
     dynamo_key_from_canonical,
     line_canonical_key,
+    parse_embedding_pk_sk,
 )
 
 logger = logging.getLogger()
@@ -178,21 +179,37 @@ VECTOR_BACKEND = os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
 
 
 class _DynamoLinesClient:
-    """Duck-typed stand-in for ChromaClient's lines-collection reads.
+    """Duck-typed ChromaClient stand-in for lines-collection reads.
 
-    ``get`` returns the stored ``line_vector`` for an exact id;
-    ``query`` runs SearchVectors on the line-embeddings index.
-    Distances are converted to Chroma's default squared-L2 scale
-    (2 x cosine distance for unit-norm vectors) so cached
-    ``similarity_distance`` values keep their historical meaning.
+    WHY this exists instead of ``DynamoVectorSearchClient``
+    ------------------------------------------------------
+    The address-cache image already ships ``receipt_embeddings`` (key
+    builders), but this handler speaks ChromaClient's
+    ``get`` / ``query`` / ``list_collections`` / ``close`` surface, not
+    ``VectorSearchClient.search`` / ``get_vector``. Distances must stay
+    on Chroma's historical squared-L2 scale (``2 × cosine_distance``)
+    so cached ``similarity_distance`` values keep their meaning for
+    the frontend; ``DynamoVectorSearchClient`` returns cosine distance
+    and fetch-joins neighbor metadata this cache does not need.
+    Changing the image Dockerfile / ``source_paths`` to wrap the
+    VectorSearchClient is out of scope, so this stays a thin
+    raw-boto3 adapter.
+
+    ``get`` returns the stored ``line_vector`` for an exact canonical
+    id; ``query`` runs SearchVectors on the line-embeddings index.
     """
+
+    # Must match ``receipt_embeddings.service_limits.LINE_INDEX``.
+    # Inlined so this module stays a keys-only receipt_embeddings
+    # import (service_limits pulls embedding entities).
+    _LINE_INDEX = "line-embeddings"
 
     def __init__(self, table_name: str):
         self._table = table_name
         self._client = boto3.client("dynamodb")
 
     def close(self):
-        pass
+        """ChromaClient compatibility; boto3 clients are process-wide."""
 
     def list_collections(self):
         return ["lines"]
@@ -201,10 +218,9 @@ class _DynamoLinesClient:
         del collection_name, include
         out = {"ids": [], "embeddings": [], "metadatas": [], "documents": []}
         for key in ids:
-            dynamo_key = dynamo_key_from_canonical(key)
             item = self._client.get_item(
                 TableName=self._table,
-                Key=dynamo_key,
+                Key=dynamo_key_from_canonical(key),
                 ProjectionExpression="line_vector",
             ).get("Item")
             if not item:
@@ -223,7 +239,7 @@ class _DynamoLinesClient:
         del collection_name, include
         response = self._client.search_vectors(
             TableName=self._table,
-            IndexName="line-embeddings",
+            IndexName=self._LINE_INDEX,
             SearchVector=[{"N": str(value)} for value in query_embeddings[0]],
             TopK=n_results,
         )
@@ -233,14 +249,17 @@ class _DynamoLinesClient:
             score = result.get("Score")
             pk = item.get("PK", {}).get("S", "")
             sk = item.get("SK", {}).get("S", "")
-            parts = sk.split("#")
-            if score is None or not pk or len(parts) < 4:
+            parsed = parse_embedding_pk_sk(pk, sk)
+            if score is None or parsed is None or parsed.is_word:
                 continue
-            image_id = pk.split("#", 1)[1]
-            receipt_id = int(parts[1])
-            metadatas.append({"image_id": image_id, "receipt_id": receipt_id})
-            # Chroma's default metric is squared-L2; for unit-norm
-            # embeddings that equals 2 x cosine distance.
+            metadatas.append(
+                {
+                    "image_id": parsed.image_id,
+                    "receipt_id": parsed.receipt_id,
+                }
+            )
+            # Invariant: address-cache distances are 2 × cosine
+            # (Chroma squared-L2 for unit-norm vectors).
             distances.append(2.0 * float(score))
             documents.append(None)
             result_ids.append(f"{pk}#{sk}")

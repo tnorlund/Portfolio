@@ -1427,6 +1427,7 @@ class OCRProcessor:
                     from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501  pylint: disable=import-outside-toplevel
                         dual_write_embeddings_enabled,
                         maybe_dual_write_embeddings,
+                        write_report_incomplete,
                     )
 
                     if dual_write_embeddings_enabled():
@@ -1484,11 +1485,6 @@ class OCRProcessor:
                                 ),
                             )
 
-                        def _incomplete(report):
-                            return bool(report) and (
-                                report.get("error") or report.get("failed")
-                            )
-
                         dual_report = _write_native()
                         # The old rows are gone, so an incomplete
                         # replacement must retry (the writer's
@@ -1496,7 +1492,7 @@ class OCRProcessor:
                         # remainder) and fail loudly if it cannot
                         # (codex flip P1).
                         for _retry in range(2):
-                            if not _incomplete(dual_report):
+                            if not write_report_incomplete(dual_report):
                                 break
                             logger.warning(
                                 "Re-OCR native write incomplete, "
@@ -1504,7 +1500,7 @@ class OCRProcessor:
                                 dual_report,
                             )
                             dual_report = _write_native()
-                        if _incomplete(dual_report):
+                        if write_report_incomplete(dual_report):
                             raise RuntimeError(
                                 "re-OCR native replacement incomplete "
                                 f"after retries: {dual_report}"
