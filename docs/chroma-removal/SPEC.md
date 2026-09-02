@@ -503,6 +503,28 @@ change. Editorial rules:
    `chromadb_init_ms` → stage-named fields, `avg_chroma_rate` →
    `avg_similarity_rate` — coordinated generator+frontend change per figure.
 
+### 5b. Zip-package Lambdas after Chroma is out of the image
+
+Chroma's native tree (~250 MB unzipped: ONNX Runtime, Rust bindings,
+Kubernetes client) is why most receipt Lambdas are container images — zip
+packages cannot exceed 250 MB unzipped. After Phase 4 removes
+`receipt_chroma` from those images, the remaining fat path (numpy, Pillow,
+OpenAI, LangGraph; boto3 excluded) is ~150 MB and fits zip with headroom.
+
+This is a **follow-up**, not part of teardown:
+
+1. Do not flip `PackageType` while a Dockerfile still installs
+   `receipt_chroma` — the zip would still include the native tree.
+2. Re-measure unzipped size on Amazon Linux 2023 Python 3.13 arm64; ship only
+   if **< 200 MB**.
+3. Leave LayoutLM inference (CPU PyTorch) and SageMaker training on images.
+4. `CodeBuildDockerImage` → zip is a Lambda **replacement**. Drop legacy-URN
+   `aliases` in the same change (§6 G). Preview on dev; never prod from an
+   agent.
+
+Classifier and size budget: [ZIP_LAMBDA_FOLLOWUP.md](ZIP_LAMBDA_FOLLOWUP.md),
+`scripts/lambda_zip_budget.py`.
+
 ## 6. Landmines (each verified, with evidence in the inventories)
 
 A. **Import-time Pulumi breaks**: `chromadb_buckets.py` import side effect

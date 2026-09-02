@@ -1,5 +1,13 @@
 # Lambda Layer Size Analysis and ChromaDB Investigation
 
+**2026-09 update:** Chroma is still the 250 MB unzipped zip-package blocker
+(~252 MB for the ONNX/Rust/Kubernetes tree in a CPython 3.13 venv). After
+Phase 4 teardown the remaining fat path is ~153 MB and fits zip; LayoutLM
+(PyTorch) stays on images. See
+[`docs/chroma-removal/ZIP_LAMBDA_FOLLOWUP.md`](../docs/chroma-removal/ZIP_LAMBDA_FOLLOWUP.md)
+and `scripts/lambda_zip_budget.py`. Do not flip `PackageType` while images
+still install `receipt_chroma`.
+
 ## Summary
 
 This document summarizes our investigation into reducing AWS Lambda layer sizes for Python packages, specifically focusing on the ChromaDB dependency challenge and the infrastructure improvements made to support efficient layer creation.
