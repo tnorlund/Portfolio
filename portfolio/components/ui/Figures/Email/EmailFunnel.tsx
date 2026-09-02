@@ -7,7 +7,7 @@ const WIDTH = 520;
 const ROW_H = 34;
 const GAP = 8;
 const LABEL_W = 190;
-const VALUE_W = 70;
+const VALUE_W = 92;
 const BAR_MAX = WIDTH - LABEL_W - VALUE_W;
 
 /* Ordinal ramp, one hue: light then dark steps (validated in the dataviz
