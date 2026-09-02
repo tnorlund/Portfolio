@@ -30,10 +30,11 @@ classifiers = [
 ]
 
 dependencies = [
-    # Internal packages (transitive deps: boto3, requests, pydantic*, tenacity, structlog, chromadb, openai)
+    # Internal packages (transitive deps: boto3, requests, pydantic*, tenacity, structlog, openai)
     "receipt-dynamo",              # DynamoDB client for receipts
     "receipt-embeddings",          # Vector-search seam (VectorSearchClient)
-    "receipt-chroma",              # ChromaDB client (brings chromadb, openai)
+    # receipt-chroma retired (Chroma teardown): every remaining use in this
+    # package is a lazy/guarded import for legacy snapshot flows.
     "receipt-places",              # Google Places API (brings pydantic*, tenacity, structlog)
     # LangGraph/LangChain for agent orchestration
     "langgraph>=0.2.0",
@@ -133,7 +134,7 @@ ignore = [
 ]
 
 [tool.ruff.isort]
-known-first-party = ["receipt_agent", "receipt_dynamo", "receipt_chroma", "receipt_places"]
+known-first-party = ["receipt_agent", "receipt_dynamo", "receipt_places"]
 
 [tool.black]
 line-length = 79
