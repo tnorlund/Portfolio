@@ -6,7 +6,6 @@ from typing import Any
 
 import pytest
 from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
-
 from receipt_embeddings import EmbeddingWriter, EmbeddingWriteRequest
 
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"

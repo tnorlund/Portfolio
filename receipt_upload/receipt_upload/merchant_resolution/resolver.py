@@ -29,14 +29,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from receipt_chroma import ChromaClient
-from receipt_chroma.embedding.formatting import (
-    format_line_context_embedding_input,
-)
-from receipt_chroma.embedding.utils import (
-    normalize_address,
-    normalize_phone,
-)
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
@@ -44,6 +36,13 @@ from receipt_embeddings import (
     ChromaVectorSearchClient,
     DynamoVectorSearchClient,
     VectorSearchClient,
+)
+from receipt_embeddings.formatting import (
+    format_line_context_embedding_input,
+)
+from receipt_embeddings.normalize import (
+    normalize_address,
+    normalize_phone,
 )
 
 logger = logging.getLogger(__name__)
@@ -796,7 +795,7 @@ class MerchantResolver:
         self._openai_client = openai_client
         self._vector_client = vector_client
         self._vector_backend = (
-            (vector_backend or os.environ.get("VECTOR_BACKEND", "chroma"))
+            (vector_backend or os.environ.get("VECTOR_BACKEND", "dynamodb"))
             .strip()
             .lower()
         )
@@ -806,7 +805,7 @@ class MerchantResolver:
             )
 
     def _get_vector_client(
-        self, lines_client: ChromaClient
+        self, lines_client: Optional[Any]
     ) -> VectorSearchClient:
         """Resolve the configured backend lazily so startup stays AWS-free."""
         if self._vector_client is not None:
@@ -844,7 +843,7 @@ class MerchantResolver:
 
         try:
             # pylint: disable-next=import-outside-toplevel
-            from receipt_chroma.embedding.openai import embed_texts
+            from receipt_embeddings.openai.realtime import embed_texts
 
             embeddings = embed_texts(
                 client=self.openai_client,
@@ -859,7 +858,7 @@ class MerchantResolver:
     # pylint: disable=too-many-positional-arguments
     def resolve(
         self,
-        lines_client: ChromaClient,
+        lines_client: Optional[Any],
         lines: List[ReceiptLine],
         words: List[ReceiptWord],
         image_id: str,
@@ -913,7 +912,7 @@ class MerchantResolver:
 
     def _resolve_impl(
         self,
-        lines_client: ChromaClient,
+        lines_client: Optional[Any],
         lines: List[ReceiptLine],
         words: List[ReceiptWord],
         image_id: str,
@@ -1288,7 +1287,7 @@ class MerchantResolver:
 
     def _similarity_search(
         self,
-        lines_client: ChromaClient,
+        lines_client: Optional[Any],
         query_line: ReceiptLine,
         current_image_id: str,
         current_receipt_id: int,
@@ -1343,7 +1342,7 @@ class MerchantResolver:
 
     def _similarity_search_impl(
         self,
-        lines_client: ChromaClient,
+        lines_client: Optional[Any],
         query_line: ReceiptLine,
         current_image_id: str,
         current_receipt_id: int,
@@ -1790,7 +1789,7 @@ class MerchantResolver:
 
     def _run_place_id_finder(
         self,
-        lines_client: ChromaClient,
+        lines_client: Optional[Any],
         lines: List[ReceiptLine],
         words: List[ReceiptWord],
         image_id: str,
@@ -1840,7 +1839,7 @@ class MerchantResolver:
 
     def _run_place_id_finder_impl(
         self,
-        lines_client: ChromaClient,
+        lines_client: Optional[Any],
         lines: List[ReceiptLine],
         words: List[ReceiptWord],
         image_id: str,
@@ -1893,7 +1892,7 @@ class MerchantResolver:
                 if not self.openai_client or not texts:
                     return []
                 # pylint: disable-next=import-outside-toplevel
-                from receipt_chroma.embedding.openai import embed_texts
+                from receipt_embeddings.openai.realtime import embed_texts
 
                 return embed_texts(
                     client=self.openai_client,

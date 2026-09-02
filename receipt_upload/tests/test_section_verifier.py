@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytest
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
-from receipt_embeddings import ScoredItem
+from receipt_embeddings import ChromaVectorSearchClient, ScoredItem
 
 from receipt_upload.line_items.provenance import SWIFT_WORKER_MODEL_SOURCE
 from receipt_upload.section_assignment import MODEL_SOURCE
@@ -125,8 +125,14 @@ def test_disagreement_is_recorded_without_overriding_sync_assignment(
     )
     dynamo = FakeDynamo(proposed, valid_neighbor)
 
+    # Post-teardown default backend is dynamodb; this test's fake speaks
+    # the legacy Chroma API, so inject it through the wrapper explicitly.
     verified = verify_receipt_sections(
-        FakeChroma(), dynamo, [row], [[1.0, 0.0]]
+        None,
+        dynamo,
+        [row],
+        [[1.0, 0.0]],
+        vector_client=ChromaVectorSearchClient(FakeChroma()),
     )
 
     assert verified[0].section_type == "TOTAL_LINE"

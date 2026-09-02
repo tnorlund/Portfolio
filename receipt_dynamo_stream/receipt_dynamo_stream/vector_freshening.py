@@ -41,7 +41,6 @@ from typing import Any, Iterable, Mapping, Optional
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
-
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_section import ReceiptSection

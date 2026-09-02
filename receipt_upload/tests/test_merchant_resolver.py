@@ -24,6 +24,14 @@ from receipt_upload.merchant_resolution import (
 TEST_IMAGE_ID = "00000000-0000-4000-8000-000000000001"
 
 
+@pytest.fixture(autouse=True)
+def _chroma_backend(monkeypatch):
+    """These tests exercise the legacy Chroma-wrapper similarity path with
+    Chroma-style mock clients; the post-teardown default backend is
+    dynamodb, so pin the backend the mocks speak."""
+    monkeypatch.setenv("VECTOR_BACKEND", "chroma")
+
+
 def _label(
     line_id: int,
     word_id: int,

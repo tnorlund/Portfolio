@@ -86,8 +86,8 @@ DERIVED_RECOMPUTED_TYPES = {
     "RECEIPT_SUMMARY",
     # Native vector items (SPEC §3.2): machine-derived from lines/words.
     # Cleanup's full-SK-prefix sweep deletes them with the source, and
-    # _embed_outputs dual-writes fresh ones for the outputs (flag-gated,
-    # same vectors as the Chroma leg) — codex flip-review P1.
+    # _dual_write_outputs_native_only writes fresh ones for the outputs
+    # before the commit — codex flip-review P1.
     "RECEIPT_LINE_EMBEDDING",
     "RECEIPT_WORD_EMBEDDING",
 }
@@ -1254,13 +1254,13 @@ def _dual_write_outputs_native_only(
     write so the apply fails BEFORE commit deletes the source vectors.
     """
     # pylint: disable=import-outside-toplevel
-    from receipt_chroma.embedding.metadata.line_metadata import (
-        enrich_row_metadata_with_anchors,
-    )
     from receipt_embeddings import EmbeddingWriter, EmbeddingWriteRequest
     from receipt_embeddings.formatting import (
         format_word_context_embedding_input,
         get_row_embedding_inputs,
+    )
+    from receipt_embeddings.line_metadata import (
+        enrich_row_metadata_with_anchors,
     )
     from receipt_upload.merchant_resolution.dynamo_embedding_write import (
         _word_label_statuses,
@@ -1352,88 +1352,6 @@ def _dual_write_outputs_native_only(
             report.written,
             len(report.skipped_existing_keys),
         )
-
-
-def _embed_outputs(
-    *,
-    outputs: list[dict[str, Any]],
-    dynamo_client: Any,
-    chromadb_bucket: str,
-    wait_for_embeddings: bool,
-) -> list[str]:
-    from receipt_chroma.embedding import (
-        EmbeddingConfig,
-        create_embeddings_and_compaction_run,
-    )
-
-    run_ids = []
-    for output in outputs:
-        receipt = output["receipt"]
-        config = EmbeddingConfig(
-            image_id=receipt.image_id,
-            receipt_id=receipt.receipt_id,
-            chromadb_bucket=chromadb_bucket,
-            dynamo_client=dynamo_client,
-            receipt_place=output["place"],
-            receipt_word_labels=output["labels"] or None,
-        )
-        embed_words = [
-            word for word in output["words"] if not word.is_noise
-        ] or output["words"]
-        result = create_embeddings_and_compaction_run(
-            receipt_lines=output["lines"],
-            receipt_words=embed_words,
-            config=config,
-        )
-        try:
-            run_ids.append(result.compaction_run.run_id)
-            # Dual-run leg (codex flip-review P1): output receipts must
-            # reach the native vector corpus too — reuse the vectors
-            # this embed just computed (flag-gated, never-raising).
-            from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501  pylint: disable=import-outside-toplevel
-                maybe_dual_write_embeddings,
-            )
-
-            dual_report = maybe_dual_write_embeddings(
-                dynamo=dynamo_client,
-                image_id=receipt.image_id,
-                receipt_id=receipt.receipt_id,
-                lines=output["lines"],
-                words=embed_words,
-                word_labels=output["labels"] or [],
-                receipt_place=output["place"],
-                row_embeddings=result.row_embeddings,
-                row_line_ids_list=result.row_line_ids_list,
-                word_embeddings_list=result.word_embeddings_list,
-            )
-            if dual_report is not None:
-                logger.info(
-                    "Dual-write embeddings report for output %s: %s",
-                    receipt.receipt_id,
-                    dual_report,
-                )
-                if dual_report.get("error") or dual_report.get("failed"):
-                    # Destructive-step ordering (codex flip-review P2):
-                    # cleanup deletes the source's vectors, so an
-                    # incomplete output write must fail the apply as
-                    # retryable instead of committing a vector-less
-                    # split.
-                    raise RuntimeError(
-                        "native dual-write incomplete for output "
-                        f"{receipt.receipt_id}: {dual_report}"
-                    )
-            if (
-                wait_for_embeddings
-                and not result.wait_for_compaction_to_finish(
-                    dynamo_client, max_wait_seconds=300
-                )
-            ):
-                raise RuntimeError(
-                    f"Embedding compaction failed for receipt {receipt.receipt_id}"
-                )
-        finally:
-            result.close()
-    return run_ids
 
 
 def _delete_uploaded_objects(
@@ -1554,7 +1472,6 @@ def apply_plan(
     s3_client: "S3Client",
     raw_bucket: str,
     site_bucket: str,
-    chromadb_bucket: str,
 ) -> dict[str, Any]:
     """Apply a persisted plan with staging, guarded commit, and cleanup."""
     from receipt_dynamo.data.shared_exceptions import (
@@ -1793,34 +1710,15 @@ def apply_plan(
             uploaded_keys=uploaded_keys,
         )
         run_ids = []
-        # Embeddings default OFF: running them inline OOMs the deployed
-        # Lambda at its memory limit, and the outputs' embeddings self-heal
-        # through the normal pipeline. Opt in explicitly for tests/tools.
-        from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501  pylint: disable=import-outside-toplevel
-            dual_write_embeddings_enabled,
+        # Cleanup deletes the source's embedding rows, so outputs MUST
+        # get native replacements before the commit. This light path
+        # embeds realtime via the engine writer (the retired Chroma
+        # _embed_outputs snapshot work OOMed the deployed Lambda) and
+        # raises on an incomplete write so the apply fails BEFORE the
+        # destructive commit (codex flip-review P1/P2).
+        _dual_write_outputs_native_only(
+            outputs=outputs, dynamo_client=dynamo_client
         )
-
-        if event.get("create_embeddings", False):
-            run_ids = _embed_outputs(
-                outputs=outputs,
-                dynamo_client=dynamo_client,
-                chromadb_bucket=chromadb_bucket,
-                wait_for_embeddings=bool(
-                    event.get("wait_for_embeddings", True)
-                ),
-            )
-        elif dual_write_embeddings_enabled():
-            # With native dual writes enabled, cleanup deletes the
-            # source's embedding rows, so outputs MUST get native
-            # replacements — but NOT via _embed_outputs, whose Chroma
-            # snapshot work OOMs the deployed Lambda (the documented
-            # reason embeddings default off). This light path embeds
-            # realtime via the engine writer and touches no Chroma;
-            # the Chroma leg self-heals through the normal pipeline
-            # (codex flip-review P1).
-            _dual_write_outputs_native_only(
-                outputs=outputs, dynamo_client=dynamo_client
-            )
 
         # Re-verify the source fingerprint immediately before the commit (M2):
         # staging and embedding above widen the window in which an external
@@ -1972,7 +1870,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         table_name = os.environ["DYNAMODB_TABLE_NAME"]
         raw_bucket = os.environ["RAW_BUCKET"]
         site_bucket = os.environ["SITE_BUCKET"]
-        chromadb_bucket = os.environ["CHROMADB_BUCKET"]
 
         from receipt_dynamo import DynamoClient
 
@@ -2040,7 +1937,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 s3_client=s3_client,
                 raw_bucket=raw_bucket,
                 site_bucket=site_bucket,
-                chromadb_bucket=chromadb_bucket,
             )
         except Exception as exc:
             if job_id is not None:

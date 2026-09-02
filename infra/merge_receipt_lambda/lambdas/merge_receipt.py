@@ -2,8 +2,8 @@
 Merge Receipt Lambda Handler (Container Lambda)
 
 Merges multiple receipt fragments into a single new receipt with proper
-warping, re-runs embeddings, waits for compaction to complete, then deletes
-the originals.
+warping, writes the merged receipt's native DynamoDB embeddings, then
+deletes the originals (and their embedding items).
 
 Input:
     {
@@ -20,7 +20,6 @@ Output:
         "status": "success",
         "words_merged": 110,
         "labels_merged": 17,
-        "compaction_run_id": "uuid",
         "deleted_receipts": [3, 2]
     }
 
@@ -28,7 +27,6 @@ Environment Variables:
     DYNAMODB_TABLE_NAME: DynamoDB table name
     RAW_BUCKET: S3 bucket for raw receipt images
     SITE_BUCKET: S3 bucket for CDN images
-    CHROMADB_BUCKET: S3 bucket for ChromaDB snapshots
     OPENAI_API_KEY: OpenAI API key (for embeddings)
 """
 
@@ -114,7 +112,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     5. Create new Receipt/Line/Word/Letter entities in warped space
     6. Migrate labels and place data
     7. Write to DynamoDB
-    8. Create embeddings and wait for compaction
+    8. Write native DynamoDB embeddings (abort before deletion if incomplete)
     9. Delete original receipts
     """
     try:
@@ -154,10 +152,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
         # Import here to avoid cold start overhead if validation fails
         from receipt_agent.lifecycle.receipt_manager import delete_receipt
-        from receipt_chroma.embedding import (
-            EmbeddingConfig,
-            create_embeddings_and_compaction_run,
-        )
         from receipt_dynamo import DynamoClient
         from receipt_upload.combine import (
             calculate_min_area_rect,
@@ -181,7 +175,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")
         raw_bucket = os.environ.get("RAW_BUCKET")
         site_bucket = os.environ.get("SITE_BUCKET")
-        chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
 
         if not table_name:
             return {"status": "error", "error": "DYNAMODB_TABLE_NAME not set"}
@@ -189,8 +182,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             return {"status": "error", "error": "RAW_BUCKET not set"}
         if not site_bucket:
             return {"status": "error", "error": "SITE_BUCKET not set"}
-        if not chromadb_bucket:
-            return {"status": "error", "error": "CHROMADB_BUCKET not set"}
 
         client = DynamoClient(table_name=table_name)
         s3_client = boto3.client("s3")
@@ -465,17 +456,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             )
 
         # ============================================================
-        # Step 11: Create embeddings and compaction run
+        # Step 11: Write native embeddings for the merged receipt
         # ============================================================
-        logger.info("Creating embeddings and compaction run...")
-        embedding_config = EmbeddingConfig(
-            image_id=image_id,
-            receipt_id=new_receipt_id,
-            chromadb_bucket=chromadb_bucket,
-            dynamo_client=client,
-            receipt_place=receipt_place,
-            receipt_word_labels=new_labels if new_labels else None,
-        )
+        logger.info("Writing native embeddings for merged receipt...")
 
         # Filter out noise words for embedding (non-noise words only)
         non_noise_words = [
@@ -484,76 +467,45 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         if not non_noise_words:
             non_noise_words = receipt_words  # Fallback: use all words
 
-        embedding_result = create_embeddings_and_compaction_run(
-            receipt_lines=receipt_lines,
-            receipt_words=non_noise_words,
-            config=embedding_config,
-        )
-        compaction_run_id = embedding_result.compaction_run.run_id
-        logger.info("CompactionRun created: %s", compaction_run_id)
-
-        # Dual-run leg (issue #1517): reuse the vectors this merge just
-        # computed to write native DynamoDB embedding items, so a
-        # receipt merged during/after the Dynamo cutover is searchable
-        # via SearchVectors. Flag-gated and never-raising — a failure
-        # here cannot affect the merge outcome.
+        # Chroma teardown: the merged receipt's vectors are written
+        # directly as native DynamoDB embedding items in one batched
+        # OpenAI call. Destructive-step ordering (codex review P1):
+        # source receipts are deleted below, so an incomplete native
+        # write must abort the merge as retryable BEFORE deletion —
+        # never report success with the merged receipt missing vectors.
         # pylint: disable=import-outside-toplevel
         from receipt_upload.merchant_resolution.dynamo_embedding_write import (
-            maybe_dual_write_embeddings,
+            write_native_embeddings,
         )
 
-        dual_report = maybe_dual_write_embeddings(
-            dynamo=client,
-            image_id=image_id,
-            receipt_id=new_receipt_id,
-            lines=receipt_lines,
-            words=non_noise_words,
-            word_labels=new_labels or [],
-            receipt_place=receipt_place,
-            row_embeddings=embedding_result.row_embeddings,
-            row_line_ids_list=embedding_result.row_line_ids_list,
-            word_embeddings_list=embedding_result.word_embeddings_list,
-        )
-        if dual_report is not None:
-            logger.info("Dual-write embeddings report: %s", dual_report)
-            # Destructive-step ordering (codex review P1): source
-            # receipts are deleted below, so an incomplete native write
-            # must abort the merge as retryable BEFORE deletion — never
-            # report success with the merged receipt missing vectors.
-            if dual_report.get("error") or dual_report.get("failed"):
-                try:
-                    embedding_result.close()
-                except Exception:  # pylint: disable=broad-exception-caught
-                    pass
-                return {
-                    "status": "error",
-                    "error": (
-                        "dual-write embeddings incomplete; source "
-                        "receipts NOT deleted (safe to retry): "
-                        f"{dual_report}"
-                    ),
-                    "image_id": image_id,
-                    "receipt_ids": receipt_ids,
-                    "new_receipt_id": new_receipt_id,
-                    "compaction_run_id": compaction_run_id,
-                }
-
-        # ============================================================
-        # Step 12: Close embedding resources (compaction runs async
-        #          via DynamoDB stream — no need to wait)
-        # ============================================================
         try:
-            embedding_result.close()
-        except Exception:
-            logger.warning(
-                "Failed to close embedding resources for compaction_run_id=%s; "
-                "proceeding with receipt deletion",
-                compaction_run_id,
-                exc_info=True,
+            native_report = write_native_embeddings(
+                client,
+                image_id=image_id,
+                receipt_id=new_receipt_id,
+                lines=receipt_lines,
+                words=non_noise_words,
+                word_labels=new_labels or [],
+                receipt_place=receipt_place,
             )
-        logger.info(
-            "Compaction will complete asynchronously: %s", compaction_run_id
-        )
+        except (
+            Exception
+        ) as native_exc:  # pylint: disable=broad-exception-caught
+            logger.exception("Native embeddings write raised")
+            native_report = {"error": str(native_exc), "failed": 0}
+        logger.info("Native embeddings report: %s", native_report)
+        if native_report.get("error") or native_report.get("failed"):
+            return {
+                "status": "error",
+                "error": (
+                    "native embeddings write incomplete; source "
+                    "receipts NOT deleted (safe to retry): "
+                    f"{native_report}"
+                ),
+                "image_id": image_id,
+                "receipt_ids": receipt_ids,
+                "new_receipt_id": new_receipt_id,
+            }
 
         # ============================================================
         # Step 13: Delete original receipts (highest ID first)
@@ -592,7 +544,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("Updated image receipt_count=%d", len(remaining_receipts))
 
         result["status"] = "success"
-        result["compaction_run_id"] = compaction_run_id
         result["deleted_receipts"] = deleted_receipts
         logger.info("Merge complete: %s", result)
         return result

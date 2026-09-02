@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING, Any, Literal, Optional
 
 import boto3
 from openai import OpenAI
-
 from receipt_chroma.data.chroma_client import ChromaClient
 from receipt_chroma.embedding.formatting.line_format import (
     get_row_embedding_inputs,
@@ -52,7 +51,6 @@ from receipt_dynamo.entities import (
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
-
     from receipt_dynamo import DynamoClient
 
 logger = logging.getLogger(__name__)

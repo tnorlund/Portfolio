@@ -46,6 +46,15 @@ if _cached is not None and getattr(_cached, "__file__", None) is None:
     ]:
         del sys.modules[_name]
 
+from receipt_embeddings import build_chroma_where  # noqa: E402
+from receipt_embeddings import ensure_get_ids_within_quota  # noqa: E402
+from receipt_embeddings import (  # noqa: E402
+    ScoredItem,
+    VectorItem,
+    ensure_query_embeddings_within_quota,
+)
+from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
+
 from scripts.similarity_harness.common import LINE_INDEX  # noqa: E402
 from scripts.similarity_harness.common import (
     MERCHANT_FAMILY,
@@ -64,15 +73,6 @@ from scripts.similarity_harness.common import (
     validate_fixture,
     write_fixture,
 )
-
-from receipt_embeddings import build_chroma_where  # noqa: E402
-from receipt_embeddings import ensure_get_ids_within_quota  # noqa: E402
-from receipt_embeddings import (  # noqa: E402
-    ScoredItem,
-    VectorItem,
-    ensure_query_embeddings_within_quota,
-)
-from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
 
 DEFAULT_FIXTURE = (
     REPOSITORY_ROOT / "tests" / "fixtures" / "similarity" / "golden.json"

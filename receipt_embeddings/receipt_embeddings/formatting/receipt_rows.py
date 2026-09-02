@@ -8,7 +8,6 @@ from statistics import median
 from typing import Protocol
 
 from receipt_dynamo.entities import ReceiptRow
-
 from receipt_embeddings.formatting.line_format import (
     LineLike,
     get_primary_line_id,

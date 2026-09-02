@@ -29,7 +29,7 @@ def vector_search_client(
     dynamodb_client: Any = None,
     table_name: str | None = None,
 ) -> VectorSearchClient:
-    """Return the configured vector backend, defaulting to Chroma.
+    """Return the configured vector backend, defaulting to DynamoDB.
 
     ``vector_client`` is an explicit injection seam for tests and callers
     that already own a backend. For the ``dynamodb`` backend, callers that
@@ -47,7 +47,7 @@ def vector_search_client(
     if isinstance(chroma_client, VectorSearchClient):
         return chroma_client
 
-    backend = os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
+    backend = os.environ.get("VECTOR_BACKEND", "dynamodb").strip().lower()
     if backend == "dynamodb":
         if table_name:
             if dynamodb_client is None:

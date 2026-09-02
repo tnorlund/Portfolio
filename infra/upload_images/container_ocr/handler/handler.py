@@ -385,7 +385,6 @@ def _process_single_record(
         site_bucket=os.environ["SITE_BUCKET"],
         ocr_job_queue_url=os.environ["OCR_JOB_QUEUE_URL"],
         ocr_results_queue_url=os.environ["OCR_RESULTS_QUEUE_URL"],
-        chromadb_bucket=os.environ.get("CHROMADB_BUCKET", ""),
     )
 
     # Step 1: Process OCR (parse, classify, store in DynamoDB)
@@ -453,7 +452,6 @@ def _process_single_record(
             dual_write_failed = 0
             embedding_processor = MerchantResolvingEmbeddingProcessor(
                 table_name=os.environ["DYNAMO_TABLE_NAME"],
-                chromadb_bucket=os.environ["CHROMADB_BUCKET"],
                 google_places_api_key=os.environ.get("GOOGLE_PLACES_API_KEY"),
                 openai_api_key=os.environ.get("OPENAI_API_KEY"),
             )
@@ -497,7 +495,9 @@ def _process_single_record(
                     if merchant_found:
                         total_merchants_found += 1
 
-                    dual_write = embedding_result.get("dual_write") or {}
+                    dual_write = (
+                        embedding_result.get("native_embeddings") or {}
+                    )
                     dual_write_written += dual_write.get("written", 0)
                     dual_write_failed += dual_write.get("failed", 0) + (
                         1 if dual_write.get("error") else 0

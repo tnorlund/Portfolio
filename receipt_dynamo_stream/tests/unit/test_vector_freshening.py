@@ -5,7 +5,6 @@ from typing import Any
 
 import pytest
 from botocore.exceptions import ClientError
-
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo_stream import FresheningStats, apply_vector_freshening
 from receipt_dynamo_stream.vector_freshening import TABLE_ENV_VAR

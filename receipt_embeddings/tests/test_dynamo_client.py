@@ -12,7 +12,6 @@ from receipt_dynamo.entities import (
     ReceiptLineEmbedding,
     ReceiptWordEmbedding,
 )
-
 from receipt_embeddings import ChromaVectorSearchClient
 from receipt_embeddings.dynamo_client import (
     _LINE_JOIN_ATTRIBUTES,

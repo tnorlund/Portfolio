@@ -14,6 +14,12 @@ pytest.importorskip(
     reason="imports the backfill script's chroma source; the CI receipt_embeddings leg is chromadb-free",
 )
 
+from receipt_embeddings import ScoredItem
+from receipt_embeddings.writer import (
+    EmbeddingWriteFailure,
+    EmbeddingWriteReport,
+    EmbeddingWriteRequest,
+)
 from scripts.backfill_receipt_embeddings import (
     EXIT_GLOBAL_WRITE_FAILURE,
     EXIT_VERIFICATION_FAILURE,
@@ -27,13 +33,6 @@ from scripts.backfill_receipt_embeddings import (
     resolve_vector_source,
     verify_written_items,
     wait_for_written_keys,
-)
-
-from receipt_embeddings import ScoredItem
-from receipt_embeddings.writer import (
-    EmbeddingWriteFailure,
-    EmbeddingWriteReport,
-    EmbeddingWriteRequest,
 )
 
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"

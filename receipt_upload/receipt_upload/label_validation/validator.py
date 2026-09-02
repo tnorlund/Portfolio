@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from receipt_chroma import ChromaClient
 from receipt_dynamo.constants import CORE_LABELS
 
 logger = logging.getLogger(__name__)
@@ -89,17 +88,20 @@ class LightweightLabelValidator:
 
     def __init__(
         self,
-        words_client: ChromaClient,
+        words_client: Optional[Any] = None,
         merchant_name: Optional[str] = None,
         word_embeddings: Optional[Dict[Tuple[int, int], List[float]]] = None,
     ):
         """Initialize the validator.
 
         Args:
-            words_client: ChromaClient with words collection (snapshot+delta merged)
+            words_client: Optional legacy Chroma words client. ``None``
+                (the post-teardown default) makes every similarity query
+                abstain — identical to the retired words collection, whose
+                ``label_{X}`` filter surface matched nothing in production
+                — so pending labels fall through to the LLM validator.
             merchant_name: Optional merchant name for same-merchant boosting
             word_embeddings: Optional cached embeddings from orchestration
-                             (avoids redundant ChromaDB fetches for current receipt)
         """
         self.words_client = words_client
         self.merchant_name = (
@@ -124,6 +126,9 @@ class LightweightLabelValidator:
         cached = self.word_embeddings.get((line_id, word_id))
         if cached:
             return cached
+
+        if self.words_client is None:
+            return None
 
         # Fallback to ChromaDB fetch (for words not in current receipt)
         try:
@@ -173,6 +178,8 @@ class LightweightLabelValidator:
         Returns:
             List of dicts with similarity, label_valid, merchant_name, word_text
         """
+        if self.words_client is None:
+            return []
         try:
             results = self.words_client.query(
                 collection_name="words",
@@ -296,6 +303,8 @@ class LightweightLabelValidator:
             List of top LabelScore candidates, sorted by score descending
         """
         label_scores: List[LabelScore] = []
+        if self.words_client is None:
+            return label_scores
 
         for label in CORE_LABELS:
             # Skip the excluded label (the one we're rejecting)

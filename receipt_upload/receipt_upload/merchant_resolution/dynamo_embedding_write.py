@@ -1,36 +1,28 @@
-"""Dual-run ingest writer for native DynamoDB embedding items (SPEC §3.4).
+"""Native DynamoDB embedding writers (post-Chroma-teardown).
 
-Reuses the vectors the ingest embedding step already computed (zero extra
-OpenAI calls) and writes them as ``*_EMBEDDING`` items via the
-``receipt_embeddings`` engine writer. Gated on the ``DUAL_WRITE_EMBEDDINGS``
-env flag (string ``"true"`` enables; default off) and strictly non-fatal:
-any failure is logged and reported, never raised, so the receipt's ingest
-outcome is unaffected.
+``write_precomputed_embeddings`` persists vectors the ingest embedding
+step already computed (zero extra OpenAI calls) as ``*_EMBEDDING`` items
+via the ``receipt_embeddings`` engine writer — THE ingest persistence step.
+``write_native_embeddings`` is the standalone variant for correction flows
+(merge / re-OCR / resegment): it re-embeds from the receipt's current text
+in one batched call and optionally sweeps stale items first.
 
-Metadata written here is the best available at ingest time (place may not
+Metadata written here is the best available at write time (place may not
 be resolved yet, sections do not exist yet); the stream freshening leg
-(SPEC §3.4a) refreshes ``merchant_name``/``place_id``/``label_status``/
-``section_type`` when those entities land.
+refreshes ``merchant_name``/``place_id``/``label_status``/``section_type``
+when those entities land.
 """
 
 import logging
-import os
 from dataclasses import replace as dataclasses_replace
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from receipt_chroma.embedding.metadata.line_metadata import (
+from receipt_dynamo.constants import ValidationStatus
+from receipt_embeddings.line_metadata import (
     enrich_row_metadata_with_anchors,
 )
-from receipt_dynamo.constants import ValidationStatus
 
 logger = logging.getLogger(__name__)
-
-DUAL_WRITE_ENV_VAR = "DUAL_WRITE_EMBEDDINGS"
-
-
-def dual_write_embeddings_enabled() -> bool:
-    """True only when DUAL_WRITE_EMBEDDINGS is the string "true"."""
-    return os.environ.get(DUAL_WRITE_ENV_VAR, "").strip().lower() == "true"
 
 
 def _word_label_statuses(
@@ -99,6 +91,8 @@ def build_ingest_embedding_requests(
             raise ValueError(
                 f"visual row {line_ids} has no matching receipt lines"
             )
+        if not " ".join(line.text for line in row_lines).strip():
+            continue  # blank OCR rows are unembeddable (writer refuses)
         row_line_id_set = set(line_ids)
         anchors = enrich_row_metadata_with_anchors(
             {},
@@ -129,6 +123,8 @@ def build_ingest_embedding_requests(
 
     statuses = _word_label_statuses(word_labels)
     for word, vector in zip(words, word_embeddings_list, strict=True):
+        if not str(word.text).strip():
+            continue  # blank OCR words are unembeddable (writer refuses)
         requests.append(
             EmbeddingWriteRequest(
                 kind="word",
@@ -147,7 +143,7 @@ def build_ingest_embedding_requests(
     return requests
 
 
-def maybe_dual_write_embeddings(
+def write_precomputed_embeddings(
     *,
     dynamo: Any,
     image_id: str,
@@ -160,16 +156,15 @@ def maybe_dual_write_embeddings(
     row_line_ids_list: Sequence[Sequence[int]],
     word_embeddings_list: Sequence[Sequence[float]],
     writer_factory: Optional[Callable[[Any, str], Any]] = None,
-) -> Optional[Dict[str, Any]]:
-    """Flag-gated, never-raising dual write of the receipt's embeddings.
+) -> Dict[str, Any]:
+    """Never-raising native write of a receipt's precomputed embeddings.
 
-    Returns None when the flag is off (zero work, zero writer calls);
-    otherwise a small report dict for logging/metrics. Every vector is
-    supplied up front, so the engine writer never calls OpenAI.
+    THE ingest persistence step post-Chroma-teardown: every vector is
+    supplied up front (reusing what the ingest embedding step already
+    computed — zero extra OpenAI calls), so the engine writer never calls
+    OpenAI. Returns a small report dict; callers decide fatality from its
+    ``error``/``failed`` keys (ingest fails the receipt so it can retry).
     """
-    if not dual_write_embeddings_enabled():
-        return None
-
     try:
         merchant_name = (
             str(getattr(receipt_place, "merchant_name", "") or "")
@@ -201,27 +196,25 @@ def maybe_dual_write_embeddings(
             writer = writer_factory(dynamo._client, dynamo.table_name)
         report = writer.write(requests)
         result = {
-            "enabled": True,
             "requests": len(requests),
             "written": report.written,
             "skipped_existing": len(report.skipped_existing_keys),
             "failed": len(report.failures),
         }
         logger.info(
-            "Dual-write embeddings for %s#%s: %s",
+            "Native embeddings write for %s#%s: %s",
             image_id,
             receipt_id,
             result,
         )
         return result
-    except Exception as exc:  # noqa: BLE001 - never affect ingest outcome
+    except Exception as exc:  # noqa: BLE001 - caller decides fatality
         logger.exception(
-            "Dual-write embeddings failed for %s#%s (non-fatal)",
+            "Native embeddings write failed for %s#%s",
             image_id,
             receipt_id,
         )
         return {
-            "enabled": True,
             "written": 0,
             "failed": 0,
             "error": str(exc),
@@ -307,13 +300,13 @@ def write_native_embeddings(
     on failure; ingest may catch-and-heal (the backfill is the healer).
     """
     # pylint: disable=import-outside-toplevel
-    from receipt_chroma.embedding.metadata.line_metadata import (
-        enrich_row_metadata_with_anchors as _anchors,
-    )
     from receipt_embeddings import EmbeddingWriter, EmbeddingWriteRequest
     from receipt_embeddings.formatting import (
         format_word_context_embedding_input,
         get_row_embedding_inputs,
+    )
+    from receipt_embeddings.line_metadata import (
+        enrich_row_metadata_with_anchors as _anchors,
     )
     from receipt_embeddings.openai.realtime import embed_texts
 
@@ -437,9 +430,7 @@ def write_native_embeddings(
 
 
 __all__ = [
-    "DUAL_WRITE_ENV_VAR",
     "build_ingest_embedding_requests",
-    "dual_write_embeddings_enabled",
-    "maybe_dual_write_embeddings",
     "write_native_embeddings",
+    "write_precomputed_embeddings",
 ]

@@ -23,9 +23,8 @@ import types
 from types import SimpleNamespace
 
 import pytest
-from test_receipt_mcp_section_tools import SERVER_FILES, _load_module
-
 from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
+from test_receipt_mcp_section_tools import SERVER_FILES, _load_module
 
 IMG = "3f2a1b0c-4d5e-4f70-8192-a3b4c5d6e7f8"
 NEIGHBOR_IMG = "9e8d7c6b-5a49-4382-a1b0-c9d8e7f6a5b4"

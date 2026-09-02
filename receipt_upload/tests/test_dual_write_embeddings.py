@@ -1,12 +1,11 @@
-"""Dual-run ingest tests (SPEC §3.4 wiring).
+"""Native embedding writer tests (Chroma teardown).
 
-Covers the DUAL_WRITE_EMBEDDINGS gate, reuse of the ingest step's
-in-memory vectors (zero OpenAI calls), non-fatal writer failures, and
-independence from the Chroma pipeline legs.
+Covers the ingest request builder, the unconditional precomputed-vector
+write (``write_precomputed_embeddings``), the processor wiring that makes
+the native write THE persistence step, and the standalone batched writer
+(``write_native_embeddings``) used by the correction flows.
 """
 
-import sys
-import types
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -14,10 +13,8 @@ import pytest
 from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
 
 from receipt_upload.merchant_resolution.dynamo_embedding_write import (
-    DUAL_WRITE_ENV_VAR,
     build_ingest_embedding_requests,
-    dual_write_embeddings_enabled,
-    maybe_dual_write_embeddings,
+    write_precomputed_embeddings,
 )
 
 IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"
@@ -138,9 +135,27 @@ class TestBuildIngestEmbeddingRequests:
         assert requests[0].row_line_ids == (1, 2)
         assert requests[0].text == "STORE #42"
 
+    def test_blank_rows_and_words_are_skipped(self) -> None:
+        """The engine writer refuses empty text, so blank OCR rows and
+        words must never become requests (they'd surface as failures)."""
+        requests = build_ingest_embedding_requests(
+            image_id=IMAGE_ID,
+            receipt_id=1,
+            lines=[_line(1, "STORE"), _line(2, "  ")],
+            words=[_word(1, 1, "STORE"), _word(2, 1, "")],
+            word_labels=[],
+            merchant_name="",
+            place_id="",
+            row_embeddings=[_vector(0.1), _vector(0.2)],
+            row_line_ids_list=[[1], [2]],
+            word_embeddings_list=[_vector(0.3), _vector(0.4)],
+        )
+        assert len([r for r in requests if r.kind == "line"]) == 1
+        assert len([r for r in requests if r.kind == "word"]) == 1
+
 
 @pytest.mark.unit
-class TestMaybeDualWriteEmbeddings:
+class TestWritePrecomputedEmbeddings:
     def _kwargs(self, **overrides):
         dynamo = MagicMock()
         dynamo.table_name = "test-table"
@@ -159,27 +174,13 @@ class TestMaybeDualWriteEmbeddings:
         base.update(overrides)
         return base
 
-    def test_flag_off_means_zero_writer_calls(self, monkeypatch) -> None:
-        monkeypatch.delenv(DUAL_WRITE_ENV_VAR, raising=False)
-        factory = MagicMock()
-        assert not dual_write_embeddings_enabled()
-        result = maybe_dual_write_embeddings(
-            writer_factory=factory, **self._kwargs()
-        )
-        assert result is None
-        factory.assert_not_called()
-
-    def test_flag_on_invokes_writer_with_in_memory_vectors(
-        self, monkeypatch
-    ) -> None:
-        monkeypatch.setenv(DUAL_WRITE_ENV_VAR, "true")
+    def test_writes_with_in_memory_vectors(self) -> None:
         writer = RecordingWriter()
         kwargs = self._kwargs()
-        result = maybe_dual_write_embeddings(
+        result = write_precomputed_embeddings(
             writer_factory=lambda client, table: writer, **kwargs
         )
         assert result == {
-            "enabled": True,
             "requests": 2,
             "written": 2,
             "skipped_existing": 0,
@@ -192,13 +193,10 @@ class TestMaybeDualWriteEmbeddings:
         assert requests[0].vector == kwargs["row_embeddings"][0]
         assert requests[1].vector == kwargs["word_embeddings_list"][0]
 
-    def test_place_metadata_flows_from_receipt_place(
-        self, monkeypatch
-    ) -> None:
-        monkeypatch.setenv(DUAL_WRITE_ENV_VAR, "true")
+    def test_place_metadata_flows_from_receipt_place(self) -> None:
         writer = RecordingWriter()
         place = SimpleNamespace(merchant_name="Costco", place_id="p-9")
-        maybe_dual_write_embeddings(
+        write_precomputed_embeddings(
             writer_factory=lambda client, table: writer,
             **self._kwargs(receipt_place=place),
         )
@@ -206,11 +204,10 @@ class TestMaybeDualWriteEmbeddings:
         assert requests[0].merchant_name == "Costco"
         assert requests[0].place_id == "p-9"
 
-    def test_writer_failure_never_raises(self, monkeypatch) -> None:
-        monkeypatch.setenv(DUAL_WRITE_ENV_VAR, "true")
+    def test_writer_failure_never_raises(self) -> None:
         failing = MagicMock()
         failing.write.side_effect = RuntimeError("dynamo down")
-        result = maybe_dual_write_embeddings(
+        result = write_precomputed_embeddings(
             writer_factory=lambda client, table: failing, **self._kwargs()
         )
         assert result["error"] == "dynamo down"
@@ -218,26 +215,18 @@ class TestMaybeDualWriteEmbeddings:
 
 
 @pytest.mark.unit
-class TestProcessorWiringIndependence:
-    """The dual write runs even when the Chroma pipeline legs fail."""
+class TestProcessorWiring:
+    """The native write is THE persistence step: it runs on Phase 1's
+    vectors and its report decides the receipt's success."""
 
-    def test_dual_write_called_when_chroma_pipelines_fail(
-        self, monkeypatch
-    ) -> None:
+    def _run_impl(self, native_report):
         from receipt_upload.merchant_resolution import (
             embedding_processor as ep,
         )
 
-        # The impl imports OpenAI lazily; a stub keeps the test offline.
-        monkeypatch.setitem(
-            sys.modules,
-            "openai",
-            types.SimpleNamespace(OpenAI=lambda: object()),
-        )
         row_embeddings = [_vector(0.1)]
         row_line_ids_list = [[1]]
         word_embeddings_list = [_vector(0.2)]
-        dual_report = {"enabled": True, "written": 2, "failed": 0}
 
         with (
             patch.object(ep, "DynamoClient") as mock_dynamo,
@@ -245,10 +234,8 @@ class TestProcessorWiringIndependence:
             patch.object(ep, "MerchantResolver"),
             patch.object(
                 ep,
-                "download_and_embed_parallel",
+                "_embed_receipt_vectors",
                 return_value=(
-                    None,
-                    None,
                     row_embeddings,
                     row_line_ids_list,
                     word_embeddings_list,
@@ -257,9 +244,9 @@ class TestProcessorWiringIndependence:
             patch.object(ep, "log_merchant_resolution"),
             patch.object(
                 ep,
-                "maybe_dual_write_embeddings",
-                return_value=dual_report,
-            ) as dual_mock,
+                "write_precomputed_embeddings",
+                return_value=native_report,
+            ) as native_mock,
         ):
             client = MagicMock()
             client.table_name = "test-table"
@@ -271,30 +258,44 @@ class TestProcessorWiringIndependence:
             mock_dynamo.return_value = client
 
             processor = ep.MerchantResolvingEmbeddingProcessor(
-                table_name="test-table", chromadb_bucket="bucket"
+                table_name="test-table"
             )
             # SimpleNamespace entities make Phase 2's dataclass
-            # serialization blow up — the Chroma legs fail wholesale.
+            # serialization blow up — both pipeline legs fail wholesale.
             result = processor._process_embeddings_impl(
                 image_id=IMAGE_ID,
                 receipt_id=1,
                 lines=[_line(1, "STORE")],
                 words=[_word(1, 1, "STORE")],
             )
+        return result, native_mock, row_embeddings, word_embeddings_list
 
-        # Chroma leg failed (no compaction run) …
+    def test_native_write_decides_success_even_when_pipelines_fail(
+        self,
+    ) -> None:
+        native_report = {"requests": 2, "written": 2, "failed": 0}
+        result, native_mock, rows, words_v = self._run_impl(native_report)
+
+        # Phase-2 pipelines failed (SimpleNamespace serialization), but
+        # the corpus write succeeded — the receipt is searchable, so the
+        # run succeeds.
+        assert result["success"] is True
+        native_mock.assert_called_once()
+        call_kwargs = native_mock.call_args.kwargs
+        assert call_kwargs["row_embeddings"] is rows
+        assert call_kwargs["word_embeddings_list"] is words_v
+        assert result["native_embeddings"] is native_report
+
+    def test_incomplete_native_write_fails_the_receipt(self) -> None:
+        native_report = {"requests": 2, "written": 1, "failed": 1}
+        result, _mock, _r, _w = self._run_impl(native_report)
         assert result["success"] is False
-        # … but the dual write ran with the very vectors Phase 1 produced.
-        dual_mock.assert_called_once()
-        call_kwargs = dual_mock.call_args.kwargs
-        assert call_kwargs["row_embeddings"] is row_embeddings
-        assert call_kwargs["word_embeddings_list"] is word_embeddings_list
-        assert result["dual_write"] is dual_report
+        assert result["native_embeddings"] is native_report
 
 
 @pytest.mark.unit
 class TestWriteNativeEmbeddings:
-    """Chroma-free native writer (teardown PR #4): batch-embeds the
+    """Standalone batched writer for correction flows: embeds the
     ingest-formatted inputs and persists via the engine writer."""
 
     def _run(self, monkeypatch, *, sweep=False, raw=None):
