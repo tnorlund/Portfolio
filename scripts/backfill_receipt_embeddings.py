@@ -37,12 +37,6 @@ from receipt_dynamo import DynamoClient  # noqa: E402
 from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
     EntityNotFoundError,
 )
-from scripts.similarity_harness.capture_golden import (  # noqa: E402
-    CHROMA_ENVIRONMENT,
-    DEV_DATABASE,
-)
-from scripts.similarity_harness.common import validate_fixture  # noqa: E402
-
 from receipt_embeddings import (  # noqa: E402
     DynamoVectorSearchClient,
     EmbeddingWriter,
@@ -61,6 +55,12 @@ from receipt_embeddings.service_limits import (  # noqa: E402
     MAX_SEARCH_RESULTS,
     WORD_INDEX,
 )
+
+from scripts.similarity_harness.capture_golden import (  # noqa: E402
+    CHROMA_ENVIRONMENT,
+    DEV_DATABASE,
+)
+from scripts.similarity_harness.common import validate_fixture  # noqa: E402
 
 DEV_TABLE = "ReceiptsTable-dc5be22"
 DEFAULT_REGION = "us-east-1"
