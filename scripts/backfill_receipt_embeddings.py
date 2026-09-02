@@ -803,6 +803,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"refusing table {args.table_name!r}; only {DEV_TABLE!r} is "
             "allowed unless --allow-table exactly repeats the table name"
         )
+    if args.table_name != DEV_TABLE and not (
+        args.manifest_only and args.extra_receipts is not None
+    ):
+        raise SystemExit(
+            "non-dev tables require --manifest-only with --extra-receipts: "
+            "fixture receipts may not exist in the target table (codex "
+            "review P1)"
+        )
     if args.limit is not None and args.limit < 1:
         raise SystemExit("--limit must be at least 1")
     if args.apply and args.limit is None:
@@ -927,6 +935,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         sample_size=args.sample_size,
     )
     exit_code = determine_exit_code(write_report, report["item_verification"])
+    if (
+        exit_code == 0
+        and not write_report.written_keys
+        and not write_report.skipped_existing_keys
+        and (receipt_skips or vector_skips)
+    ):
+        # An applied run where every requested item skipped (wrong
+        # region/account/table contents) must not report success with
+        # nothing promoted (codex review P1).
+        exit_code = EXIT_GLOBAL_WRITE_FAILURE
+        report["empty_promotion"] = True
     report["exit_code"] = exit_code
     print(json.dumps(report, indent=2, sort_keys=True))
     return exit_code
