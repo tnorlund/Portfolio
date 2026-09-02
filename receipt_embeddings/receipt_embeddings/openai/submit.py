@@ -90,6 +90,8 @@ def create_batch_summary(
                 receipt_id = int(parts[3])
                 receipt_refs.add((image_id, receipt_id))
             except Exception:  # pylint: disable=broad-exception-caught
+                # CONTRACTUAL skip: one malformed NDJSON line must not
+                # abort batch-summary construction for the whole file.
                 continue
 
     # Build and return the BatchSummary

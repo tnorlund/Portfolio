@@ -547,7 +547,10 @@ def handler(_event, _context):
                 else:
                     # Multi-dimensional array or list-like, convert to list
                     embeddings = list(embeddings_raw)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
+                # In-memory numpy/list coercion only — these are the
+                # failure modes it has; anything else is a bug worth
+                # surfacing.
                 embeddings = []
         else:
             embeddings = (
@@ -734,6 +737,8 @@ def handler(_event, _context):
                 )
 
             except Exception as e:  # pylint: disable=broad-exception-caught
+                # CONTRACTUAL isolate-and-continue: one bad neighbor must
+                # not abort the rest of the cache build.
                 logger.warning(
                     (
                         "Failed to process similar receipt: "
@@ -791,6 +796,8 @@ def handler(_event, _context):
         }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
+        # CONTRACTUAL Lambda error contract: a structured 500 (the
+        # previous cache stays live), never an unhandled exception.
         logger.error("Error generating cache: %s", e, exc_info=True)
         return {
             "statusCode": 500,
@@ -803,6 +810,7 @@ def handler(_event, _context):
                 chroma_client.close()
                 logger.info("Closed ChromaDB client")
             except Exception:  # pylint: disable=broad-exception-caught
+                # CONTRACTUAL best-effort teardown in finally.
                 logger.warning("Failed to close ChromaDB client")
 
         # Cleanup temporary directory
@@ -812,6 +820,7 @@ def handler(_event, _context):
         except (
             Exception
         ) as cleanup_error:  # pylint: disable=broad-exception-caught
+            # CONTRACTUAL best-effort teardown in finally.
             logger.warning(
                 "Failed to cleanup temp directory: %s", cleanup_error
             )

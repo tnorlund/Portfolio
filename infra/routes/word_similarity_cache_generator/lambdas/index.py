@@ -815,6 +815,7 @@ def _fetch_lines_from_local(timing: TimingStats, chroma_path: str) -> list:
         try:
             client.close()
         except Exception:  # pylint: disable=broad-exception-caught
+            # CONTRACTUAL best-effort teardown in finally.
             logger.warning(
                 "Failed to close read-only ChromaDB snapshot",
                 exc_info=True,
@@ -859,7 +860,9 @@ def handler(_event, _context):
         elif CHROMA_CLOUD_ENABLED:
             try:
                 all_lines = _fetch_lines_from_cloud(timing)
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # CONTRACTUAL fallback: any Cloud failure degrades to the
+                # S3 snapshot path rather than failing the cache build.
                 logger.warning(
                     "Chroma Cloud failed, falling back to S3: %s", e
                 )
@@ -1017,7 +1020,9 @@ def handler(_event, _context):
                     "bbox": bbox,
                     "_timings": timings,
                 }
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # CONTRACTUAL isolate-and-continue: one bad receipt must
+                # not abort the parallel cache build.
                 logger.warning("Error processing %s: %s", image_id, e)
                 return None
 
@@ -1177,7 +1182,9 @@ def handler(_event, _context):
             ),
         }
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # CONTRACTUAL Lambda error contract: a structured 500 (the
+        # previous cache stays live), never an unhandled exception.
         logger.error("Error generating cache: %s", e, exc_info=True)
         return {
             "statusCode": 500,
@@ -1188,7 +1195,8 @@ def handler(_event, _context):
         try:
             shutil.rmtree(temp_dir)
             logger.info("Cleaned up temp directory")
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
+            # CONTRACTUAL best-effort teardown in finally.
             logger.warning("Failed to cleanup: %s", e)
 
 

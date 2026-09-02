@@ -70,6 +70,8 @@ def _delete_native_embedding_items(
             receipt_id,
         )
     except Exception:  # pylint: disable=broad-exception-caught
+        # CONTRACTUAL never-raise: the source receipts are already
+        # deleted — surfacing here would fail a merge that succeeded.
         logger.exception(
             "Failed to delete native embedding items for %s#%s "
             "(orphaned vectors may remain queryable)",
@@ -470,6 +472,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         except (
             Exception
         ) as native_exc:  # pylint: disable=broad-exception-caught
+            # CONTRACTUAL: synthesized into the report so the
+            # abort-before-source-deletion check below sees it.
             logger.exception("Native embeddings write raised")
             native_report = {"error": str(native_exc), "failed": 0}
         logger.info("Native embeddings report: %s", native_report)
@@ -531,7 +535,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("Merge complete: %s", result)
         return result
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # CONTRACTUAL Lambda error contract: callers get a structured
+        # error return, never an unhandled exception.
         logger.exception("Error merging receipts")
         return {
             "status": "error",

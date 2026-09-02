@@ -163,6 +163,8 @@ def apply_vector_freshening(
         try:
             _freshen_record(record, ctx)
         except Exception:  # graceful degradation: never crash the handler
+            # CONTRACTUAL never-raise: one bad stream record must not
+            # abort the rest of the batch or the SQS publish legs.
             logger.exception(
                 "Vector freshening failed for stream record",
                 extra={"event_id": record.get("eventID")},
