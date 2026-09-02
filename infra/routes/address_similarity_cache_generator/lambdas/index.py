@@ -10,6 +10,10 @@ from datetime import datetime, timezone
 
 import boto3
 from receipt_dynamo import DynamoClient
+from receipt_embeddings.keys import (
+    dynamo_key_from_canonical,
+    line_canonical_key,
+)
 
 # receipt_chroma is imported lazily inside the chroma-backend branches
 # only: on the dynamodb backend this Lambda must import (and run)
@@ -181,7 +185,16 @@ class _DynamoLinesClient:
     ``query`` runs SearchVectors on the line-embeddings index.
     Distances are converted to Chroma's default squared-L2 scale
     (2 x cosine distance for unit-norm vectors) so cached
-    ``similarity_distance`` values keep their historical meaning.
+    ``similarity_distance`` values keep their historical meaning —
+    frontend data continuity depends on that scale (polish-brief
+    Invariants).
+
+    Deliberately raw-boto3 rather than ``DynamoVectorSearchClient``:
+    this handler predates the seam, its callers speak the Chroma
+    get/query result shape, and the historical distance scale differs
+    from the seam's cosine contract — wrapping the seam would need a
+    second conversion layer for zero behavior gain (polish-brief
+    item 6: document why it exists rather than rewrite it).
     """
 
     def __init__(self, table_name: str):
@@ -198,13 +211,9 @@ class _DynamoLinesClient:
         del collection_name, include
         out = {"ids": [], "embeddings": [], "metadatas": [], "documents": []}
         for key in ids:
-            image_part, _, rest = key.partition("#RECEIPT#")
             item = self._client.get_item(
                 TableName=self._table,
-                Key={
-                    "PK": {"S": image_part},
-                    "SK": {"S": f"RECEIPT#{rest}#EMBEDDING"},
-                },
+                Key=dynamo_key_from_canonical(key),
                 ProjectionExpression="line_vector",
             ).get("Item")
             if not item:
@@ -478,10 +487,10 @@ def handler(_event, _context):
         # Step 3: Construct line ID and get embedding from ChromaDB
         # Line ID format:
         # IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}
-        line_id = (
-            f"IMAGE#{selected_label.image_id}#"
-            f"RECEIPT#{selected_label.receipt_id:05d}#"
-            f"LINE#{selected_label.line_id:05d}"
+        line_id = line_canonical_key(
+            selected_label.image_id,
+            selected_label.receipt_id,
+            selected_label.line_id,
         )
 
         logger.info("Fetching embedding for line ID: %s", line_id)

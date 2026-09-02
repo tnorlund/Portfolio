@@ -22,6 +22,7 @@ from receipt_embeddings.writer import (
     EmbeddingWriter,
     EmbeddingWriteReport,
     EmbeddingWriteRequest,
+    report_incomplete,
 )
 
 __all__ = [
@@ -41,5 +42,6 @@ __all__ = [
     "build_chroma_where",
     "ensure_get_ids_within_quota",
     "ensure_query_embeddings_within_quota",
+    "report_incomplete",
     "vector_search_client",
 ]

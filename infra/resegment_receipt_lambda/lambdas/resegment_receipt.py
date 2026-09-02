@@ -1254,16 +1254,9 @@ def _dual_write_outputs_native_only(
     write so the apply fails BEFORE commit deletes the source vectors.
     """
     # pylint: disable=import-outside-toplevel
-    from receipt_embeddings import EmbeddingWriter, EmbeddingWriteRequest
-    from receipt_embeddings.formatting import (
-        format_word_context_embedding_input,
-        get_row_embedding_inputs,
-    )
-    from receipt_embeddings.line_metadata import (
-        enrich_row_metadata_with_anchors,
-    )
-    from receipt_upload.merchant_resolution.dynamo_embedding_write import (
-        _word_label_statuses,
+    from receipt_embeddings import EmbeddingWriter
+    from receipt_embeddings.write_requests import (
+        build_embedding_write_requests,
     )
 
     for output in outputs:
@@ -1276,68 +1269,20 @@ def _dual_write_outputs_native_only(
         place = output["place"]
         merchant_name = str(getattr(place, "merchant_name", "") or "")
         place_id = str(getattr(place, "place_id", "") or "")
-        lines_by_id = {int(line.line_id): line for line in lines}
-        requests: list[Any] = []
-        for embedding_input, line_ids in get_row_embedding_inputs(lines):
-            row_lines = [
-                lines_by_id[line_id]
-                for line_id in line_ids
-                if line_id in lines_by_id
-            ]
-            if not row_lines:
-                continue
-            if not " ".join(line.text for line in row_lines).strip():
-                continue  # blank OCR rows are unembeddable (writer refuses)
-            row_line_id_set = set(int(v) for v in line_ids)
-            anchors = enrich_row_metadata_with_anchors(
-                {},
-                [
-                    word
-                    for word in words
-                    if int(word.line_id) in row_line_id_set
-                ],
-            )
-            requests.append(
-                EmbeddingWriteRequest(
-                    kind="line",
-                    image_id=receipt.image_id,
-                    receipt_id=receipt.receipt_id,
-                    line_id=int(line_ids[0]),
-                    text=" ".join(line.text for line in row_lines),
-                    embedding_input=embedding_input,
-                    merchant_name=merchant_name,
-                    place_id=place_id,
-                    row_line_ids=tuple(int(v) for v in line_ids),
-                    section_type="",
-                    normalized_phone_10=str(
-                        anchors.get("normalized_phone_10", "")
-                    ),
-                    normalized_full_address=str(
-                        anchors.get("normalized_full_address", "")
-                    ),
-                )
-            )
-        statuses = _word_label_statuses(labels)
-        for word in words:
-            if not str(word.text).strip():
-                continue  # blank OCR words are unembeddable (writer refuses)
-            requests.append(
-                EmbeddingWriteRequest(
-                    kind="word",
-                    image_id=receipt.image_id,
-                    receipt_id=receipt.receipt_id,
-                    line_id=int(word.line_id),
-                    word_id=int(word.word_id),
-                    text=word.text,
-                    embedding_input=format_word_context_embedding_input(
-                        word, words
-                    ),
-                    merchant_name=merchant_name,
-                    label_status=statuses.get(
-                        (int(word.line_id), int(word.word_id)), "none"
-                    ),
-                )
-            )
+        # Canonical builder (polish-brief item 3): vector-less requests
+        # with embedding_input set, so the engine writer embeds realtime;
+        # blank rows/words are skipped (the writer refuses empty text).
+        requests = build_embedding_write_requests(
+            image_id=receipt.image_id,
+            receipt_id=receipt.receipt_id,
+            lines=lines,
+            words=words,
+            word_labels=labels,
+            merchant_name=merchant_name,
+            place_id=place_id,
+            include_embedding_input=True,
+            missing_row="skip",
+        )
         writer = EmbeddingWriter(
             dynamo_client._client,  # pylint: disable=protected-access
             dynamo_client.table_name,

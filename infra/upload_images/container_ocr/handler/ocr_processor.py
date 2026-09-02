@@ -1390,6 +1390,9 @@ class OCRProcessor:
             from receipt_dynamo.data.shared_exceptions import (  # noqa: E501  pylint: disable=import-outside-toplevel
                 EntityNotFoundError,
             )
+            from receipt_embeddings import (  # noqa: E501  pylint: disable=import-outside-toplevel
+                report_incomplete,
+            )
             from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501  pylint: disable=import-outside-toplevel
                 write_native_embeddings,
             )
@@ -1445,7 +1448,7 @@ class OCRProcessor:
                         write_exc,
                     )
                     continue
-                if not dual_report.get("failed"):
+                if not report_incomplete(dual_report):
                     break
                 logger.warning(
                     "Re-OCR native write incomplete, retrying: %s",
@@ -1455,7 +1458,7 @@ class OCRProcessor:
                 raise RuntimeError(
                     "re-OCR native replacement raised on every attempt"
                 ) from last_exc
-            if dual_report.get("failed"):
+            if report_incomplete(dual_report):
                 raise RuntimeError(
                     "re-OCR native replacement incomplete "
                     f"after retries: {dual_report}"
