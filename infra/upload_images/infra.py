@@ -55,7 +55,6 @@ class UploadImages(ComponentResource):
         name: str,
         raw_bucket: Bucket,
         site_bucket: Bucket,
-        chromadb_bucket_name: pulumi.Input[str] | None = None,
         vpc_subnet_ids: pulumi.Input[list[str]] | None = None,
         security_group_id: pulumi.Input[str] | None = None,
         label_validation_project_name: pulumi.Input[str] | None = None,
@@ -388,7 +387,6 @@ class UploadImages(ComponentResource):
                 image_bucket.arn,
                 self.ocr_queue.arn,
                 artifacts_bucket.arn,
-                pulumi.Output.from_input(chromadb_bucket_name),
                 self.llm_validation_queue.arn,
                 pulumi.Output.from_input(summary_queue_arn or ""),
             ).apply(
@@ -419,7 +417,7 @@ class UploadImages(ComponentResource):
                                         "s3:PutObject",
                                         "s3:HeadObject",
                                         # Consumer deletes the staged async LLM
-                                        # payload on the chromadb bucket after use.
+                                        # payload (raw bucket) after use.
                                         "s3:DeleteObject",
                                     ],
                                     "Resource": [
@@ -427,12 +425,7 @@ class UploadImages(ComponentResource):
                                         args[2] + "/*",  # site_bucket
                                         args[3] + "/*",  # image_bucket
                                         args[5] + "/*",  # artifacts_bucket
-                                    ]
-                                    + (
-                                        [f"arn:aws:s3:::{args[6]}/*"]
-                                        if args[6]
-                                        else []
-                                    ),
+                                    ],
                                 },
                                 {
                                     # Explicit read access on the image
@@ -450,30 +443,19 @@ class UploadImages(ComponentResource):
                                     ],
                                 },
                             ]
-                            + (
-                                [
-                                    {
-                                        "Effect": "Allow",
-                                        "Action": "s3:ListBucket",
-                                        "Resource": f"arn:aws:s3:::{args[6]}",
-                                    }
-                                ]
-                                if args[6]
-                                else []
-                            )
                             + [
                                 {
                                     "Effect": "Allow",
                                     "Action": "sqs:SendMessage",
                                     "Resource": [
                                         args[4],  # ocr_queue.arn
-                                        args[7],  # llm_validation_queue.arn
+                                        args[6],  # llm_validation_queue.arn
                                     ]
                                     + (
                                         # summary queue (post-re-OCR
                                         # line-item refresh)
-                                        [args[8]]
-                                        if args[8]
+                                        [args[7]]
+                                        if args[7]
                                         else []
                                     ),
                                 },

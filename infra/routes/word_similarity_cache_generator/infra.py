@@ -4,10 +4,7 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ComponentResource, Input, Output, ResourceOptions
-
-# Import the ChromaDB bucket name from the shared chromadb_buckets module
-from chromadb_buckets import bucket_name as chromadb_bucket_name
+from pulumi import ComponentResource, Input, ResourceOptions
 
 # Import the DynamoDB table name from the dynamo_db module
 from dynamo_db import dynamodb_table
@@ -33,7 +30,6 @@ class WordSimilarityCacheGenerator(ComponentResource):
         self,
         name: str,
         *,
-        chromadb_bucket_name: Input[str],
         vpc_subnet_ids: Input[list[str]] | None = None,
         lambda_security_group_id: Input[str] | None = None,
         opts: Optional[ResourceOptions] = None,
@@ -104,9 +100,6 @@ class WordSimilarityCacheGenerator(ComponentResource):
                 opts=ResourceOptions(parent=self.lambda_role),
             )
 
-        # Convert Input[str] to Output[str] for proper resolution
-        chromadb_bucket_name_output = Output.from_input(chromadb_bucket_name)
-
         # DynamoDB access policy
         self.dynamodb_policy = aws.iam.RolePolicy(
             f"{name}-dynamodb-policy",
@@ -126,33 +119,6 @@ class WordSimilarityCacheGenerator(ComponentResource):
                                 "Resource": [
                                     arn,
                                     f"{arn}/index/*",
-                                ],
-                            },
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # ChromaDB bucket read policy
-        self.chromadb_s3_policy = aws.iam.RolePolicy(
-            f"{name}-chromadb-s3-policy",
-            role=self.lambda_role.id,
-            policy=chromadb_bucket_name_output.apply(
-                lambda bucket: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:ListBucket",
-                                ],
-                                "Resource": [
-                                    f"arn:aws:s3:::{bucket}/*",
-                                    f"arn:aws:s3:::{bucket}",
                                 ],
                             },
                         ],
@@ -290,7 +256,6 @@ class WordSimilarityCacheGenerator(ComponentResource):
 
 
 def create_word_similarity_cache_generator(
-    chromadb_bucket_name: Input[str],
     vpc_subnet_ids: Input[list[str]] | None = None,
     lambda_security_group_id: Input[str] | None = None,
     opts: Optional[ResourceOptions] = None,
@@ -298,7 +263,6 @@ def create_word_similarity_cache_generator(
     """Factory function to create word similarity cache generator."""
     return WordSimilarityCacheGenerator(
         f"word-similarity-cache-generator-{pulumi.get_stack()}",
-        chromadb_bucket_name=chromadb_bucket_name,
         vpc_subnet_ids=vpc_subnet_ids,
         lambda_security_group_id=lambda_security_group_id,
         opts=opts,

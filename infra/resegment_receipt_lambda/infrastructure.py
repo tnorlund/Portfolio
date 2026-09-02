@@ -39,8 +39,6 @@ class ResegmentReceiptLambda(ComponentResource):
         raw_bucket_name: pulumi.Input[str],
         site_bucket_name: pulumi.Input[str],
         image_bucket_name: pulumi.Input[str],
-        chromadb_bucket_name: pulumi.Input[str],
-        chromadb_bucket_arn: pulumi.Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(_COMPONENT_TYPE_TOKEN, name, None, opts)
@@ -130,7 +128,6 @@ class ResegmentReceiptLambda(ComponentResource):
                 raw_bucket_name,
                 site_bucket_name,
                 image_bucket_name,
-                chromadb_bucket_arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -151,8 +148,6 @@ class ResegmentReceiptLambda(ComponentResource):
                                     f"arn:aws:s3:::{args[1]}/*",
                                     f"arn:aws:s3:::{args[2]}",
                                     f"arn:aws:s3:::{args[2]}/*",
-                                    args[3],
-                                    f"{args[3]}/*",
                                 ],
                             }
                         ],
@@ -241,8 +236,6 @@ def create_resegment_receipt_lambda(
     raw_bucket_name: pulumi.Input[str],
     site_bucket_name: pulumi.Input[str],
     image_bucket_name: pulumi.Input[str],
-    chromadb_bucket_name: pulumi.Input[str],
-    chromadb_bucket_arn: pulumi.Input[str],
 ) -> ResegmentReceiptLambda:
     """Create the receipt re-segmentation component."""
     return ResegmentReceiptLambda(
@@ -252,6 +245,4 @@ def create_resegment_receipt_lambda(
         raw_bucket_name=raw_bucket_name,
         site_bucket_name=site_bucket_name,
         image_bucket_name=image_bucket_name,
-        chromadb_bucket_name=chromadb_bucket_name,
-        chromadb_bucket_arn=chromadb_bucket_arn,
     )

@@ -1,9 +1,9 @@
 """
 Fix Place Lambda Handler (Container Lambda)
 
-Fixes incorrect ReceiptPlace records using a LangGraph agent that reasons
-about receipt content, searches Google Places, and uses ChromaDB similarity
-search to find the correct place.
+Fixes incorrect ReceiptPlace records using the tiered resolver: a
+deterministic pass over the receipt's own anchors, then a structured
+picker over Google Places candidates.
 
 Input:
     {
@@ -31,10 +31,8 @@ Environment Variables:
     RECEIPT_AGENT_OPENAI_API_KEY: OpenAI API key (embeddings)
     GOOGLE_PLACES_API_KEY: Google Places API key
     LANGCHAIN_API_KEY: LangSmith API key (tracing)
-    CHROMA_CLOUD_API_KEY: Chroma Cloud API key
-    CHROMA_CLOUD_TENANT: Chroma Cloud tenant ID
-    CHROMA_CLOUD_DATABASE: Chroma Cloud database name
-    FIX_PLACE_RESOLUTION_MODE: "agent" or "tiered"
+    FIX_PLACE_RESOLUTION_MODE: "agent" or "tiered" (both resolve through
+        the tiered cascade; the Chroma tier-3 agent is retired)
     FIX_PLACE_TIER2_MODEL: Cheap structured picker model
     FIX_PLACE_AGENT_MODEL: Tier 3 tool-calling model
     FIX_PLACE_AGENT_RECURSION_LIMIT: Hard graph step cap (maximum 12)
@@ -113,102 +111,44 @@ async def _run_place_finder(
     receipt_id: int,
     reason: str,
 ) -> tuple[dict[str, Any], Any, dict[str, Any]]:
-    """Resolve one receipt through deterministic, picker, then agent tiers."""
+    """Resolve one receipt through the deterministic + picker tiers.
+
+    The Chroma-backed tier-3 agent is RETIRED (Chroma teardown): its
+    tools needed unfiltered word queries and invalid-label arrays the
+    native embedding items don't carry. Every configuration now resolves
+    through the tiered cascade; a miss returns a structured not-found.
+    """
     # pylint: disable=import-outside-toplevel
-    from receipt_agent.clients.factory import (
-        create_embed_fn,
-        create_places_client,
+    from receipt_agent.clients.factory import create_places_client
+    from receipt_agent.subagents.place_finder.tiered import (
+        resolve_tiered_place,
     )
-    from receipt_agent.subagents.place_finder import (
-        create_receipt_place_finder_graph,
-        run_receipt_place_finder,
-    )
-    from receipt_chroma import ChromaClient
     from receipt_dynamo import DynamoClient
+
+    del reason  # the tiered cascade takes no free-text steer
 
     table_name = os.environ["DYNAMODB_TABLE_NAME"]
     dynamo_client = DynamoClient(table_name=table_name)
     details = dynamo_client.get_receipt_details(image_id, receipt_id)
     places_client = create_places_client()
-    tiered_stats: dict[str, Any] = {}
 
-    resolution_mode = os.environ.get(
-        "FIX_PLACE_RESOLUTION_MODE", "agent"
-    ).lower()
-    vector_backend = os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
-    if resolution_mode == "tiered" or vector_backend == "dynamodb":
-        from receipt_agent.subagents.place_finder.tiered import (
-            resolve_tiered_place,
-        )
-
-        tiered_result, tiered_stats = await resolve_tiered_place(
-            details, places_client
-        )
-        if tiered_result is not None:
-            return tiered_result, details, tiered_stats
-        if vector_backend == "dynamodb":
-            # Tier 3's agentic tools are Chroma-only (issue #1517): they
-            # need unfiltered word queries and invalid-label arrays the
-            # embedding items don't carry. On the dynamodb backend a
-            # tiered miss returns a structured not-found instead of
-            # falling through to a ChromaClient.
-            return (
-                {
-                    "found": False,
-                    "resolution_tier": "tiered",
-                    "reasoning": (
-                        "tiered resolution missed; the Chroma-only "
-                        "tier-3 agent is disabled on "
-                        "VECTOR_BACKEND=dynamodb"
-                    ),
-                },
-                details,
-                tiered_stats,
-            )
-    elif resolution_mode != "agent":
-        logger.warning(
-            "Unknown FIX_PLACE_RESOLUTION_MODE=%s; using agent fallback",
-            resolution_mode,
-        )
-
-    # Tier 3 only: initialize the clients needed by the full agent.
-    cloud_api_key = os.environ.get("CHROMA_CLOUD_API_KEY", "")
-    cloud_tenant = os.environ.get("CHROMA_CLOUD_TENANT")
-    cloud_database = os.environ.get("CHROMA_CLOUD_DATABASE")
-
-    chroma_client = ChromaClient(
-        cloud_api_key=cloud_api_key or None,
-        cloud_tenant=cloud_tenant,
-        cloud_database=cloud_database,
-        mode="read",
+    tiered_result, tiered_stats = await resolve_tiered_place(
+        details, places_client
     )
-
-    embed_fn = create_embed_fn()
-
-    graph, state_holder = create_receipt_place_finder_graph(
-        dynamo_client=dynamo_client,
-        chroma_client=chroma_client,
-        embed_fn=embed_fn,
-        places_api=places_client,
+    if tiered_result is not None:
+        return tiered_result, details, tiered_stats
+    return (
+        {
+            "found": False,
+            "resolution_tier": "tiered",
+            "reasoning": (
+                "tiered resolution missed; the Chroma-only tier-3 "
+                "agent is retired (Chroma teardown)"
+            ),
+        },
+        details,
+        tiered_stats,
     )
-
-    result = await run_receipt_place_finder(
-        graph=graph,
-        state_holder=state_holder,
-        image_id=image_id,
-        receipt_id=receipt_id,
-        receipt_lines=details.lines,
-        receipt_words=details.words,
-        receipt_labels=details.labels,
-        reason=reason,
-    )
-    result["resolution_tier"] = "tier3"
-
-    cost_callback = state_holder.get("cost_callback")
-    llm_stats = cost_callback.get_stats() if cost_callback else {}
-    for key, value in tiered_stats.items():
-        llm_stats[key] = llm_stats.get(key, 0) + value
-    return result, details, llm_stats
 
 
 def handler(  # pylint: disable=unused-argument
@@ -217,10 +157,10 @@ def handler(  # pylint: disable=unused-argument
     """
     Lambda handler to fix an incorrect ReceiptPlace record.
 
-    Uses a LangGraph agent to:
+    Uses the tiered resolver to:
     1. Read receipt content (lines, words with labels)
-    2. Search ChromaDB for similar receipts
-    3. Search Google Places for correct match
+    2. Resolve deterministically, then via the structured picker
+    3. Search Google Places for the correct match
     4. Submit place data with confidence scoring
     5. Update ReceiptPlace with corrected data
     """
@@ -254,22 +194,11 @@ def handler(  # pylint: disable=unused-argument
 
         _propagate_env_vars()
 
-        # The legacy agent occasionally returns found=true with merchant_name
-        # but no place_id, so retain its historical retry behavior. Tiered
-        # mode already contains a bounded agent and a single structured picker;
-        # rerunning the whole cascade would multiply both limits and cost.
-        resolution_mode = os.environ.get(
-            "FIX_PLACE_RESOLUTION_MODE", "agent"
-        ).lower()
-        # One attempt when the cascade cannot reach tier 3: tiered mode,
-        # or the dynamodb vector backend (which gates tier 3 off).
-        max_attempts = (
-            1
-            if resolution_mode == "tiered"
-            or os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
-            == "dynamodb"
-            else 3
-        )
+        # The tiered cascade contains a bounded agent and a single
+        # structured picker; rerunning it would multiply both limits and
+        # cost, and the retrying tier-3 agent it hedged against is
+        # retired (Chroma teardown). One attempt, always.
+        max_attempts = 1
         agent_result = None
         details = None
         attempted_reason = reason
@@ -281,7 +210,7 @@ def handler(  # pylint: disable=unused-argument
             )
             for key in invocation_llm_stats:
                 invocation_llm_stats[key] += attempt_llm_stats.get(key, 0)
-            resolution_tier = agent_result.get("resolution_tier", "tier3")
+            resolution_tier = agent_result.get("resolution_tier", "tiered")
             if (
                 agent_result
                 and agent_result.get("found")
