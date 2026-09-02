@@ -53,7 +53,6 @@ from raw_bucket import raw_bucket  # Import the actual bucket instance
 from receipt_update_queues import ReceiptUpdateQueues
 from resegment_receipt_lambda import create_resegment_receipt_lambda
 from s3_website import site_bucket  # Import the site bucket instance
-from security import ChromaSecurity
 from trigger_reocr_lambda import create_trigger_reocr_lambda
 from upload_images import UploadImages
 
@@ -80,7 +79,6 @@ except ImportError as e:
     # These may not be available in all environments
     print(f"⚠️  Failed to import label cache updater: {e}")
 # import step_function  # Legacy - receipt_processor depends on removed receipt_label
-from chroma.nat_egress import NatEgress
 
 # from step_function_enhanced import create_enhanced_receipt_processor  # Legacy
 # - depends on receipt_processor which needs receipt_label
@@ -89,13 +87,11 @@ from chroma.nat_egress import NatEgress
 public_vpc = PublicVpc("foundation")
 pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
 
-# (moved DynamoDB gateway endpoint below after NAT creation to reference both route tables)
 pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
-# (moved S3 gateway endpoint below after NAT creation to reference its route table)
 
-# Task 2: Security (depends on VPC)
-security = ChromaSecurity("chroma", vpc_id=public_vpc.vpc_id)
-pulumi.export("sg_lambda_id", security.sg_lambda_id)
+# VPC security groups retired (VPC prune): no Lambdas remain in the VPC,
+# so the shared Lambda-egress and interface-endpoint security groups are
+# gone along with the NAT egress layer below.
 
 # Task 3 snapshot bucket retired with the Chroma teardown (PR #6)
 
@@ -182,14 +178,9 @@ billing_alerts = BillingAlerts(
 # pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
 # Commented out - legacy code
 
-# NAT egress (public subnet) + private subnets for Lambda internet access
-nat = NatEgress(
-    name=f"nat-egress-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    public_subnet_id=public_vpc.public_subnet_ids.apply(lambda ids: ids[0]),
-)
-pulumi.export("nat_instance_id", nat.nat_instance_id)
-pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
+# NAT egress + private subnets retired (VPC prune): the last two VPC
+# Lambdas (process-ocr, word-similarity cache generator) now run outside
+# the VPC with default Lambda egress — the NAT existed only for them.
 
 # ChromaDB compaction stack DELETED (teardown PR #3 of the Chroma
 # removal): the 10GB enhanced-compaction Lambda, lines/words queues,
@@ -207,77 +198,37 @@ receipt_update_queues = ReceiptUpdateQueues(
     dynamodb_stream_arn=dynamodb_table.stream_arn,
 )
 
-# Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
+# S3 Gateway Endpoint (free) for faster S3 access from the public subnets
 s3_gateway_endpoint = aws.ec2.VpcEndpoint(
     f"s3-gateway-{pulumi.get_stack()}",
     vpc_id=public_vpc.vpc_id,
     service_name=f"com.amazonaws.{aws.config.region}.s3",
     vpc_endpoint_type="Gateway",
-    route_table_ids=[public_vpc.public_route_table_id, nat.private_rt.id],
+    route_table_ids=[public_vpc.public_route_table_id],
 )
 
-# Provide private access to DynamoDB from both public and private subnets (no NAT required)
+# DynamoDB Gateway Endpoint (free) for private access from the public subnets
 dynamodb_gateway_endpoint = aws.ec2.VpcEndpoint(
     f"dynamodb-gateway-{pulumi.get_stack()}",
     vpc_id=public_vpc.vpc_id,
     service_name=f"com.amazonaws.{aws.config.region}.dynamodb",
     vpc_endpoint_type="Gateway",
-    route_table_ids=[public_vpc.public_route_table_id, nat.private_rt.id],
+    route_table_ids=[public_vpc.public_route_table_id],
 )
 
-# CloudWatch Logs Interface Endpoint for faster logging from VPC Lambdas
-# Single AZ for cost savings ($0.12/day savings per endpoint)
-# Lambda functions can access endpoints from any AZ in the VPC
-# If endpoint AZ fails, Lambda falls back to NAT (slower but works)
+# Interface endpoints (logs, sqs) retired (VPC prune): they billed hourly
+# and existed only for the private-subnet Lambdas, which now run outside
+# the VPC with default egress.
 # Get stack name for conditional logic (reused later in file)
 stack = pulumi.get_stack()
-# Use single AZ for both dev and prod - AZ failures are rare (< 0.1%)
-# and Lambda functions have fallback to NAT Instance
-logs_endpoint_subnets = public_vpc.public_subnet_ids.apply(
-    lambda ids: [ids[0]]
-)  # Single AZ
 
-logs_interface_endpoint = aws.ec2.VpcEndpoint(
-    f"logs-interface-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    service_name=f"com.amazonaws.{aws.config.region}.logs",
-    vpc_endpoint_type="Interface",
-    # Conditional: single AZ for dev, multi-AZ for prod
-    subnet_ids=logs_endpoint_subnets,
-    security_group_ids=[security.sg_vpce_id],
-    private_dns_enabled=True,
-)
-
-# SQS Interface Endpoint for cost-effective SQS access from both public and private subnets
-# Keep upload Lambdas private while allowing SQS access without internet.
-# Single AZ for cost savings ($0.12/day savings)
-# Lambda functions can access endpoints from any AZ in the VPC
-# If endpoint AZ fails, Lambda falls back to NAT (slower but works)
-sqs_endpoint_subnets = public_vpc.public_subnet_ids.apply(
-    lambda ids: [ids[0]]
-)  # Single AZ
-
-sqs_interface_endpoint = aws.ec2.VpcEndpoint(
-    f"sqs-interface-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    service_name=f"com.amazonaws.{aws.config.region}.sqs",
-    vpc_endpoint_type="Interface",
-    # Conditional: single AZ for dev, multi-AZ for prod
-    subnet_ids=sqs_endpoint_subnets,
-    security_group_ids=[security.sg_vpce_id],
-    private_dns_enabled=True,
-)
-
-# Word Similarity Cache Generator Lambda (in VPC for DynamoDB Gateway endpoint access)
-# This reduces DynamoDB query latency variance by using AWS backbone instead of public internet
+# Word Similarity Cache Generator Lambda (VPC prune: runs outside the VPC
+# now — the DynamoDB-Gateway latency optimization died with the NAT layer)
 from routes.word_similarity_cache_generator.infra import (
     create_word_similarity_cache_generator,
 )
 
-word_similarity_cache_generator = create_word_similarity_cache_generator(
-    vpc_subnet_ids=nat.private_subnet_ids.apply(lambda ids: [ids[0]]),
-    lambda_security_group_id=security.sg_lambda_id,
-)
+word_similarity_cache_generator = create_word_similarity_cache_generator()
 
 pulumi.export(
     "word_similarity_cache_generator_lambda_arn",
@@ -316,15 +267,12 @@ create_lambda_route(
 # - Embedding polling handlers (LangGraph)
 # Consolidation and batch cleaning can be added as standalone Lambdas if needed
 
-# Wire upload-images after NAT is available so it can reach external APIs.
-upload_images_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])
-
+# upload-images runs outside the VPC (VPC prune): default Lambda egress
+# reaches Google Places / OpenAI / OpenRouter / LangSmith directly.
 upload_images = UploadImages(
     "upload-images",
     raw_bucket=raw_bucket,
     site_bucket=site_bucket,
-    vpc_subnet_ids=upload_images_subnets,
-    security_group_id=security.sg_lambda_id,
     label_validation_project_name=label_validation_project_name,
     # Post-re-OCR line-item refresh (summary recompute -> stream ->
     # LINE_ITEMS stage)
