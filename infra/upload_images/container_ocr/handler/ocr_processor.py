@@ -1485,14 +1485,26 @@ class OCRProcessor:
                                     f"{len(pending)} stale embedding "
                                     "deletes unprocessed after retries"
                                 )
+                        from receipt_dynamo.data.shared_exceptions import (  # noqa: E501  pylint: disable=import-outside-toplevel
+                            EntityNotFoundError,
+                        )
+
                         try:
                             reocr_place = self.dynamo.get_receipt_place(
                                 ocr_job.image_id, ocr_job.receipt_id
                             )
-                        except (
-                            Exception
-                        ):  # pylint: disable=broad-exception-caught
+                        except EntityNotFoundError:
+                            # Genuinely no place yet — blank metadata is
+                            # correct; the freshener fills it when a
+                            # PLACE row lands.
                             reocr_place = None
+                        except Exception:
+                            # A transient lookup failure must NOT
+                            # rewrite every vector with blank
+                            # merchant/place (no later PLACE event
+                            # would heal it) — fail the refresh
+                            # retryably instead (codex P2).
+                            raise
 
                         def _write_native():
                             return maybe_dual_write_embeddings(
