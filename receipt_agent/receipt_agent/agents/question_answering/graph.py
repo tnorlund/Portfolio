@@ -40,6 +40,7 @@ from receipt_agent.agents.question_answering.tools import (
 )
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.utils.llm_factory import create_llm
+
 from receipt_embeddings.vector_client import VectorSearchClient
 
 logger = logging.getLogger(__name__)

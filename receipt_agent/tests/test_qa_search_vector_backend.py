@@ -16,6 +16,7 @@ import pytest
 from receipt_agent.agents.question_answering.tools.search import (
     create_qa_tools,
 )
+
 from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 from receipt_embeddings.service_limits import LINE_INDEX, MAX_SEARCH_RESULTS
 from receipt_embeddings.testing import FakeVectorIndex

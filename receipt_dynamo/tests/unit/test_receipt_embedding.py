@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from receipt_dynamo.entities import (
     EMBEDDING_DIMENSIONS,
     ReceiptLineEmbedding,

@@ -27,6 +27,7 @@ from receipt_chroma.section_labels import (
     NON_ITEM_SECTION_LABELS,
     non_item_section_filter,
 )
+
 from receipt_embeddings.backend import vector_search_client
 from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 from receipt_embeddings.service_limits import LINE_INDEX, MAX_SEARCH_RESULTS

@@ -19,6 +19,7 @@ from typing import List, Optional, TypedDict
 
 from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
+
 from receipt_embeddings.normalize import (
     build_full_address_from_words,
     normalize_phone,

@@ -1,6 +1,7 @@
 """Backend-selection contract for the shared vector seam."""
 
 import pytest
+
 from receipt_embeddings import (
     ChromaVectorSearchClient,
     DynamoVectorSearchClient,

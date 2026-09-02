@@ -34,6 +34,7 @@ from receipt_chroma.embedding.metadata.line_metadata import (
     enrich_row_metadata_with_anchors,
 )
 from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
+
 from receipt_embeddings import (
     RESOLVER_NEIGHBOR_METADATA_KEYS,
     ChromaVectorSearchClient,

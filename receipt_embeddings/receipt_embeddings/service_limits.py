@@ -8,6 +8,7 @@ from math import isfinite
 from typing import Any
 
 from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
+
 from receipt_embeddings.vector_client import FilterValue
 
 MAX_SEARCH_RESULTS = 100

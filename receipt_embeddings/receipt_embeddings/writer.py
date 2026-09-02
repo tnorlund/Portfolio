@@ -12,6 +12,7 @@ from receipt_dynamo.entities import (
     ReceiptLineEmbedding,
     ReceiptWordEmbedding,
 )
+
 from receipt_embeddings.openai import embed_texts
 from receipt_embeddings.service_limits import (
     LINE_INDEX,
