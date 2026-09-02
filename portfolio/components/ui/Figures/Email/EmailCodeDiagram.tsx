@@ -21,11 +21,11 @@ interface EmailCodeDiagramProps {
 
 type RouteName = "InboxToSes" | "SesToLambda" | "LambdaToCode" | "CodeToBot";
 
-const WIDTH = 560;
+const WIDTH = 700;
 const HEIGHT = 190;
 const ROW_Y = 88;
 const LABEL_Y = 158;
-const X = { inbox: 48, ses: 160, lambda: 278, code: 396, bot: 512 };
+const X = { inbox: 44, ses: 196, lambda: 348, code: 490, bot: 640 };
 
 /**
  * The job-search path. One Greenhouse email → SES → a Lambda that keeps only
@@ -53,8 +53,9 @@ const EmailCodeDiagram: React.FC<EmailCodeDiagramProps> = ({
     () => [
       { paths: ["InboxToSes"], dir: 1 },
       { paths: ["SesToLambda"], dir: 1 },
-      { paths: ["LambdaToCode"], dir: 1, duration: 350 },
-      { paths: ["CodeToBot"], dir: 1, duration: 350 },
+      // Past the Lambda only the code travels: eight glyphs, not a stream.
+      { paths: ["LambdaToCode"], dir: 1, duration: 350, count: 8 },
+      { paths: ["CodeToBot"], dir: 1, duration: 400, count: 8 },
     ],
     [],
   );
@@ -152,9 +153,7 @@ const EmailCodeDiagram: React.FC<EmailCodeDiagramProps> = ({
                 duration={phase.duration}
                 launch={phase.launch}
                 initialDelay={delayFor(TIMELINE, phaseIdx)}
-                // Past the Lambda only the code travels, so the trail is
-                // short: eight glyphs, not a stream.
-                count={name === "LambdaToCode" || name === "CodeToBot" ? 8 : undefined}
+                count={phase.count}
                 chars={chars}
                 pause={springPause}
               />

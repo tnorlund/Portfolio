@@ -73,25 +73,6 @@ const SIDEBAR = [
   "Composing",
 ];
 
-const DESTINATIONS: {
-  key: Destination;
-  agent: string;
-  gets: string;
-  keeps: string;
-}[] = [
-  {
-    key: "receipts",
-    agent: "Claude, through the read replica",
-    gets: "parsed rows: merchant, date, cents, line items",
-    keeps: "the raw email stays on my Mac and ages out of S3 in 30 days",
-  },
-  {
-    key: "ats",
-    agent: "Grok Bot, through the verification-code reader",
-    gets: "one eight-character code, for one hour",
-    keeps: "subject and body never leave S3; the raw email expires in a day",
-  },
-];
 
 /* Two palettes, both sampled from icloud.com's Settings modal. The site
  * switches theme with prefers-color-scheme (see globals.css), so we do too. */
@@ -130,20 +111,13 @@ const STYLE = `
 .efr-list li .efr-handle { color:var(--efr-muted); flex:none; display:flex; }
 .efr-note { border-top:1px solid var(--efr-line); margin-top:auto; padding-top:12px; color:var(--efr-muted); font-size:13px; line-height:1.45; }
 .efr-note a { color:var(--efr-link); text-decoration:none; display:inline-flex; align-items:center; gap:2px; }
-.efr-dest { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px; }
-.efr-dest[data-single="true"] { grid-template-columns:1fr; max-width:560px; margin-left:auto; margin-right:auto; }
-.efr-dest div { border:1.5px solid rgba(var(--text-color-rgb),.18); border-radius:12px; padding:12px 14px; font-size:13.5px;
   color:var(--text-color); transition:border-color .15s ease, background-color .15s ease; }
-.efr-dest div[data-hot="true"] { border-color:var(--color-blue); background:rgba(var(--color-blue-rgb),.08); }
-.efr-dest code { font-size:12.5px; }
-.efr-dest p { margin:4px 0 0; opacity:.8; }
 @media (max-width: 720px) {
   .efr-modal { grid-template-columns: 1fr; }
   .efr-side { display:none; }
   .efr-main { padding:18px 16px 14px; }
   .efr-list { max-height:340px; }
-  .efr-dest { grid-template-columns: 1fr; }
-}
+  }
 `;
 
 interface EmailForwardingRulesProps {
@@ -157,9 +131,6 @@ const EmailForwardingRules: React.FC<EmailForwardingRulesProps> = ({
   const { containerRef, shouldAnimate } = useViewportAnimation(false);
   const [hot, setHot] = React.useState<Destination | null>(null);
   const rules = destination ? RULES.filter((r) => r.to === destination) : RULES;
-  const destinations = destination
-    ? DESTINATIONS.filter((d) => d.key === destination)
-    : DESTINATIONS;
 
   return (
     <div
@@ -230,17 +201,6 @@ const EmailForwardingRules: React.FC<EmailForwardingRulesProps> = ({
             </a>
           </div>
         </div>
-      </div>
-      <div className="efr-dest" data-single={destination ? "true" : undefined}>
-        {destinations.map((d) => (
-          <div key={d.key} data-hot={hot === d.key ? "true" : undefined}>
-            <code>{ADDRESS[d.key]}</code>
-            <p>
-              <strong>{d.agent}</strong> gets {d.gets}.
-            </p>
-            <p>And {d.keeps}.</p>
-          </div>
-        ))}
       </div>
     </div>
   );

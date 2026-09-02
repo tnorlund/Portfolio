@@ -15,22 +15,27 @@ import {
 
 export type PathRef = React.RefObject<SVGPathElement | null>;
 
-export const BIT_COUNT = 15;
+export const BIT_COUNT = 12;
 export const TILT = 30; // ±30°
-export const PHASE_LEN = 500; // default travel time per leg (ms)
+export const PHASE_LEN = 450; // default travel time per leg (ms)
 export const STAGGER = 50; // pause between legs (ms)
 export const CYCLE_PAUSE = 400; // pause between storyboard loops (ms)
-export const LAUNCH_STEP = 50; // per-glyph trail spacing (ms)
+export const LAUNCH_STEP = 60; // per-glyph trail spacing (ms); ~10px on an 80px rail
 
 export type Phase<Name extends string> = {
   paths: Name[];
   dir: 1 | -1;
   duration?: number;
   launch?: number;
+  /** glyphs in this leg's trail (default BIT_COUNT) */
+  count?: number;
 };
 
 export function phaseLength<Name extends string>(p: Phase<Name>): number {
-  return (p.duration ?? PHASE_LEN) + (BIT_COUNT - 1) * (p.launch ?? LAUNCH_STEP);
+  return (
+    (p.duration ?? PHASE_LEN) +
+    ((p.count ?? BIT_COUNT) - 1) * (p.launch ?? LAUNCH_STEP)
+  );
 }
 
 export function delayFor<Name extends string>(

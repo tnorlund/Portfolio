@@ -23,15 +23,15 @@ interface EmailReplicaDiagramProps {
 
 type RouteName = "MacToS3" | "S3ToLambda" | "LambdaToClient";
 
-const WIDTH = 440;
+const WIDTH = 600;
 const HEIGHT = 200;
 const ROW_Y = 92;
 const LABEL_Y = 166;
 
 const X_MAC = 62;
-const X_S3 = 186;
-const X_LAMBDA = 306;
-const X_CLIENT = 404;
+const X_S3 = 232;
+const X_LAMBDA = 396;
+const X_CLIENT = 548;
 
 /**
  * Mac → S3 replica/ → Lambda → MCP client. The SQLite file on the Mac is
@@ -108,9 +108,9 @@ const EmailReplicaDiagram: React.FC<EmailReplicaDiagramProps> = ({
         </text>
 
         {/* Hidden rails */}
-        <FanPaths refs={PATH_REFS.MacToS3} x1={118} y1={ROW_Y} x2={141} y2={ROW_Y} />
-        <FanPaths refs={PATH_REFS.S3ToLambda} x1={231} y1={ROW_Y} x2={261} y2={ROW_Y} />
-        <FanPaths refs={PATH_REFS.LambdaToClient} x1={351} y1={ROW_Y} x2={383} y2={ROW_Y} />
+        <FanPaths refs={PATH_REFS.MacToS3} x1={118} y1={ROW_Y} x2={187} y2={ROW_Y} />
+        <FanPaths refs={PATH_REFS.S3ToLambda} x1={277} y1={ROW_Y} x2={351} y2={ROW_Y} />
+        <FanPaths refs={PATH_REFS.LambdaToClient} x1={441} y1={ROW_Y} x2={526} y2={ROW_Y} />
 
         <g id="email-replica-bits" key={cycle} fontFamily="monospace" fontSize="12">
           {TIMELINE.map((phase, phaseIdx) =>
