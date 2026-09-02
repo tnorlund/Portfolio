@@ -10,7 +10,6 @@ from unittest.mock import MagicMock
 
 import boto3
 import pytest
-
 from receipt_embeddings.keys import (
     embedding_item_key,
     line_canonical_key,

@@ -12,7 +12,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
-
 from receipt_upload.merchant_resolution.dynamo_embedding_write import (
     DUAL_WRITE_ENV_VAR,
     build_ingest_embedding_requests,

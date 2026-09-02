@@ -39,7 +39,6 @@ from typing import Any
 
 import boto3
 from PIL import Image as PIL_Image
-
 from receipt_embeddings.sweep import delete_native_embedding_items
 
 logger = logging.getLogger()
