@@ -24,10 +24,22 @@ IMAGE_ID = "2f1e7204-84f1-4ab3-9b05-7dc6edebc1b7"
 
 
 def _line(line_id: int, text: str) -> SimpleNamespace:
-    return SimpleNamespace(line_id=line_id, text=text)
+    # Real geometry so group_lines_into_visual_rows can row-group:
+    # each line gets its own non-overlapping vertical band.
+    return SimpleNamespace(
+        line_id=line_id,
+        text=text,
+        bounding_box={
+            "x": 0.1,
+            "y": 1.0 - 0.1 * line_id,
+            "width": 0.8,
+            "height": 0.05,
+        },
+    )
 
 
 def _word(line_id: int, word_id: int, text: str) -> SimpleNamespace:
+    centroid = (0.1 + 0.1 * word_id, 1.0 - 0.1 * line_id)
     return SimpleNamespace(
         image_id=IMAGE_ID,
         receipt_id=1,
@@ -35,6 +47,13 @@ def _word(line_id: int, word_id: int, text: str) -> SimpleNamespace:
         word_id=word_id,
         text=text,
         extracted_data={},
+        calculate_centroid=lambda: centroid,
+        bounding_box={
+            "x": 0.1 + 0.1 * word_id,
+            "y": 1.0 - 0.1 * line_id,
+            "width": 0.08,
+            "height": 0.05,
+        },
     )
 
 
@@ -271,3 +290,111 @@ class TestProcessorWiringIndependence:
         assert call_kwargs["row_embeddings"] is row_embeddings
         assert call_kwargs["word_embeddings_list"] is word_embeddings_list
         assert result["dual_write"] is dual_report
+
+
+@pytest.mark.unit
+class TestWriteNativeEmbeddings:
+    """Chroma-free native writer (teardown PR #4): batch-embeds the
+    ingest-formatted inputs and persists via the engine writer."""
+
+    def _run(self, monkeypatch, *, sweep=False, raw=None):
+        import receipt_embeddings
+
+        from receipt_upload.merchant_resolution.dynamo_embedding_write import (
+            write_native_embeddings,
+        )
+
+        writer = RecordingWriter()
+        captured = {}
+
+        def fake_embed(client, texts, model="text-embedding-3-small"):
+            captured["texts"] = list(texts)
+            return [_vector(0.7) for _ in texts]
+
+        monkeypatch.setattr(
+            "receipt_embeddings.openai.realtime.embed_texts", fake_embed
+        )
+        monkeypatch.setattr(
+            receipt_embeddings,
+            "EmbeddingWriter",
+            lambda client, table: writer,
+        )
+        dynamo = MagicMock()
+        dynamo.table_name = "test-table"
+        if raw is not None:
+            dynamo._client = raw
+        result = write_native_embeddings(
+            dynamo,
+            image_id=IMAGE_ID,
+            receipt_id=1,
+            lines=[_line(1, "STORE"), _line(2, "")],
+            words=[_word(1, 1, "STORE")],
+            word_labels=[_label(1, 1, "INVALID")],
+            receipt_place=SimpleNamespace(
+                merchant_name="Costco", place_id="p-9"
+            ),
+            sweep_existing=sweep,
+        )
+        return result, writer, captured
+
+    def test_batch_embeds_and_writes_with_vectors(self, monkeypatch):
+        result, writer, captured = self._run(monkeypatch)
+        (requests,) = writer.calls
+        # blank line 2 skipped; one line row + one word
+        assert result["requests"] == len(requests) == 2
+        assert len(captured["texts"]) == 2
+        assert all(r.vector is not None for r in requests)
+        word = [r for r in requests if r.kind == "word"][0]
+        # terminal-verdict rule: INVALID-only stays validated
+        assert word.label_status == "validated"
+        line = [r for r in requests if r.kind == "line"][0]
+        assert line.merchant_name == "Costco"
+        assert line.place_id == "p-9"
+        assert result["swept"] == 0
+
+    def test_sweep_existing_deletes_before_write(self, monkeypatch):
+        raw = MagicMock()
+        raw.query.return_value = {
+            "Items": [
+                {
+                    "PK": {"S": f"IMAGE#{IMAGE_ID}"},
+                    "SK": {"S": "RECEIPT#00001#LINE#00001#EMBEDDING"},
+                },
+                {
+                    "PK": {"S": f"IMAGE#{IMAGE_ID}"},
+                    "SK": {"S": "RECEIPT#00001#LINE#00001#WORD#00001"},
+                },
+            ]
+        }
+        raw.batch_write_item.return_value = {"UnprocessedItems": {}}
+        result, _writer, _ = self._run(monkeypatch, sweep=True, raw=raw)
+        # only the #EMBEDDING-suffixed key is swept
+        assert result["swept"] == 1
+        raw.batch_write_item.assert_called_once()
+
+    def test_vector_count_mismatch_raises(self, monkeypatch):
+        import receipt_embeddings
+
+        from receipt_upload.merchant_resolution.dynamo_embedding_write import (
+            write_native_embeddings,
+        )
+
+        monkeypatch.setattr(
+            "receipt_embeddings.openai.realtime.embed_texts",
+            lambda client, texts, model="m": [],
+        )
+        monkeypatch.setattr(
+            receipt_embeddings,
+            "EmbeddingWriter",
+            lambda client, table: RecordingWriter(),
+        )
+        with pytest.raises(RuntimeError, match="returned 0 vectors"):
+            write_native_embeddings(
+                MagicMock(table_name="t"),
+                image_id=IMAGE_ID,
+                receipt_id=1,
+                lines=[_line(1, "STORE")],
+                words=[],
+                word_labels=[],
+                receipt_place=None,
+            )
