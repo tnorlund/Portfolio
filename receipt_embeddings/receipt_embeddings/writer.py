@@ -361,9 +361,24 @@ class EmbeddingWriter:
         return report
 
 
+def report_incomplete(report: Any) -> bool:
+    """True when a native-write report dict signals an incomplete write.
+
+    The write paths hand back small dicts (see
+    ``write_precomputed_embeddings`` / ``write_native_embeddings``);
+    a truthy ``error`` or a nonzero ``failed`` means at least one
+    embedding item is missing. Callers keep their own fatality
+    semantics — this only centralizes the check (polish-brief item 5).
+    Accepts ``None`` (treated as incomplete-nothing → False).
+    """
+
+    return bool(report) and bool(report.get("error") or report.get("failed"))
+
+
 __all__ = [
     "EmbeddingWriteFailure",
     "EmbeddingWriteReport",
     "EmbeddingWriteRequest",
     "EmbeddingWriter",
+    "report_incomplete",
 ]

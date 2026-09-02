@@ -42,10 +42,10 @@ from typing import Any, Iterable, Mapping, Optional
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_section import ReceiptSection
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+from receipt_dynamo.word_label_status import aggregate_word_label_status
 from receipt_dynamo_stream.models import ParsedStreamRecord
 from receipt_dynamo_stream.parsing import parse_stream_record
 from receipt_dynamo_stream.stream_types import (
@@ -415,14 +415,7 @@ def _compute_word_label_status(
             break
         kwargs["ExclusiveStartKey"] = last_key
 
-    if (
-        ValidationStatus.VALID.value in statuses
-        or ValidationStatus.INVALID.value in statuses
-    ):
-        return "validated"
-    if ValidationStatus.PENDING.value in statuses:
-        return "pending"
-    return "none"
+    return aggregate_word_label_status(statuses)
 
 
 def _update_embedding_item(

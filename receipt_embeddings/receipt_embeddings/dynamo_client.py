@@ -11,6 +11,7 @@ from typing import Any
 from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
 from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
 
+from receipt_embeddings.keys import canonical_key_from_item as _canonical_key
 from receipt_embeddings.service_limits import (
     EMBEDDING_DIMENSIONS,
     INDEX_VECTOR_ATTRIBUTES,
@@ -62,16 +63,6 @@ _WORD_LABEL_JOIN_ATTRIBUTES = (
     "label_proposed_by",
     "timestamp_added",
 )
-
-
-def _canonical_key(item: Mapping[str, Any], *, index: str) -> str:
-    image_id = str(item["image_id"])
-    receipt_id = int(item["receipt_id"])
-    line_id = int(item["line_id"])
-    prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-    if index == WORD_INDEX:
-        return f"{prefix}#WORD#{int(item['word_id']):05d}"
-    return prefix
 
 
 class DynamoVectorSearchClient:

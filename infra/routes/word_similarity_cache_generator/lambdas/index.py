@@ -22,6 +22,7 @@ from typing import Optional
 
 import boto3
 from receipt_dynamo import DynamoClient
+from receipt_embeddings.keys import line_canonical_key
 
 # receipt_chroma is imported lazily inside the chroma-backed fetch
 # functions only: on the dynamodb backend this Lambda must import (and
@@ -677,8 +678,7 @@ def _fetch_lines_from_dynamo(timing: TimingStats, dynamo_client) -> dict:
             ] or [line_id]
             rows.append(
                 (
-                    f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-                    f"#LINE#{line_id:05d}",
+                    line_canonical_key(image_id, receipt_id, line_id),
                     {
                         "text": text,
                         "image_id": image_id,

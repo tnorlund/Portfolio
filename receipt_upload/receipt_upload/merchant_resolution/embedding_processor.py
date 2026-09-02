@@ -36,6 +36,7 @@ from receipt_agent.constants import CORE_LABELS
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
+from receipt_embeddings import report_incomplete
 
 from receipt_upload.label_validation import (
     LightweightLabelValidator,
@@ -1238,9 +1239,7 @@ class MerchantResolvingEmbeddingProcessor:
             row_line_ids_list=row_line_ids_list,
             word_embeddings_list=word_embeddings_list,
         )
-        native_write_ok = not (
-            native_report.get("error") or native_report.get("failed")
-        )
+        native_write_ok = not report_incomplete(native_report)
         if not native_write_ok:
             _log(f"ERROR: Native embedding write incomplete: {native_report}")
         else:

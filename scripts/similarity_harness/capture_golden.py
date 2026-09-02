@@ -46,6 +46,14 @@ if _cached is not None and getattr(_cached, "__file__", None) is None:
     ]:
         del sys.modules[_name]
 
+from receipt_embeddings import build_chroma_where  # noqa: E402
+from receipt_embeddings import ensure_get_ids_within_quota  # noqa: E402
+from receipt_embeddings import (  # noqa: E402
+    ScoredItem,
+    VectorItem,
+    ensure_query_embeddings_within_quota,
+)
+from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
 from scripts.similarity_harness.common import LINE_INDEX  # noqa: E402
 from scripts.similarity_harness.common import (
     MERCHANT_FAMILY,
@@ -64,15 +72,6 @@ from scripts.similarity_harness.common import (
     validate_fixture,
     write_fixture,
 )
-
-from receipt_embeddings import build_chroma_where  # noqa: E402
-from receipt_embeddings import ensure_get_ids_within_quota  # noqa: E402
-from receipt_embeddings import (  # noqa: E402
-    ScoredItem,
-    VectorItem,
-    ensure_query_embeddings_within_quota,
-)
-from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
 
 DEFAULT_FIXTURE = (
     REPOSITORY_ROOT / "tests" / "fixtures" / "similarity" / "golden.json"
@@ -281,13 +280,19 @@ def _clustered_vector(cluster: str, identity: str) -> list[float]:
 
 
 def _line_key(image_id: str, receipt_id: int, line_id: int) -> str:
-    return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
+    # Canonical builders (receipt_embeddings.keys) — imported lazily so
+    # the harness module keeps its import-light bootstrap path.
+    from receipt_embeddings.keys import line_canonical_key
+
+    return line_canonical_key(image_id, receipt_id, line_id)
 
 
 def _word_key(
     image_id: str, receipt_id: int, line_id: int, word_id: int
 ) -> str:
-    return f"{_line_key(image_id, receipt_id, line_id)}#WORD#{word_id:05d}"
+    from receipt_embeddings.keys import word_canonical_key
+
+    return word_canonical_key(image_id, receipt_id, line_id, word_id)
 
 
 def _query_record(

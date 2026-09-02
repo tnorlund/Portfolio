@@ -30,11 +30,7 @@ for package_root in (
 ):
     sys.path.insert(0, str(package_root))
 
-from receipt_chroma.embedding.metadata.line_metadata import (  # noqa: E402
-    enrich_row_metadata_with_anchors,
-)
 from receipt_dynamo import DynamoClient  # noqa: E402
-from receipt_dynamo.constants import ValidationStatus  # noqa: E402
 from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
     EntityNotFoundError,
 )
@@ -43,11 +39,11 @@ from receipt_embeddings import (  # noqa: E402
     EmbeddingWriter,
     EmbeddingWriteRequest,
 )
-from receipt_embeddings.formatting import (  # noqa: E402
-    format_visual_row,
-    format_word_context_embedding_input,
-    get_row_embedding_inputs,
-    group_lines_into_visual_rows,
+from receipt_embeddings.keys import (  # noqa: E402
+    dynamo_key_from_canonical,
+)
+from receipt_embeddings.label_status import (  # noqa: E402
+    word_label_statuses,
 )
 from receipt_embeddings.quotas import (  # noqa: E402
     MAX_GET_LIMIT,
@@ -58,6 +54,9 @@ from receipt_embeddings.service_limits import (  # noqa: E402
     LINE_INDEX,
     MAX_SEARCH_RESULTS,
     WORD_INDEX,
+)
+from receipt_embeddings.write_requests import (  # noqa: E402
+    build_embedding_write_requests,
 )
 from scripts.similarity_harness.capture_golden import (  # noqa: E402
     CHROMA_ENVIRONMENT,
@@ -281,37 +280,12 @@ def _classify_receipt_skip(exc: Exception) -> str:
     return f"error:{type(exc).__name__}"
 
 
-def _label_statuses(labels: Sequence[Any]) -> dict[tuple[int, int], str]:
-    """Same rule as the stream freshener: any terminal human verdict
-    (VALID or INVALID) -> validated, else any PENDING -> pending, else
-    none. INVALID-only words must stay in the validated population or
-    the word index's filter would drop exactly the counterexamples
-    similar_labeled_words needs for evidence_against (E3 review P1-2).
-    """
-    by_word: dict[tuple[int, int], list[str]] = {}
-    for label in labels:
-        key = (int(label.line_id), int(label.word_id))
-        by_word.setdefault(key, []).append(str(label.validation_status))
-    statuses: dict[tuple[int, int], str] = {}
-    for key, values in by_word.items():
-        if (
-            ValidationStatus.VALID.value in values
-            or ValidationStatus.INVALID.value in values
-        ):
-            statuses[key] = "validated"
-        elif ValidationStatus.PENDING.value in values:
-            statuses[key] = "pending"
-        else:
-            statuses[key] = "none"
-    return statuses
-
-
-def _section_by_line(sections: Sequence[Any]) -> dict[int, str]:
-    result: dict[int, str] = {}
-    for section in sections:
-        for line_id in section.line_ids:
-            result[int(line_id)] = str(section.section_type)
-    return result
+# Canonical terminal-verdict rule (receipt_dynamo.word_label_status via
+# receipt_embeddings.label_status): any terminal human verdict (VALID or
+# INVALID) -> validated, else any PENDING -> pending, else none.
+# INVALID-only words must stay in the validated population (E3 review
+# P1-2; #1513 class). Kept under the historical local name.
+_label_statuses = word_label_statuses
 
 
 def build_requests(
@@ -330,86 +304,24 @@ def build_requests(
     place_id = (
         str(getattr(place, "place_id", "") or "") if place is not None else ""
     )
-    section_by_line = _section_by_line(sections)
-    requests: list[EmbeddingWriteRequest] = []
-
-    row_inputs = get_row_embedding_inputs(details.lines)
-    visual_rows = group_lines_into_visual_rows(details.lines)
-    for (embedding_input, line_ids), row in zip(
-        row_inputs, visual_rows, strict=True
-    ):
-        primary_line_id = int(line_ids[0])
-        canonical_key = (
-            f"IMAGE#{details.receipt.image_id}#"
-            f"RECEIPT#{details.receipt.receipt_id:05d}#"
-            f"LINE#{primary_line_id:05d}"
-        )
-        section_values = {
-            section_by_line.get(int(line_id), "") for line_id in line_ids
-        }
-        section_values.discard("")
-        section_type = (
-            next(iter(section_values)) if len(section_values) == 1 else ""
-        )
-        # Fetch-join metadata: the same anchor enrichment the Chroma line
-        # delta writer applies to a visual row's words populates the
-        # resolver's normalized phone/address fields on the Dynamo item.
-        row_line_id_set = {int(value) for value in line_ids}
-        anchors = enrich_row_metadata_with_anchors(
-            {},
-            [
-                word
-                for word in details.words
-                if int(word.line_id) in row_line_id_set
-            ],
-        )
-        requests.append(
-            EmbeddingWriteRequest(
-                kind="line",
-                image_id=details.receipt.image_id,
-                receipt_id=details.receipt.receipt_id,
-                line_id=primary_line_id,
-                text=format_visual_row(row),
-                embedding_input=embedding_input,
-                merchant_name=merchant_name,
-                place_id=place_id,
-                row_line_ids=tuple(int(value) for value in line_ids),
-                section_type=section_type,
-                normalized_phone_10=str(
-                    anchors.get("normalized_phone_10", "")
-                ),
-                normalized_full_address=str(
-                    anchors.get("normalized_full_address", "")
-                ),
-                vector=known_vectors.get(canonical_key),
-            )
-        )
-
-    statuses = _label_statuses(details.labels)
-    for word in details.words:
-        canonical_key = (
-            f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#"
-            f"LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
-        )
-        requests.append(
-            EmbeddingWriteRequest(
-                kind="word",
-                image_id=word.image_id,
-                receipt_id=word.receipt_id,
-                line_id=word.line_id,
-                word_id=word.word_id,
-                text=word.text,
-                embedding_input=format_word_context_embedding_input(
-                    word, details.words, context_size=2
-                ),
-                merchant_name=merchant_name,
-                label_status=statuses.get(
-                    (int(word.line_id), int(word.word_id)), "none"
-                ),
-                vector=known_vectors.get(canonical_key),
-            )
-        )
-    return requests
+    # Canonical builder (polish-brief item 3): same visual-row grouping,
+    # anchor enrichment, section stamping, and known-vector lookup the
+    # ingest/correction flows use. NOTE the builder skips blank-text
+    # rows/words (the engine writer refuses empty text) — the historical
+    # "text must not be empty" refusals on full backfills become skips.
+    return build_embedding_write_requests(
+        image_id=details.receipt.image_id,
+        receipt_id=details.receipt.receipt_id,
+        lines=details.lines,
+        words=details.words,
+        word_labels=details.labels,
+        merchant_name=merchant_name,
+        place_id=place_id,
+        sections=sections,
+        known_vectors=known_vectors,
+        include_embedding_input=True,
+        missing_row="raise",
+    )
 
 
 def collect_requests(
@@ -614,11 +526,9 @@ def determine_exit_code(
 
 
 def _item_key_from_canonical(key: str) -> dict[str, Any]:
-    image_part, _, item_part = key.partition("#RECEIPT#")
-    return {
-        "PK": {"S": image_part},
-        "SK": {"S": f"RECEIPT#{item_part}#EMBEDDING"},
-    }
+    """Canonical key -> Dynamo Key (receipt_embeddings.keys is the one
+    implementation of the partition rule; polish-brief item 4)."""
+    return dynamo_key_from_canonical(key)
 
 
 def verify_written_items(
