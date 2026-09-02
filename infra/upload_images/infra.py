@@ -34,19 +34,8 @@ google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
-# Chroma Cloud: the upload path queries Cloud (no per-receipt snapshot download).
-# Batch step functions keep using the local S3 snapshot.
-chroma_cloud_enabled = config.get("CHROMA_CLOUD_ENABLED") or ""
-chroma_cloud_api_key = config.get_secret("CHROMA_CLOUD_API_KEY") or ""
-chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
-chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 # Defer grok label validation to the async queue/consumer (off by default).
 llm_validation_async = config.get("LLM_VALIDATION_ASYNC") or "false"
-# Dual-run ingest (SPEC §3.4): also write embedding items to DynamoDB via
-# the receipt_embeddings engine writer (off by default; string "true").
-enable_dual_write_embeddings = (
-    config.get("enable-dual-write-embeddings") or "false"
-)
 
 stack = pulumi.get_stack()
 
@@ -589,8 +578,6 @@ class UploadImages(ComponentResource):
                 "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
                 # Async LLM validation: producer enqueues here, same Lambda consumes.
                 "LLM_VALIDATION_ASYNC": llm_validation_async,
-                # Dual-run embedding writes to DynamoDB (non-fatal, flag-gated).
-                "DUAL_WRITE_EMBEDDINGS": enable_dual_write_embeddings,
                 "LLM_VALIDATION_QUEUE_URL": self.llm_validation_queue.url,
                 # Post-re-OCR line-item refresh: the overlay enqueues a
                 # summary recompute here (fresh timestamp_computed fires
@@ -598,14 +585,6 @@ class UploadImages(ComponentResource):
                 "RECEIPT_SUMMARY_QUEUE_URL": pulumi.Output.from_input(
                     summary_queue_url or ""
                 ),
-                "CHROMADB_BUCKET": chromadb_bucket_name,
-                # Chroma Cloud: the upload path reads from Cloud (skipping the
-                # S3 snapshot) and upserts freshly embedded vectors straight to
-                # it, so they are queryable without waiting for compaction.
-                "CHROMA_CLOUD_ENABLED": chroma_cloud_enabled,
-                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
-                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
-                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 # Vector search backend seam (chroma | dynamodb)
                 "VECTOR_BACKEND": (
                     pulumi.Config("portfolio").get("vector-backend")

@@ -213,18 +213,10 @@ class MergeReceiptLambda(ComponentResource):
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "RAW_BUCKET": raw_bucket_name,
                 "SITE_BUCKET": site_bucket_name,
-                "CHROMADB_BUCKET": chromadb_bucket_name,
                 "OPENAI_API_KEY": openai_api_key,
                 # Vector search backend seam (chroma | dynamodb)
                 "VECTOR_BACKEND": (
                     Config("portfolio").get("vector-backend") or "chroma"
-                ),
-                # Dual-run embedding writes to DynamoDB (non-fatal,
-                # flag-gated) — merged receipts must reach the native
-                # vector corpus too (issue #1517).
-                "DUAL_WRITE_EMBEDDINGS": (
-                    Config("portfolio").get("enable-dual-write-embeddings")
-                    or "false"
                 ),
             },
         }

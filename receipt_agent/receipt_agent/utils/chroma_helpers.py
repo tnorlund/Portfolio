@@ -15,7 +15,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, List, Optional, TypedDict
 
-from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo.entities import ReceiptWord
 
 from receipt_agent.clients.factory import create_chroma_client, create_embed_fn
@@ -179,7 +178,9 @@ def build_consensus_auto_review(
         else:
             return None
 
-    confidence = "high" if abs(consensus) >= min(threshold + 0.15, 0.95) else "medium"
+    confidence = (
+        "high" if abs(consensus) >= min(threshold + 0.15, 0.95) else "medium"
+    )
     return {
         "decision": decision,
         "reasoning": reasoning,
@@ -229,7 +230,11 @@ def chroma_resolve_words(
         current_label = word_dict.get("current_label", "")
         normalized = current_label.strip().upper() if current_label else ""
         is_unlabeled = normalized in {
-            "", "O", "NONE", "NONE (UNLABELED)", "UNLABELED",
+            "",
+            "O",
+            "NONE",
+            "NONE (UNLABELED)",
+            "UNLABELED",
         }
 
         if is_unlabeled:
@@ -389,7 +394,9 @@ def chroma_fallback_decisions(
         if dec.get("decision") != "NEEDS_REVIEW":
             continue
         reasoning = dec.get("reasoning", "")
-        if any(indicator in reasoning for indicator in _SYSTEM_FAILURE_INDICATORS):
+        if any(
+            indicator in reasoning for indicator in _SYSTEM_FAILURE_INDICATORS
+        ):
             failure_indices.append(i)
 
     if not failure_indices:
@@ -465,6 +472,13 @@ def load_dual_chroma_from_s3(
     Raises:
         RuntimeError: If snapshot download or client creation fails
     """
+    # Lazy: receipt_chroma is uninstalled from images that only import
+    # receipt_agent's __init__ chain (Chroma teardown); this snapshot
+    # loader is the sole receipt_chroma consumer on that chain.
+    from receipt_chroma.s3 import (  # pylint: disable=import-outside-toplevel
+        download_snapshot_atomic,
+    )
+
     if base_chroma_path is None:
         base_chroma_path = os.environ.get(
             "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY",
@@ -988,9 +1002,7 @@ def _discover_candidate_label(
             include=["metadatas", "distances"],
         )
     except Exception as exc:
-        logger.warning(
-            "Label discovery query failed: %s", exc
-        )
+        logger.warning("Label discovery query failed: %s", exc)
         return None
 
     metadata_rows = results.get("metadatas", [[]])
@@ -1026,9 +1038,14 @@ def _discover_candidate_label(
             for label in v_arr:
                 label_str = str(label).strip().upper()
                 if label_str and label_str not in {
-                    "O", "NONE", "NONE (UNLABELED)", "UNLABELED",
+                    "O",
+                    "NONE",
+                    "NONE (UNLABELED)",
+                    "UNLABELED",
                 }:
-                    label_counts[label_str] = label_counts.get(label_str, 0) + 1
+                    label_counts[label_str] = (
+                        label_counts.get(label_str, 0) + 1
+                    )
 
     if not label_counts:
         return None
@@ -1114,7 +1131,9 @@ def _discover_and_evaluate_unlabeled(
             for label in v_arr:
                 label_str = str(label).strip().upper()
                 if label_str not in _UNLABELED_SENTINELS:
-                    label_counts[label_str] = label_counts.get(label_str, 0) + 1
+                    label_counts[label_str] = (
+                        label_counts.get(label_str, 0) + 1
+                    )
 
     if not label_counts:
         return None

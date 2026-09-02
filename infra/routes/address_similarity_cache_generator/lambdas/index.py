@@ -9,16 +9,18 @@ import tempfile
 from datetime import datetime, timezone
 
 import boto3
-from receipt_chroma import ChromaClient
-from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo import DynamoClient
+
+# receipt_chroma is imported lazily inside the chroma-backend branches
+# only: on the dynamodb backend this Lambda must import (and run)
+# without the package or the CHROMADB_BUCKET env (Chroma teardown).
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Environment variables
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
-CHROMADB_BUCKET = os.environ["CHROMADB_BUCKET"]
+CHROMADB_BUCKET = os.environ.get("CHROMADB_BUCKET", "")
 S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET", CHROMADB_BUCKET)
 CACHE_KEY = "address-similarity-cache/latest.json"
 
@@ -275,6 +277,9 @@ def handler(_event, _context):
         if VECTOR_BACKEND == "dynamodb":
             download_result = {"status": "downloaded"}
         else:
+            # pylint: disable=import-outside-toplevel
+            from receipt_chroma.s3 import download_snapshot_atomic
+
             logger.info(
                 "Downloading ChromaDB snapshot from S3: %s/lines",
                 CHROMADB_BUCKET,
@@ -306,6 +311,9 @@ def handler(_event, _context):
         if VECTOR_BACKEND == "dynamodb":
             chroma_client = _DynamoLinesClient(DYNAMODB_TABLE_NAME)
         else:
+            # pylint: disable=import-outside-toplevel
+            from receipt_chroma import ChromaClient
+
             chroma_client = ChromaClient(
                 persist_directory=temp_dir,
                 mode="read",

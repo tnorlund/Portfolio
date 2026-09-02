@@ -23,17 +23,39 @@ from datetime import datetime
 from typing import Any, Callable, Optional
 
 from langchain_core.tools import tool
-from receipt_chroma.section_labels import (
-    NON_ITEM_SECTION_LABELS,
-    non_item_section_filter,
-)
 
 from receipt_embeddings.backend import vector_search_client
 from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
+from receipt_embeddings.section_labels import (
+    NON_ITEM_SECTION_LABELS,
+    non_item_section_filter,
+)
 from receipt_embeddings.service_limits import LINE_INDEX, MAX_SEARCH_RESULTS
 from receipt_embeddings.vector_client import VectorSearchClient
 
 logger = logging.getLogger(__name__)
+
+
+def _chroma_mode_unavailable(search_type: str, query: str) -> dict:
+    """Structured result for retired Chroma-only search modes.
+
+    On the dynamodb backend there is no Chroma client; the label /
+    label_lines / text modes have no DynamoDB implementation, so they
+    answer with a clear signal instead of raising.
+    """
+    return {
+        "search_type": search_type,
+        "query": query,
+        "error": (
+            f"search_type '{search_type}' is unavailable on the "
+            "dynamodb backend (Chroma retired); use 'semantic' or the "
+            "DynamoDB-backed tools instead"
+        ),
+        "total_matches": 0,
+        "unique_receipts": 0,
+        "results": [],
+    }
+
 
 # Every semantic n_results is trimmed to the 100-result SearchVectors cap
 # (MAX_SEARCH_RESULTS). This deliberately cuts the old Chroma depth of up
@@ -465,6 +487,9 @@ def create_qa_tools(
 
         try:
             if search_type == "label":
+                if chroma_client is None:
+                    _track_search(query, search_type, 0)
+                    return _chroma_mode_unavailable("label", query)
                 words_collection = chroma_client.get_collection("words")
                 results = words_collection.get(
                     where={"label": query.upper()},
@@ -493,6 +518,9 @@ def create_qa_tools(
                 }
 
             elif search_type == "label_lines":
+                if chroma_client is None:
+                    _track_search(query, search_type, 0)
+                    return _chroma_mode_unavailable("label_lines", query)
                 lines_collection = chroma_client.get_collection("lines")
                 label_key = f"label_{query.upper()}"
 
@@ -571,6 +599,9 @@ def create_qa_tools(
 
             else:
                 # Default: text search
+                if chroma_client is None:
+                    _track_search(query, "text", 0)
+                    return _chroma_mode_unavailable("text", query)
                 lines_collection = chroma_client.get_collection("lines")
                 results = lines_collection.get(
                     where_document={"$contains": query.upper()},
@@ -1160,8 +1191,11 @@ def create_qa_tools(
                 return result
 
             else:
-                # Text search (unchanged: direct Chroma substring scan;
-                # its DynamoDB rewrite is out of this card's scope)
+                # Text search (direct Chroma substring scan; no DynamoDB
+                # rewrite — unavailable once Chroma is retired)
+                if chroma_client is None:
+                    _track_search(query, "text", 0)
+                    return _chroma_mode_unavailable("text", query)
                 lines_collection = chroma_client.get_collection("lines")
                 results = lines_collection.get(
                     where_document={"$contains": query.upper()},

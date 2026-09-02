@@ -372,17 +372,18 @@ def test_dynamodb_backend_serves_semantic_without_chroma(label, monkeypatch):
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_text_mode_still_requires_chroma_under_dynamodb_backend(
-    label, monkeypatch
-):
+def test_text_mode_unavailable_under_dynamodb_backend(label, monkeypatch):
+    """Chroma teardown: the retired Chroma-only modes answer with a
+    structured "unavailable" result instead of raising — and the server
+    must never even attempt to build a Chroma client on this backend."""
     module = _load_module(label, SERVER_FILES[label])
     monkeypatch.setenv("VECTOR_BACKEND", "dynamodb")
     _install_stub_embed_factory(monkeypatch)
     module.get_dynamo_client = lambda: SimpleNamespace()
 
     def _no_chroma():
-        raise module.ChromaNotConfiguredError(
-            module.CHROMA_NOT_CONFIGURED_MESSAGE
+        raise AssertionError(
+            "get_chroma_clients must not be called on dynamodb backend"
         )
 
     module.get_chroma_clients = _no_chroma
@@ -393,8 +394,9 @@ def test_text_mode_still_requires_chroma_under_dynamodb_backend(
         {"query": "coffee", "search_type": "text"},
     )
 
-    assert result["error_type"] == "chroma_not_configured"
-    assert result["tool"] == "search_receipts"
+    assert "unavailable on the dynamodb backend" in result["error"]
+    assert result["search_type"] == "text"
+    assert result["results"] == []
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
