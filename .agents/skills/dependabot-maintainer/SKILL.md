@@ -14,7 +14,7 @@ Use this skill to turn Dependabot PR handling into a repeatable workflow. Prefer
 1. Start with a clean view of open Dependabot PRs:
 
    ```bash
-   python .codex/skills/dependabot-maintainer/scripts/dependabot_maintainer.py report
+   python .agents/skills/dependabot-maintainer/scripts/dependabot_maintainer.py report
    ```
 
 2. For each PR, inspect the changed files and risk class from the report.
@@ -25,13 +25,13 @@ Use this skill to turn Dependabot PR handling into a repeatable workflow. Prefer
 3. Run local verification for dependency manifests when the update is not obviously docs-only or workflow-only:
 
    ```bash
-   python .codex/skills/dependabot-maintainer/scripts/dependabot_maintainer.py verify <PR_NUMBER>
+   python .agents/skills/dependabot-maintainer/scripts/dependabot_maintainer.py verify <PR_NUMBER>
    ```
 
 4. If a PR is dirty or conflicting after another Dependabot PR merges, ask Dependabot to rebase it:
 
    ```bash
-   python .codex/skills/dependabot-maintainer/scripts/dependabot_maintainer.py rebase <PR_NUMBER>
+   python .agents/skills/dependabot-maintainer/scripts/dependabot_maintainer.py rebase <PR_NUMBER>
    ```
 
    Wait for the head SHA to change and for post-rebase CI to complete before merging.
@@ -39,7 +39,7 @@ Use this skill to turn Dependabot PR handling into a repeatable workflow. Prefer
 5. Merge only after the PR is `ready`, local verification passed when relevant, and the head SHA is stable:
 
    ```bash
-   python .codex/skills/dependabot-maintainer/scripts/dependabot_maintainer.py merge <PR_NUMBER> --yes
+   python .agents/skills/dependabot-maintainer/scripts/dependabot_maintainer.py merge <PR_NUMBER> --yes
    ```
 
    Major-version updates are blocked by default. Use `--allow-major` only when the user explicitly approves the specific major update or local/manual review has already covered the risk.

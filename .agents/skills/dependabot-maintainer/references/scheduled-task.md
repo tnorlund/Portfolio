@@ -34,7 +34,7 @@ Use the narrowest permissions that still allow GitHub reads, GitHub PR comments,
 Use the script's `guard` command as the deterministic pre-merge hook for either Codex or Claude:
 
 ```bash
-python .codex/skills/dependabot-maintainer/scripts/dependabot_maintainer.py guard <PR_NUMBER>
+python .agents/skills/dependabot-maintainer/scripts/dependabot_maintainer.py guard <PR_NUMBER>
 ```
 
 The hook should run immediately before any merge action. A non-zero exit means the agent must stop and report the reason instead of merging. Keep this guard in the prompt or hook configuration rather than relying on model judgment alone.
