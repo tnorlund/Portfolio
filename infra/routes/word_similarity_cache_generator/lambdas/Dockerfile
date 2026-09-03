@@ -2,7 +2,7 @@
 # Multi-stage build for Word Similarity Cache Generator Lambda
 
 # Stage 1: Build and install dependencies (cached layer)
-FROM public.ecr.aws/lambda/python:3.13 AS dependencies
+FROM public.ecr.aws/lambda/python:3.14 AS dependencies
 
 # Set environment variable to avoid compilation issues
 ENV HNSWLIB_NO_NATIVE=1
