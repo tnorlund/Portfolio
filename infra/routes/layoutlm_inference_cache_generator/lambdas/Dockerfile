@@ -2,7 +2,7 @@
 # Multi-stage build for LayoutLM Inference Cache Generator Lambda
 
 # Stage 1: Build and install dependencies (cached layer)
-FROM public.ecr.aws/lambda/python:3.13 AS dependencies
+FROM public.ecr.aws/lambda/python:3.14 AS dependencies
 
 # Note: awscli is pre-installed in the Lambda base image, no need to install it
 
