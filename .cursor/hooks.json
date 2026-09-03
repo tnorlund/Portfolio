@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "python3 scripts/agent-hooks/guard-shell.py",
+        "matcher": "pulumi|git|aws",
+        "timeout": 15
+      }
+    ]
+  }
+}
