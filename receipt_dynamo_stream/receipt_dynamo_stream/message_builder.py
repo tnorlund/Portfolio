@@ -219,7 +219,9 @@ def _extract_receipt_section(
 
 
 # Type alias for entity extractor functions
-_EntityType = ReceiptPlace | ReceiptSection | ReceiptSummaryRecord | ReceiptWordLabel
+_EntityType = (
+    ReceiptPlace | ReceiptSection | ReceiptSummaryRecord | ReceiptWordLabel
+)
 _ExtractorFunc = Callable[
     [_EntityType],
     tuple[dict[str, object], list[TargetQueue]],
