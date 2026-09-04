@@ -303,12 +303,6 @@ class EntityValidator:
             # Operations that expect "given were" (add "given")
             "add_given": {
                 "pattern_match": [
-                    "receipt_label_analysis",
-                    "receipt_line_item_analysis",
-                    "receipt_line_item_analyses",
-                    "receipt_validation_result",
-                    "receipt_structure_analysis",
-                    "receipt_structure_analyses",
                     "receipt_chatgpt_validation",
                     "receipt_chat_gpt_validation",
                 ],

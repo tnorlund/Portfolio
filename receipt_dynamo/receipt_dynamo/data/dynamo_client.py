@@ -7,9 +7,7 @@ from receipt_dynamo.data._ai_usage_metric import _AIUsageMetric
 from receipt_dynamo.data._batch_summary import _BatchSummary
 from receipt_dynamo.data._compaction_lock import _CompactionLock
 from receipt_dynamo.data._compaction_run import _CompactionRun
-from receipt_dynamo.data._completion_batch_result import _CompletionBatchResult
 from receipt_dynamo.data._coreml_export_job import _CoreMLExportJob
-from receipt_dynamo.data._embedding_batch_result import _EmbeddingBatchResult
 from receipt_dynamo.data._image import _Image
 from receipt_dynamo.data._instance import _Instance
 from receipt_dynamo.data._job import _Job
@@ -39,35 +37,19 @@ from receipt_dynamo.data._receipt_chatgpt_validation import (
 )
 from receipt_dynamo.data._receipt_embedding import _ReceiptEmbedding
 from receipt_dynamo.data._receipt_field import _ReceiptField
-from receipt_dynamo.data._receipt_label_analysis import _ReceiptLabelAnalysis
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
 from receipt_dynamo.data._receipt_line import _ReceiptLine
 from receipt_dynamo.data._receipt_line_item import _ReceiptLineItem
-from receipt_dynamo.data._receipt_line_item_analysis import (
-    _ReceiptLineItemAnalysis,
-)
 from receipt_dynamo.data._receipt_metadata import _ReceiptMetadata
 from receipt_dynamo.data._receipt_place import _ReceiptPlace
 from receipt_dynamo.data._receipt_row import _ReceiptRow
 from receipt_dynamo.data._receipt_section import _ReceiptSection
-from receipt_dynamo.data._receipt_structure_analysis import (
-    _ReceiptStructureAnalysis,
-)
 from receipt_dynamo.data._receipt_summary import _ReceiptSummary
 from receipt_dynamo.data._receipt_validation_category import (
     _ReceiptValidationCategory,
 )
-from receipt_dynamo.data._receipt_validation_result import (
-    _ReceiptValidationResult,
-)
-from receipt_dynamo.data._receipt_validation_summary import (
-    _ReceiptValidationSummary,
-)
 from receipt_dynamo.data._receipt_word import _ReceiptWord
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
-from receipt_dynamo.data._receipt_word_label_spatial_analysis import (
-    _ReceiptWordLabelSpatialAnalysis,
-)
 from receipt_dynamo.data._word import _Word
 
 if TYPE_CHECKING:
@@ -108,20 +90,12 @@ class DynamoClient(
     _PlacesCache,
     _LabelCountCache,
     _ReceiptWordLabel,
-    _ReceiptWordLabelSpatialAnalysis,
     _ReceiptField,
-    _ReceiptLabelAnalysis,
-    _ReceiptStructureAnalysis,
-    _ReceiptLineItemAnalysis,
-    _ReceiptValidationResult,
     _ReceiptValidationCategory,
-    _ReceiptValidationSummary,
     _ReceiptChatGPTValidation,
     _BatchSummary,
-    _EmbeddingBatchResult,
     _ReceiptMetadata,
     _ReceiptPlace,
-    _CompletionBatchResult,
     _MerchantCatalogItem,
     _MerchantFont,
     _MerchantTruth,

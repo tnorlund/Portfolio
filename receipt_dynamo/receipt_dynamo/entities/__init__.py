@@ -21,17 +21,9 @@ from receipt_dynamo.entities.compaction_run import (  # noqa: F401
     CompactionRun,
     item_to_compaction_run,
 )
-from receipt_dynamo.entities.completion_batch_result import (  # noqa: F401
-    CompletionBatchResult,
-    item_to_completion_batch_result,
-)
 from receipt_dynamo.entities.coreml_export_job import (  # noqa: F401
     CoreMLExportJob,
     item_to_coreml_export_job,
-)
-from receipt_dynamo.entities.embedding_batch_result import (  # noqa: F401
-    EmbeddingBatchResult,
-    item_to_embedding_batch_result,
 )
 from receipt_dynamo.entities.identifier_mixins import (
     ImageIdentifierMixin,
@@ -64,14 +56,6 @@ from receipt_dynamo.entities.job_status import item_to_job_status
 from receipt_dynamo.entities.label_count_cache import (  # noqa: F401
     LabelCountCache,
     item_to_label_count_cache,
-)
-from receipt_dynamo.entities.label_hygiene_result import (  # noqa: F401
-    LabelHygieneResult,
-    item_to_label_hygiene_result,
-)
-from receipt_dynamo.entities.label_metadata import (  # noqa: F401
-    LabelMetadata,
-    item_to_label_metadata,
 )
 from receipt_dynamo.entities.letter import Letter, item_to_letter  # noqa: F401
 from receipt_dynamo.entities.line import Line, item_to_line  # noqa: F401
@@ -113,9 +97,6 @@ from receipt_dynamo.entities.queue_job import QueueJob  # noqa: F401
 from receipt_dynamo.entities.queue_job import item_to_queue_job
 from receipt_dynamo.entities.receipt import Receipt  # noqa: F401
 from receipt_dynamo.entities.receipt import item_to_receipt
-from receipt_dynamo.entities.receipt_analysis import (  # noqa: F401
-    ReceiptAnalysis,
-)
 from receipt_dynamo.entities.receipt_barcode import (  # noqa: F401
     ReceiptBarcode,
     item_to_receipt_barcode,
@@ -142,10 +123,6 @@ from receipt_dynamo.entities.receipt_embedding import (
 )
 from receipt_dynamo.entities.receipt_field import ReceiptField  # noqa: F401
 from receipt_dynamo.entities.receipt_field import item_to_receipt_field
-from receipt_dynamo.entities.receipt_label_analysis import (  # noqa: F401
-    ReceiptLabelAnalysis,
-    item_to_receipt_label_analysis,
-)
 from receipt_dynamo.entities.receipt_letter import (  # noqa: F401
     ReceiptLetter,
     item_to_receipt_letter,
@@ -155,10 +132,6 @@ from receipt_dynamo.entities.receipt_line import item_to_receipt_line
 from receipt_dynamo.entities.receipt_line_item import (
     ReceiptLineItem,
     item_to_receipt_line_item,
-)
-from receipt_dynamo.entities.receipt_line_item_analysis import (  # noqa: F401
-    ReceiptLineItemAnalysis,
-    item_to_receipt_line_item_analysis,
 )
 from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,
@@ -177,14 +150,6 @@ from receipt_dynamo.entities.receipt_section import (
     item_to_receipt_section,
     validate_section_row_coverage,
 )
-
-# Import receipt structure analysis types before __all__
-from receipt_dynamo.entities.receipt_structure_analysis import (
-    ContentPattern,
-    ReceiptStructureAnalysis,
-    SpatialPattern,
-    item_to_receipt_structure_analysis,
-)
 from receipt_dynamo.entities.receipt_summary import (
     MonetaryTotals,
     ReceiptSummary,
@@ -202,24 +167,11 @@ from receipt_dynamo.entities.receipt_validation_category import (  # noqa: F401
     ReceiptValidationCategory,
     item_to_receipt_validation_category,
 )
-from receipt_dynamo.entities.receipt_validation_result import (  # noqa: F401
-    ReceiptValidationResult,
-    item_to_receipt_validation_result,
-)
-from receipt_dynamo.entities.receipt_validation_summary import (  # noqa: F401
-    ReceiptValidationSummary,
-    item_to_receipt_validation_summary,
-)
 from receipt_dynamo.entities.receipt_word import ReceiptWord  # noqa: F401
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (  # noqa: F401
     ReceiptWordLabel,
     item_to_receipt_word_label,
-)
-from receipt_dynamo.entities.receipt_word_label_spatial_analysis import (
-    ReceiptWordLabelSpatialAnalysis,
-    SpatialRelationship,
-    item_to_receipt_word_label_spatial_analysis,
 )
 from receipt_dynamo.entities.rwl_queue import Queue  # noqa: F401
 from receipt_dynamo.entities.rwl_queue import item_to_queue
@@ -270,9 +222,7 @@ __all__ = [
     "BatchSummary",
     "CompactionLock",
     "CompactionRun",
-    "CompletionBatchResult",
     "CoreMLExportJob",
-    "EmbeddingBatchResult",
     "Image",
     "ImageDetails",
     "Instance",
@@ -285,8 +235,6 @@ __all__ = [
     "JobResource",
     "JobStatus",
     "LabelCountCache",
-    "LabelHygieneResult",
-    "LabelMetadata",
     "Letter",
     "Line",
     "MerchantCatalogItem",
@@ -303,7 +251,6 @@ __all__ = [
     "Queue",
     "QueueJob",
     "Receipt",
-    "ReceiptAnalysis",
     "ReceiptBarcode",
     "ReceiptChatGPTValidation",
     "ReceiptBundle",
@@ -314,34 +261,25 @@ __all__ = [
     "ReceiptDetails",
     "ReceiptEmbedding",
     "ReceiptField",
-    "ReceiptLabelAnalysis",
     "ReceiptLetter",
     "ReceiptLine",
     "ReceiptLineEmbedding",
     "ReceiptLineItem",
-    "ReceiptLineItemAnalysis",
     "ReceiptMetadata",
     "ReceiptPlace",
     "ReceiptRow",
     "ReceiptSection",
-    "ReceiptStructureAnalysis",
     "ReceiptValidationCategory",
-    "ReceiptValidationResult",
-    "ReceiptValidationSummary",
     "ReceiptWord",
     "ReceiptWordEmbedding",
     "ReceiptWordLabel",
-    "ReceiptWordLabelSpatialAnalysis",
-    "SpatialRelationship",
     "Word",
     # Item conversion functions
     "item_to_ai_usage_metric",
     "item_to_batch_summary",
     "item_to_compaction_lock",
-    "item_to_completion_batch_result",
     "item_to_compaction_run",
     "item_to_coreml_export_job",
-    "item_to_embedding_batch_result",
     "item_to_image",
     "item_to_instance",
     "item_to_instance_job",
@@ -353,8 +291,6 @@ __all__ = [
     "item_to_job_resource",
     "item_to_job_status",
     "item_to_label_count_cache",
-    "item_to_label_hygiene_result",
-    "item_to_label_metadata",
     "item_to_letter",
     "item_to_line",
     "item_to_merchant_catalog_item",
@@ -370,25 +306,19 @@ __all__ = [
     "item_to_receipt_summary_record",
     "item_to_receipt_field",
     "item_to_receipt_embedding",
-    "item_to_receipt_label_analysis",
     "item_to_receipt_letter",
     "item_to_receipt_line",
     "item_to_receipt_line_embedding",
     "item_to_receipt_line_item",
-    "item_to_receipt_line_item_analysis",
     "item_to_receipt_metadata",
     "item_to_receipt_place",
     "item_to_receipt_row",
     "item_to_receipt_section",
     "validate_section_row_coverage",
-    "item_to_receipt_structure_analysis",
     "item_to_receipt_validation_category",
-    "item_to_receipt_validation_result",
-    "item_to_receipt_validation_summary",
     "item_to_receipt_word",
     "item_to_receipt_word_embedding",
     "item_to_receipt_word_label",
-    "item_to_receipt_word_label_spatial_analysis",
     "item_to_word",
     # Utility functions
     "assert_valid_uuid",
@@ -401,7 +331,4 @@ __all__ = [
     "hash_payload",
     "merchant_truth_pk",
     "version_prefix",
-    # Additional exports from receipt_structure_analysis
-    "ContentPattern",
-    "SpatialPattern",
 ]
