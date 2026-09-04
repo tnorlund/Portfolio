@@ -54,7 +54,13 @@ def send_mission(fd: int, mission: str) -> None:
     write_all(fd, b"\r")
 
 
-def attach_and_prime(screen_name: str, label: str, mission: str, timeout: float, post_wait: float) -> int:
+def attach_and_prime(
+    screen_name: str,
+    label: str,
+    mission: str,
+    timeout: float,
+    post_wait: float,
+) -> int:
     master, slave = pty.openpty()
     set_winsize(slave)
 
@@ -99,10 +105,16 @@ def attach_and_prime(screen_name: str, label: str, mission: str, timeout: float,
                     buffer = (buffer + chunk)[-60000:]
 
             if proc.poll() is not None:
-                print(f"[{label}] screen client exited before priming finished", file=sys.stderr)
+                print(
+                    f"[{label}] screen client exited before priming finished",
+                    file=sys.stderr,
+                )
                 sample = strip_control(buffer[-2000:])
                 if sample.strip():
-                    print(f"[{label}] recent screen text:\n{sample[-1200:]}", file=sys.stderr)
+                    print(
+                        f"[{label}] recent screen text:\n{sample[-1200:]}",
+                        file=sys.stderr,
+                    )
                 return 1
 
             plain = strip_control(buffer).lower()
@@ -116,52 +128,92 @@ def attach_and_prime(screen_name: str, label: str, mission: str, timeout: float,
                 send_line(master, "2")
                 sent_bypass = True
                 last_action = now
-                print(f"[{label}] accepted bypass warning with numeric 2", file=sys.stderr)
+                print(
+                    f"[{label}] accepted bypass warning with numeric 2",
+                    file=sys.stderr,
+                )
                 time.sleep(1.0)
                 continue
 
-            if not sent_fullscreen and "fullscreen" in plain and ("renderer" in plain or "try" in plain):
+            if (
+                not sent_fullscreen
+                and "fullscreen" in plain
+                and ("renderer" in plain or "try" in plain)
+            ):
                 send_line(master, "2")
                 sent_fullscreen = True
                 last_action = now
-                print(f"[{label}] declined fullscreen renderer prompt with numeric 2", file=sys.stderr)
+                print(
+                    f"[{label}] declined fullscreen renderer prompt with numeric 2",
+                    file=sys.stderr,
+                )
                 time.sleep(1.0)
                 continue
 
-            if not sent_trust and "trust" in plain and ("folder" in plain or "workspace" in plain or "files in this" in plain):
+            if (
+                not sent_trust
+                and "trust" in plain
+                and (
+                    "folder" in plain
+                    or "workspace" in plain
+                    or "files in this" in plain
+                )
+            ):
                 send_line(master, "1")
                 sent_trust = True
                 last_action = now
-                print(f"[{label}] accepted folder trust prompt", file=sys.stderr)
+                print(
+                    f"[{label}] accepted folder trust prompt", file=sys.stderr
+                )
                 time.sleep(1.0)
                 continue
 
-            remote_active = "/remote-control is active" in plain or "remote-control is active" in plain
-            readyish = remote_active or ("remote control" in plain and "active" in plain)
+            remote_active = (
+                "/remote-control is active" in plain
+                or "remote-control is active" in plain
+            )
+            readyish = remote_active or (
+                "remote control" in plain and "active" in plain
+            )
             if not submitted and readyish and now - last_action > 1.5:
                 time.sleep(0.8)
                 send_mission(master, mission)
                 submitted = True
                 submitted_at = time.monotonic()
-                print(f"[{label}] pasted mission prompt and submitted it", file=sys.stderr)
+                print(
+                    f"[{label}] pasted mission prompt and submitted it",
+                    file=sys.stderr,
+                )
                 continue
 
             if submitted and now - submitted_at >= post_wait:
                 write_all(master, b"\x01d")
                 time.sleep(0.5)
-                print(f"[{label}] detached after post-submit wait", file=sys.stderr)
+                print(
+                    f"[{label}] detached after post-submit wait",
+                    file=sys.stderr,
+                )
                 return 0
 
         if submitted:
             write_all(master, b"\x01d")
             time.sleep(0.5)
-            print(f"[{label}] detached after timeout; prompt had been submitted", file=sys.stderr)
+            print(
+                f"[{label}] detached after timeout; prompt had been submitted",
+                file=sys.stderr,
+            )
             return 0
 
         sample = strip_control(buffer[-4000:])
-        print(f"[{label}] timed out before detecting a ready remote-control prompt", file=sys.stderr)
+        print(
+            f"[{label}] timed out before detecting a ready remote-control prompt",
+            file=sys.stderr,
+        )
         if sample.strip():
-            print(f"[{label}] recent screen text:\n{sample[-1200:]}", file=sys.stderr)
+            print(
+                f"[{label}] recent screen text:\n{sample[-1200:]}",
+                file=sys.stderr,
+            )
         return 1
     finally:
         try:
@@ -182,15 +234,26 @@ def attach_and_prime(screen_name: str, label: str, mission: str, timeout: float,
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Prime a Claude Code remote-control screen through a real PTY.")
-    parser.add_argument("--screen", required=True, help="screen session name to attach to")
-    parser.add_argument("--label", default="claude", help="label for log messages")
-    parser.add_argument("--mission", default=os.environ.get("PORTFOLIO_RC_MISSION", DEFAULT_MISSION))
+    parser = argparse.ArgumentParser(
+        description="Prime a Claude Code remote-control screen through a real PTY."
+    )
+    parser.add_argument(
+        "--screen", required=True, help="screen session name to attach to"
+    )
+    parser.add_argument(
+        "--label", default="claude", help="label for log messages"
+    )
+    parser.add_argument(
+        "--mission",
+        default=os.environ.get("PORTFOLIO_RC_MISSION", DEFAULT_MISSION),
+    )
     parser.add_argument("--timeout", type=float, default=180.0)
     parser.add_argument("--post-wait", type=float, default=14.0)
     args = parser.parse_args()
 
-    return attach_and_prime(args.screen, args.label, args.mission, args.timeout, args.post_wait)
+    return attach_and_prime(
+        args.screen, args.label, args.mission, args.timeout, args.post_wait
+    )
 
 
 if __name__ == "__main__":
