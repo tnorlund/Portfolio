@@ -23,6 +23,10 @@ this file only covers environment mechanics.
 - Python tests: `pytest <package>/tests` from the repo root with the venv active.
 - Frontend: `cd portfolio && npm test`.
 - CI (`.github/workflows/main.yml`) pins Python 3.13 and Node 22 — match those, not newer.
+  The container-image Lambdas run the 3.14 Lambda base image (all but the LayoutLM
+  inference cache generator, which torch keeps on 3.13), so the packages they ship —
+  `receipt_dynamo`, `receipt_dynamo_stream`, `receipt_embeddings`, `receipt_places`,
+  `receipt_upload`, `receipt_agent` — also get an advisory 3.14 test leg.
 
 ## Conventions
 
