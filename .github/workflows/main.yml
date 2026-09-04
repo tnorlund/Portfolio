@@ -58,7 +58,7 @@ jobs:
           source .venv-email-receipt/bin/activate
           python -m pip install --quiet boto3 pytest
           python -m pytest -q \
-            infra/tests/test_email_receipt_inbox_handler.py \
+            infra/tests/test_email_receipt_mcp.py \
             infra/tests/test_ats_verification_ingest.py \
             infra/tests/test_ats_verification_mcp.py
 

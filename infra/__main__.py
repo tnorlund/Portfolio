@@ -1064,9 +1064,12 @@ if ats_inbox_enabled and not email_inbox_enabled:
 if email_inbox_enabled:
     from email_receipt_inbox import EmailReceiptInbox
 
-    email_inbox = EmailReceiptInbox("email-receipt-inbox")
+    # Raw mail only needs to outlive a few missed nightly pulls; the Mac
+    # keeps the durable copy under ~/receipts-email/mail/ses/.
+    email_inbox = EmailReceiptInbox("email-receipt-inbox", raw_retention_days=30)
     pulumi.export("email_receipt_inbox_address", email_inbox.address)
     pulumi.export("email_receipt_inbox_bucket", email_inbox.bucket.bucket)
+    pulumi.export("email_receipt_replica_db_key", email_inbox.replica_db_key)
 
 if ats_inbox_enabled and email_inbox is not None:
     from ats_verification_inbox import AtsVerificationInbox
@@ -1107,11 +1110,14 @@ mcp_auth_gateway = McpAuthGateway(
     receipt_lambda=mcp_server.lambda_function,
     glyph_lambda=glyph_mcp_server.lambda_function,
     ats_lambda=ats_inbox.mcp_lambda if ats_inbox is not None else None,
+    email_lambda=email_inbox.mcp_lambda if email_inbox is not None else None,
 )
 pulumi.export("mcp_server_url", mcp_auth_gateway.receipt_url)
 pulumi.export("glyph_mcp_server_url", mcp_auth_gateway.glyph_url)
 if mcp_auth_gateway.ats_url is not None:
     pulumi.export("ats_mcp_server_url", mcp_auth_gateway.ats_url)
+if mcp_auth_gateway.email_url is not None:
+    pulumi.export("email_mcp_server_url", mcp_auth_gateway.email_url)
 pulumi.export("mcp_oauth_issuer_url", mcp_auth_gateway.issuer_url)
 pulumi.export("mcp_oauth_user_pool_id", mcp_auth_gateway.user_pool.id)
 pulumi.export(

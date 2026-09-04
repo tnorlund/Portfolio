@@ -104,6 +104,7 @@ class McpAuthGateway(ComponentResource):
         receipt_lambda: aws.lambda_.Function,
         glyph_lambda: aws.lambda_.Function,
         ats_lambda: Optional[aws.lambda_.Function] = None,
+        email_lambda: Optional[aws.lambda_.Function] = None,
         opts: Optional[ResourceOptions] = None,
     ) -> None:
         super().__init__("portfolio:infra:McpAuthGateway", name, None, opts)
@@ -149,6 +150,14 @@ class McpAuthGateway(ComponentResource):
                     "ats",
                     ats_lambda,
                     "Read recent ATS verification codes",
+                )
+            )
+        if email_lambda is not None:
+            routes.append(
+                (
+                    "email",
+                    email_lambda,
+                    "Read the email-receipt replica",
                 )
             )
 
@@ -317,6 +326,11 @@ class McpAuthGateway(ComponentResource):
         self.ats_url = (
             Output.format("{}/ats/mcp", self.api.api_endpoint)
             if ats_lambda is not None
+            else None
+        )
+        self.email_url = (
+            Output.format("{}/email/mcp", self.api.api_endpoint)
+            if email_lambda is not None
             else None
         )
 
@@ -762,6 +776,8 @@ class McpAuthGateway(ComponentResource):
         }
         if self.ats_url is not None:
             route_urls["ats"] = self.ats_url
+        if self.email_url is not None:
+            route_urls["email"] = self.email_url
         allowed_interactive_scopes = ["openid", "email"] + [
             f"{_RESOURCE_SERVER_ID}/{route_name}"
             for route_name, _function, _description in routes
@@ -981,6 +997,7 @@ class McpAuthGateway(ComponentResource):
                 "receipt_url": self.receipt_url,
                 "glyph_url": self.glyph_url,
                 "ats_url": self.ats_url,
+                "email_url": self.email_url,
                 "issuer_url": self.issuer_url,
                 "interactive_client_id": self.interactive_client.id,
                 "automation_secret_arn": self.automation_secret_arn,
