@@ -37,6 +37,21 @@ computed on an empty split without erroring. Verify a new split resolves before
 launching: both files above match 100% of their keys against receipts carrying
 active labels.
 
+The hash is `sha256(",".join(sorted(keys)))[:16]` — comma-joined, matching
+`SplitMetadata.val_receipts_hash` in `data_loader.py`. Verified against both
+v32 runs: the template file hashes to `1fe45cb9ae7a3b0d` and the random file to
+`54642b03135726cc`, exactly what each run recorded. (The random run reports
+`num_val_receipts: 162` against 163 keys; one receipt produced no example, but
+the hash is over the pinned keys, so it still matches. A hash mismatch means
+the key list changed, not the example count.) An earlier revision of the
+builder hashed with newlines, which produced a same-shaped value that never
+matched anything.
+
+Split files are immutable once published. The builder refuses to overwrite an
+existing `config/` key because `DataConfig.comparability()` treats the URI
+itself as proof of a frozen split — two runs pinned to the same URI are stamped
+comparable even if the object was replaced between them.
+
 Run both. The gap between them *is* the memorization measurement — a model that
 scores well on `random` and poorly on `template` has learned merchant templates,
 not receipt structure. They are deliberately near-identical in size so the two
@@ -62,6 +77,31 @@ address-as-merchant bug. `scripts/normalize_merchant_names.py` is the right
 tool for the stored names: it fixes casing only, using mixed-case siblings under
 the same `place_id` as evidence, and rejects any rewrite that changes more than
 case.
+
+### The Swift writer was discarding merged labels
+
+Held-out F1 measures the model. What reaches DynamoDB is the model *after*
+`ReceiptWordLabel.fromLinePredictions` in the Swift worker, and until
+2026-09-04 that function kept only labels in a hard-coded copy of the 22-way
+**unmerged** core list. `AMOUNT` and `ADDRESS` are not in it. So from the day
+v31 shipped (2026-07-30), every amount and every address word it predicted was
+dropped at write time, silently — the receipt still got a handful of
+MERCHANT_NAME/DATE/TIME/PAYMENT_METHOD labels, which looked like a weak model
+rather than a filter.
+
+Measured on one Terrible Herbst receipt (`59ad2e66…`, 2026-09-04), identical
+OCR words:
+
+| Path | Labels written |
+|---|---|
+| v31 through the Swift worker | 10 — no amounts, no address |
+| v32-random, raw PyTorch | 38 |
+| v32-random, after the Swift allowlist | 19 — all 6 `AMOUNT` and 13 `ADDRESS` dropped |
+
+Of the 28-label gap, 19 was the filter and 9 was the model. The writer now
+unions the core list with the entity types read from the loaded bundle's own
+`config.json`, so it can only widen. Any evaluation of the *deployed* model
+before this fix understated it on exactly the labels the merge was for.
 
 ### Pin the split, or lose the run
 
@@ -126,10 +166,18 @@ the deployed model cannot distinguish a grand total from tax or a subtotal.
 Ground-truth work on `GRAND_TOTAL` is still correct and still needed by any
 unmerged head, but it will not move this model's metric.
 
-Active deployed model:
+Active deployed model (see the v31 entry above for why its F1 is not a
+baseline):
+
+- job: `layoutlm-v31-nonproduct-clean-20260729`
+- CoreML bundle: `s3://layoutlm-training-dev-68164770/coreml/layoutlm-coreml-bundle.zip`
+  (named copy at `coreml/layoutlm-v31-nonproduct-clean/`); the PyTorch
+  checkpoint no longer exists
+- label head: 8 merged classes, no line-item labels
+
+Previously deployed (superseded 2026-07-30):
 
 - job: `layoutlm-v23-qty-pinned`
-- best checkpoint: `s3://layoutlm-training-dev-68164770/runs/layoutlm-v23-qty-pinned/best/`
 - original held-out F1: about `0.719`
 - important limitation: the label head does not include `PRODUCT_NAME` or
   `LOYALTY_ID`

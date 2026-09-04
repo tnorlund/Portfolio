@@ -166,6 +166,25 @@ class SageMakerTrainingInfra(ComponentResource):
                         ),
                     ],
                 ),
+                # Per-epoch checkpoints live at runs/<job>/checkpoints/ --
+                # under the never-expiring prefix above, and unreachable by
+                # a prefix filter (S3 cannot match runs/*/checkpoints/). The
+                # trainer tags each of those uploads retention=epoch-checkpoint
+                # so this rule can expire them without touching best/,
+                # output/, or run.json in the same run directory.
+                aws.s3.BucketLifecycleConfigurationRuleArgs(
+                    id="expire-tagged-epoch-checkpoints",
+                    status="Enabled",
+                    filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
+                        and_=aws.s3.BucketLifecycleConfigurationRuleFilterAndArgs(
+                            prefix="runs/",
+                            tags={"retention": "epoch-checkpoint"},
+                        ),
+                    ),
+                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
+                        days=7,
+                    ),
+                ),
             ],
             opts=ResourceOptions(parent=self.output_bucket),
         )
