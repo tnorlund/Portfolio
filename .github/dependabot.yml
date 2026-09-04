@@ -27,7 +27,6 @@ updates:
       - "/infra/components/langsmith_bulk_export/lambdas"
       - "/infra/upload_images/container_ocr"
       - "/receipt_agent"
-      - "/receipt_chroma"
       - "/receipt_dynamo"
       - "/receipt_dynamo_stream"
       - "/receipt_embeddings"
