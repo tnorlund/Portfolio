@@ -15,10 +15,29 @@ updates:
       prefix: "chore"
       include: "scope"
 
-  # Monitor every current and future Python dependency manifest.
+  # Python dependency manifests, listed explicitly rather than via "**/*".
+  # Dependabot's pip file fetcher also scans one directory level below the
+  # target directory for requirements *.txt/*.in files, so the glob matched
+  # scripts/requirements.txt from both "/" and "/scripts" and opened duplicate
+  # PRs (e.g. #1478/#1482, #1550/#1567). Add a directory here when a new
+  # pyproject.toml, setup.py or requirements*.txt is introduced.
   - package-ecosystem: "pip"
     directories:
-      - "**/*"
+      - "/infra"
+      - "/infra/components/langsmith_bulk_export/lambdas"
+      - "/infra/upload_images/container_ocr"
+      - "/receipt_agent"
+      - "/receipt_chroma"
+      - "/receipt_dynamo"
+      - "/receipt_dynamo_stream"
+      - "/receipt_embeddings"
+      - "/receipt_langsmith"
+      - "/receipt_layoutlm"
+      - "/receipt_logo"
+      - "/receipt_places"
+      - "/receipt_upload"
+      - "/scripts"
+      - "/tools/glyph-studio/py"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 6
