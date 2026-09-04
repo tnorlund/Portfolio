@@ -2,6 +2,11 @@
 # Multi-stage build for LayoutLM Inference Cache Generator Lambda
 
 # Stage 1: Build and install dependencies (cached layer)
+# Stays on Python 3.13 while the other container Lambdas run 3.14: torch is
+# pinned to 2.6.0 here and capped <=2.7.0 in receipt_layoutlm because
+# coremltools 9.0 validates PyTorch only through 2.7.0, and those torch
+# releases publish wheels only for cp39-cp313. Move this image to 3.14 only
+# alongside a coremltools release that certifies a torch with cp314 wheels.
 FROM public.ecr.aws/lambda/python:3.13 AS dependencies
 
 # Note: awscli is pre-installed in the Lambda base image, no need to install it

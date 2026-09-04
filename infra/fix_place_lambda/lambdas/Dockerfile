@@ -2,7 +2,7 @@
 # Fixes incorrect ReceiptPlace records using LLM agent
 
 # Stage 1: Build and install dependencies (cached layer)
-FROM public.ecr.aws/lambda/python:3.13 AS dependencies
+FROM public.ecr.aws/lambda/python:3.14 AS dependencies
 
 # Set environment variable to avoid compilation issues with hnswlib
 ENV HNSWLIB_NO_NATIVE=1
