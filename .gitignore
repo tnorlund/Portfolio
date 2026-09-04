@@ -258,6 +258,10 @@ backups/
 
 # Claude Code worktrees are local scratch checkouts
 .claude/worktrees/
+# Personal agent-instruction overlays (Codex / Claude Code); never shared
+AGENTS.override.md
+AGENTS.local.md
+CLAUDE.local.md
 
 # Archived review-loop runs keep their small timing/verification logs, which
 # the blanket *.log rule above would otherwise drop.

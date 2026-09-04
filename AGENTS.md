@@ -76,6 +76,17 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 - Hooks in `.cursor/hooks.json` and `.claude/settings.json` enforce the Pulumi
   and git rules above; do not work around them.
 
+## Code Review Rules
+
+- Flag DynamoDB calls (`boto3.client("dynamodb")`, `Table(...)`, raw
+  `put_item`/`query`) outside `receipt_dynamo/`. Safe path: add a `DynamoClient`
+  method in `receipt_dynamo/receipt_dynamo/data/`.
+- Flag any reference to the prod stack or prod table in scripts, configs, or
+  tests. Safe path: `tnorlund/portfolio/dev` and `ReceiptsTable-dc5be22`.
+- Flag Swift date formats ending in `XXXXX` or hard-coded `Z` suffixes.
+- Flag committed screenshots, logs, `dev.*` scripts, or leftover debug prints.
+- Leave formatting and lint findings to CI (Black, isort, ESLint run there).
+
 ## Skills (load on demand from `.agents/skills/`)
 
 - `layoutlm-training` starting and monitoring SageMaker LayoutLM jobs, hyperparameters, label merge presets.
