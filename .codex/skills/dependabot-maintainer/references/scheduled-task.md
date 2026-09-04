@@ -2,6 +2,19 @@
 
 Use this reference when creating a recurring Codex scheduled task or a Claude routine for Portfolio Dependabot maintenance.
 
+## GitHub Actions Workflow (default)
+
+The deterministic part of this routine already runs in CI: `.github/workflows/dependabot-maintenance.yml` executes `scripts/dependabot_maintenance_ci.py` on `ubuntu-latest`.
+
+- Schedule: `40 13 * * 4` (Thursday 13:40 UTC). Dependabot opens this repo's weekly batch on Thursdays at about 12:35 UTC; the offset gives the PRs' `CI/CD Pipeline` runs time to finish. Move the cron if `.github/dependabot.yml` gains an explicit `schedule.day` / `schedule.time`.
+- Manual run: Actions -> "Dependabot maintenance" -> Run workflow, with `mode` (`report` or `merge`) and `allow_major` (boolean, default off).
+- Gate: scheduled runs merge only when the repository variable `DEPENDABOT_AUTOMERGE` equals `true` (Settings -> Secrets and variables -> Actions -> Variables). Anything else means report-only. Scheduled runs never allow major-version merges.
+- Token: merge mode needs the secret `DEPENDABOT_MAINTAINER_TOKEN`, a personal access token for a user with write access to the repo (fine-grained PAT: Contents read/write, Pull requests read/write; or classic `repo`). Reason: GitHub does not create workflow runs for events produced with `GITHUB_TOKEN` ("Triggering a workflow from a workflow"), so a merge made with `GITHUB_TOKEN` would push to `main` without running the push-triggered `CI/CD Pipeline` deploy. Dependabot also rejects `@dependabot rebase` comments from `github-actions[bot]` and GitHub App identities, so the PAT (not an App token) is used for rebase requests too. Report mode needs no secret; the workflow fails fast when merge mode lacks the token.
+- What it does per run: classify every open Dependabot PR (`ready` / `wait` / `manual`), and in merge mode re-run the guard right before each `gh pr merge --squash --match-head-commit`, stop on the first merge failure, then post `@dependabot rebase` on PRs that GitHub now reports as `CONFLICTING`. It does not wait for CI; the next run picks those PRs up. It never runs the local `verify` path.
+- Output: Markdown job summary (merged PRs with merge SHAs, skipped/rebase-requested PRs, remaining `wait`/`manual` PRs with reasons) plus a `dependabot-maintenance-report` artifact.
+
+Use the Codex task below only for the judgement-heavy remainder (major updates, non-manifest changes, local `verify`), or as a fallback while the workflow is disabled.
+
 ## Recommended Codex Scheduled Task
 
 Cadence: weekly, 30 to 60 minutes after Dependabot's weekly run.

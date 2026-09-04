@@ -59,6 +59,12 @@ Use this skill to turn Dependabot PR handling into a repeatable workflow. Prefer
 - Do not batch unrelated PRs into one local commit. Dependabot PRs should remain individually mergeable and auditable.
 - Keep local work in scratch worktrees so unfinished user work in the main checkout is untouched.
 
-## Scheduled Automation
+## Scheduled Automation (GitHub Actions)
 
-For recurring Codex runs, read `references/scheduled-task.md` and use its prompt. Scheduled runs should use a new worktree, run the report first, and leave a summary when anything is blocked.
+`.github/workflows/dependabot-maintenance.yml` runs the deterministic path on `ubuntu-latest` every Thursday at 13:40 UTC (about an hour after Dependabot's weekly batch) and on demand via `workflow_dispatch` (`mode`: `report` | `merge`, `allow_major`). It drives `scripts/dependabot_maintenance_ci.py`, which reuses `classify` and the other guardrails from `dependabot_maintainer.py`, re-runs the guard immediately before each squash merge, asks Dependabot to rebase PRs left `CONFLICTING`, and writes the result to the job summary. It never runs `verify`; the PR's own CI covers dependency installs.
+
+- Scheduled runs merge only when the repository variable `DEPENDABOT_AUTOMERGE` is exactly `true`; otherwise they only report. Scheduled runs never pass `--allow-major`.
+- Merge mode requires the secret `DEPENDABOT_MAINTAINER_TOKEN`, a personal access token of a user with write access (fine-grained: Contents and Pull requests read/write on this repo). GitHub does not start workflow runs for events created with `GITHUB_TOKEN`, so a `GITHUB_TOKEN` merge would land on `main` without triggering the `CI/CD Pipeline` deploy, and Dependabot ignores `@dependabot rebase` comments from `github-actions[bot]`. The workflow fails fast if the secret is missing; report mode works with the read-only `GITHUB_TOKEN`.
+- Local dry run (reads only): `python .codex/skills/dependabot-maintainer/scripts/dependabot_maintenance_ci.py --mode merge --dry-run`.
+
+For recurring Codex runs instead of (or alongside) the workflow, read `references/scheduled-task.md` and use its prompt. Scheduled runs should use a new worktree, run the report first, and leave a summary when anything is blocked.
