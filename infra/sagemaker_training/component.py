@@ -113,9 +113,27 @@ class SageMakerTrainingInfra(ComponentResource):
             opts=ResourceOptions(parent=self.output_bucket),
         )
 
-        # Lifecycle policy for checkpoint cleanup
-        # - Per-epoch checkpoints expire after 7 days (keep recent for debugging)
-        # - Full run directories expire after 30 days
+        # Lifecycle policy for checkpoint storage.
+        #
+        # - Per-epoch checkpoints expire after 7 days (keep recent for
+        #   debugging).
+        # - Full run directories are ARCHIVED, never deleted.
+        #
+        # `runs/<job>/` holds the only copy of a run's promotable artifacts:
+        # `best/` (the checkpoint the active-model record points at),
+        # `output/model.tar.gz`, and `run.json` — which carries
+        # `val_receipt_keys`, the exact held-out split. Expiring that prefix
+        # destroys the deployed model's weights and makes its metrics
+        # permanently unreproducible: the seed-reconstruction fallback only
+        # re-derives the split from the *current* labelled corpus, so it
+        # drifts and fails its own hash check.
+        #
+        # That is not hypothetical. The 30-day rule this replaces deleted the
+        # active model (layoutlm-v31-nonproduct-clean-20260729) on ~2026-08-28,
+        # leaving `Job.results.best_checkpoint_s3_path` dangling. Storage is
+        # not the constraint that justified it — the whole bucket was ~9 GB.
+        # Transition to colder classes instead; GLACIER_IR still reads
+        # instantly, at roughly a sixth of Standard's price.
         aws.s3.BucketLifecycleConfiguration(
             f"{name}-output-lifecycle",
             bucket=self.output_bucket.id,
@@ -131,14 +149,22 @@ class SageMakerTrainingInfra(ComponentResource):
                     ),
                 ),
                 aws.s3.BucketLifecycleConfigurationRuleArgs(
-                    id="expire-run-directories",
+                    id="archive-run-directories",
                     status="Enabled",
                     filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
                         prefix="runs/",  # Full run directories
                     ),
-                    expiration=aws.s3.BucketLifecycleConfigurationRuleExpirationArgs(
-                        days=30,
-                    ),
+                    # No expiration: run artifacts are the model's provenance.
+                    transitions=[
+                        aws.s3.BucketLifecycleConfigurationRuleTransitionArgs(
+                            days=30,
+                            storage_class="STANDARD_IA",
+                        ),
+                        aws.s3.BucketLifecycleConfigurationRuleTransitionArgs(
+                            days=90,
+                            storage_class="GLACIER_IR",
+                        ),
+                    ],
                 ),
             ],
             opts=ResourceOptions(parent=self.output_bucket),

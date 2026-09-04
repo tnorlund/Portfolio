@@ -13,7 +13,64 @@ Use pinned receipt-key files in S3 for all serious comparisons. A run is only
 comparable to another run when both use the same validation key file, same label
 set, and same inference windowing.
 
-Current adversarial split:
+**Always pass `--val-keys-s3`.** A run that omits it persists its split only
+into `runs/<job>/run.json`, and that is not a durable location — see "Pin the
+split, or lose the run" below.
+
+Current splits (2026-09-04), built by
+`scripts/build_layoutlm_val_splits.py` over 906 labelled receipts:
+
+```text
+s3://layoutlm-training-dev-68164770/config/val_keys_random_20260904.json
+s3://layoutlm-training-dev-68164770/config/val_keys_template_20260904.json
+```
+
+| Split | Receipts | Hash | Measures |
+|---|---|---|---|
+| `random` | 163 (18.0%) | `4d2a0a60b6ba85e5` | in-distribution accuracy; 56 brands appear on both sides |
+| `template` | 161 (17.8%) | `fad772f0d6946525` | generalization to unseen layouts; 0 brands shared |
+
+Run both. The gap between them *is* the memorization measurement — a model that
+scores well on `random` and poorly on `template` has learned merchant templates,
+not receipt structure. They are deliberately near-identical in size so the two
+numbers are directly readable against each other.
+
+The template split holds out every receipt of `costco`, `vons`, `homedepot`,
+`wildfork`, and `target`.
+
+### Group by brand key, not by merchant name
+
+A template holdout must group by *brand*, not by the stored `merchant_name`.
+This corpus spells one chain several ways — `TRADER JOE'S`, `Trader Joe's`,
+`Trader Joe's Store #0058` — so holding out one spelling while training on
+another puts the same store's layout on both sides and inflates the score.
+`brand_key()` in the split builder normalizes case and store decoration, then
+unions any brand keys sharing a `place_id` (which is what merges
+`Roast & Rice Asian Fusion` with `Roast and Rice Kitchen`).
+
+Do **not** try to fix this by adopting Google Places canonical names. Several
+`place_id`s here resolve to a street address (`'2716 N Green Valley Pkwy'` for a
+Trader Joe's, `'791 Marks St'` for a Costco), so that path reintroduces the
+address-as-merchant bug. `scripts/normalize_merchant_names.py` is the right
+tool for the stored names: it fixes casing only, using mixed-case siblings under
+the same `place_id` as evidence, and rejects any rewrite that changes more than
+case.
+
+### Pin the split, or lose the run
+
+`layoutlm-v31-nonproduct-clean-20260729` — the active model — passed no
+`--val-keys-s3`. Its split lived only in `runs/<job>/run.json`, which the
+bucket lifecycle rule then deleted along with `best/` and
+`output/model.tar.gz`. The seed-reconstruction fallback does not save you: it
+re-derives the split from the *current* labelled corpus, which drifts. Rerunning
+it today yields 91 receipts against a recorded 82, and the hash does not match.
+
+So v31's `0.744` is unreproducible and unusable as a baseline, and its weights
+are gone. The lifecycle rule now archives `runs/` instead of expiring it
+(`infra/sagemaker_training/component.py`), but that only protects runs from here
+on. Pin the split anyway.
+
+Previous adversarial split:
 
 ```text
 s3://layoutlm-training-dev-68164770/config/adversarial_val_keys_v2_20260708.json
@@ -38,6 +95,29 @@ generalization against this split. That would turn the experiment into a
 template-leakage test.
 
 ## Current Scorecard
+
+Newer runs, recorded 2026-09-04 (this section previously stopped at v29):
+
+- `layoutlm-v30-fullcore-clean-data-20260713-222017`: all 22 labels, no merges,
+  163 val receipts (hash `5636de8b0c83b2e3`), best held-out F1 about `0.563` at
+  epoch 29.
+- `layoutlm-v31-nonproduct-clean-20260729`: **the active model.** Eight classes
+  (`MERCHANT_NAME`, `DATE`, `TIME`, `AMOUNT`, `ADDRESS`, `WEBSITE`,
+  `STORE_HOURS`, `PAYMENT_METHOD`) with `AMOUNT = LINE_TOTAL + SUBTOTAL + TAX +
+  GRAND_TOTAL` and `ADDRESS = ADDRESS_LINE + PHONE_NUMBER`. 82 val receipts
+  (hash `2b7c68b0568183c4`), best held-out F1 about `0.744` at epoch 53.
+
+**v31's 0.744 is not a v30 improvement**, and the two must not be quoted
+side by side. Three things changed at once: different held-out receipts (82 vs
+163, different hash, different seed), 8 classes instead of 22, and the four
+hardest-to-separate numeric fields merged into one. Merging away the dominant
+confusion class and reporting a higher F1 measures an easier task. Neither
+number is recoverable as a baseline — see "Pin the split, or lose the run".
+
+A consequence worth stating plainly: because `AMOUNT` absorbs `GRAND_TOTAL`,
+the deployed model cannot distinguish a grand total from tax or a subtotal.
+Ground-truth work on `GRAND_TOTAL` is still correct and still needed by any
+unmerged head, but it will not move this model's metric.
 
 Active deployed model:
 
