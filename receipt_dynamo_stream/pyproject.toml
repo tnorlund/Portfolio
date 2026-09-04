@@ -25,7 +25,7 @@ dependencies = [
     "boto3>=1.43.32,<1.44.0",
     "receipt-dynamo>=0.3.0",
 ]
-keywords = ["dynamodb", "receipts", "aws", "streams", "chroma"]
+keywords = ["dynamodb", "receipts", "aws", "streams"]
 
 [project.optional-dependencies]
 test = [

@@ -35,21 +35,17 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
-sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
-
-from receipt_chroma import ChromaClient
-from receipt_dynamo.data._pulumi import load_env, load_secrets
 
 from receipt_agent.agents.question_answering.graph import (
     answer_question,
     create_qa_graph,
 )
 from receipt_agent.clients.factory import (
-    create_chroma_client,
     create_dynamo_client,
     create_embed_fn,
 )
 from receipt_agent.config.settings import get_settings
+from receipt_dynamo.data._pulumi import load_env, load_secrets
 
 # Configure logging
 logging.basicConfig(
@@ -147,7 +143,6 @@ async def run_question_with_enhanced_graph(
     index: int,
     total: int,
     dynamo_client: Any,
-    chroma_client: Any,
     embed_fn: Any,
     settings: Any,
 ) -> QuestionResult:
@@ -162,7 +157,6 @@ async def run_question_with_enhanced_graph(
             # Create 5-node ReAct RAG graph: plan -> agent <-> tools -> shape -> synthesize
             graph, state_holder = create_qa_graph(
                 dynamo_client=dynamo_client,
-                chroma_client=chroma_client,
                 embed_fn=embed_fn,
                 settings=settings,
             )
@@ -396,32 +390,6 @@ def main():
         table_name=config["dynamodb_table_name"]
     )
 
-    # Check for Chroma Cloud config
-    chroma_cloud_api_key = config.get("chroma_cloud_api_key")
-    chroma_cloud_tenant = config.get("chroma_cloud_tenant")
-    chroma_cloud_database = config.get("chroma_cloud_database")
-    chroma_cloud_enabled = (
-        config.get("chroma_cloud_enabled", "false").lower() == "true"
-    )
-
-    if chroma_cloud_enabled and chroma_cloud_api_key:
-        logger.info("Using Chroma Cloud")
-        chroma_client = ChromaClient(
-            cloud_api_key=chroma_cloud_api_key,
-            cloud_tenant=chroma_cloud_tenant,
-            cloud_database=chroma_cloud_database,
-            mode="read",
-        )
-    else:
-        logger.info("Using local ChromaDB")
-        os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = config.get(
-            "chroma_lines_directory", "/tmp/chroma_lines"
-        )
-        os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = config.get(
-            "chroma_words_directory", "/tmp/chroma_words"
-        )
-        chroma_client = create_chroma_client(mode="read")
-
     embed_fn = create_embed_fn()
     settings = get_settings()
 
@@ -451,7 +419,6 @@ def main():
                 index=i,
                 total=len(questions),
                 dynamo_client=dynamo_client,
-                chroma_client=chroma_client,
                 embed_fn=embed_fn,
                 settings=settings,
             )

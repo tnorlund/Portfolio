@@ -2,9 +2,9 @@
 
 ALL validation decisions are logged to Langsmith to build a comprehensive dataset
 for improving the system. This includes:
-- ChromaDB consensus validations (Tier 1)
+- Similarity consensus validations (Tier 1)
 - LLM validations (Tier 2)
-- Merchant resolution results (both ChromaDB and Place ID Finder)
+- Merchant resolution results (both similarity and Place ID Finder)
 
 Human annotators can review and correct any decision, providing feedback
 that improves future accuracy.
@@ -96,7 +96,7 @@ def log_label_validation(
     word_text: str,
     predicted_label: str,
     final_label: str,
-    validation_source: str,  # "chroma" or "llm"
+    validation_source: str,  # "similarity" or "llm"
     decision: str,  # "valid", "invalid", "needs_review"
     confidence: float,
     reasoning: str,
@@ -118,7 +118,7 @@ def log_label_validation(
         word_text: The text of the word being validated
         predicted_label: The original predicted label from LayoutLM
         final_label: The final label after validation
-        validation_source: "chroma" for ChromaDB consensus, "llm" for LLM
+        validation_source: "similarity" for consensus, "llm" for LLM
         decision: "valid", "invalid", or "needs_review"
         confidence: Confidence score (0.0 to 1.0)
         reasoning: Explanation for the decision
@@ -213,7 +213,8 @@ def log_label_validation(
 def log_merchant_resolution(
     image_id: str,
     receipt_id: int,
-    resolution_tier: str,  # "chroma_phone", "chroma_address", "chroma_text", "place_id_finder"
+    resolution_tier: str,  # "similarity_phone", "similarity_address",
+    # "similarity_text", "place_id_finder"
     merchant_name: Optional[str],
     place_id: Optional[str],
     confidence: float,
@@ -235,7 +236,7 @@ def log_merchant_resolution(
         confidence: Confidence score (0.0 to 1.0)
         phone_extracted: Phone number extracted from receipt
         address_extracted: Address extracted from receipt
-        similarity_matches: Top ChromaDB similarity matches with scores
+        similarity_matches: Top vector similarity matches with scores
         source_receipt: Source receipt ID for Tier 1 matches
 
     Returns:

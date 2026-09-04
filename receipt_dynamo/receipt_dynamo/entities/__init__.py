@@ -13,14 +13,6 @@ from receipt_dynamo.entities.ai_usage_metric import (  # noqa: F401
 )
 from receipt_dynamo.entities.batch_summary import BatchSummary  # noqa: F401
 from receipt_dynamo.entities.batch_summary import item_to_batch_summary
-from receipt_dynamo.entities.compaction_lock import (  # noqa: F401
-    CompactionLock,
-    item_to_compaction_lock,
-)
-from receipt_dynamo.entities.compaction_run import (  # noqa: F401
-    CompactionRun,
-    item_to_compaction_run,
-)
 from receipt_dynamo.entities.coreml_export_job import (  # noqa: F401
     CoreMLExportJob,
     item_to_coreml_export_job,
@@ -194,8 +186,6 @@ __all__ = [
     # Core entities
     "AIUsageMetric",
     "BatchSummary",
-    "CompactionLock",
-    "CompactionRun",
     "CoreMLExportJob",
     "Image",
     "ImageDetails",
@@ -240,8 +230,6 @@ __all__ = [
     # Item conversion functions
     "item_to_ai_usage_metric",
     "item_to_batch_summary",
-    "item_to_compaction_lock",
-    "item_to_compaction_run",
     "item_to_coreml_export_job",
     "item_to_image",
     "item_to_job",

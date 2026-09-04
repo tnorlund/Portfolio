@@ -7,16 +7,15 @@ Places-first resolution ladder:
    own phone/address. Phone is a unique business key, so this is the
    authoritative path. It needs no validated labels (phone/address come straight
    from OCR data detectors), so it leads even at upload time.
-2. Tier 2 (ChromaDB similarity fallback): reuse a previously-resolved similar
+2. Tier 2 (vector similarity fallback): reuse a previously-resolved similar
    receipt's place_id when Places returns nothing — fuzzy "seen-before" that
    covers OCR-garbled or no-phone/no-address receipts. Boosts by normalized
    phone/address metadata; handles OCR errors like "Westlake" vs "Mestlake".
 3. Tier 3 (Place ID Finder agent): infer the merchant when neither phone/address
    nor a similar receipt resolves (e.g. a website URL → merchant name).
 
-The ChromaDB query uses the snapshot+delta pre-merged clients from
-create_embeddings_and_compaction_run(), enabling immediate similarity search
-against the freshest data.
+The similarity query runs against the DynamoDB line-embedding index through
+the ``receipt_embeddings`` vector-search seam.
 
 Tracing:
 - All key methods are decorated with @traceable for LangSmith visibility
@@ -32,11 +31,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
-from receipt_embeddings import (
-    ChromaVectorSearchClient,
-    DynamoVectorSearchClient,
-    VectorSearchClient,
-)
+from receipt_embeddings import DynamoVectorSearchClient, VectorSearchClient
 from receipt_embeddings.formatting import (
     format_line_context_embedding_input,
 )
@@ -73,7 +68,7 @@ def _get_project_name() -> str:
 # Invalid place_id sentinel values to filter out
 INVALID_PLACE_IDS = frozenset(("", "null", "NO_RESULTS", "INVALID"))
 
-# Similarity thresholds for ChromaDB search
+# Similarity thresholds for vector similarity search
 MIN_SIMILARITY_THRESHOLD = 0.70  # Minimum to consider a match
 HIGH_CONFIDENCE_THRESHOLD = 0.85  # High confidence match
 PHONE_MATCH_BOOST = 0.20  # Boost when normalized phone matches
@@ -728,7 +723,7 @@ def prefer_receipt_name_over_address(
 
 @dataclass
 class SimilarityMatch:
-    """A candidate match from ChromaDB similarity search."""
+    """A candidate match from vector similarity search."""
 
     image_id: str
     receipt_id: int
@@ -755,7 +750,8 @@ class MerchantResult:
     phone: Optional[str] = None
     confidence: float = 0.0
     resolution_tier: Optional[str] = None
-    # "chroma_phone", "chroma_address", "chroma_text", "place_id_finder"
+    # "similarity_phone", "similarity_address", "similarity_text",
+    # "place_id_finder"
     source_image_id: Optional[str] = None  # For Tier 1, the source receipt
     source_receipt_id: Optional[int] = None
     # Debug info for similarity matches
@@ -767,7 +763,7 @@ class MerchantResolver:
     Resolves merchant information using a Places-first ladder.
 
     Tier 1: Google Places by NLP phone/address (name as hint), result validated
-    Tier 2: ChromaDB embedding-similarity fallback (fuzzy "seen-before")
+    Tier 2: embedding-similarity fallback (fuzzy "seen-before")
     Tier 3: Place ID Finder agent (infer merchant from receipt content)
     """
 
@@ -777,7 +773,6 @@ class MerchantResolver:
         places_client: Optional[Any] = None,
         openai_client: Optional[Any] = None,
         vector_client: Optional[VectorSearchClient] = None,
-        vector_backend: Optional[str] = None,
     ):
         """
         Initialize the merchant resolver.
@@ -786,35 +781,19 @@ class MerchantResolver:
             dynamo_client: DynamoDB client for fetching receipt metadata
             places_client: Optional Google Places client for Tier 2
             openai_client: Optional OpenAI client for embedding generation
-            vector_client: Optional injected similarity-search backend
-            vector_backend: ``chroma`` or ``dynamodb``; defaults to
-                ``VECTOR_BACKEND`` and then ``chroma``
+            vector_client: Optional injected similarity-search backend;
+                defaults to the DynamoDB line-embedding index
         """
         self.dynamo = dynamo_client
         self.places_client = places_client
         self._openai_client = openai_client
         self._vector_client = vector_client
-        self._vector_backend = (
-            (vector_backend or os.environ.get("VECTOR_BACKEND", "dynamodb"))
-            .strip()
-            .lower()
-        )
-        if self._vector_backend not in {"chroma", "dynamodb"}:
-            raise ValueError(
-                "VECTOR_BACKEND must be either 'chroma' or 'dynamodb'"
-            )
 
-    def _get_vector_client(
-        self, lines_client: Optional[Any]
-    ) -> VectorSearchClient:
-        """Resolve the configured backend lazily so startup stays AWS-free."""
-        if self._vector_client is not None:
-            return self._vector_client
-        if self._vector_backend == "dynamodb":
-            client = DynamoVectorSearchClient.from_env()
-            self._vector_client = client
-            return client
-        return ChromaVectorSearchClient(lines_client)
+    def _get_vector_client(self) -> VectorSearchClient:
+        """Build the DynamoDB backend lazily so startup stays AWS-free."""
+        if self._vector_client is None:
+            self._vector_client = DynamoVectorSearchClient.from_env()
+        return self._vector_client
 
     @property
     def openai_client(self) -> Any:
@@ -858,7 +837,6 @@ class MerchantResolver:
     # pylint: disable=too-many-positional-arguments
     def resolve(
         self,
-        lines_client: Optional[Any],
         lines: List[ReceiptLine],
         words: List[ReceiptWord],
         image_id: str,
@@ -873,7 +851,6 @@ class MerchantResolver:
         back to Google Places API if no good match found.
 
         Args:
-            lines_client: ChromaClient with snapshot+delta pre-merged
             lines: Receipt lines from current receipt
             words: Receipt words from current receipt
             image_id: Current receipt's image_id
@@ -899,7 +876,6 @@ class MerchantResolver:
         )
         def _traced_resolve() -> MerchantResult:
             return self._resolve_impl(
-                lines_client=lines_client,
                 lines=lines,
                 words=words,
                 image_id=image_id,
@@ -912,7 +888,6 @@ class MerchantResolver:
 
     def _resolve_impl(
         self,
-        lines_client: Optional[Any],
         lines: List[ReceiptLine],
         words: List[ReceiptWord],
         image_id: str,
@@ -944,7 +919,8 @@ class MerchantResolver:
         # Whether the hint is a real MERCHANT_NAME *label* vs the geometric
         # top-line fallback (often a check/register number like "105"). Only a
         # labeled name is trustworthy enough to drive the eager locality text
-        # search below; a top-line guess must defer to Chroma/agentic tiers.
+        # search below; a top-line guess must defer to the similarity/agentic
+        # tiers.
         has_labeled_merchant = bool(merchant_hint)
         merchant_line = self._get_merchant_line(lines)
         if not merchant_hint:
@@ -1071,7 +1047,7 @@ class MerchantResolver:
                 )
                 return result
 
-        # Tier 2: ChromaDB similarity fallback — reuse a previously-resolved
+        # Tier 2: vector similarity fallback — reuse a previously-resolved
         # similar receipt's place_id when Places returns nothing (fuzzy
         # "seen-before"; covers OCR-garbled or no-phone/no-address receipts).
         # Uses cached embeddings from orchestration to avoid redundant API calls.
@@ -1084,13 +1060,12 @@ class MerchantResolver:
                     phone_line.text,
                 )
                 result = self._similarity_search(
-                    lines_client=lines_client,
                     query_line=phone_line,
                     current_image_id=image_id,
                     current_receipt_id=receipt_id,
                     expected_phone=phone,
                     expected_address=address,
-                    resolution_tier="chroma_phone",
+                    resolution_tier="similarity_phone",
                 )
                 if (
                     result.place_id
@@ -1116,13 +1091,12 @@ class MerchantResolver:
                     address_line.text,
                 )
                 result = self._similarity_search(
-                    lines_client=lines_client,
                     query_line=address_line,
                     current_image_id=image_id,
                     current_receipt_id=receipt_id,
                     expected_phone=phone,
                     expected_address=address,
-                    resolution_tier="chroma_address",
+                    resolution_tier="similarity_address",
                 )
                 if (
                     result.place_id
@@ -1147,15 +1121,14 @@ class MerchantResolver:
                 merchant_line.text,
             )
             result = self._similarity_search(
-                lines_client=lines_client,
                 query_line=merchant_line,
                 current_image_id=image_id,
                 current_receipt_id=receipt_id,
                 expected_phone=phone,
                 expected_address=address,
-                resolution_tier="chroma_text",
+                resolution_tier="similarity_text",
             )
-            # chroma_text is the weakest signal: it matches on the
+            # similarity_text is the weakest signal: it matches on the
             # merchant-name line alone, with no corroborating identifier
             # (unlike the phone/address tiers). A mid-band embedding neighbor
             # can therefore be wrong -- e.g. a brand-new merchant landing
@@ -1178,7 +1151,7 @@ class MerchantResolver:
                 return result
             if result.place_id:
                 _log(
-                    "Tier 2 chroma_text below corroboration bar "
+                    "Tier 2 similarity_text below corroboration bar "
                     "(%s conf=%.2f < %.2f); deferring to Tier 3",
                     result.merchant_name,
                     result.confidence,
@@ -1186,7 +1159,7 @@ class MerchantResolver:
                 )
 
         # Tier 2.5: locality-enriched Places text search. Runs only AFTER the
-        # Chroma "seen-before" tiers (so a previously-resolved exact place_id
+        # similarity "seen-before" tiers (so a previously-resolved exact place_id
         # wins over a fresh text hit) and only with a real MERCHANT_NAME label +
         # locality (a weak top-line hint like a check number must not preempt the
         # agentic tier). The city in the query disambiguates the chain and the geo
@@ -1213,7 +1186,7 @@ class MerchantResolver:
         # Tier 3: Fall back to Place ID Finder agent (Google Places API)
         _log("Tier 1/2 failed, invoking Tier 3: Place ID Finder agent")
         result = self._run_place_id_finder(
-            lines_client, lines, words, image_id, receipt_id, word_labels
+            lines, words, image_id, receipt_id, word_labels
         )
 
         # Geo guard the agentic result too (#3): the agent path builds its own
@@ -1287,7 +1260,6 @@ class MerchantResolver:
 
     def _similarity_search(
         self,
-        lines_client: Optional[Any],
         query_line: ReceiptLine,
         current_image_id: str,
         current_receipt_id: int,
@@ -1296,10 +1268,9 @@ class MerchantResolver:
         resolution_tier: str,
     ) -> MerchantResult:
         """
-        Search ChromaDB by embedding similarity and compare metadata.
+        Search the vector index by embedding similarity and compare metadata.
 
         Args:
-            lines_client: ChromaClient with merged snapshot+delta
             query_line: The line to search for (uses cached embedding if available)
             current_image_id: Current receipt's image_id (to exclude)
             current_receipt_id: Current receipt's receipt_id (to exclude)
@@ -1316,7 +1287,7 @@ class MerchantResolver:
         @traceable(
             name=f"similarity_search_{resolution_tier}",
             project_name=_get_project_name(),
-            tags=["chroma", "similarity", resolution_tier],
+            tags=["vector", "similarity", resolution_tier],
             metadata={
                 "image_id": current_image_id,
                 "receipt_id": current_receipt_id,
@@ -1329,7 +1300,6 @@ class MerchantResolver:
         )
         def _traced_search() -> MerchantResult:
             return self._similarity_search_impl(
-                lines_client=lines_client,
                 query_line=query_line,
                 current_image_id=current_image_id,
                 current_receipt_id=current_receipt_id,
@@ -1342,7 +1312,6 @@ class MerchantResolver:
 
     def _similarity_search_impl(
         self,
-        lines_client: Optional[Any],
         query_line: ReceiptLine,
         current_image_id: str,
         current_receipt_id: int,
@@ -1371,7 +1340,7 @@ class MerchantResolver:
                 return MerchantResult()
 
         try:
-            neighbors = self._get_vector_client(lines_client).search(
+            neighbors = self._get_vector_client().search(
                 embedding,
                 index="line-embeddings",
                 top_k=20,
@@ -1395,7 +1364,7 @@ class MerchantResolver:
                 ):
                     continue
 
-                # Convert distance to similarity (ChromaDB uses L2 distance)
+                # Convert distance to similarity (L2 distance)
                 # For normalized embeddings: similarity = 1 - (distance / 2)
                 similarity = max(0.0, 1.0 - (distance / 2))
 
@@ -1449,7 +1418,7 @@ class MerchantResolver:
             # Cross-validate: reject matches whose merchant name has
             # zero token overlap with the receipt's OCR text.  This
             # catches metadata-poisoning and over-representation bugs
-            # (e.g. Sprouts dominating ChromaDB, wrong phone metadata).
+            # (e.g. Sprouts dominating the index, wrong phone metadata).
             receipt_lines = getattr(self, "_receipt_lines", [])
             validated_matches: List[SimilarityMatch] = []
             for match in matches:
@@ -1493,7 +1462,7 @@ class MerchantResolver:
                 if place_id:
                     match.place_id = place_id
                     # Prefer DynamoDB merchant_name (authoritative, may be
-                    # corrected via fix-place) over ChromaDB metadata which
+                    # corrected via fix-place) over vector metadata which
                     # can be stale/poisoned.
                     merchant_name = dynamo_merchant_name or match.merchant_name
                     return MerchantResult(
@@ -1789,7 +1758,6 @@ class MerchantResolver:
 
     def _run_place_id_finder(
         self,
-        lines_client: Optional[Any],
         lines: List[ReceiptLine],
         words: List[ReceiptWord],
         image_id: str,
@@ -1804,7 +1772,6 @@ class MerchantResolver:
         merchant names from website domains like "Sprouts.com").
 
         Args:
-            lines_client: ChromaClient for similarity search
             lines: Receipt lines
             words: Receipt words
             image_id: Receipt's image_id
@@ -1827,7 +1794,6 @@ class MerchantResolver:
         )
         def _traced_place_id_finder() -> MerchantResult:
             return self._run_place_id_finder_impl(
-                lines_client=lines_client,
                 lines=lines,
                 words=words,
                 image_id=image_id,
@@ -1839,7 +1805,6 @@ class MerchantResolver:
 
     def _run_place_id_finder_impl(
         self,
-        lines_client: Optional[Any],
         lines: List[ReceiptLine],
         words: List[ReceiptWord],
         image_id: str,
@@ -1887,24 +1852,9 @@ class MerchantResolver:
 
             _log("Tier 2: Using agentic Place ID Finder")
 
-            # Create embed function from OpenAI client
-            def embed_fn(texts: List[str]) -> List[List[float]]:
-                if not self.openai_client or not texts:
-                    return []
-                # pylint: disable-next=import-outside-toplevel
-                from receipt_embeddings.openai.realtime import embed_texts
-
-                return embed_texts(
-                    client=self.openai_client,
-                    texts=texts,
-                    model="text-embedding-3-small",
-                )
-
             # Create the agentic graph
             graph, state_holder = create_place_id_finder_graph(
                 dynamo_client=self.dynamo,
-                chroma_client=lines_client,
-                embed_fn=embed_fn,
                 places_api=self.places_client,
             )
 

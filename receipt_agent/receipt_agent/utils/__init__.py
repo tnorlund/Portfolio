@@ -1,28 +1,5 @@
 """Receipt Agent utility modules."""
 
-from .chroma_helpers import (
-    LabelDistributionStats,
-    LabelEvidence,
-    MerchantBreakdown,
-    SimilarityDistribution,
-    SimilarWordEvidence,
-    ValidationRecord,
-    build_consensus_auto_review,
-    build_line_chroma_id,
-    build_word_chroma_id,
-    chroma_resolve_words,
-    compute_label_consensus,
-    compute_label_distribution,
-    compute_merchant_breakdown,
-    compute_similarity_distribution,
-    describe_position,
-    enrich_evidence_with_dynamo_reasoning,
-    format_label_evidence_for_prompt,
-    load_dual_chroma_from_s3,
-    parse_chroma_id,
-    query_label_evidence,
-    query_similar_words,
-)
 from .llm_factory import RateLimitedLLMInvoker  # alias for LLMInvoker
 from .llm_factory import create_resilient_llm  # alias for create_llm_invoker
 from .llm_factory import is_fallback_error  # alias for is_retriable_error
@@ -52,28 +29,6 @@ from .structured_output import (
 )
 
 __all__ = [
-    # ChromaDB utilities
-    "LabelDistributionStats",
-    "LabelEvidence",
-    "MerchantBreakdown",
-    "SimilarityDistribution",
-    "SimilarWordEvidence",
-    "ValidationRecord",
-    "build_consensus_auto_review",
-    "build_line_chroma_id",
-    "build_word_chroma_id",
-    "chroma_resolve_words",
-    "compute_label_consensus",
-    "compute_label_distribution",
-    "compute_merchant_breakdown",
-    "compute_similarity_distribution",
-    "describe_position",
-    "enrich_evidence_with_dynamo_reasoning",
-    "format_label_evidence_for_prompt",
-    "load_dual_chroma_from_s3",
-    "parse_chroma_id",
-    "query_label_evidence",
-    "query_similar_words",
     # LLM Factory - Primary
     "CostTrackingCallback",
     "LLMRateLimitError",

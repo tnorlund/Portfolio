@@ -3,20 +3,19 @@ Agentic workflow for finding Google Place IDs for receipts.
 
 This workflow uses an LLM agent to reason about where a receipt is from by:
 1. Examining receipt content (lines, words, labels)
-2. Searching ChromaDB for similar receipts
+2. Checking other receipts from the same merchant in DynamoDB
 3. Using Google Places API to find matching businesses
 4. Reasoning about the best match
 
 The agent has access to:
 - Receipt context (lines, words, current metadata)
-- ChromaDB similarity search
+- Merchant consensus and place_id lookups over DynamoDB
 - Google Places API tools
-- Similar receipts for comparison
 """
 
 import logging
 import os
-from typing import Annotated, Any, Callable, Optional
+from typing import Annotated, Any, Optional
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_core.tools import tool
@@ -51,7 +50,7 @@ PLACE_ID_FINDER_PROMPT = """You are a receipt place ID finder. Your job is to fi
 
 Find the Google Place ID for this receipt by:
 1. **Examining the receipt content** - Look at lines, words, and labels to understand what business this is
-2. **Searching for similar receipts** - Find other receipts from the same merchant that might have place_ids
+2. **Checking other receipts** - Find other receipts from the same merchant that might have place_ids
 3. **Using Google Places API** - Search Google Places using merchant name, address, phone, or other clues
 4. **Reasoning about the match** - Determine which place is most likely correct based on all evidence
 
@@ -63,14 +62,9 @@ Find the Google Place ID for this receipt by:
 - `get_my_words`: See labeled words (MERCHANT_NAME, PHONE, ADDRESS, etc.)
 - `get_receipt_text`: View formatted receipt text (receipt order, grouped rows)
 
-### Similarity Search Tools (find matching receipts)
-- `find_similar_to_my_line`: Use one of YOUR line embeddings to find similar lines elsewhere
-- `find_similar_to_my_word`: Use one of YOUR word embeddings to find similar words elsewhere
-- `search_lines`: Search by arbitrary text (address, phone, merchant name, etc.)
-- `search_words`: Search for specific labeled words (MERCHANT_NAME, ADDRESS, PHONE)
-
 ### Aggregation Tools (understand consensus)
-- `get_merchant_consensus`: Get canonical data for a merchant based on all receipts (if similar receipts found)
+- `get_merchant_consensus`: Get canonical data for a merchant based on all receipts
+- `get_place_id_info`: Get all receipts using a specific Place ID
 
 ### Google Places Tools
 - `verify_with_google_places`: Search Google Places API using:
@@ -90,7 +84,7 @@ Find the Google Place ID for this receipt by:
 
 ## Strategy
 
-**CRITICAL: You MUST use Google Places API to find place_ids. Do NOT just copy place_ids from similar receipts.**
+**CRITICAL: You MUST use Google Places API to find place_ids. Do NOT just copy place_ids from other receipts.**
 
 1. **Start** by examining the receipt:
    - Get metadata to see what's already known
@@ -111,11 +105,10 @@ Find the Google Place ID for this receipt by:
    - Finally try merchant name text search
    - This is the PRIMARY source of truth for place_ids
 
-4. **SECONDARY: Verify with similar receipts** (optional verification only):
-   - Use similarity search to find other receipts from the same merchant
+4. **SECONDARY: Verify with other receipts** (optional verification only):
    - Use get_merchant_consensus ONLY to verify/confirm your Google Places result
-   - Do NOT use similar receipts as the primary source - they may be wrong
-   - If similar receipts disagree with Google Places, trust Google Places
+   - Do NOT use other receipts as the primary source - they may be wrong
+   - If other receipts disagree with Google Places, trust Google Places
 
 5. **Handle address-like merchant names** (CRITICAL):
    - **NEVER accept an address as a merchant name** (e.g., "10601 Magnolia Blvd", "11000 Burbank Blvd")
@@ -147,17 +140,17 @@ Find the Google Place ID for this receipt by:
    - You MUST use `find_businesses_at_address` to find actual businesses
    - Match business names with receipt content
    - Use the business's place_id, not the address place_id
-5. **SECONDARY: Similar receipts are for verification only** - do NOT use them as primary source
+5. **SECONDARY: Other receipts are for verification only** - do NOT use them as primary source
 6. Verify matches make sense (name, address, phone should align)
 7. **Merchant names must be business names, not addresses** - reject any result where the name looks like an address
 8. **ALWAYS end with submit_place_id** - never end without calling it, even if no place_id found
-9. If Google Places returns a result, use that place_id (don't just copy from similar receipts)
+9. If Google Places returns a result, use that place_id (don't just copy from other receipts)
 10. Be thorough but efficient
 
 ## Good Evidence
 
 - Google Places result matches merchant name, address, and phone from receipt
-- Similar receipts from same merchant have the same place_id
+- Other receipts from same merchant have the same place_id
 - Multiple search methods (phone, address, text) all point to same place
 - High confidence match with clear reasoning
 
@@ -269,8 +262,6 @@ def create_place_id_submission_tool(state_holder: dict):
 
 def create_place_id_finder_graph(
     dynamo_client: Any,
-    chroma_client: Any,
-    embed_fn: Callable[[list[str]], list[list[float]]],
     places_api: Optional[Any] = None,
     settings: Optional[Settings] = None,
 ) -> tuple[Any, dict]:
@@ -279,8 +270,6 @@ def create_place_id_finder_graph(
 
     Args:
         dynamo_client: DynamoDB client
-        chroma_client: ChromaDB client
-        embed_fn: Function to generate embeddings
         places_api: Google Places API client
         settings: Optional settings
 
@@ -293,8 +282,6 @@ def create_place_id_finder_graph(
     # Create base agentic tools
     tools, state_holder = create_agentic_tools(
         dynamo_client=dynamo_client,
-        chroma_client=chroma_client,
-        embed_fn=embed_fn,
         places_api=places_api,
     )
 

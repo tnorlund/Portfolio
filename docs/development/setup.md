@@ -28,13 +28,13 @@ The workspace uses a **best practices approach** for Python IntelliSense in Curs
    pip install -e receipt_dynamo
    
    # Install packages with dependencies
-   pip install -e "receipt_label[full]"  # Includes ChromaDB support
+   pip install -e receipt_embeddings
    pip install -e infra
    ```
 
 3. **Verify installation:**
    ```bash
-   python -c "import receipt_dynamo; import receipt_label; import chromadb; import infra; print('✅ All packages working!')"
+   python -c "import receipt_dynamo; import receipt_embeddings; import infra; print('✅ All packages working!')"
    ```
 
 ### Configuration Files
@@ -99,9 +99,8 @@ IntelliSense will automatically pick it up - no configuration changes needed!
 ### Installed Packages
 
 - ✅ `receipt_dynamo` - DynamoDB utilities
-- ✅ `receipt_label[full]` - Labeling system with full ChromaDB support
+- ✅ `receipt_embeddings` - DynamoDB-native vector search
 - ✅ `infra` - Infrastructure as code (Pulumi)
-- ✅ `chromadb` - Vector database (via receipt_label[full])
 
 # MCP Development Server
 

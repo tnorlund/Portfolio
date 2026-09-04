@@ -14,29 +14,21 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Callable, Iterable, Optional
 
-from receipt_dynamo.entities.receipt import Receipt
-from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_section import ReceiptSection
 from receipt_dynamo.entities.receipt_summary_record import (
     ReceiptSummaryRecord,
 )
-from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo_stream.change_detection import (
-    get_chromadb_relevant_changes,
+    get_update_relevant_changes,
 )
 from receipt_dynamo_stream.models import (
-    ChromaDBCollection,
     StreamMessage,
     StreamRecordContext,
     TargetQueue,
 )
-from receipt_dynamo_stream.parsing import (
-    is_compaction_run,
-    parse_compaction_run,
-    parse_stream_record,
-)
+from receipt_dynamo_stream.parsing import parse_stream_record
 from receipt_dynamo_stream.stream_types import (
     DynamoDBStreamRecord,
     MetricsRecorder,
@@ -45,9 +37,10 @@ from receipt_dynamo_stream.stream_types import (
 logger = logging.getLogger(__name__)
 
 # Entity types whose INSERT events must also produce change messages.
-# ReceiptSection INSERTs matter because creating a section changes the
-# correct ``section_label`` for the receipt's rows in ChromaDB; other
-# entity INSERTs are covered by the embedding pipeline itself.
+# ReceiptSection INSERTs matter because creating a canonical ITEMS
+# section must (re)compute the receipt's line items; ReceiptSummary
+# INSERTs are the line-item trigger. Other entity INSERTs are covered
+# by the ingest pipeline itself.
 _INSERT_SYNCED_ENTITY_TYPES = frozenset({"RECEIPT_SECTION", "RECEIPT_SUMMARY"})
 
 
@@ -62,89 +55,12 @@ def build_messages_from_records(
 
     for record in records:
         event_name = record.get("eventName")
-        if event_name == "INSERT":
-            messages.extend(build_compaction_run_messages(record, metrics))
-            # Section INSERTs (e.g. QA creating a section) must trigger a
-            # section_label recompute; build_entity_change_message drops
-            # INSERTs for all other entity types.
+        if event_name in {"INSERT", "MODIFY", "REMOVE"}:
+            # build_entity_change_message drops INSERTs for every entity
+            # type outside _INSERT_SYNCED_ENTITY_TYPES.
             entity_message = build_entity_change_message(record, metrics)
             if entity_message:
                 messages.append(entity_message)
-        elif event_name in {"MODIFY", "REMOVE"}:
-            # Note: CompactionRun MODIFY events (embeddings completed) are
-            # intentionally ignored.  The merge Lambda polls DynamoDB
-            # directly, so forwarding completion messages to the compaction
-            # handler only triggers wasteful snapshot download/upload
-            # cycles with no delta to apply.
-            entity_message = build_entity_change_message(record, metrics)
-            if entity_message:
-                messages.append(entity_message)
-
-    return messages
-
-
-def build_compaction_run_messages(
-    record: DynamoDBStreamRecord, metrics: Optional[MetricsRecorder] = None
-) -> list[StreamMessage]:
-    """
-    Build messages for COMPACTION_RUN INSERT events (one per collection).
-    """
-    messages: list[StreamMessage] = []
-
-    try:
-        dynamodb = record["dynamodb"]
-        new_image = dynamodb.get("NewImage")
-        keys = dynamodb["Keys"]
-        pk = keys["PK"]["S"]
-        sk = keys["SK"]["S"]
-
-        if not (new_image and is_compaction_run(pk, sk)):
-            return messages
-
-        compaction_run = parse_compaction_run(new_image, pk, sk)
-        cr_entity = {
-            "run_id": compaction_run.get("run_id"),
-            "image_id": compaction_run.get("image_id"),
-            "receipt_id": compaction_run.get("receipt_id"),
-            "lines_delta_prefix": compaction_run.get("lines_delta_prefix"),
-            "words_delta_prefix": compaction_run.get("words_delta_prefix"),
-        }
-
-        for collection, prefix_key in (
-            (ChromaDBCollection.LINES, "lines_delta_prefix"),
-            (ChromaDBCollection.WORDS, "words_delta_prefix"),
-        ):
-            messages.append(
-                StreamMessage(
-                    entity_type="COMPACTION_RUN",
-                    entity_data={
-                        **cr_entity,
-                        "delta_s3_prefix": cr_entity[prefix_key],
-                    },
-                    changes={},
-                    event_name="INSERT",
-                    collections=(collection,),
-                    context=StreamRecordContext(
-                        timestamp=datetime.now(timezone.utc).isoformat(),
-                        record_id=str(record.get("eventID", "unknown")),
-                        aws_region=str(record.get("awsRegion", "unknown")),
-                    ),
-                    record_snapshot=new_image,
-                )
-            )
-
-        logger.info(
-            "Created compaction run messages",
-            extra={
-                "run_id": compaction_run.get("run_id"),
-                "image_id": compaction_run.get("image_id"),
-            },
-        )
-
-    except (KeyError, TypeError, ValueError, AttributeError) as exc:
-        logger.exception("Failed to build compaction run message: %s", exc)
-        if metrics:
-            metrics.count("CompactionRunMessageBuildError", 1)
 
     return messages
 
@@ -170,12 +86,12 @@ def build_entity_change_message(
         ):
             return None
 
-        changes = get_chromadb_relevant_changes(
+        changes = get_update_relevant_changes(
             entity_type, old_entity, new_entity
         )
         if metrics:
             metrics.count(
-                "ChromaDBRelevantChanges",
+                "UpdateRelevantChanges",
                 len(changes),
                 {"entity_type": entity_type},
             )
@@ -229,8 +145,8 @@ def build_entity_change_message(
 
 def _extract_receipt_place(
     entity: ReceiptPlace,
-) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
-    """Extract place data and target collections including summary queue.
+) -> tuple[dict[str, object], list[TargetQueue]]:
+    """Extract place data targeting the summary queue.
 
     Place changes affect merchant_name in ReceiptSummary.
     """
@@ -238,22 +154,16 @@ def _extract_receipt_place(
         "entity_type": "RECEIPT_PLACE",
         "image_id": entity.image_id,
         "receipt_id": entity.receipt_id,
-    }, [
-        ChromaDBCollection.LINES,
-        ChromaDBCollection.WORDS,
-        TargetQueue.RECEIPT_SUMMARY,
-    ]
+    }, [TargetQueue.RECEIPT_SUMMARY]
 
 
 def _extract_receipt_word_label(
     entity: ReceiptWordLabel,
-) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
-    """Extract word label data and target collections including summary queue.
+) -> tuple[dict[str, object], list[TargetQueue]]:
+    """Extract word label data targeting the summary queue.
 
-    Label changes affect:
-    - WORDS: Direct label metadata updates on word embeddings
-    - LINES: Label aggregation on row-based line embeddings
-    - RECEIPT_SUMMARY: Totals, tax, dates extracted from labels
+    Label changes affect the totals, tax and dates the summary extracts
+    from labels.
     """
     return {
         "entity_type": "RECEIPT_WORD_LABEL",
@@ -262,16 +172,12 @@ def _extract_receipt_word_label(
         "line_id": entity.line_id,
         "word_id": entity.word_id,
         "label": entity.label,
-    }, [
-        ChromaDBCollection.WORDS,
-        ChromaDBCollection.LINES,
-        TargetQueue.RECEIPT_SUMMARY,
-    ]
+    }, [TargetQueue.RECEIPT_SUMMARY]
 
 
 def _extract_receipt_summary(
     entity: ReceiptSummaryRecord,
-) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
+) -> tuple[dict[str, object], list[TargetQueue]]:
     """Route summary changes to the LINE_ITEMS queue.
 
     The summary is written when a receipt's words, sections, labels and
@@ -289,22 +195,19 @@ def _extract_receipt_summary(
 
 def _extract_receipt_section(
     entity: ReceiptSection,
-) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
-    """Extract section data targeting the LINES collection.
+) -> tuple[dict[str, object], list[TargetQueue]]:
+    """Route canonical ITEMS section changes to the LINE_ITEMS queue.
 
-    ``section_label`` lives on LINES (visual-row) metadata. The message
-    carries only (image_id, receipt_id): the consumer recomputes labels
-    from the receipt's *current* section set in DynamoDB, so the event
-    image is deliberately not trusted (see compaction sections module).
-    ``section_type`` is included only for within-batch deduplication.
-
-    Canonical ITEMS sections additionally target LINE_ITEMS: a section
-    invalidation or line_ids edit must recompute (or clear) the
-    receipt's line items even when no summary rewrite follows.
+    A section invalidation or line_ids edit must recompute (or clear)
+    the receipt's line items even when no summary rewrite follows. The
+    message carries only (image_id, receipt_id): the consumer refetches
+    the receipt's *current* sections from DynamoDB, so the event image
+    is deliberately not trusted. ``section_type`` is included only for
+    within-batch deduplication. Non-ITEMS sections produce no message;
+    their ``section_type`` embedding attribute is refreshed inline by
+    the vector-freshening leg.
     """
-    targets: list[ChromaDBCollection | TargetQueue] = [
-        ChromaDBCollection.LINES
-    ]
+    targets: list[TargetQueue] = []
     if str(entity.section_type).upper() == "ITEMS":
         targets.append(TargetQueue.LINE_ITEMS)
     return {
@@ -315,51 +218,13 @@ def _extract_receipt_section(
     }, targets
 
 
-def _extract_receipt(
-    entity: Receipt,
-) -> tuple[dict[str, object], list[ChromaDBCollection]]:
-    return {
-        "entity_type": "RECEIPT",
-        "image_id": entity.image_id,
-        "receipt_id": entity.receipt_id,
-    }, [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
-
-
-def _extract_receipt_word(
-    entity: ReceiptWord,
-) -> tuple[dict[str, object], list[ChromaDBCollection]]:
-    return {
-        "entity_type": "RECEIPT_WORD",
-        "image_id": entity.image_id,
-        "receipt_id": entity.receipt_id,
-        "line_id": entity.line_id,
-        "word_id": entity.word_id,
-    }, [ChromaDBCollection.WORDS]
-
-
-def _extract_receipt_line(
-    entity: ReceiptLine,
-) -> tuple[dict[str, object], list[ChromaDBCollection]]:
-    return {
-        "entity_type": "RECEIPT_LINE",
-        "image_id": entity.image_id,
-        "receipt_id": entity.receipt_id,
-        "line_id": entity.line_id,
-    }, [ChromaDBCollection.LINES]
-
-
 # Type alias for entity extractor functions
 _EntityType = (
-    Receipt
-    | ReceiptLine
-    | ReceiptPlace
-    | ReceiptSection
-    | ReceiptWord
-    | ReceiptWordLabel
+    ReceiptPlace | ReceiptSection | ReceiptSummaryRecord | ReceiptWordLabel
 )
 _ExtractorFunc = Callable[
     [_EntityType],
-    tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]],
+    tuple[dict[str, object], list[TargetQueue]],
 ]
 
 # Entity type to (expected class, extractor function) mapping
@@ -368,17 +233,14 @@ _ENTITY_EXTRACTORS: dict[str, tuple[type, _ExtractorFunc]] = {
     "RECEIPT_WORD_LABEL": (ReceiptWordLabel, _extract_receipt_word_label),
     "RECEIPT_SECTION": (ReceiptSection, _extract_receipt_section),
     "RECEIPT_SUMMARY": (ReceiptSummaryRecord, _extract_receipt_summary),
-    "RECEIPT": (Receipt, _extract_receipt),
-    "RECEIPT_WORD": (ReceiptWord, _extract_receipt_word),
-    "RECEIPT_LINE": (ReceiptLine, _extract_receipt_line),
 }
 
 
 def _extract_entity_data(
     entity_type: str,
-    entity: _EntityType | None,
-) -> tuple[dict[str, object], list[ChromaDBCollection | TargetQueue]]:
-    """Extract entity data and determine target collections/queues."""
+    entity: object,
+) -> tuple[dict[str, object], list[TargetQueue]]:
+    """Extract entity data and determine target queues."""
     if not entity:
         return {}, []
 

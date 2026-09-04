@@ -56,7 +56,6 @@ _SK_PATTERN_MATCHERS: list[tuple[Callable[[str], bool], str]] = [
     (lambda sk: "#SECTION#" in sk, "RECEIPT_SECTION"),
     # RECEIPT#00001#SUMMARY (checked after "#SECTION#" above)
     (lambda sk: sk.endswith("#SUMMARY"), "RECEIPT_SUMMARY"),
-    (lambda sk: "#COMPACTION_RUN#" in sk, "COMPACTION_RUN"),
     (lambda sk: "#WORD#" in sk and "#LINE#" in sk, "RECEIPT_WORD"),
     (lambda sk: "#LINE#" in sk, "RECEIPT_LINE"),
     (lambda sk: sk.startswith("RECEIPT#") and sk.count("#") == 1, "RECEIPT"),
@@ -85,7 +84,6 @@ def detect_entity_type(sk: str) -> Optional[str]:
     - RECEIPT_WORD: RECEIPT#00001#LINE#00001#WORD#00001
     - RECEIPT_LINE: RECEIPT#00001#LINE#00001
     - RECEIPT_PLACE: IMAGE#...#RECEIPT#00001#PLACE
-    - COMPACTION_RUN: IMAGE#...#COMPACTION_RUN#...
     - RECEIPT: RECEIPT#00001 (no suffix)
 
     Embedding-item SKs (…#EMBEDDING) return None: they contain #LINE#/

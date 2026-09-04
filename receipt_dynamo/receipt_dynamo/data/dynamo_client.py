@@ -5,8 +5,6 @@ import boto3
 
 from receipt_dynamo.data._ai_usage_metric import _AIUsageMetric
 from receipt_dynamo.data._batch_summary import _BatchSummary
-from receipt_dynamo.data._compaction_lock import _CompactionLock
-from receipt_dynamo.data._compaction_run import _CompactionRun
 from receipt_dynamo.data._coreml_export_job import _CoreMLExportJob
 from receipt_dynamo.data._image import _Image
 from receipt_dynamo.data._job import _Job
@@ -84,8 +82,6 @@ class DynamoClient(
     _ReceiptSection,
     _OCRRoutingDecision,
     _AIUsageMetric,
-    _CompactionLock,
-    _CompactionRun,
     _CoreMLExportJob,
     _ReceiptSummary,
 ):

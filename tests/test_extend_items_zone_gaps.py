@@ -22,8 +22,7 @@ import pytest
 # isort: off
 # receipt_upload lands in a different import group depending on whether
 # the venv has it installed, so the grouping here is not reproducible
-# across environments. Pin it (same fence as
-# tests/test_evaluate_section_geometry.py).
+# across environments. Pin it.
 from scripts.extend_items_zone_gaps import (
     PRICE_COLUMN_TOL,
     discover_candidates,

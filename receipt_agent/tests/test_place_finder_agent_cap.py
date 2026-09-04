@@ -73,8 +73,6 @@ def test_agent_forces_submit_after_configured_rounds(monkeypatch):
     ):
         graph, state_holder = create_receipt_place_finder_graph(
             dynamo_client=None,
-            chroma_client=None,
-            embed_fn=lambda _texts: [],
             settings=_settings(),
         )
         graph.invoke(
@@ -110,8 +108,6 @@ def test_submit_tool_ends_without_an_extra_llm_turn():
     ):
         graph, state_holder = create_receipt_place_finder_graph(
             dynamo_client=None,
-            chroma_client=None,
-            embed_fn=lambda _texts: [],
             settings=_settings(),
         )
         graph.invoke(
@@ -152,8 +148,6 @@ def test_legacy_agent_is_not_forced_to_submit_after_three_rounds(monkeypatch):
     ):
         graph, state_holder = create_receipt_place_finder_graph(
             dynamo_client=None,
-            chroma_client=None,
-            embed_fn=lambda _texts: [],
             settings=_settings(),
         )
         graph.invoke(
@@ -192,8 +186,6 @@ def test_legacy_agent_ends_after_twenty_stalled_messages(monkeypatch):
     ):
         graph, state_holder = create_receipt_place_finder_graph(
             dynamo_client=None,
-            chroma_client=None,
-            embed_fn=lambda _texts: [],
             settings=_settings(),
         )
         graph.invoke(

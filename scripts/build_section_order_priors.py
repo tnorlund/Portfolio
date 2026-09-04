@@ -21,16 +21,16 @@ from statistics import median
 from typing import Any
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-for _package in ("receipt_dynamo", "receipt_chroma", "receipt_upload"):
+for _package in ("receipt_dynamo", "receipt_embeddings", "receipt_upload"):
     sys.path.insert(0, str(_REPO_ROOT / _package))
 
-from receipt_chroma.embedding.formatting import build_receipt_rows
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.shared_exceptions import (
     EntityNotFoundError,
     OperationError,
 )
+from receipt_embeddings.formatting import build_receipt_rows
 from receipt_upload.section_assignment import (
     extract_row_features,
     learn_prior,

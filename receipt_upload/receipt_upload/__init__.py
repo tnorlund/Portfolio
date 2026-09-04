@@ -34,8 +34,6 @@ from .font_letter_analysis import (
     build_line_font_samples,
     cluster_letter_styles,
     cluster_line_font_styles,
-    query_similar_letters,
-    upsert_letter_samples_to_chroma,
 )
 from .geometry import min_area_rect
 from .route_images import classify_image_layout
@@ -75,7 +73,5 @@ __all__ = [
     "find_similar_font_samples",
     "load_raw_image_from_s3",
     "min_area_rect",
-    "query_similar_letters",
     "send_message_to_sqs",
-    "upsert_letter_samples_to_chroma",
 ]

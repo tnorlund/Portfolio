@@ -1,7 +1,7 @@
 """Inline vector-attribute freshening for embedding items (SPEC §3.4a).
 
-Replaces the Chroma metadata appliers: when a receipt's place, a word's
-label, or a section changes, refresh the denormalized attributes stored
+When a receipt's place, a word's label, or a section changes, refresh
+the denormalized attributes stored
 on the receipt's embedding items with targeted, idempotent UpdateItems —
 no new queues or Lambdas.
 

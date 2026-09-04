@@ -10,12 +10,6 @@ import time
 from pathlib import Path
 
 import pytest
-from scripts.similarity_harness.capture_golden import (
-    _default_receipts,
-    _require_live_environment,
-    build_offline_bootstrap,
-    compare_fixtures,
-)
 from scripts.similarity_harness.common import (
     MERCHANT_FAMILY,
     MIN_RECEIPTS,
@@ -30,7 +24,7 @@ from scripts.similarity_harness.common import (
     write_fixture,
 )
 from scripts.similarity_harness.evaluate import (
-    CapturedChromaReplay,
+    CapturedGoldenReplay,
     evaluate_fixture,
 )
 from scripts.similarity_harness.evaluate import main as evaluate_main
@@ -41,9 +35,6 @@ from receipt_embeddings.testing import FakeVectorIndex
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 GOLDEN_FIXTURE = (
     REPOSITORY_ROOT / "tests" / "fixtures" / "similarity" / "golden.json"
-)
-CAPTURE_SCRIPT = (
-    REPOSITORY_ROOT / "scripts" / "similarity_harness" / "capture_golden.py"
 )
 EVALUATE_SCRIPT = (
     REPOSITORY_ROOT / "scripts" / "similarity_harness" / "evaluate.py"
@@ -79,84 +70,6 @@ def test_committed_fixture_covers_every_family_for_40_plus_receipts() -> None:
 
 
 @pytest.mark.unit
-def test_offline_bootstrap_is_byte_deterministic(tmp_path: Path) -> None:
-    receipts = _default_receipts()
-    first = build_offline_bootstrap(receipts)
-    second = build_offline_bootstrap(receipts)
-    first_path = tmp_path / "first.json"
-    second_path = tmp_path / "second.json"
-
-    write_fixture(first_path, first)
-    write_fixture(second_path, second)
-
-    assert first_path.read_bytes() == second_path.read_bytes()
-    assert (
-        compare_fixtures(
-            first,
-            second,
-            distance_tolerance=1e-6,
-            vector_tolerance=1e-7,
-        )
-        == []
-    )
-
-
-@pytest.mark.unit
-def test_capture_comparison_tolerates_only_documented_float_drift() -> None:
-    fixture = load_fixture(GOLDEN_FIXTURE)
-    changed = copy.deepcopy(fixture)
-    changed["queries"][0]["expected"]["neighbors"][0]["distance"] += 5e-7
-
-    assert (
-        compare_fixtures(
-            fixture,
-            changed,
-            distance_tolerance=1e-6,
-            vector_tolerance=1e-7,
-        )
-        == []
-    )
-
-    changed["queries"][0]["expected"]["neighbors"][0]["distance"] += 1e-4
-    assert compare_fixtures(
-        fixture,
-        changed,
-        distance_tolerance=1e-6,
-        vector_tolerance=1e-7,
-    )
-
-
-@pytest.mark.unit
-def test_live_capture_requires_existing_dev_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    for name in (
-        "CHROMA_CLOUD_API_KEY",
-        "CHROMA_CLOUD_TENANT",
-        "CHROMA_CLOUD_DATABASE",
-    ):
-        monkeypatch.delenv(name, raising=False)
-
-    with pytest.raises(ValueError, match="live capture is disabled"):
-        _require_live_environment("ReceiptsTable-dc5be22")
-
-
-@pytest.mark.unit
-def test_live_capture_rejects_prod_database_and_table(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("CHROMA_CLOUD_API_KEY", "present")
-    monkeypatch.setenv("CHROMA_CLOUD_TENANT", "present")
-    monkeypatch.setenv("CHROMA_CLOUD_DATABASE", "receipt_prod")
-    with pytest.raises(ValueError, match="refusing to touch Chroma"):
-        _require_live_environment("ReceiptsTable-dc5be22")
-
-    monkeypatch.setenv("CHROMA_CLOUD_DATABASE", "receipt_dev")
-    with pytest.raises(ValueError, match="refusing to touch DynamoDB"):
-        _require_live_environment("ReceiptsTable-d7ff76a")
-
-
-@pytest.mark.unit
 def test_dynamo_evaluation_rejects_prod_table(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -176,31 +89,12 @@ def test_dynamo_evaluation_rejects_prod_table(
 
 
 @pytest.mark.unit
-def test_capture_source_contains_no_table_write_operations() -> None:
-    source = CAPTURE_SCRIPT.read_text(encoding="utf-8").lower()
-    forbidden = (
-        ".put_item(",
-        ".update_item(",
-        ".delete_item(",
-        ".batch_write_item(",
-        ".transact_write_items(",
-        ".update_table(",
-        ".create_table(",
-        ".upsert(",
-        ".create_collection(",
-        ".delete_collection(",
-    )
-
-    assert not any(token in source for token in forbidden)
-
-
-@pytest.mark.unit
-def test_chroma_self_parity_is_one() -> None:
+def test_golden_self_parity_is_one() -> None:
     fixture = load_fixture(GOLDEN_FIXTURE)
     scorecard = evaluate_fixture(
         fixture,
-        CapturedChromaReplay(fixture),
-        backend_name="chroma",
+        CapturedGoldenReplay(fixture),
+        backend_name="golden",
     )
     metrics = scorecard["metrics"]
 
@@ -221,8 +115,8 @@ def test_merchant_truth_agreement_scores_known_truth_receipts() -> None:
 
     scorecard = evaluate_fixture(
         fixture,
-        CapturedChromaReplay(fixture),
-        backend_name="chroma",
+        CapturedGoldenReplay(fixture),
+        backend_name="golden",
     )
     metrics = scorecard["metrics"]
 
@@ -236,8 +130,8 @@ def test_merchant_truth_agreement_scores_known_truth_receipts() -> None:
         receipt.pop("merchant_truth", None)
     scorecard = evaluate_fixture(
         stripped,
-        CapturedChromaReplay(stripped),
-        backend_name="chroma",
+        CapturedGoldenReplay(stripped),
+        backend_name="golden",
     )
     assert scorecard["metrics"]["merchant_truth_agreement_percent"] is None
     assert scorecard["metrics"]["merchant_truth_sample_count"] == 0
@@ -344,10 +238,9 @@ def test_offline_evaluate_self_gate_under_60_seconds() -> None:
 
 
 @pytest.mark.unit
-def test_cli_capture_and_evaluate_stay_well_below_runtime_limits(
+def test_cli_evaluate_stays_well_below_runtime_limits(
     tmp_path: Path,
 ) -> None:
-    fixture_path = tmp_path / "golden.json"
     scorecard_path = tmp_path / "scorecard.json"
     environment = os.environ.copy()
     environment["PYTHONPATH"] = str(REPOSITORY_ROOT / "receipt_embeddings")
@@ -355,27 +248,11 @@ def test_cli_capture_and_evaluate_stay_well_below_runtime_limits(
     subprocess.run(
         [
             sys.executable,
-            str(CAPTURE_SCRIPT),
-            "--offline-bootstrap",
-            "--out",
-            str(fixture_path),
-        ],
-        cwd=REPOSITORY_ROOT,
-        env=environment,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    capture_seconds = time.perf_counter() - started
-    started = time.perf_counter()
-    subprocess.run(
-        [
-            sys.executable,
             str(EVALUATE_SCRIPT),
             "--backend",
-            "chroma",
+            "golden",
             "--fixture",
-            str(fixture_path),
+            str(GOLDEN_FIXTURE),
             "--out",
             str(scorecard_path),
         ],
@@ -387,6 +264,5 @@ def test_cli_capture_and_evaluate_stay_well_below_runtime_limits(
     )
     evaluate_seconds = time.perf_counter() - started
 
-    assert capture_seconds < 15 * 60
     assert evaluate_seconds < 60
     assert scorecard_path.exists()

@@ -204,7 +204,6 @@ def _knn_is_product(
 def propose_product_names(
     words: List,
     existing_labels: List[ReceiptWordLabel],
-    words_client,
     word_embeddings: Dict[Tuple[int, int], List[float]],
     *,
     k: int = 5,
@@ -217,8 +216,9 @@ def propose_product_names(
         words: ReceiptWord entities (need ``.bounding_box``/``.text``/ids).
         existing_labels: labels already on the receipt (anchors + any proposals
             from the geometry pass); only unlabeled words are candidates.
-        words_client: incumbent Chroma client used when the backend is Chroma.
         word_embeddings: cached embeddings keyed by ``(line_id, word_id)``.
+        vector_client: injected word-index search backend; defaults to the
+            DynamoDB word-embedding index.
     """
     # A word counts as "already labeled" only if it carries a real, non-rejected
     # core label. A pending ``O`` (background) label or an INVALID-only label
@@ -250,7 +250,7 @@ def propose_product_names(
         return []
     lo, hi = min(min(header), min(totals)), max(max(header), max(totals))
     try:
-        client = _vector_client(words_client, vector_client=vector_client)
+        client = _vector_client(vector_client=vector_client)
     except Exception:  # noqa: BLE001 - unavailable backend means abstain
         return []
 

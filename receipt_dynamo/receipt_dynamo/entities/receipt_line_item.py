@@ -38,7 +38,7 @@ class ReceiptLineItem:
     Produced by the deterministic geometric extractor (visual bands of the
     receipt's ITEMS section). One row per item, per receipt, so consumers
     (QA agent product search, merchant catalog mining) query items directly
-    instead of re-deriving them from Chroma line text.
+    instead of re-deriving them from embedded line text.
 
     Trust is carried on the row, not implied by its existence:
     ``reconciliation_status`` records whether the receipt's extracted item

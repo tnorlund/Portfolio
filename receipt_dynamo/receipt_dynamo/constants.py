@@ -154,22 +154,6 @@ class ImageType(Enum):
     NATIVE = "NATIVE"
 
 
-class ChromaDBCollection(str, Enum):
-    """ChromaDB collection types for receipt embeddings."""
-
-    LINES = "lines"
-    WORDS = "words"
-
-
-class CompactionState(str, Enum):
-    """States for ChromaDB compaction runs/delta merges."""
-
-    PENDING = "PENDING"
-    PROCESSING = "PROCESSING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
-
-
 class CoreMLExportStatus(str, Enum):
     """Status for CoreML export jobs."""
 
@@ -180,7 +164,7 @@ class CoreMLExportStatus(str, Enum):
 
 
 # Core receipt label types with descriptions.
-# Used for metadata filtering in ChromaDB and RAG queries.
+# Used for metadata filtering in vector search and RAG queries.
 CORE_LABELS: dict[str, str] = {
     # ── Merchant & store info ───────────────────────────────────
     "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",

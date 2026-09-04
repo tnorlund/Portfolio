@@ -47,11 +47,10 @@ pip install --upgrade --quiet pip wheel
 pip install -e receipt_dynamo
 pip install -e receipt_embeddings
 pip install --no-deps -e receipt_dynamo_stream
-pip install --no-deps -e receipt_chroma
 pip install --no-deps -e receipt_places
 pip install --no-deps -e receipt_agent
 pip install --no-deps -e receipt_upload
-pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow \
+pip install boto3 "openai>=2.8.1,<3.0.0" Pillow \
     pillow-avif-plugin langsmith langgraph \
     "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
     pydantic pydantic-settings structlog requests tenacity \

@@ -2,7 +2,7 @@ import Foundation
 
 /// Swift port of the deterministic section assignment pipeline:
 ///
-/// - `receipt_chroma.embedding.formatting.receipt_rows.build_receipt_rows`
+/// - `receipt_embeddings.formatting.receipt_rows.build_receipt_rows`
 /// - `receipt_upload.section_assignment.extract_row_features`
 /// - `receipt_upload.section_assignment.assign_row_sections`
 /// - `receipt_upload.section_assignment.sections_from_assignments`

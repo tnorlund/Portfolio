@@ -609,7 +609,11 @@ def build_label_validation_summary(
 
     counts = count_label_validation_decisions(validations)
 
-    chroma_count = sum(1 for v in validations if "chroma" in v.get("name", ""))
+    chroma_count = sum(
+        1
+        for v in validations
+        if "chroma" in v.get("name", "") or "similarity" in v.get("name", "")
+    )
     llm_count = sum(1 for v in validations if "llm" in v.get("name", ""))
 
     confidences = []
@@ -711,7 +715,10 @@ def get_step_timings(
         elif name.startswith("openai_embed_"):
             timings["embedding"]["duration_ms"] += duration_ms
             timings["embedding"]["count"] += 1
-        elif name == "label_validation_chroma":
+        elif name in (
+            "label_validation_chroma",
+            "label_validation_similarity",
+        ):
             timings["chroma_validation"]["duration_ms"] += duration_ms
             timings["chroma_validation"]["count"] += 1
         elif name in ("llm_batch_validation", "label_validation_llm"):
