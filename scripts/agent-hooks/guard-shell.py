@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Shell-command guard shared by Cursor and Claude Code hooks.
+"""Shell-command guard shared by Cursor, Claude Code, and Codex hooks.
 
 Enforces the hard rules from AGENTS.md that instructions alone cannot:
 
@@ -8,14 +8,18 @@ Enforces the hard rules from AGENTS.md that instructions alone cannot:
 - No ``git push --force`` (any spelling) and no push to ``main``.
 - No commits made while ``main`` is checked out.
 - No mutating DynamoDB CLI calls against the prod table.
+- No owner-only scripts: dev→prod sync/promote, merchant-truth activation,
+  prod ingestion, or any ``--live`` flag.
 
 Input (stdin JSON) is either Cursor's ``beforeShellExecution`` payload
-(``{"command": ..., "cwd": ...}``) or Claude Code's ``PreToolUse`` payload
+(``{"command": ..., "cwd": ...}``) or the ``PreToolUse`` payload shared by
+Claude Code and Codex
 (``{"tool_name": "Bash", "tool_input": {"command": ...}, "cwd": ...}``).
 
-Output: Cursor gets ``{"permission": "allow"|"deny", ...}`` on exit 0; Claude
-Code gets the reason on stderr with exit 2 (its documented block signal).
-Anything unrecognised is allowed so the hook fails open.
+Output (always exit 0): Cursor gets ``{"permission": "allow"|"deny", ...}``;
+Claude Code and Codex get the ``hookSpecificOutput.permissionDecision`` JSON
+that both document, plus the reason on stderr. Anything unrecognised is
+allowed so the hook fails open.
 """
 
 from __future__ import annotations
@@ -64,6 +68,15 @@ DYNAMO_MUTATING = {
     "batch-execute-statement",
 }
 SEPARATORS = {"&&", "||", ";", "|", "&"}
+# Owner-only scripts (matched on the script's basename, any interpreter).
+OWNER_ONLY_SCRIPT_PARTS = ("dev_to_prod", "promote_", "_prod.sh")
+OWNER_ONLY_SCRIPTS = {
+    "activate_merchant_truth.py",
+    "mint_merchant_truth_v2.py",
+    "promote_merchant_truth.py",
+    "start_ingestion_prod.sh",
+}
+INTERPRETERS = {"python", "python3", "python3.13", "bash", "sh", "zsh"}
 
 
 def _tokenize(command: str) -> list[str]:
@@ -184,6 +197,24 @@ def _check_aws(seg: list[str]) -> str | None:
     return None
 
 
+def _check_owner_only(seg: list[str]) -> str | None:
+    if "--live" in seg:
+        return "`--live` runs are owner-only; use the dry-run default."
+    candidates = seg[:1]
+    if _basename(seg[0]) in INTERPRETERS and len(seg) > 1:
+        candidates = seg[1:2]
+    for tok in candidates:
+        name = _basename(tok)
+        if name in OWNER_ONLY_SCRIPTS or any(
+            part in name for part in OWNER_ONLY_SCRIPT_PARTS
+        ):
+            return (
+                f"`{name}` promotes or syncs to prod and is owner-only; "
+                "agents never run it."
+            )
+    return None
+
+
 def evaluate(command: str, cwd: str | None) -> str | None:
     """Return a denial reason, or None when the command is allowed."""
     tokens = _tokenize(command.replace("\n", " \n "))
@@ -197,12 +228,12 @@ def evaluate(command: str, cwd: str | None) -> str | None:
             if not seg:
                 continue
             prog = _basename(seg[0])
-        reason = None
-        if prog == "pulumi":
+        reason = _check_owner_only(seg)
+        if reason is None and prog == "pulumi":
             reason = _check_pulumi(seg)
-        elif prog == "git":
+        elif reason is None and prog == "git":
             reason = _check_git(seg, cwd, tokens)
-        elif prog == "aws":
+        elif reason is None and prog == "aws":
             reason = _check_aws(seg)
         if reason:
             return reason
@@ -235,8 +266,19 @@ def main() -> int:
 
     message = f"Blocked by scripts/agent-hooks/guard-shell.py: {reason}"
     if is_claude:
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": message,
+                    }
+                }
+            )
+        )
         print(message, file=sys.stderr)
-        return 2
+        return 0
     print(
         json.dumps(
             {
