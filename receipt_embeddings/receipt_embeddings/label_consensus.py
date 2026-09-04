@@ -264,7 +264,7 @@ def similar_labeled_words(
     # Single-join reuse (E3 review P2-4): the Dynamo adapter's
     # validated-filter hydration already fetched each neighbor's
     # core-label rows and attached them as ``label_rows``. Only
-    # neighbors without that metadata (the Chroma backend, or a
+    # neighbors without that metadata (an injected backend, or a
     # degraded join) and non-core candidate labels reach the loader.
     rows_by_word: dict[tuple[str, int, int, int], list[dict[str, object]]] = {}
     loader_keys: list[tuple[str, int, int, int, str]] = []

@@ -1,17 +1,6 @@
 """Backend-selection contract for the shared vector seam."""
 
-import pytest
-
-from receipt_embeddings import (
-    ChromaVectorSearchClient,
-    DynamoVectorSearchClient,
-    vector_search_client,
-)
-
-
-class _RawChroma:
-    def query(self, **_kwargs):
-        return {}
+from receipt_embeddings import DynamoVectorSearchClient, vector_search_client
 
 
 class _InjectedVectorClient:
@@ -23,53 +12,26 @@ class _InjectedVectorClient:
         return []
 
 
-def test_dynamodb_is_the_default_backend(monkeypatch) -> None:
-    # Chroma teardown: an unset VECTOR_BACKEND now means DynamoDB.
-    monkeypatch.delenv("VECTOR_BACKEND", raising=False)
+def test_dynamodb_is_the_only_backend(monkeypatch) -> None:
     expected = _InjectedVectorClient()
     monkeypatch.setattr(
         DynamoVectorSearchClient,
         "from_env",
         classmethod(lambda cls: expected),
     )
-    assert vector_search_client(_RawChroma()) is expected
-
-
-def test_chroma_backend_is_still_selectable(monkeypatch) -> None:
-    monkeypatch.setenv("VECTOR_BACKEND", "chroma")
-    assert isinstance(
-        vector_search_client(_RawChroma()), ChromaVectorSearchClient
-    )
-
-
-def test_dynamodb_backend_is_built_lazily(monkeypatch) -> None:
-    expected = _InjectedVectorClient()
-    monkeypatch.setenv("VECTOR_BACKEND", "dynamodb")
-    monkeypatch.setattr(
-        DynamoVectorSearchClient,
-        "from_env",
-        classmethod(lambda _cls: expected),
-    )
-    assert vector_search_client(_RawChroma()) is expected
+    assert vector_search_client() is expected
 
 
 def test_injected_client_wins_over_environment(monkeypatch) -> None:
     expected = _InjectedVectorClient()
-    monkeypatch.setenv("VECTOR_BACKEND", "chroma")
-    assert (
-        vector_search_client(_RawChroma(), vector_client=expected) is expected
+
+    def _never(_cls):
+        raise AssertionError("from_env must not run when a client is given")
+
+    monkeypatch.setattr(
+        DynamoVectorSearchClient, "from_env", classmethod(_never)
     )
-
-
-def test_protocol_conformant_chroma_client_passes_through() -> None:
-    client = _InjectedVectorClient()
-    assert vector_search_client(client) is client
-
-
-def test_unknown_backend_is_rejected(monkeypatch) -> None:
-    monkeypatch.setenv("VECTOR_BACKEND", "unknown")
-    with pytest.raises(ValueError, match="VECTOR_BACKEND"):
-        vector_search_client(_RawChroma())
+    assert vector_search_client(vector_client=expected) is expected
 
 
 class _BotoLike:
@@ -77,16 +39,13 @@ class _BotoLike:
         return {}
 
 
-def test_dynamodb_backend_uses_threaded_client_and_table(
-    monkeypatch,
-) -> None:
+def test_dynamodb_backend_uses_threaded_client_and_table() -> None:
     """E3 review P1-3: a caller-provided table/client must win over the
     environment fallback so sessions never silently cross tables."""
-    monkeypatch.setenv("VECTOR_BACKEND", "dynamodb")
     boto_like = _BotoLike()
 
     client = vector_search_client(
-        None, dynamodb_client=boto_like, table_name="ReceiptsTable-x"
+        dynamodb_client=boto_like, table_name="ReceiptsTable-x"
     )
 
     assert isinstance(client, DynamoVectorSearchClient)
@@ -97,7 +56,6 @@ def test_dynamodb_backend_uses_threaded_client_and_table(
 def test_dynamodb_fallback_warns_and_names_the_table(
     monkeypatch, caplog
 ) -> None:
-    monkeypatch.setenv("VECTOR_BACKEND", "dynamodb")
     fallback = _InjectedVectorClient()
     fallback.table_name = "ReceiptsTable-env"
     monkeypatch.setattr(
@@ -107,6 +65,6 @@ def test_dynamodb_fallback_warns_and_names_the_table(
     )
 
     with caplog.at_level("WARNING", logger="receipt_embeddings.backend"):
-        assert vector_search_client(None) is fallback
+        assert vector_search_client() is fallback
 
     assert "ReceiptsTable-env" in caplog.text

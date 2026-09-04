@@ -272,12 +272,12 @@ class DynamoVectorSearchClient:
     def _join_word_label_metadata(
         self, results: list[ScoredItem]
     ) -> list[ScoredItem]:
-        """Hydrate Chroma-compatible validated-label arrays for words.
+        """Hydrate validated-label arrays for word neighbors.
 
         The word index can filter on aggregate ``label_status`` but its
         immutable projection does not contain the label names used by the
         semantic proposer. Fetch the known core-label rows by exact key and
-        surface the same ``valid_labels_array`` metadata shape as Chroma,
+        surface the ``valid_labels_array`` metadata shape consumers expect,
         plus the full per-row provenance as ``label_rows`` so
         similar_labeled_words reuses this single join instead of
         re-fetching the same keys (E3 review P2-4). Any failed or

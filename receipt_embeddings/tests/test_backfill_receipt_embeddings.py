@@ -8,18 +8,10 @@ from typing import Any
 
 import pytest
 from receipt_dynamo.constants import ValidationStatus
-
-pytest.importorskip(
-    "chromadb",
-    reason="imports the backfill script's chroma source; the CI receipt_embeddings leg is chromadb-free",
-)
-
 from scripts.backfill_receipt_embeddings import (
     EXIT_GLOBAL_WRITE_FAILURE,
     EXIT_VERIFICATION_FAILURE,
-    ChromaVectorSource,
     apply_stored_vectors,
-    build_chroma_source,
     build_requests,
     collect_requests,
     determine_exit_code,
@@ -260,8 +252,8 @@ def test_repair_label_status_reclassifies_existing_word_embeddings(
 
 
 def test_build_requests_computes_fetch_join_anchor_metadata() -> None:
-    """Line requests carry the Chroma-writer-computed normalized anchors
-    for the row's words (Round C fetch-join ruling)."""
+    """Line requests carry the row-metadata normalized anchors for the
+    row's words (Round C fetch-join ruling)."""
     line = Geometry(
         IMAGE_ID,
         1,
@@ -376,67 +368,9 @@ def _line_request(line_id: int, vector: list[float] | None = None):
     )
 
 
-def test_vector_source_auto_prefers_chroma_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    for name in (
-        "CHROMA_CLOUD_API_KEY",
-        "CHROMA_CLOUD_TENANT",
-        "CHROMA_CLOUD_DATABASE",
-    ):
-        monkeypatch.setenv(name, "value")
-    assert resolve_vector_source("auto") == "chroma"
-    monkeypatch.delenv("CHROMA_CLOUD_API_KEY")
+def test_vector_source_auto_resolves_to_openai() -> None:
     assert resolve_vector_source("auto") == "openai"
     assert resolve_vector_source("fixture") == "fixture"
-
-
-def test_chroma_source_refuses_non_dev_database(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("CHROMA_CLOUD_API_KEY", "key")
-    monkeypatch.setenv("CHROMA_CLOUD_TENANT", "tenant")
-    monkeypatch.setenv("CHROMA_CLOUD_DATABASE", "receipt_prod")
-    with pytest.raises(SystemExit, match="only 'receipt_dev'"):
-        build_chroma_source()
-
-
-def test_chroma_source_requires_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    for name in (
-        "CHROMA_CLOUD_API_KEY",
-        "CHROMA_CLOUD_TENANT",
-        "CHROMA_CLOUD_DATABASE",
-    ):
-        monkeypatch.delenv(name, raising=False)
-    with pytest.raises(SystemExit, match="CHROMA_CLOUD_API_KEY"):
-        build_chroma_source()
-
-
-def test_chroma_vector_source_batches_by_collection() -> None:
-    line_key = f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00002"
-    word_key = f"{line_key}#WORD#00003"
-
-    class FakeChroma:
-        def __init__(self) -> None:
-            self.calls: list[tuple[str, list[str]]] = []
-
-        def get(self, collection_name: str, ids: list[str], **_: Any):
-            self.calls.append((collection_name, list(ids)))
-            return {"ids": list(ids), "embeddings": [[0.5] * 3] * len(ids)}
-
-        def close(self) -> None:
-            pass
-
-    fake = FakeChroma()
-    source = ChromaVectorSource(fake)
-    vectors = source.vectors_for([line_key, word_key])
-
-    assert set(vectors) == {line_key, word_key}
-    assert vectors[line_key] == [0.5, 0.5, 0.5]
-    assert ("lines", [line_key]) in fake.calls
-    assert ("words", [word_key]) in fake.calls
 
 
 def test_apply_stored_vectors_skip_reports_missing_vectors() -> None:

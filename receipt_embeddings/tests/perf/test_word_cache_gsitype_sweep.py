@@ -89,7 +89,7 @@ def _seed_table(client: Any) -> int:
             text = "ORGANIC MILK 1GAL"
             milk_expected += 1
         elif residue == 1:
-            # Case-insensitive on purpose (Chroma $contains was not).
+            # Case-insensitive on purpose (the legacy substring scan was not).
             text = "Milk Shake"
             milk_expected += 1
         else:
