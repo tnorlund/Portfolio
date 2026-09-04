@@ -23,10 +23,17 @@ jobs:
   # ============================================================================
   # STAGE 1: All tests run in parallel
   # ============================================================================
+  # Self-hosted jobs share a persistent Mac. Every job below has a
+  # `timeout-minutes` (so a hung job releases the runner) and a final
+  # `if: always()` cleanup that removes the venv / node_modules / build output
+  # it created inside the workspace. Host-level caches (~/Library/Caches/pip,
+  # ~/.npm, ~/Library/Caches/ms-playwright) are intentionally kept warm across
+  # jobs; pruning them when disk runs low is an ops task on the runner host.
 
   lambda-syntax:
     name: Lambda Syntax
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -61,6 +68,10 @@ jobs:
             infra/tests/test_email_receipt_inbox_handler.py \
             infra/tests/test_ats_verification_ingest.py \
             infra/tests/test_ats_verification_mcp.py
+
+      - name: Clean up job workspace
+        if: always()
+        run: rm -rf .venv-email-receipt .pytest_cache
 
   python-tests:
     name: Python (${{ matrix.package }})
@@ -211,9 +222,19 @@ jobs:
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
 
+      - name: Clean up job workspace
+        if: always()
+        run: |
+          rm -rf .venv-${{ matrix.package }}
+          rm -rf ${{ matrix.package }}/coverage.xml ${{ matrix.package }}/.pytest_cache
+    # Job-level key; placed after `steps` so it stays clear of the matrix
+    # header, which other branches edit.
+    timeout-minutes: 30
+
   repository-tests:
     name: Python (repository tests)
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -272,9 +293,14 @@ jobs:
             -n auto --timeout=120 --tb=short --maxfail=5 \
             --reruns 1 --reruns-delay 2
 
+      - name: Clean up job workspace
+        if: always()
+        run: rm -rf .venv-repository-tests .pytest_cache
+
   typescript-tests:
     name: TypeScript
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -297,9 +323,14 @@ jobs:
           path: portfolio/coverage
           retention-days: 1
 
+      - name: Clean up job workspace
+        if: always()
+        run: rm -rf portfolio/node_modules portfolio/coverage
+
   browser-tests:
     name: Browser Tests
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -328,6 +359,10 @@ jobs:
 
           npm ci --prefer-offline
           npm run build
+          # Idempotent: playwright-core skips any browser whose
+          # INSTALLATION_COMPLETE marker already exists under
+          # ~/Library/Caches/ms-playwright, so this only downloads after a
+          # Playwright version bump changes the pinned browser revisions.
           npx playwright install chromium firefox webkit
           npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
 
@@ -338,6 +373,12 @@ jobs:
           name: playwright-report
           path: portfolio/playwright-report/
           retention-days: 7
+
+      - name: Clean up job workspace
+        if: always()
+        run: |
+          rm -rf portfolio/node_modules portfolio/.next portfolio/out
+          rm -rf portfolio/playwright-report portfolio/test-results
 
   # ============================================================================
   # STAGE 2: Deploy (only after ALL tests pass, main branch only)
