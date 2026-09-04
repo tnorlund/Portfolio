@@ -15,7 +15,6 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
 )
 from receipt_dynamo.entities.job import Job, item_to_job
-from receipt_dynamo.entities.job_status import JobStatus, item_to_job_status
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 
@@ -57,8 +56,6 @@ class _Job(FlattenedStandardMixin):
         Gets jobs by name using GSI2.
     get_active_model_job() -> Job | None
         Returns the Job tagged as the active model, or None.
-    get_job_with_status(job_id: str) -> tuple[Job, list[JobStatus]]
-        Gets a job with all its status updates.
     list_jobs(
         limit: int | None = None,
         last_evaluated_key: dict | None = None,
@@ -271,42 +268,6 @@ class _Job(FlattenedStandardMixin):
             filter_expression="#type = :job_type",
             scan_index_forward=False,  # Newest first
         )
-
-    @handle_dynamodb_errors("get_job_with_status")
-    def get_job_with_status(self, job_id: str) -> tuple[Job, list[JobStatus]]:
-        """Get a job with all its status updates
-
-        Args:
-            job_id (str): The ID of the job to get
-
-        Returns:
-            tuple[Job, list[JobStatus]]: A tuple containing the job and a list
-                of its status updates
-        """
-        if job_id is None:
-            raise EntityValidationError("job_id cannot be None")
-
-        # Validate job_id as a UUID
-        assert_valid_uuid(job_id)
-
-        # Get the job first
-        job = self.get_job(job_id)
-
-        # Get the job status updates using base operations
-        statuses, _ = self._query_entities(
-            index_name=None,  # Main table query
-            key_condition_expression="PK = :pk AND begins_with(SK, :sk)",
-            expression_attribute_names=None,
-            expression_attribute_values={
-                ":pk": {"S": f"JOB#{job_id}"},
-                ":sk": {"S": "STATUS#"},
-            },
-            converter_func=item_to_job_status,
-            limit=None,
-            last_evaluated_key=None,
-        )
-
-        return job, statuses
 
     @handle_dynamodb_errors("list_jobs")
     def list_jobs(

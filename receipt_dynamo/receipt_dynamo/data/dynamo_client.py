@@ -9,14 +9,9 @@ from receipt_dynamo.data._compaction_lock import _CompactionLock
 from receipt_dynamo.data._compaction_run import _CompactionRun
 from receipt_dynamo.data._coreml_export_job import _CoreMLExportJob
 from receipt_dynamo.data._image import _Image
-from receipt_dynamo.data._instance import _Instance
 from receipt_dynamo.data._job import _Job
-from receipt_dynamo.data._job_checkpoint import _JobCheckpoint
-from receipt_dynamo.data._job_dependency import _JobDependency
 from receipt_dynamo.data._job_log import _JobLog
 from receipt_dynamo.data._job_metric import _JobMetric
-from receipt_dynamo.data._job_resource import _JobResource
-from receipt_dynamo.data._job_status import _JobStatus
 from receipt_dynamo.data._label_count_cache import _LabelCountCache
 from receipt_dynamo.data._letter import _Letter
 from receipt_dynamo.data._line import _Line
@@ -29,7 +24,6 @@ from receipt_dynamo.data._merchant_truth_gate import _MerchantTruthGate
 from receipt_dynamo.data._ocr_job import _OCRJob
 from receipt_dynamo.data._ocr_routing_decision import _OCRRoutingDecision
 from receipt_dynamo.data._places_cache import _PlacesCache
-from receipt_dynamo.data._queue import _Queue
 from receipt_dynamo.data._receipt import _Receipt
 from receipt_dynamo.data._receipt_barcode import _ReceiptBarcode
 from receipt_dynamo.data._receipt_chatgpt_validation import (
@@ -79,14 +73,8 @@ class DynamoClient(
     _ReceiptWord,
     _ReceiptLetter,
     _Job,
-    _JobStatus,
-    _JobResource,
     _JobMetric,
-    _JobCheckpoint,
     _JobLog,
-    _JobDependency,
-    _Queue,
-    _Instance,
     _PlacesCache,
     _LabelCountCache,
     _ReceiptWordLabel,

@@ -6,6 +6,29 @@
 __version__ = "0.2.0"
 
 # =============================================================================
+# Exception and utility imports (explicit, no star imports)
+# =============================================================================
+from receipt_dynamo.data.shared_exceptions import (
+    BatchOperationError,
+    DynamoCriticalErrorException,
+    DynamoDBAccessError,
+    DynamoDBError,
+    DynamoDBResourceNotFoundError,
+    DynamoDBServerError,
+    DynamoDBThroughputError,
+    DynamoDBValidationError,
+    DynamoRetryableException,
+    EntityAlreadyExistsError,
+    EntityError,
+    EntityNotFoundError,
+    EntityValidationError,
+    OperationError,
+    ReceiptDynamoError,
+    ResilienceError,
+    TransactionError,
+)
+
+# =============================================================================
 # Entity imports (explicit, no star imports)
 # =============================================================================
 
@@ -30,16 +53,10 @@ from receipt_dynamo.entities import (
     ImageIdentifierMixin,
     ImageLineIdentifierMixin,
     ImageWordIdentifierMixin,
-    Instance,
-    InstanceJob,
     Job,
-    JobCheckpoint,
-    JobDependency,
     JobIdentifierMixin,
     JobLog,
     JobMetric,
-    JobResource,
-    JobStatus,
     LabelCountCache,
     Letter,
     Line,
@@ -55,8 +72,6 @@ from receipt_dynamo.entities import (
     OCRRoutingDecision,
     PlacesCache,
     Point,
-    Queue,
-    QueueJob,
     Receipt,
     ReceiptBarcode,
     ReceiptChatGPTValidation,
@@ -87,15 +102,9 @@ from receipt_dynamo.entities import (
     item_to_compaction_run,
     item_to_coreml_export_job,
     item_to_image,
-    item_to_instance,
-    item_to_instance_job,
     item_to_job,
-    item_to_job_checkpoint,
-    item_to_job_dependency,
     item_to_job_log,
     item_to_job_metric,
-    item_to_job_resource,
-    item_to_job_status,
     item_to_label_count_cache,
     item_to_letter,
     item_to_line,
@@ -104,8 +113,6 @@ from receipt_dynamo.entities import (
     item_to_ocr_job,
     item_to_ocr_routing_decision,
     item_to_places_cache,
-    item_to_queue,
-    item_to_queue_job,
     item_to_receipt,
     item_to_receipt_barcode,
     item_to_receipt_chat_gpt_validation,
@@ -124,48 +131,6 @@ from receipt_dynamo.entities import (
     item_to_receipt_word_label,
     item_to_word,
     validate_section_row_coverage,
-)
-
-# =============================================================================
-# Service imports (explicit, no star imports) - requires boto3
-# =============================================================================
-try:
-    from receipt_dynamo.services import (
-        InstanceService,
-        JobService,
-        QueueService,
-    )
-except ModuleNotFoundError:
-    # Fallback placeholders when boto3 is not available
-    class _ServicePlaceholder:  # type: ignore
-        def __init__(self, *_, **__):
-            raise ModuleNotFoundError("boto3 is required for service classes")
-
-    InstanceService = _ServicePlaceholder  # type: ignore
-    JobService = _ServicePlaceholder  # type: ignore
-    QueueService = _ServicePlaceholder  # type: ignore
-
-# =============================================================================
-# Exception and utility imports (explicit, no star imports)
-# =============================================================================
-from receipt_dynamo.data.shared_exceptions import (
-    BatchOperationError,
-    DynamoCriticalErrorException,
-    DynamoDBAccessError,
-    DynamoDBError,
-    DynamoDBResourceNotFoundError,
-    DynamoDBServerError,
-    DynamoDBThroughputError,
-    DynamoDBValidationError,
-    DynamoRetryableException,
-    EntityAlreadyExistsError,
-    EntityError,
-    EntityNotFoundError,
-    EntityValidationError,
-    OperationError,
-    ReceiptDynamoError,
-    ResilienceError,
-    TransactionError,
 )
 from receipt_dynamo.merchant_truth_loader import (
     MerchantTruthArtifact,
@@ -267,15 +232,9 @@ __all__ = [
     "EMBEDDING_DIMENSIONS",
     "Image",
     "ImageDetails",
-    "Instance",
-    "InstanceJob",
     "Job",
-    "JobCheckpoint",
-    "JobDependency",
     "JobLog",
     "JobMetric",
-    "JobResource",
-    "JobStatus",
     "LabelCountCache",
     "Letter",
     "Line",
@@ -289,8 +248,6 @@ __all__ = [
     "OCRJob",
     "OCRRoutingDecision",
     "PlacesCache",
-    "Queue",
-    "QueueJob",
     "Receipt",
     "ReceiptChatGPTValidation",
     "ReceiptDetails",
@@ -317,15 +274,9 @@ __all__ = [
     "item_to_compaction_run",
     "item_to_coreml_export_job",
     "item_to_image",
-    "item_to_instance",
-    "item_to_instance_job",
     "item_to_job",
-    "item_to_job_checkpoint",
-    "item_to_job_dependency",
     "item_to_job_log",
     "item_to_job_metric",
-    "item_to_job_resource",
-    "item_to_job_status",
     "item_to_label_count_cache",
     "item_to_letter",
     "item_to_line",
@@ -334,8 +285,6 @@ __all__ = [
     "item_to_ocr_job",
     "item_to_ocr_routing_decision",
     "item_to_places_cache",
-    "item_to_queue",
-    "item_to_queue_job",
     "item_to_receipt",
     "item_to_receipt_chat_gpt_validation",
     "item_to_receipt_embedding",
@@ -354,10 +303,6 @@ __all__ = [
     "item_to_receipt_word_embedding",
     "item_to_receipt_word_label",
     "item_to_word",
-    # Services
-    "InstanceService",
-    "JobService",
-    "QueueService",
     # Utilities
     "BatchQueue",
     "CircuitBreaker",
