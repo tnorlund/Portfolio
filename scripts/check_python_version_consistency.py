@@ -13,7 +13,7 @@ PYTHON_TARGET = "py313"
 
 SCAN_ROOTS = (
     ".github",
-    ".codex/skills",
+    ".agents/skills",
     "infra",
     "scripts",
     "synthesis_loop",
