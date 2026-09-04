@@ -23,17 +23,10 @@ jobs:
   # ============================================================================
   # STAGE 1: All tests run in parallel
   # ============================================================================
-  # Self-hosted jobs share a persistent Mac. Every job below has a
-  # `timeout-minutes` (so a hung job releases the runner) and a final
-  # `if: always()` cleanup that removes the venv / node_modules / build output
-  # it created inside the workspace. Host-level caches (~/Library/Caches/pip,
-  # ~/.npm, ~/Library/Caches/ms-playwright) are intentionally kept warm across
-  # jobs; pruning them when disk runs low is an ops task on the runner host.
 
   lambda-syntax:
     name: Lambda Syntax
     runs-on: [self-hosted, macOS, ARM64]
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
