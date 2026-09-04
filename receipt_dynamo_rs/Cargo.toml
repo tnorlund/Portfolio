@@ -1,0 +1,48 @@
+[package]
+name = "receipt-dynamo"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+authors = ["Tyler Norlund <tnorlund@icloud.com>"]
+description = "High-performance Rust DynamoDB client and entity layer for receipt data"
+license = "MIT"
+readme = "README.md"
+keywords = ["dynamodb", "receipts", "aws", "ocr"]
+categories = ["database", "api-bindings"]
+repository = "https://github.com/tnorlund/Portfolio"
+
+[lib]
+name = "receipt_dynamo"
+path = "src/lib.rs"
+
+[features]
+default = ["aws"]
+aws = ["dep:aws-config", "dep:aws-sdk-dynamodb"]
+
+[dependencies]
+regex = "1.11"
+rust_decimal = "1.36"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "time", "sync"] }
+aws-config = { version = "1.5", optional = true, features = ["behavior-version-latest"] }
+aws-sdk-dynamodb = { version = "1.65", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tokio = { version = "1.43", features = ["rt-multi-thread", "macros", "time", "sync"] }
+
+[[bench]]
+name = "hot_path"
+harness = false
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+
+[profile.bench]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
