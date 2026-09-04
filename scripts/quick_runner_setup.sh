@@ -86,23 +86,23 @@ done
 
 echo -e "${BLUE}=== Start All Runners (after configuration) ===${NC}"
 echo ""
-echo "Option A: Manual (4 terminal windows):"
+echo "Option A (recommended): LaunchAgents via svc.sh (survive logout/reboot, restart on crash):"
+for i in {1..4}; do
+    echo "cd ${RUNNER_BASE}/actions-runner$([ $i -eq 1 ] && echo "" || echo "-$i") && ./svc.sh install && ./svc.sh start"
+done
+echo "# Check status: ./svc.sh status in each runner directory"
+
+echo ""
+echo "Option B: Manual foreground (4 terminal windows):"
 for i in {1..4}; do
     echo "Terminal $i: cd ${RUNNER_BASE}/actions-runner$([ $i -eq 1 ] && echo "" || echo "-$i") && ./run.sh"
 done
 
 echo ""
-echo "Option B: Background processes:"
-cat << EOF
-# Start all runners in background
-cd ${RUNNER_BASE}/actions-runner && nohup ./run.sh > runner1.log 2>&1 &
-cd ${RUNNER_BASE}/actions-runner-2 && nohup ./run.sh > runner2.log 2>&1 &
-cd ${RUNNER_BASE}/actions-runner-3 && nohup ./run.sh > runner3.log 2>&1 &
-cd ${RUNNER_BASE}/actions-runner-4 && nohup ./run.sh > runner4.log 2>&1 &
-
-# Check status
-ps aux | grep "Runner.Listener" | grep -v grep
-EOF
+echo -e "${YELLOW}MacBook hosts: keep the machine awake or jobs die mid-run with"
+echo -e "'The self-hosted runner lost communication with the server'.${NC}"
+echo "  Either disable sleep on AC power:  sudo pmset -c sleep 0 disksleep 0"
+echo "  or keep a caffeinate session running: caffeinate -dims &"
 
 echo ""
 echo -e "${GREEN}Expected Performance Gains:${NC}"
