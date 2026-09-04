@@ -189,7 +189,14 @@ def load_corpus(client):
 
 
 def receipt_key(row) -> str:
-    return f"{row['image_id']}#{row['receipt_id']}"
+    """Format a key exactly as ``_load_fixed_val_keys`` expects.
+
+    The receipt id is zero-padded to five digits. This is load-bearing: the
+    loader intersects these strings against the receipts it built, so an
+    unpadded ``<uuid>#2`` matches nothing, holds out nothing, and yields a
+    validation score computed on an empty split -- silently.
+    """
+    return f"{row['image_id']}#{int(row['receipt_id']):05d}"
 
 
 def hash_keys(keys) -> str:
@@ -214,10 +221,16 @@ def template_split(corpus, holdout_brands):
 def write_split(out_dir: Path, name: str, keys, meta) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / name
-    payload = dict(meta)
-    payload["val_receipt_keys"] = sorted(keys)
-    payload["num_val_receipts"] = len(keys)
-    payload["val_receipts_hash"] = hash_keys(keys)
+    # Shape matches the existing pinned splits: keys at the top level,
+    # everything else under "metadata".
+    payload = {
+        "val_receipt_keys": sorted(keys),
+        "metadata": {
+            **meta,
+            "num_val_receipts": len(keys),
+            "val_receipts_hash": hash_keys(keys),
+        },
+    }
     path.write_text(json.dumps(payload, indent=2))
     return path
 

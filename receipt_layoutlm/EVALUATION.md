@@ -27,8 +27,15 @@ s3://layoutlm-training-dev-68164770/config/val_keys_template_20260904.json
 
 | Split | Receipts | Hash | Measures |
 |---|---|---|---|
-| `random` | 163 (18.0%) | `4d2a0a60b6ba85e5` | in-distribution accuracy; 56 brands appear on both sides |
-| `template` | 161 (17.8%) | `fad772f0d6946525` | generalization to unseen layouts; 0 brands shared |
+| `random` | 163 (18.0%) | `f0e1869f381db30f` | in-distribution accuracy; 56 brands appear on both sides |
+| `template` | 161 (17.8%) | `3c5340424a43b75a` | generalization to unseen layouts; 0 brands shared |
+
+Keys are `"<image_id>#<receipt_id:05d>"` — zero-padded. `_load_fixed_val_keys`
+intersects these strings against the receipts it built, so an unpadded
+`<uuid>#2` matches nothing, holds out nothing, and reports a validation score
+computed on an empty split without erroring. Verify a new split resolves before
+launching: both files above match 100% of their keys against receipts carrying
+active labels.
 
 Run both. The gap between them *is* the memorization measurement — a model that
 scores well on `random` and poorly on `template` has learned merchant templates,
