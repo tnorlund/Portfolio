@@ -58,7 +58,7 @@ export const PY_ENV = {
     path.join(WORKTREE, "receipt_agent"),
     path.join(WORKTREE, "receipt_dynamo"),
     path.join(WORKTREE, "receipt_upload"),
-    path.join(WORKTREE, "receipt_chroma"),
+    path.join(WORKTREE, "receipt_embeddings"),
     path.join(WORKTREE, "receipt_places"),
     path.join(WORKTREE, "receipt_dynamo_stream"),
     path.join(WORKTREE, "receipt_label"),

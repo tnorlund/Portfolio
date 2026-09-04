@@ -58,7 +58,9 @@ def setup_environment(env: str) -> dict:
 
     # Set infrastructure config
     if "dynamodb_table_name" in config:
-        os.environ["RECEIPT_AGENT_DYNAMO_TABLE_NAME"] = config["dynamodb_table_name"]
+        os.environ["RECEIPT_AGENT_DYNAMO_TABLE_NAME"] = config[
+            "dynamodb_table_name"
+        ]
         os.environ["RECEIPT_PLACES_TABLE_NAME"] = config["dynamodb_table_name"]
 
     # Set AWS region
@@ -70,6 +72,7 @@ def setup_environment(env: str) -> dict:
 
     return config
 
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -79,33 +82,33 @@ logger = logging.getLogger(__name__)
 
 # Known missing places in prod (as of 2025-12-29)
 MISSING_PLACES = [
-    ('13da1048-3888-429f-b2aa-b3e15341da5e', 1),
-    ('1905dba2-c408-48e9-aa4d-f47fec0a3835', 1),
-    ('23e1b623-e3fa-4102-84ca-4b5b3862e6ed', 2),
-    ('53e716ed-49bf-4562-90e7-fc8c860cb985', 1),
-    ('53e716ed-49bf-4562-90e7-fc8c860cb985', 2),
-    ('6bfbbd7b-40af-4cb7-89c5-095796f9d1a5', 2),
-    ('783f5ca8-dec8-4d72-bfc2-5196573942bb', 1),
-    ('783f5ca8-dec8-4d72-bfc2-5196573942bb', 2),
-    ('866ae94f-6274-4f02-a4ab-42eec72381fb', 1),
-    ('866ae94f-6274-4f02-a4ab-42eec72381fb', 2),
-    ('910efdda-b8f9-42e4-9666-ce76cf8371bf', 1),
-    ('95ae3b59-238c-4725-a2b0-d428d09bb82a', 1),
-    ('9efaf9b1-b39d-49c6-93f2-bc58e52387b0', 1),
-    ('a1dacbc8-ab6a-40af-8146-b15d44a7aa81', 1),
-    ('a63a6c84-d399-452f-9e56-08ff664c8f35', 1),
-    ('abaec508-6730-4d75-9d48-76492a26a168', 1),
-    ('b4791435-f9a7-4fb3-ac5f-35f8c933e3fe', 2),
-    ('b4791435-f9a7-4fb3-ac5f-35f8c933e3fe', 3),
-    ('baf2e4e5-fd03-4301-8f99-4a92b03ba40e', 1),
-    ('baf2e4e5-fd03-4301-8f99-4a92b03ba40e', 2),
-    ('c0900230-2907-4093-9bf7-29ca3cdf397a', 1),
-    ('cb22100f-44c2-4b7d-b29f-46627a64355a', 2),
-    ('cb22100f-44c2-4b7d-b29f-46627a64355a', 3),
-    ('dea7bb6f-ea6d-4ae8-a365-02c79b00970f', 1),
-    ('dea7bb6f-ea6d-4ae8-a365-02c79b00970f', 3),
-    ('e26d6ebe-ace2-45e2-9a3c-830fb947f4c7', 1),
-    ('e26d6ebe-ace2-45e2-9a3c-830fb947f4c7', 2),
+    ("13da1048-3888-429f-b2aa-b3e15341da5e", 1),
+    ("1905dba2-c408-48e9-aa4d-f47fec0a3835", 1),
+    ("23e1b623-e3fa-4102-84ca-4b5b3862e6ed", 2),
+    ("53e716ed-49bf-4562-90e7-fc8c860cb985", 1),
+    ("53e716ed-49bf-4562-90e7-fc8c860cb985", 2),
+    ("6bfbbd7b-40af-4cb7-89c5-095796f9d1a5", 2),
+    ("783f5ca8-dec8-4d72-bfc2-5196573942bb", 1),
+    ("783f5ca8-dec8-4d72-bfc2-5196573942bb", 2),
+    ("866ae94f-6274-4f02-a4ab-42eec72381fb", 1),
+    ("866ae94f-6274-4f02-a4ab-42eec72381fb", 2),
+    ("910efdda-b8f9-42e4-9666-ce76cf8371bf", 1),
+    ("95ae3b59-238c-4725-a2b0-d428d09bb82a", 1),
+    ("9efaf9b1-b39d-49c6-93f2-bc58e52387b0", 1),
+    ("a1dacbc8-ab6a-40af-8146-b15d44a7aa81", 1),
+    ("a63a6c84-d399-452f-9e56-08ff664c8f35", 1),
+    ("abaec508-6730-4d75-9d48-76492a26a168", 1),
+    ("b4791435-f9a7-4fb3-ac5f-35f8c933e3fe", 2),
+    ("b4791435-f9a7-4fb3-ac5f-35f8c933e3fe", 3),
+    ("baf2e4e5-fd03-4301-8f99-4a92b03ba40e", 1),
+    ("baf2e4e5-fd03-4301-8f99-4a92b03ba40e", 2),
+    ("c0900230-2907-4093-9bf7-29ca3cdf397a", 1),
+    ("cb22100f-44c2-4b7d-b29f-46627a64355a", 2),
+    ("cb22100f-44c2-4b7d-b29f-46627a64355a", 3),
+    ("dea7bb6f-ea6d-4ae8-a365-02c79b00970f", 1),
+    ("dea7bb6f-ea6d-4ae8-a365-02c79b00970f", 3),
+    ("e26d6ebe-ace2-45e2-9a3c-830fb947f4c7", 1),
+    ("e26d6ebe-ace2-45e2-9a3c-830fb947f4c7", 2),
 ]
 
 
@@ -120,9 +123,13 @@ async def run_place_finder_for_receipt(
     # Check if place already exists
     if skip_existing:
         try:
-            existing_place = dynamo_client.get_receipt_place(image_id, receipt_id)
+            existing_place = dynamo_client.get_receipt_place(
+                image_id, receipt_id
+            )
             if existing_place and existing_place.merchant_name:
-                logger.info(f"Skipping {image_id}#{receipt_id} - place already exists: {existing_place.merchant_name}")
+                logger.info(
+                    f"Skipping {image_id}#{receipt_id} - place already exists: {existing_place.merchant_name}"
+                )
                 return {
                     "found": True,
                     "skipped": True,
@@ -138,10 +145,7 @@ async def run_place_finder_for_receipt(
             )
             # No existing place (or check failed), continue processing
 
-    from receipt_agent.clients.factory import (
-        create_embed_fn,
-        create_places_client,
-    )
+    from receipt_agent.clients.factory import create_places_client
     from receipt_agent.config.settings import get_settings
     from receipt_agent.subagents.place_finder.graph import (
         create_receipt_place_finder_graph,
@@ -163,7 +167,9 @@ async def run_place_finder_for_receipt(
 
     # Skip empty receipts
     if len(receipt_details.lines) == 0 and len(receipt_details.words) == 0:
-        logger.warning(f"Skipping {image_id}#{receipt_id} - empty receipt (0 lines, 0 words)")
+        logger.warning(
+            f"Skipping {image_id}#{receipt_id} - empty receipt (0 lines, 0 words)"
+        )
         return {
             "found": False,
             "empty": True,
@@ -173,24 +179,21 @@ async def run_place_finder_for_receipt(
     # Show first few lines for context
     logger.info("  First 5 lines:")
     for line in receipt_details.lines[:5]:
-        logger.info(f"    {line.line_id}: {line.text[:60]}..." if len(line.text) > 60 else f"    {line.line_id}: {line.text}")
+        logger.info(
+            f"    {line.line_id}: {line.text[:60]}..."
+            if len(line.text) > 60
+            else f"    {line.line_id}: {line.text}"
+        )
 
     # Create clients
     logger.info("Creating Places API client...")
     places_client = create_places_client(settings=settings)
 
-    logger.info("Creating embedding function...")
-    embed_fn = create_embed_fn(settings=settings)
-
-    # Create the place finder graph (without ChromaDB for local testing)
     logger.info("Creating place finder graph...")
     graph, state_holder = create_receipt_place_finder_graph(
         dynamo_client=dynamo_client,
-        chroma_client=None,  # Will use chromadb_bucket for lazy loading
-        embed_fn=embed_fn,
         places_api=places_client,
         settings=settings,
-        chromadb_bucket=None,  # No ChromaDB for local testing
     )
 
     # Run the place finder
@@ -220,36 +223,36 @@ async def run_place_finder_for_receipt(
     logger.info("=" * 60)
 
     # Save to DynamoDB if not dry run
-    if not dry_run and result.get('found') and result.get('merchant_name'):
-        merchant_name = result.get('merchant_name', '').strip()
+    if not dry_run and result.get("found") and result.get("merchant_name"):
+        merchant_name = result.get("merchant_name", "").strip()
         if merchant_name:
             matched_fields = []
-            if result.get('merchant_name'):
-                matched_fields.append('name')
-            if result.get('address'):
-                matched_fields.append('address')
-            if result.get('phone_number'):
-                matched_fields.append('phone')
-            if result.get('place_id'):
-                matched_fields.append('place_id')
+            if result.get("merchant_name"):
+                matched_fields.append("name")
+            if result.get("address"):
+                matched_fields.append("address")
+            if result.get("phone_number"):
+                matched_fields.append("phone")
+            if result.get("place_id"):
+                matched_fields.append("place_id")
 
             place_entity = ReceiptPlace(
                 image_id=image_id,
                 receipt_id=receipt_id,
-                place_id=result.get('place_id') or '',
+                place_id=result.get("place_id") or "",
                 merchant_name=merchant_name,
                 matched_fields=matched_fields,
                 timestamp=datetime.now(timezone.utc),
-                merchant_category='',
-                formatted_address=result.get('address') or '',
-                phone_number=result.get('phone_number') or '',
-                validated_by='INFERENCE',
+                merchant_category="",
+                formatted_address=result.get("address") or "",
+                phone_number=result.get("phone_number") or "",
+                validated_by="INFERENCE",
                 validation_status=(
                     MerchantValidationStatus.MATCHED.value
-                    if result.get('place_id')
+                    if result.get("place_id")
                     else MerchantValidationStatus.UNSURE.value
                 ),
-                reasoning=result.get('reasoning') or '',
+                reasoning=result.get("reasoning") or "",
             )
 
             logger.info(f"Saving place to DynamoDB...")
@@ -272,18 +275,20 @@ async def run_all_missing(
 ) -> dict:
     """Run place finder for all missing places."""
     results: dict[str, list[tuple[str, int, Any]]] = {
-        'skipped': [],
-        'empty': [],
-        'success': [],
-        'failed': [],
-        'errors': [],
+        "skipped": [],
+        "empty": [],
+        "success": [],
+        "failed": [],
+        "errors": [],
     }
 
     receipts_to_process = MISSING_PLACES[:limit] if limit else MISSING_PLACES
 
     for i, (image_id, receipt_id) in enumerate(receipts_to_process):
         logger.info(f"\n{'='*60}")
-        logger.info(f"Processing {i+1}/{len(receipts_to_process)}: {image_id}#{receipt_id}")
+        logger.info(
+            f"Processing {i+1}/{len(receipts_to_process)}: {image_id}#{receipt_id}"
+        )
         logger.info(f"{'='*60}")
 
         try:
@@ -294,18 +299,18 @@ async def run_all_missing(
                 dry_run=dry_run,
             )
 
-            if result.get('skipped'):
-                results['skipped'].append((image_id, receipt_id, result))
-            elif result.get('empty'):
-                results['empty'].append((image_id, receipt_id, result))
-            elif result.get('found') and result.get('merchant_name'):
-                results['success'].append((image_id, receipt_id, result))
+            if result.get("skipped"):
+                results["skipped"].append((image_id, receipt_id, result))
+            elif result.get("empty"):
+                results["empty"].append((image_id, receipt_id, result))
+            elif result.get("found") and result.get("merchant_name"):
+                results["success"].append((image_id, receipt_id, result))
             else:
-                results['failed'].append((image_id, receipt_id, result))
+                results["failed"].append((image_id, receipt_id, result))
 
         except Exception as e:
             logger.exception(f"Error processing {image_id}#{receipt_id}")
-            results['errors'].append((image_id, receipt_id, str(e)))
+            results["errors"].append((image_id, receipt_id, str(e)))
 
     # Summary
     logger.info("\n" + "=" * 60)
@@ -317,24 +322,28 @@ async def run_all_missing(
     logger.info(f"Failed: {len(results['failed'])}")
     logger.info(f"Errors: {len(results['errors'])}")
 
-    if results['skipped']:
+    if results["skipped"]:
         logger.info("\nSkipped receipts (already have places):")
-        for image_id, receipt_id, result in results['skipped']:
-            logger.info(f"  {image_id}#{receipt_id}: {result.get('merchant_name')}")
+        for image_id, receipt_id, result in results["skipped"]:
+            logger.info(
+                f"  {image_id}#{receipt_id}: {result.get('merchant_name')}"
+            )
 
-    if results['empty']:
+    if results["empty"]:
         logger.info("\nEmpty receipts (no lines/words):")
-        for image_id, receipt_id, result in results['empty']:
+        for image_id, receipt_id, result in results["empty"]:
             logger.info(f"  {image_id}#{receipt_id}")
 
-    if results['failed']:
+    if results["failed"]:
         logger.info("\nFailed receipts:")
-        for image_id, receipt_id, result in results['failed']:
-            logger.info(f"  {image_id}#{receipt_id}: {result.get('reasoning', 'Unknown')[:50]}")
+        for image_id, receipt_id, result in results["failed"]:
+            logger.info(
+                f"  {image_id}#{receipt_id}: {result.get('reasoning', 'Unknown')[:50]}"
+            )
 
-    if results['errors']:
+    if results["errors"]:
         logger.info("\nError receipts:")
-        for image_id, receipt_id, error in results['errors']:
+        for image_id, receipt_id, error in results["errors"]:
             logger.info(f"  {image_id}#{receipt_id}: {error[:50]}")
 
     return results
@@ -384,7 +393,8 @@ def main():
         help="Actually save places to DynamoDB",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Verbose logging",
     )
@@ -400,7 +410,9 @@ def main():
     if args.receipt_id and not args.image_id:
         parser.error("--receipt-id requires --image-id")
     if not args.image_id and not args.all_missing:
-        parser.error("Must specify either --image-id/--receipt-id or --all-missing")
+        parser.error(
+            "Must specify either --image-id/--receipt-id or --all-missing"
+        )
 
     mode = "DRY RUN" if args.dry_run else "LIVE"
     logger.info(f"Mode: {mode}")
@@ -414,18 +426,22 @@ def main():
     dynamo = DynamoClient(config["dynamodb_table_name"])
 
     if args.all_missing:
-        asyncio.run(run_all_missing(
-            dynamo_client=dynamo,
-            dry_run=args.dry_run,
-            limit=args.limit,
-        ))
+        asyncio.run(
+            run_all_missing(
+                dynamo_client=dynamo,
+                dry_run=args.dry_run,
+                limit=args.limit,
+            )
+        )
     else:
-        asyncio.run(run_place_finder_for_receipt(
-            dynamo_client=dynamo,
-            image_id=args.image_id,
-            receipt_id=args.receipt_id,
-            dry_run=args.dry_run,
-        ))
+        asyncio.run(
+            run_place_finder_for_receipt(
+                dynamo_client=dynamo,
+                image_id=args.image_id,
+                receipt_id=args.receipt_id,
+                dry_run=args.dry_run,
+            )
+        )
 
 
 if __name__ == "__main__":

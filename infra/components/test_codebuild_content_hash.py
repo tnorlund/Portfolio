@@ -101,7 +101,7 @@ def test_extra_strings_none_is_noop():
 
 
 def test_only_explicit_source_packages_affect_hash(tmp_path, monkeypatch):
-    """An unlisted receipt_chroma edit must not rebuild another image."""
+    """An unlisted package edit must not rebuild another image."""
     _make_project(tmp_path)
     monkeypatch.setattr(cdi, "PROJECT_DIR", str(tmp_path))
 
@@ -111,9 +111,9 @@ def test_only_explicit_source_packages_affect_hash(tmp_path, monkeypatch):
     (tmp_path / "receipt_dynamo" / "pyproject.toml").write_text(
         "[project]\nname='receipt-dynamo'\nversion='0.1.0'\n"
     )
-    chroma = tmp_path / "receipt_chroma" / "receipt_chroma"
-    chroma.mkdir(parents=True)
-    (chroma / "client.py").write_text("VALUE = 1\n")
+    other = tmp_path / "receipt_other" / "receipt_other"
+    other.mkdir(parents=True)
+    (other / "client.py").write_text("VALUE = 1\n")
 
     handler_dir = tmp_path / "infra" / "handler"
     handler_dir.mkdir(parents=True)
@@ -124,7 +124,7 @@ def test_only_explicit_source_packages_affect_hash(tmp_path, monkeypatch):
     )
     baseline = inst._calculate_content_hash()
 
-    (chroma / "client.py").write_text("VALUE = 2\n")
+    (other / "client.py").write_text("VALUE = 2\n")
     assert inst._calculate_content_hash() == baseline
 
     (dynamo / "client.py").write_text("VALUE = 2\n")
@@ -143,7 +143,7 @@ def test_upload_context_includes_only_explicit_packages(tmp_path, monkeypatch):
 
     assert 'PACKAGES_TO_INCLUDE="receipt_dynamo"' in script
     assert "--include='receipt_dynamo/'" in script
-    assert "receipt_chroma" not in script
+    assert "receipt_other" not in script
 
 
 if __name__ == "__main__":

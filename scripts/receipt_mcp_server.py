@@ -16,17 +16,10 @@ Environment:
     Requires Pulumi config for DynamoDB credentials.
     Set PORTFOLIO_ENV=dev or PORTFOLIO_ENV=prod
 
-    Chroma Cloud credentials are OPTIONAL: without them the server still
-    starts and serves every Dynamo-backed tool; only the vector-search
-    tools (search_receipts, list_all_receipts, search_product_lines,
-    validate_word_similarity) return a structured error at call time.
-    CHROMA_CLOUD_ENABLED / CHROMA_CLOUD_API_KEY / CHROMA_CLOUD_TENANT /
-    CHROMA_CLOUD_DATABASE environment variables override Pulumi config
-    (e.g. CHROMA_CLOUD_ENABLED=false runs Dynamo-only).
-
-    VECTOR_BACKEND=dynamodb serves the SEMANTIC search modes and
-    similar_labeled_words from the DynamoDB vector indexes instead of
-    Chroma; text/substring modes still require Chroma.
+    The semantic search tools (search_receipts, search_product_lines)
+    embed the query with OpenAI and retrieve through the receipt table's
+    DynamoDB vector indexes; every other tool is served from DynamoDB /
+    Lambda / Athena directly.
 """
 
 import asyncio
@@ -47,7 +40,6 @@ sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_upload"))
-sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_embeddings"))
 
 from mcp.server import Server
@@ -70,38 +62,22 @@ logger = logging.getLogger(__name__)
 
 # Global clients (initialized lazily on first use)
 _dynamo_client = None
-_chroma_client = None
 _embed_fn = None
 _config = None
 
-# Tools that require Chroma Cloud (vector/embedding search). Every other
-# tool is served from DynamoDB / Lambda / Athena and must keep working
-# when Chroma Cloud is not configured.
-CHROMA_TOOLS = frozenset(
-    {
-        "search_receipts",
-        "list_all_receipts",
-        "search_product_lines",
-        "validate_word_similarity",
-    }
-)
-
-CHROMA_NOT_CONFIGURED_MESSAGE = (
-    "Chroma Cloud not configured: set CHROMA_CLOUD_ENABLED=true and "
-    "CHROMA_CLOUD_API_KEY (plus CHROMA_CLOUD_TENANT / "
-    "CHROMA_CLOUD_DATABASE) in Pulumi config or the environment to "
-    "enable semantic search."
-)
+# Tools that embed the query (OpenAI) before searching the DynamoDB vector
+# indexes. Every other tool is served from DynamoDB / Lambda / Athena.
+VECTOR_TOOLS = frozenset({"search_receipts", "search_product_lines"})
 
 
-def _chroma_mode_unavailable(search_type: str, query: str) -> dict:
-    """Structured result for retired Chroma-only search modes."""
+def _mode_unavailable(search_type: str, query: str) -> dict:
+    """Structured result for retired substring/label search modes."""
     return {
         "search_type": search_type,
         "query": query,
         "error": (
-            f"search_type '{search_type}' is unavailable on the "
-            "dynamodb backend (Chroma retired); use 'semantic' or the "
+            f"search_type '{search_type}' is not supported by the "
+            "DynamoDB vector indexes; use 'semantic' or the "
             "DynamoDB-backed tools instead"
         ),
         "total_matches": 0,
@@ -109,49 +85,32 @@ def _chroma_mode_unavailable(search_type: str, query: str) -> dict:
     }
 
 
-class ChromaNotConfiguredError(RuntimeError):
-    """Raised when a Chroma-backed tool is called without Chroma Cloud creds."""
-
-
 _vector_search_client = None
 
 
-def _vector_backend() -> str:
-    return os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
-
-
-def get_vector_search_client(chroma_client=None):
+def get_vector_search_client():
     """Resolve the similarity backend for SEMANTIC retrieval.
 
-    Default (VECTOR_BACKEND unset or "chroma"): wrap the provided — or
-    lazily created — Chroma client, preserving today's behavior.
-    VECTOR_BACKEND=dynamodb: SearchVectors on the receipt table's vector
-    indexes; Chroma credentials are then unnecessary for semantic modes.
+    SearchVectors on the receipt table's vector indexes. The session's
+    configured table (and its low-level boto3 client) is threaded
+    through, so semantic search targets the SAME table as every other
+    tool instead of backend.py's environment fallback (E3 review P1-3).
     """
     global _vector_search_client
 
     from receipt_embeddings.backend import vector_search_client
 
-    if _vector_backend() == "dynamodb":
-        if _vector_search_client is None:
-            # Thread this session's configured table (and its low-level
-            # boto3 client) through, so semantic search targets the SAME
-            # table as every other tool instead of backend.py's
-            # environment fallback (E3 review P1-3).
-            dynamo_client = get_dynamo_client()
-            _vector_search_client = vector_search_client(
-                None,
-                dynamodb_client=getattr(dynamo_client, "_client", None),
-                table_name=getattr(dynamo_client, "table_name", None),
-            )
-        return _vector_search_client
-    if chroma_client is None:
-        chroma_client, _ = get_chroma_clients()
-    return vector_search_client(chroma_client)
+    if _vector_search_client is None:
+        dynamo_client = get_dynamo_client()
+        _vector_search_client = vector_search_client(
+            dynamodb_client=getattr(dynamo_client, "_client", None),
+            table_name=getattr(dynamo_client, "table_name", None),
+        )
+    return _vector_search_client
 
 
 def _load_config():
-    """Load and cache Pulumi config + secrets (env vars override Chroma keys)."""
+    """Load and cache Pulumi config + secrets."""
     global _config
 
     if _config is None:
@@ -170,18 +129,6 @@ def _load_config():
             )
             config[normalized_key] = value
 
-        # Environment variables override Pulumi config for the Chroma keys,
-        # so the server can run Dynamo-only (CHROMA_CLOUD_ENABLED=false) or
-        # be pointed at Chroma without Pulumi.
-        for env_key in (
-            "CHROMA_CLOUD_ENABLED",
-            "CHROMA_CLOUD_API_KEY",
-            "CHROMA_CLOUD_TENANT",
-            "CHROMA_CLOUD_DATABASE",
-        ):
-            if os.environ.get(env_key) is not None:
-                config[env_key.lower()] = os.environ[env_key]
-
         # Set up API keys
         if config.get("openai_api_key"):
             os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config[
@@ -193,16 +140,8 @@ def _load_config():
     return _config
 
 
-def chroma_is_configured(config) -> bool:
-    """True when Chroma Cloud is enabled and an API key is present."""
-    enabled = (
-        str(config.get("chroma_cloud_enabled", "false")).lower() == "true"
-    )
-    return enabled and bool(config.get("chroma_cloud_api_key"))
-
-
 def get_dynamo_client():
-    """Get or initialize the DynamoDB client (no Chroma required)."""
+    """Get or initialize the DynamoDB client."""
     global _dynamo_client
 
     if _dynamo_client is None:
@@ -217,44 +156,22 @@ def get_dynamo_client():
     return _dynamo_client
 
 
-def get_chroma_clients():
-    """Get or initialize the Chroma Cloud client and embedding function.
+def get_embed_fn():
+    """Get or initialize the OpenAI embedding function.
 
-    Raises ChromaNotConfiguredError when Chroma Cloud credentials are
-    absent, so Chroma-backed tools fail cleanly at call time instead of
-    the server crashing at startup.
+    Only the VECTOR_TOOLS need it; it is built lazily so every other tool
+    works without an OpenAI key.
     """
-    global _chroma_client, _embed_fn
+    global _embed_fn
 
-    if _chroma_client is None:
+    if _embed_fn is None:
         from receipt_agent.clients.factory import create_embed_fn
-        from receipt_chroma import ChromaClient
 
-        config = _load_config()
-        if not chroma_is_configured(config):
-            raise ChromaNotConfiguredError(CHROMA_NOT_CONFIGURED_MESSAGE)
-
-        _chroma_client = ChromaClient(
-            cloud_api_key=config.get("chroma_cloud_api_key"),
-            cloud_tenant=config.get("chroma_cloud_tenant"),
-            cloud_database=config.get("chroma_cloud_database"),
-            mode="read",
-        )
+        _load_config()
         _embed_fn = create_embed_fn()
-        logger.info("Chroma clients initialized")
+        logger.info("Embedding function initialized")
 
-    return _chroma_client, _embed_fn
-
-
-def get_clients():
-    """Get or initialize all database clients (requires Chroma Cloud).
-
-    Backwards-compatible wrapper; prefer get_dynamo_client() /
-    get_chroma_clients() so Dynamo-only tools work without Chroma creds.
-    """
-    dynamo_client = get_dynamo_client()
-    chroma_client, embed_fn = get_chroma_clients()
-    return dynamo_client, chroma_client, embed_fn
+    return _embed_fn
 
 
 # Create MCP server
@@ -426,30 +343,26 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="search_receipts",
-            description="""Search for receipts by text content, label type, or semantic similarity.
-
-Use search_type:
-- "text": Exact text match (e.g., query="COFFEE", "MILK", "COSTCO")
-- "label": Search by label type (e.g., query="TAX", "GRAND_TOTAL", "MERCHANT_NAME")
-- "semantic": Meaning-based similarity (e.g., query="coffee purchases", "dairy products")
+            description="""Search for receipts by semantic similarity over their line text.
 
 Examples:
-- search_receipts("COFFEE", "text") - find receipts mentioning coffee
-- search_receipts("COSTCO", "text") - find Costco receipts
-- search_receipts("GRAND_TOTAL", "label") - find receipts with totals
-- search_receipts("breakfast items", "semantic") - semantic search""",
+- search_receipts("coffee purchases") - receipts with coffee-like lines
+- search_receipts("breakfast items") - semantic search
+
+For exact merchant lookups use list_merchants / get_receipts_by_merchant;
+for label-driven questions use list_words_by_label.""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search term - product name, label type, or natural language",
+                        "description": "Natural-language description of the receipts to find",
                     },
                     "search_type": {
                         "type": "string",
-                        "enum": ["text", "label", "semantic"],
-                        "default": "text",
-                        "description": "Search method",
+                        "enum": ["semantic"],
+                        "default": "semantic",
+                        "description": "Search method (semantic only)",
                     },
                     "limit": {
                         "type": "integer",
@@ -498,22 +411,6 @@ Labels mean:
             },
         ),
         Tool(
-            name="list_all_receipts",
-            description="""List all receipts in the database with their merchant names and totals.
-
-Use this to get an overview of what receipts are available.""",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "limit": {
-                        "type": "integer",
-                        "default": 50,
-                        "description": "Maximum receipts to return",
-                    }
-                },
-            },
-        ),
-        Tool(
             name="list_merchants",
             description="""List all merchants with receipt counts.
 
@@ -554,23 +451,21 @@ Returns compact format: {"merchant": "...", "count": 191, "receipts": [[image_id
             name="search_product_lines",
             description="""Search for product lines and return prices for spending analysis.
 
-Use search_type:
-- "text": Exact text match (e.g., query="MILK", "COFFEE") - fast but requires exact words
-- "semantic": Meaning-based similarity (e.g., query="snack foods", "cleaning supplies") - finds conceptually similar items
+Meaning-based similarity (e.g., query="snack foods", "cleaning supplies")
+finds conceptually similar items.
 
 Use this to answer spending questions like "how much did I spend on X?"
 
 Returns lines with:
 - text: The full line text (e.g., "RAW WHOLE MILK 17.99")
 - price: The price if found (regex extracted)
-- similarity: Match score (semantic only)
+- similarity: Match score
 - merchant: Store name
 - image_id/receipt_id: For drilling into specific receipts
 
 Examples:
-  search_product_lines("MILK", "text") -> exact matches for MILK
-  search_product_lines("dairy products", "semantic") -> milk, cheese, yogurt, etc.
-  search_product_lines("cleaning supplies", "semantic") -> soap, detergent, wipes, etc.
+  search_product_lines("dairy products") -> milk, cheese, yogurt, etc.
+  search_product_lines("cleaning supplies") -> soap, detergent, wipes, etc.
 
 The LLM should filter false positives before summing prices.""",
             inputSchema={
@@ -582,9 +477,9 @@ The LLM should filter false positives before summing prices.""",
                     },
                     "search_type": {
                         "type": "string",
-                        "enum": ["text", "semantic"],
-                        "default": "text",
-                        "description": "Search method: 'text' for exact match, 'semantic' for meaning-based",
+                        "enum": ["semantic"],
+                        "default": "semantic",
+                        "description": "Search method (semantic only)",
                     },
                     "limit": {
                         "type": "integer",
@@ -842,7 +737,7 @@ NONE, PENDING, VALID, INVALID, NEEDS_REVIEW.
 The label_proposed_by field is set to "mcp-claude-review" for audit trail.
 
 Use this AFTER reviewing a word with get_receipt (for context) and
-validate_word_similarity (for Chroma evidence). Only update when you are
+similar_labeled_words (for similarity evidence). Only update when you are
 confident in the decision.
 
 WARNING: This WRITES to DynamoDB. Double-check the word context before calling.""",
@@ -1611,10 +1506,9 @@ Choosing the right tool:
 - merge_receipts: combine TWO fragments that are halves of the SAME receipt.
 - delete_image: remove the whole image and every receipt on it.
 
-How it works: deletes the Receipt entity from DynamoDB. The enhanced compactor
-then automatically removes the ChromaDB embeddings and all child records
-(ReceiptLine, ReceiptWord, ReceiptLetter, ReceiptWordLabel, ReceiptPlace) via
-DynamoDB streams.
+How it works: deletes the Receipt entity from DynamoDB. Child records
+(ReceiptLine, ReceiptWord, ReceiptLetter, ReceiptWordLabel, ReceiptPlace) and
+embedding items are not cascaded by this tool.
 
 Returns the receipt's merchant and a breakdown of child-record counts. By
 default runs in dry-run mode — set dry_run=false to actually delete.
@@ -2311,27 +2205,13 @@ async def call_tool(
     """Handle tool calls."""
     try:
         dynamo_client = get_dynamo_client()
-        if name in CHROMA_TOOLS:
-            if _vector_backend() == "dynamodb":
-                # Chroma teardown: never construct a Chroma client on the
-                # dynamodb backend. Semantic modes retrieve through the
-                # DynamoDB vector indexes; the retired Chroma-only modes
-                # answer with a structured "unavailable" result inside
-                # their impls (chroma_client is None there).
-                from receipt_agent.clients.factory import create_embed_fn
-
-                chroma_client, embed_fn = None, create_embed_fn()
-            else:
-                chroma_client, embed_fn = get_chroma_clients()
-        else:
-            chroma_client = embed_fn = None
+        embed_fn = get_embed_fn() if name in VECTOR_TOOLS else None
 
         if name == "search_receipts":
             result = await search_receipts_impl(
-                chroma_client,
                 embed_fn,
                 query=arguments["query"],
-                search_type=arguments.get("search_type", "text"),
+                search_type=arguments.get("search_type", "semantic"),
                 limit=arguments.get("limit", 20),
             )
         elif name == "get_receipt":
@@ -2339,11 +2219,6 @@ async def call_tool(
                 dynamo_client,
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
-            )
-        elif name == "list_all_receipts":
-            result = await list_all_receipts_impl(
-                chroma_client,
-                limit=arguments.get("limit", 50),
             )
         elif name == "list_merchants":
             result = await list_merchants_impl(dynamo_client)
@@ -2354,10 +2229,9 @@ async def call_tool(
             )
         elif name == "search_product_lines":
             result = await search_product_lines_impl(
-                chroma_client,
                 embed_fn,
                 query=arguments["query"],
-                search_type=arguments.get("search_type", "text"),
+                search_type=arguments.get("search_type", "semantic"),
                 limit=arguments.get("limit", 100),
             )
         elif name == "get_receipt_summaries":
@@ -2382,7 +2256,6 @@ async def call_tool(
             )
         elif name == "validate_word_similarity":
             result = await validate_word_similarity_impl(
-                chroma_client,
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments["line_id"],
@@ -2683,27 +2556,12 @@ async def call_tool(
                     )
         return content
 
-    except ChromaNotConfiguredError as e:
-        logger.warning("Chroma tool %r unavailable: %s", name, e)
-        return [
-            TextContent(
-                type="text",
-                text=json.dumps(
-                    {
-                        "error": str(e),
-                        "error_type": "chroma_not_configured",
-                        "tool": name,
-                    }
-                ),
-            )
-        ]
     except Exception as e:
         logger.exception("Tool error")
         return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
 
 
 async def search_receipts_impl(
-    chroma_client,
     embed_fn,
     query: str,
     search_type: str,
@@ -2713,46 +2571,18 @@ async def search_receipts_impl(
     """Search for receipts.
 
     The semantic mode retrieves through the VectorSearchClient seam
-    (``vector_client`` is a test-injection override); label and text
-    modes keep their direct Chroma behavior.
+    (``vector_client`` is a test-injection override). The retired
+    substring/label modes answer with a structured "unavailable" result.
     """
     try:
-        if search_type == "label":
-            if chroma_client is None:
-                return _chroma_mode_unavailable("label", query)
-            words_collection = chroma_client.get_collection("words")
-            results = words_collection.get(
-                where={"label": query.upper()},
-                include=["metadatas"],
-            )
-
-            unique_receipts = {}
-            for meta in results["metadatas"]:
-                key = (meta.get("image_id"), meta.get("receipt_id"))
-                if key not in unique_receipts:
-                    unique_receipts[key] = {
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "matched_text": meta.get("text"),
-                        "matched_label": query.upper(),
-                    }
-
-            return {
-                "search_type": "label",
-                "query": query,
-                "total_matches": len(results["ids"]),
-                "unique_receipts": len(unique_receipts),
-                "results": list(unique_receipts.values())[:limit],
-            }
-
-        elif search_type == "semantic":
+        if search_type == "semantic":
             query_embeddings = embed_fn([query])
 
             if not query_embeddings or not query_embeddings[0]:
                 return {"error": "Failed to generate embedding"}
 
             # Imported lazily: the server must stay importable without
-            # the embeddings stack (mirrors the receipt_chroma imports).
+            # the embeddings stack.
             from receipt_embeddings.service_limits import (
                 LINE_INDEX,
                 MAX_SEARCH_RESULTS,
@@ -2761,10 +2591,10 @@ async def search_receipts_impl(
             client = (
                 vector_client
                 if vector_client is not None
-                else get_vector_search_client(chroma_client)
+                else get_vector_search_client()
             )
             # limit*2 is trimmed to the 100-result SearchVectors cap
-            # (spec section 3.5b); Chroma accepts the smaller ask too.
+            # (spec section 3.5b).
             neighbors = client.search(
                 query_embeddings[0],
                 index=LINE_INDEX,
@@ -2798,32 +2628,7 @@ async def search_receipts_impl(
                 "results": sorted_results,
             }
 
-        else:  # text search
-            if chroma_client is None:
-                return _chroma_mode_unavailable("text", query)
-            lines_collection = chroma_client.get_collection("lines")
-            results = lines_collection.get(
-                where_document={"$contains": query.upper()},
-                include=["metadatas"],
-            )
-
-            unique_receipts = {}
-            for meta in results["metadatas"]:
-                key = (meta.get("image_id"), meta.get("receipt_id"))
-                if key not in unique_receipts:
-                    unique_receipts[key] = {
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "matched_line": meta.get("text", "")[:100],
-                    }
-
-            return {
-                "search_type": "text",
-                "query": query,
-                "total_matches": len(results["ids"]),
-                "unique_receipts": len(unique_receipts),
-                "results": list(unique_receipts.values())[:limit],
-            }
+        return _mode_unavailable(search_type, query)
 
     except Exception as e:
         return {"error": str(e)}
@@ -2976,45 +2781,6 @@ async def get_receipt_impl(
         return {"error": str(e)}
 
 
-async def list_all_receipts_impl(chroma_client, limit: int) -> dict:
-    """List all receipts."""
-    try:
-        if chroma_client is None:
-            return {
-                "error": (
-                    "list_all_receipts is unavailable on the dynamodb "
-                    "backend (Chroma retired); use list_recent_uploads "
-                    "or get_receipt_summaries instead"
-                ),
-                "total_receipts": 0,
-                "receipts": [],
-            }
-        lines_collection = chroma_client.get_collection("lines")
-
-        # Get all receipts by querying metadata (no label filtering)
-        results = lines_collection.get(
-            include=["metadatas"],
-        )
-
-        unique_receipts = {}
-        for meta in results["metadatas"]:
-            key = (meta.get("image_id"), meta.get("receipt_id"))
-            if key not in unique_receipts:
-                unique_receipts[key] = {
-                    "image_id": meta.get("image_id"),
-                    "receipt_id": meta.get("receipt_id"),
-                    "sample_text": meta.get("text", "")[:50],
-                }
-
-        return {
-            "total_receipts": len(unique_receipts),
-            "receipts": list(unique_receipts.values())[:limit],
-        }
-
-    except Exception as e:
-        return {"error": str(e)}
-
-
 async def list_merchants_impl(dynamo_client) -> dict:
     """List all merchants with receipt counts."""
     try:
@@ -3090,7 +2856,6 @@ async def get_receipts_by_merchant_impl(
 
 
 async def search_product_lines_impl(
-    chroma_client,
     embed_fn,
     query: str,
     search_type: str,
@@ -3099,17 +2864,15 @@ async def search_product_lines_impl(
 ) -> dict:
     """Search for product lines and extract prices for spending analysis.
 
-    Supports both text (exact match) and semantic (embedding-based) search.
-    Results exclude sections that never hold products (totals, payment,
-    footer, ...); rows with no section_label are kept, because on
-    under-sectioned receipts those are the product lines.
+    Semantic (embedding-based) search only; the retired substring mode
+    answers with a structured "unavailable" result. Results exclude
+    sections that never hold products (totals, payment, footer, ...);
+    rows with no section_label are kept, because on under-sectioned
+    receipts those are the product lines.
     """
     import re
 
-    from receipt_embeddings.section_labels import (
-        NON_ITEM_SECTION_LABELS,
-        non_item_section_filter,
-    )
+    from receipt_embeddings.section_labels import NON_ITEM_SECTION_LABELS
 
     try:
         # Extract price from text (e.g., "RAW WHOLE MILK 17.99" -> 17.99)
@@ -3127,7 +2890,7 @@ async def search_product_lines_impl(
                 return {"error": "Failed to generate embedding"}
 
             # Imported lazily: the server must stay importable without
-            # the embeddings stack (mirrors the receipt_chroma imports).
+            # the embeddings stack.
             from receipt_embeddings.service_limits import (
                 LINE_INDEX,
                 MAX_SEARCH_RESULTS,
@@ -3136,10 +2899,10 @@ async def search_product_lines_impl(
             client = (
                 vector_client
                 if vector_client is not None
-                else get_vector_search_client(chroma_client)
+                else get_vector_search_client()
             )
             # limit*3 is trimmed to the 100-result SearchVectors cap
-            # (spec section 3.5b); Chroma accepts the smaller ask too.
+            # (spec section 3.5b).
             neighbors = client.search(
                 query_embeddings[0],
                 index=LINE_INDEX,
@@ -3154,25 +2917,12 @@ async def search_product_lines_impl(
                     "items": [],
                 }
 
-            # label_LINE_TOTAL is Chroma line metadata; Dynamo line
-            # items never carry it, so under the Dynamo backend the
-            # flag is honestly "unknown" rather than a false False
-            # (E3 review P2-5).
-            from receipt_embeddings.dynamo_client import (
-                DynamoVectorSearchClient,
-            )
-
-            label_flags_available = not isinstance(
-                client, DynamoVectorSearchClient
-            )
-
             # Process semantic results with similarity scores
             items = []
             seen = set()
-            # Chroma pre-filtered non-item sections inside the ANN query
-            # ($nin); the seam takes equality filters only, so the same
-            # exclusion is applied after retrieval. Rows with no section
-            # label stay, matching non_item_section_filter().
+            # The seam takes equality filters only, so non-item sections
+            # are excluded after retrieval. Rows with no section label
+            # stay (under-sectioned receipts).
             non_item_sections = set(NON_ITEM_SECTION_LABELS)
 
             for neighbor in neighbors:
@@ -3196,11 +2946,11 @@ async def search_product_lines_impl(
                 if similarity < 0.25:
                     continue
 
-                has_line_total = (
-                    meta.get("label_LINE_TOTAL", False)
-                    if label_flags_available
-                    else "unknown"
-                )
+                # DynamoDB line-embedding items never carry a
+                # label_LINE_TOTAL flag, so the field is honestly
+                # "unknown" when the metadata lacks it rather than a
+                # false False (E3 review P2-5).
+                has_line_total = meta.get("label_LINE_TOTAL", "unknown")
                 price = extract_price(text)
 
                 items.append(
@@ -3234,77 +2984,7 @@ async def search_product_lines_impl(
                 "note": "Semantic search finds conceptually similar items. Review relevance before summing prices.",
             }
 
-        else:
-            # Text search (direct Chroma substring scan; unavailable once
-            # Chroma is retired — no DynamoDB rewrite)
-            if chroma_client is None:
-                return _chroma_mode_unavailable("text", query)
-            lines_collection = chroma_client.get_collection("lines")
-            results = lines_collection.get(
-                where_document={"$contains": query.upper()},
-                where=non_item_section_filter(),
-                include=["metadatas"],
-            )
-
-            if not results["ids"]:
-                return {
-                    "query": query,
-                    "search_type": "text",
-                    "total_matches": 0,
-                    "items": [],
-                }
-
-            # Process results
-            items = []
-            seen = set()  # Dedupe by image_id + receipt_id + text
-
-            for meta in results["metadatas"]:
-                text = meta.get("text", "")
-                image_id = meta.get("image_id")
-                receipt_id = meta.get("receipt_id")
-
-                # Dedupe
-                key = (image_id, receipt_id, text)
-                if key in seen:
-                    continue
-                seen.add(key)
-
-                # Check if this line has a LINE_TOTAL label (from ML model)
-                has_line_total = meta.get("label_LINE_TOTAL", False)
-
-                price = extract_price(text)
-
-                items.append(
-                    {
-                        "text": text,
-                        "price": price,
-                        "has_price_label": has_line_total,
-                        "merchant": meta.get("merchant_name", "Unknown"),
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                    }
-                )
-
-            # Sort by price descending (items with prices first)
-            items.sort(key=lambda x: (x["price"] is None, -(x["price"] or 0)))
-
-            # Limit results
-            items = items[:limit]
-
-            # Calculate total for items that have prices
-            total = sum(
-                item["price"] for item in items if item["price"] is not None
-            )
-
-            return {
-                "query": query,
-                "search_type": "text",
-                "total_matches": len(results["ids"]),
-                "unique_items": len(items),
-                "items": items,
-                "raw_total": round(total, 2),
-                "note": "Review items and exclude false positives (e.g., 'MILK CHOCOLATE' when searching for milk) before reporting final total.",
-            }
+        return _mode_unavailable(search_type, query)
 
     except Exception as e:
         logger.exception("Error searching product lines")
@@ -3605,7 +3285,6 @@ async def list_words_by_label_impl(
 
 
 async def validate_word_similarity_impl(
-    chroma_client,
     image_id: str,
     receipt_id: int,
     line_id: int,
@@ -3621,7 +3300,6 @@ async def validate_word_similarity_impl(
     returning silently-empty results, answer with a deprecation pointer
     to the working search-then-join replacement.
     """
-    del chroma_client  # retained for dispatch compatibility; unused
     return {
         "deprecated": True,
         "error_type": "deprecated_tool",
@@ -3666,14 +3344,7 @@ async def similar_labeled_words_impl(
 
     try:
         if vector_client is None:
-            try:
-                vector_client = get_vector_search_client()
-            except ChromaNotConfiguredError as e:
-                return {
-                    "error": str(e),
-                    "error_type": "chroma_not_configured",
-                    "tool": "similar_labeled_words",
-                }
+            vector_client = get_vector_search_client()
         target_merchant = None
         try:
             place = dynamo_client.get_receipt_place(image_id, receipt_id)
@@ -5121,11 +4792,10 @@ async def delete_image_impl(
 async def delete_receipt_impl(
     dynamo_client, image_id: str, receipt_id: int, dry_run: bool = True
 ) -> dict:
-    """Delete a single receipt and its children, keeping the rest of the image.
+    """Delete a single receipt, keeping the rest of the image.
 
-    Only the Receipt entity is deleted here; the enhanced compactor removes the
-    ChromaDB embeddings and child records (lines, words, letters, labels, place)
-    asynchronously via DynamoDB streams.
+    Only the Receipt entity is deleted here; child records (lines, words,
+    letters, labels, place) and embedding items are not cascaded.
     """
     try:
         from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
@@ -5163,9 +4833,9 @@ async def delete_receipt_impl(
                 "dry_run": True,
                 "breakdown": breakdown,
                 "message": (
-                    "Deletes the Receipt entity; the compactor then removes "
-                    "ChromaDB embeddings and all child records via DynamoDB "
-                    "streams. Re-run with dry_run=false to delete."
+                    "Deletes the Receipt entity only; child records and "
+                    "embedding items are not cascaded. Re-run with "
+                    "dry_run=false to delete."
                 ),
             }
 
@@ -5189,9 +4859,9 @@ async def delete_receipt_impl(
             "deleted": True,
             "breakdown": breakdown,
             "message": (
-                "Receipt entity deleted. The enhanced compactor will remove "
-                "ChromaDB embeddings and child records (lines, words, letters, "
-                "labels, place) asynchronously via DynamoDB streams."
+                "Receipt entity deleted. Child records (lines, words, "
+                "letters, labels, place) and embedding items were not "
+                "cascaded."
             ),
         }
 
@@ -6691,23 +6361,11 @@ async def main():
     """Run the MCP server."""
     logger.info("Starting Receipt MCP Server...")
 
-    # Pre-initialize clients (Chroma is optional: Dynamo-only is fine)
+    # Pre-initialize the DynamoDB client (embeddings are built lazily)
     try:
         get_dynamo_client()
     except Exception as e:
         logger.error("Failed to initialize DynamoDB client: %s", e)
-        # Continue anyway - will retry on first tool call
-    try:
-        get_chroma_clients()
-    except ChromaNotConfiguredError as e:
-        logger.warning(
-            "%s Chroma-backed tools (%s) are disabled; Dynamo-backed "
-            "tools remain available.",
-            e,
-            ", ".join(sorted(CHROMA_TOOLS)),
-        )
-    except Exception as e:
-        logger.error("Failed to initialize Chroma clients: %s", e)
         # Continue anyway - will retry on first tool call
 
     async with stdio_server() as (read_stream, write_stream):

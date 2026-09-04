@@ -22,7 +22,7 @@ from typing import Any, Mapping, Sequence
 
 DEV_TABLE = "ReceiptsTable-dc5be22"
 PROD_TABLE = "ReceiptsTable-d7ff76a"
-_PROJECT_PACKAGES = ("receipt_chroma", "receipt_dynamo", "receipt_upload")
+_PROJECT_PACKAGES = ("receipt_dynamo", "receipt_upload")
 _UNASSIGNED = "__UNASSIGNED__"
 _WILSON_Z = 1.959963984540054
 
@@ -102,11 +102,9 @@ def _configure_candidate_imports(
 
     assignment = importlib.import_module("receipt_upload.section_assignment")
     dynamo_module = importlib.import_module("receipt_dynamo")
-    importlib.import_module("receipt_chroma")
 
     provenance: dict[str, str] = {}
     for module_name in (
-        "receipt_chroma",
         "receipt_dynamo",
         "receipt_upload",
         "receipt_upload.section_assignment",

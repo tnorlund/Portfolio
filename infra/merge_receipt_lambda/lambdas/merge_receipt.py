@@ -453,7 +453,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         if not non_noise_words:
             non_noise_words = receipt_words  # Fallback: use all words
 
-        # Chroma teardown: the merged receipt's vectors are written
+        # The merged receipt's vectors are written
         # directly as native DynamoDB embedding items in one batched
         # OpenAI call. Destructive-step ordering (codex review P1):
         # source receipts are deleted below, so an incomplete native

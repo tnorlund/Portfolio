@@ -200,19 +200,15 @@ class MergeReceiptLambda(ComponentResource):
         # ============================================================
         lambda_config = {
             "role_arn": lambda_role.arn,
-            "timeout": 600,  # 10 minutes - image processing + embeddings + compaction wait
+            "timeout": 600,  # 10 minutes - image processing + embeddings
             "memory_size": 2048,  # Image processing needs more memory
-            "ephemeral_storage": 10240,  # 10 GB /tmp for ChromaDB snapshots + deltas
+            "ephemeral_storage": 10240,  # 10 GB /tmp for image processing
             "tags": {"environment": stack},
             "environment": {
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "RAW_BUCKET": raw_bucket_name,
                 "SITE_BUCKET": site_bucket_name,
                 "OPENAI_API_KEY": openai_api_key,
-                # Vector search backend seam (chroma | dynamodb)
-                "VECTOR_BACKEND": (
-                    Config("portfolio").get("vector-backend") or "chroma"
-                ),
             },
         }
 
@@ -223,7 +219,6 @@ class MergeReceiptLambda(ComponentResource):
             source_paths=[
                 "receipt_dynamo",
                 "receipt_embeddings",
-                "receipt_chroma",
                 "receipt_upload",
                 "receipt_agent",
                 "receipt_places",

@@ -3,7 +3,8 @@
 Reprocess PHOTO image receipts with improved corner detection.
 
 This script:
-1. Deletes existing receipts for a PHOTO image (triggers Chroma cleanup via stream)
+1. Deletes existing receipts for a PHOTO image (the stream processor fans
+   out the deletion to the summary/line-item update queues)
 2. Re-runs clustering and receipt corner detection with the new algorithm
 3. Creates new receipt entities and warped images
 4. Queues REFINEMENT OCR jobs to SQS for Mac OCR processing
@@ -47,7 +48,6 @@ from receipt_dynamo.constants import ImageType, OCRJobType, OCRStatus
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities import Image, Line, OCRJob, Receipt, Word
-
 from receipt_upload.geometry import (
     compute_rotated_bounding_box_corners,
     convex_hull,
@@ -77,7 +77,7 @@ def delete_receipt_and_children(
 ) -> bool:
     """Delete a receipt and all its child records.
 
-    This triggers the DynamoDB stream which will clean up Chroma embeddings.
+    The DynamoDB stream fans the deletion out to the update queues.
     """
     logger.info(f"Deleting receipt {receipt_id} for image {image_id}...")
 
@@ -171,7 +171,7 @@ def delete_receipt_and_children(
     except Exception as e:
         logger.warning(f"  Failed to delete OCR jobs: {e}")
 
-    # Finally, delete the receipt (this triggers stream -> Chroma cleanup)
+    # Finally, delete the receipt (the stream processor handles fan-out)
     try:
         client.delete_receipt(receipt)
         logger.info(f"  ✓ Deleted receipt {receipt_id}")
