@@ -1,0 +1,141 @@
+name: Dependabot maintenance
+
+# Recurring, deterministic Dependabot PR maintenance driven by
+# .codex/skills/dependabot-maintainer/scripts/dependabot_maintenance_ci.py.
+#
+# Modes
+#   report  Classify every open Dependabot PR (ready / wait / manual) and
+#           write the result to the step summary. Read-only.
+#   merge   Same as report, then squash-merge each `ready` PR (re-running
+#           the guard immediately before each merge) and ask Dependabot to
+#           rebase PRs left CONFLICTING by those merges.
+#
+# Scheduled runs merge ONLY when the repository variable
+# DEPENDABOT_AUTOMERGE is exactly "true"; otherwise they report. Manual runs
+# (workflow_dispatch) honor the `mode` input. Major-version updates are
+# never merged unless the `allow_major` input is set on a manual run.
+#
+# Token requirement for merge mode: secret DEPENDABOT_MAINTAINER_TOKEN
+#   Per GitHub's "Triggering a workflow from a workflow" docs, events created
+#   with the built-in GITHUB_TOKEN do not start new workflow runs. A squash
+#   merge performed with GITHUB_TOKEN therefore pushes to main WITHOUT
+#   triggering the push-triggered "CI/CD Pipeline" (tests + prod deploy);
+#   main would only be deployed on the next human push. Dependabot also
+#   ignores "@dependabot rebase" comments posted by github-actions[bot] or
+#   GitHub App identities ("Sorry, only users with push access can use that
+#   command"). Merge mode therefore requires DEPENDABOT_MAINTAINER_TOKEN, a
+#   personal access token of a user with write access to this repository:
+#     - fine-grained PAT scoped to this repo with
+#       Contents: Read and write, Pull requests: Read and write
+#       (Metadata: Read is implied), or a classic PAT with `repo`.
+#   Merge mode fails fast when the secret is missing. Report mode only
+#   needs the read-only GITHUB_TOKEN permissions declared below.
+#
+# Runner: ubuntu-latest on purpose. The self-hosted macOS runners stay free
+# for the CI/CD Pipeline, and the script's local `verify` path is skipped
+# here because the PR's own CI already exercises dependency installs.
+
+on:
+  schedule:
+    # Dependabot opens this repo's weekly batch on Thursdays at ~12:35 UTC
+    # (observed 2026-08-20, 08-27, 09-03). Run ~65 min later so the PRs'
+    # CI/CD Pipeline runs have had time to finish. Adjust this if
+    # .github/dependabot.yml gains an explicit schedule.day / schedule.time.
+    - cron: "40 13 * * 4"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "report (read-only) or merge"
+        type: choice
+        options:
+          - report
+          - merge
+        default: report
+      allow_major:
+        description: "Allow merging major-version updates (merge mode)"
+        type: boolean
+        default: false
+
+# GITHUB_TOKEN stays read-only: merge mode authenticates gh with
+# DEPENDABOT_MAINTAINER_TOKEN instead (see header).
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  statuses: read
+
+concurrency:
+  group: dependabot-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    name: Dependabot maintenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Resolve mode and token
+        id: config
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_ALLOW_MAJOR: ${{ inputs.allow_major }}
+          AUTOMERGE_VAR: ${{ vars.DEPENDABOT_AUTOMERGE }}
+          HAS_MAINTAINER_TOKEN: ${{ secrets.DEPENDABOT_MAINTAINER_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            mode="${INPUT_MODE:-report}"
+            allow_major="${INPUT_ALLOW_MAJOR:-false}"
+          else
+            allow_major="false"
+            if [ "$AUTOMERGE_VAR" = "true" ]; then
+              mode="merge"
+            else
+              mode="report"
+              echo "DEPENDABOT_AUTOMERGE is not 'true'; scheduled run reports only."
+            fi
+          fi
+
+          if [ "$mode" = "merge" ] && [ "$HAS_MAINTAINER_TOKEN" != "true" ]; then
+            echo "::error title=Missing DEPENDABOT_MAINTAINER_TOKEN::merge mode needs a PAT secret named DEPENDABOT_MAINTAINER_TOKEN (see workflow header). GITHUB_TOKEN merges would not trigger the CI/CD Pipeline deploy and Dependabot ignores its rebase comments."
+            exit 1
+          fi
+
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "allow_major=$allow_major" >> "$GITHUB_OUTPUT"
+          echo "Resolved mode=$mode allow_major=$allow_major (event=$EVENT_NAME)"
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Run Dependabot maintenance
+        env:
+          MODE: ${{ steps.config.outputs.mode }}
+          ALLOW_MAJOR: ${{ steps.config.outputs.allow_major }}
+          REPO: ${{ github.repository }}
+          # Merge mode uses the PAT so the resulting push to main triggers
+          # the CI/CD Pipeline and Dependabot honors rebase comments.
+          GH_TOKEN: ${{ steps.config.outputs.mode == 'merge' && secrets.DEPENDABOT_MAINTAINER_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          args=(--repo "$REPO" --mode "$MODE" --limit 50)
+          if [ "$ALLOW_MAJOR" = "true" ]; then
+            args+=(--allow-major)
+          fi
+          python .codex/skills/dependabot-maintainer/scripts/dependabot_maintenance_ci.py \
+            "${args[@]}" | tee report.txt
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependabot-maintenance-report
+          path: report.txt
+          if-no-files-found: ignore
+          retention-days: 14
