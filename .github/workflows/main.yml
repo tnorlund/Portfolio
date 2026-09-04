@@ -23,10 +23,17 @@ jobs:
   # ============================================================================
   # STAGE 1: All tests run in parallel
   # ============================================================================
+  # Self-hosted jobs share a persistent Mac. Every job below has a
+  # `timeout-minutes` (so a hung job releases the runner) and a final
+  # `if: always()` cleanup that removes the venv / node_modules / build output
+  # it created inside the workspace. Host-level caches (~/Library/Caches/pip,
+  # ~/.npm, ~/Library/Caches/ms-playwright) are intentionally kept warm across
+  # jobs; pruning them when disk runs low is an ops task on the runner host.
 
   lambda-syntax:
     name: Lambda Syntax
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -63,11 +70,17 @@ jobs:
             infra/tests/test_ats_verification_mcp.py
 
   python-tests:
-    name: Python (${{ matrix.package }})
+    # 3.13 legs keep their historical check names ("Python (<package>)") so
+    # branch protection keeps matching them; 3.14 legs get a suffix.
+    name: Python (${{ matrix.package }}${{ matrix.python-version != '3.13' && format(', {0}', matrix.python-version) || '' }})
     runs-on: [self-hosted, macOS, ARM64]
+    # 3.14 legs are advisory: a failure is shown on the leg but does not fail
+    # the run or block `deploy`, which `needs` this job as a whole.
+    continue-on-error: ${{ matrix.python-version != '3.13' }}
     strategy:
       fail-fast: false
       matrix:
+        python-version: ["3.13"]
         package:
           - receipt_embeddings
           - receipt_dynamo
@@ -77,6 +90,18 @@ jobs:
           - receipt_langsmith
           - receipt_upload
           - receipt_agent
+        # The container Lambdas run public.ecr.aws/lambda/python:3.14, so the
+        # packages those images ship are also exercised on 3.14. Everything
+        # else stays 3.13-only: receipt_layoutlm's image is pinned to 3.13
+        # (torch has no cp314 wheels) and the remaining packages are not
+        # shipped in a 3.14 image.
+        include:
+          - { python-version: "3.14", package: receipt_dynamo }
+          - { python-version: "3.14", package: receipt_dynamo_stream }
+          - { python-version: "3.14", package: receipt_embeddings }
+          - { python-version: "3.14", package: receipt_places }
+          - { python-version: "3.14", package: receipt_upload }
+          - { python-version: "3.14", package: receipt_agent }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -85,7 +110,7 @@ jobs:
 
       - name: Setup Python
         run: |
-          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "$PYTHON_VERSION")"
+          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "${{ matrix.python-version }}")"
           echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
           echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
           "$PYTHON_BIN" --version
@@ -207,7 +232,8 @@ jobs:
       - name: Upload coverage
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-${{ matrix.package }}
+          # Artifact names must be unique per run; only the 3.14 legs are suffixed.
+          name: coverage-${{ matrix.package }}${{ matrix.python-version != '3.13' && format('-py{0}', matrix.python-version) || '' }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
 
