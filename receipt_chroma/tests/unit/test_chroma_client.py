@@ -415,6 +415,71 @@ def test_query_with_embeddings():
 
 
 @pytest.mark.unit
+def test_query_chunks_large_embedding_batches():
+    """Batches above the Chroma Cloud quota are split and results merged.
+
+    Chroma Cloud rejects Query calls with more than 20 query embeddings, which
+    silently stripped section verification and semantic label proposals from
+    every receipt with more than 20 lines/words.
+    """
+    from receipt_chroma.data.chroma_client import MAX_QUERY_EMBEDDINGS
+
+    n_queries = 45
+    embeddings = [[float(i)] for i in range(n_queries)]
+
+    collection = MagicMock()
+
+    def fake_query(**kwargs):
+        chunk = kwargs["query_embeddings"]
+        assert len(chunk) <= MAX_QUERY_EMBEDDINGS
+        return {
+            "ids": [[f"id-{embedding[0]:.0f}"] for embedding in chunk],
+            "distances": [[0.1] for _ in chunk],
+            "metadatas": [[{"source": embedding[0]}] for embedding in chunk],
+            "documents": None,
+            "included": ["metadatas", "distances"],
+        }
+
+    collection.query.side_effect = fake_query
+
+    with ChromaClient(mode="write", metadata_only=True) as client:
+        with patch.object(client, "get_collection", return_value=collection):
+            result = client.query(
+                collection_name="lines",
+                query_embeddings=embeddings,
+                n_results=3,
+            )
+
+    assert collection.query.call_count == 3  # 20 + 20 + 5
+    assert len(result["ids"]) == n_queries
+    assert result["ids"][0] == ["id-0"]
+    assert result["ids"][-1] == ["id-44"]
+    assert len(result["metadatas"]) == n_queries
+    assert result["included"] == ["metadatas", "distances"]
+    assert result["documents"] is None
+
+
+@pytest.mark.unit
+def test_query_small_batch_single_request():
+    """Batches at or below the quota still go out as one request."""
+    from receipt_chroma.data.chroma_client import MAX_QUERY_EMBEDDINGS
+
+    collection = MagicMock()
+    collection.query.return_value = {"ids": [["a"]] * MAX_QUERY_EMBEDDINGS}
+
+    with ChromaClient(mode="write", metadata_only=True) as client:
+        with patch.object(client, "get_collection", return_value=collection):
+            result = client.query(
+                collection_name="lines",
+                query_embeddings=[[0.1]] * MAX_QUERY_EMBEDDINGS,
+                n_results=2,
+            )
+
+    assert collection.query.call_count == 1
+    assert len(result["ids"]) == MAX_QUERY_EMBEDDINGS
+
+
+@pytest.mark.unit
 def test_query_texts_in_read_mode_raises_error():
     """Test that text queries in read mode raise ValueError."""
     # First create collection in write mode

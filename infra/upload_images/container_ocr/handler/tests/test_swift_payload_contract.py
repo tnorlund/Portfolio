@@ -789,6 +789,35 @@ def test_section_observability_flags_reconstructed_rows(monkeypatch):
     assert "UploadLambdaSectionsProposed" not in metrics
 
 
+def test_section_observability_emits_verification_error_metric(monkeypatch):
+    from handler import handler as handler_module
+
+    recorder = _MetricsRecorder()
+    monkeypatch.setattr(handler_module, "emf_metrics", recorder)
+
+    # A swallowed verification failure (#1466: Chroma query-embedding quota)
+    # must surface as an alarmable metric, not just a properties field.
+    handler_module._emit_section_observability(
+        IMAGE_ID,
+        1,
+        {
+            "row_count": 39,
+            "row_source": "persisted",
+            "section_proposed_count": 0,
+            "verification_error": "Quota exceeded: Number of query embeddings",
+        },
+    )
+
+    metrics = recorder.calls[0]["metrics"]
+    assert metrics["UploadLambdaSectionVerificationError"] == 1.0
+    # Successful runs must NOT emit the metric (exact-match test above
+    # covers absence); the error string still travels as a property.
+    assert (
+        recorder.calls[0]["properties"]["verification_error"]
+        == "Quota exceeded: Number of query embeddings"
+    )
+
+
 def test_section_observability_is_silent_without_stats(monkeypatch):
     from handler import handler as handler_module
 
