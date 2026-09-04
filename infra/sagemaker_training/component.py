@@ -233,6 +233,9 @@ class SageMakerTrainingInfra(ComponentResource):
                                 "Action": [
                                     "s3:GetObject",
                                     "s3:PutObject",
+                                    # Tagged PutObject (trainer's retention=epoch-checkpoint
+                                    # uploads) is denied without this permission.
+                                    "s3:PutObjectTagging",
                                     "s3:DeleteObject",
                                     "s3:ListBucket",
                                 ],
