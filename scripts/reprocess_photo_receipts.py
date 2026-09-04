@@ -125,7 +125,9 @@ def delete_receipt_and_children(
                 try:
                     client.delete_receipt_word_label(lbl)
                 except Exception as label_err:
-                    logger.debug(f"Failed to delete individual label: {label_err}")
+                    logger.debug(
+                        f"Failed to delete individual label: {label_err}"
+                    )
 
     if words:
         client.delete_receipt_words(words)
@@ -151,28 +153,21 @@ def delete_receipt_and_children(
     except Exception as md_err:
         logger.debug(f"Failed to delete metadata: {md_err}")
 
-    # Delete compaction runs (best effort)
-    try:
-        runs, _ = client.list_compaction_runs_for_receipt(image_id, receipt_id)
-        for r in runs:
-            client.delete_compaction_run(r)
-        if runs:
-            logger.info(f"  ✓ Deleted {len(runs)} compaction runs")
-    except Exception as e:
-        logger.debug(f"Failed to delete compaction runs: {e}")
-
     # Delete REFINEMENT OCR jobs for this receipt
     try:
         jobs = client.list_ocr_jobs(image_id)
         refinement_jobs = [
-            j for j in jobs
+            j
+            for j in jobs
             if j.job_type == OCRJobType.REFINEMENT.value
             and j.receipt_id == receipt_id
         ]
         for job in refinement_jobs:
             client.delete_ocr_job(job)
         if refinement_jobs:
-            logger.info(f"  ✓ Deleted {len(refinement_jobs)} REFINEMENT OCR jobs")
+            logger.info(
+                f"  ✓ Deleted {len(refinement_jobs)} REFINEMENT OCR jobs"
+            )
     except Exception as e:
         logger.warning(f"  Failed to delete OCR jobs: {e}")
 
@@ -210,7 +205,11 @@ def reprocess_photo_receipts(
         logger.exception("Image not found")
         return {"success": False, "error": str(e)}
 
-    img_type = image.image_type.value if hasattr(image.image_type, 'value') else image.image_type
+    img_type = (
+        image.image_type.value
+        if hasattr(image.image_type, "value")
+        else image.image_type
+    )
     if img_type != "PHOTO":
         logger.error(f"Image is not a PHOTO (type: {img_type})")
         return {"success": False, "error": f"Not a PHOTO image: {img_type}"}
@@ -222,8 +221,12 @@ def reprocess_photo_receipts(
     # Capture receipt→line mappings BEFORE deletion
     receipt_line_map: Dict[int, List[int]] = {}
     for receipt in receipts:
-        receipt_lines = client.list_receipt_lines_from_receipt(image_id, receipt.receipt_id)
-        receipt_line_map[receipt.receipt_id] = [rl.line_id for rl in (receipt_lines or [])]
+        receipt_lines = client.list_receipt_lines_from_receipt(
+            image_id, receipt.receipt_id
+        )
+        receipt_line_map[receipt.receipt_id] = [
+            rl.line_id for rl in (receipt_lines or [])
+        ]
     logger.info(f"Captured line mappings for {len(receipt_line_map)} receipts")
 
     for receipt in receipts:
@@ -233,7 +236,11 @@ def reprocess_photo_receipts(
 
     if dry_run:
         logger.info("\n[DRY RUN] Stopping before reprocessing")
-        return {"success": True, "dry_run": True, "deleted_receipts": len(receipts)}
+        return {
+            "success": True,
+            "dry_run": True,
+            "deleted_receipts": len(receipts),
+        }
 
     # Step 3: Get original Lines and Words from DynamoDB
     lines = client.list_lines_from_image(image_id)
@@ -262,7 +269,9 @@ def reprocess_photo_receipts(
     line_by_id = {line.line_id: line for line in lines}
     clusters = {}
     for receipt_id, line_ids in receipt_line_map.items():
-        cluster_lines = [line_by_id[lid] for lid in line_ids if lid in line_by_id]
+        cluster_lines = [
+            line_by_id[lid] for lid in line_ids if lid in line_by_id
+        ]
         if cluster_lines:
             clusters[receipt_id] = cluster_lines
 
@@ -277,14 +286,18 @@ def reprocess_photo_receipts(
     for cluster_id, cluster_lines in clusters.items():
         try:
             if len(cluster_lines) < 3:
-                logger.debug(f"Skipping cluster {cluster_id}: insufficient lines")
+                logger.debug(
+                    f"Skipping cluster {cluster_id}: insufficient lines"
+                )
                 continue
 
             line_ids = [line.line_id for line in cluster_lines]
             cluster_words = [w for w in all_words if w.line_id in line_ids]
 
             if len(cluster_words) < 4:
-                logger.debug(f"Skipping cluster {cluster_id}: insufficient words")
+                logger.debug(
+                    f"Skipping cluster {cluster_id}: insufficient words"
+                )
                 continue
 
             # Get word corners for hull
@@ -309,14 +322,18 @@ def reprocess_photo_receipts(
             # so higher Y = top of receipt
             def get_line_centroid_y(line):
                 return (
-                    line.top_left["y"] + line.top_right["y"] +
-                    line.bottom_left["y"] + line.bottom_right["y"]
+                    line.top_left["y"]
+                    + line.top_right["y"]
+                    + line.bottom_left["y"]
+                    + line.bottom_right["y"]
                 ) / 4
 
             sorted_lines = sorted(
                 cluster_lines, key=get_line_centroid_y, reverse=True
             )
-            top_line = sorted_lines[0]      # Highest Y = top-most in normalized coords
+            top_line = sorted_lines[
+                0
+            ]  # Highest Y = top-most in normalized coords
             bottom_line = sorted_lines[-1]  # Lowest Y = bottom-most
 
             # Check for upside-down receipt
@@ -345,23 +362,34 @@ def reprocess_photo_receipts(
             max_y = max(corner[1] for corner in receipt_box_corners)
 
             if (max_x - min_x) < 10 or (max_y - min_y) < 10:
-                logger.warning(f"Skipping cluster {cluster_id}: degenerate rectangle")
+                logger.warning(
+                    f"Skipping cluster {cluster_id}: degenerate rectangle"
+                )
                 continue
 
             # Check for duplicate corners
             has_duplicates = False
             for i in range(4):
                 for j in range(i + 1, 4):
-                    if math.dist(receipt_box_corners[i], receipt_box_corners[j]) < 1.0:
+                    if (
+                        math.dist(
+                            receipt_box_corners[i], receipt_box_corners[j]
+                        )
+                        < 1.0
+                    ):
                         has_duplicates = True
                         break
             if has_duplicates:
-                logger.warning(f"Skipping cluster {cluster_id}: duplicate corners")
+                logger.warning(
+                    f"Skipping cluster {cluster_id}: duplicate corners"
+                )
                 continue
 
             # Compute warped image dimensions
             top_w = math.dist(receipt_box_corners[0], receipt_box_corners[1])
-            bottom_w = math.dist(receipt_box_corners[3], receipt_box_corners[2])
+            bottom_w = math.dist(
+                receipt_box_corners[3], receipt_box_corners[2]
+            )
             source_width = (top_w + bottom_w) / 2.0
 
             left_h = math.dist(receipt_box_corners[0], receipt_box_corners[3])
@@ -387,7 +415,9 @@ def reprocess_photo_receipts(
                     src_points=receipt_box_corners, dst_points=dst_corners
                 )
             except ValueError as e:
-                logger.warning(f"Perspective transform failed for cluster {cluster_id}: {e}")
+                logger.warning(
+                    f"Perspective transform failed for cluster {cluster_id}: {e}"
+                )
                 continue
 
             # Create warped image
@@ -454,8 +484,12 @@ def reprocess_photo_receipts(
                 cdn_webp_s3_key=receipt_cdn_keys["webp"],
                 cdn_avif_s3_key=receipt_cdn_keys["avif"],
                 cdn_thumbnail_s3_key=receipt_cdn_keys.get("jpeg_thumbnail"),
-                cdn_thumbnail_webp_s3_key=receipt_cdn_keys.get("webp_thumbnail"),
-                cdn_thumbnail_avif_s3_key=receipt_cdn_keys.get("avif_thumbnail"),
+                cdn_thumbnail_webp_s3_key=receipt_cdn_keys.get(
+                    "webp_thumbnail"
+                ),
+                cdn_thumbnail_avif_s3_key=receipt_cdn_keys.get(
+                    "avif_thumbnail"
+                ),
                 cdn_small_s3_key=receipt_cdn_keys.get("jpeg_small"),
                 cdn_small_webp_s3_key=receipt_cdn_keys.get("webp_small"),
                 cdn_small_avif_s3_key=receipt_cdn_keys.get("avif_small"),
@@ -483,10 +517,12 @@ def reprocess_photo_receipts(
             # Queue to SQS for Mac OCR processing
             send_message_to_sqs(
                 ocr_job_queue_url,
-                json.dumps({
-                    "job_id": new_ocr_job.job_id,
-                    "image_id": new_ocr_job.image_id,
-                }),
+                json.dumps(
+                    {
+                        "job_id": new_ocr_job.job_id,
+                        "image_id": new_ocr_job.image_id,
+                    }
+                ),
             )
             logger.info(f"  ✓ Queued REFINEMENT job for receipt {cluster_id}")
 
@@ -501,7 +537,9 @@ def reprocess_photo_receipts(
         image_path.unlink()
 
     logger.info(f"\n{'='*60}")
-    logger.info(f"COMPLETED: {successful_receipts} receipts created and queued")
+    logger.info(
+        f"COMPLETED: {successful_receipts} receipts created and queued"
+    )
     logger.info(f"{'='*60}")
 
     return {
@@ -556,7 +594,9 @@ def main():
 
     table_name = env.get("dynamodb_table_name")
     raw_bucket = env.get("raw_bucket_name")
-    site_bucket = env.get("cdn_bucket_name")  # CDN bucket for warped receipt images
+    site_bucket = env.get(
+        "cdn_bucket_name"
+    )  # CDN bucket for warped receipt images
     ocr_job_queue_url = env.get("ocr_job_queue_url")
 
     if not all([table_name, raw_bucket, site_bucket, ocr_job_queue_url]):
@@ -597,10 +637,14 @@ def main():
     print("=" * 60)
     for result in results:
         if result.get("success"):
-            print(f"✓ {result.get('image_id', 'unknown')}: "
-                  f"{result.get('receipts_created', 0)} receipts created")
+            print(
+                f"✓ {result.get('image_id', 'unknown')}: "
+                f"{result.get('receipts_created', 0)} receipts created"
+            )
         else:
-            print(f"✗ {result.get('image_id', 'unknown')}: {result.get('error', 'unknown error')}")
+            print(
+                f"✗ {result.get('image_id', 'unknown')}: {result.get('error', 'unknown error')}"
+            )
 
     if args.dry_run:
         print("\n[DRY RUN] No changes were made")

@@ -1282,7 +1282,6 @@ def test_apply_defaults_to_no_inline_embeddings(monkeypatch):
     )
 
     assert result["status"] == "APPLIED"
-    assert result["compaction_run_ids"] == []
     assert result["output_receipt_ids"] == [2, 3]
     assert len(native_calls) == 1
     assert [

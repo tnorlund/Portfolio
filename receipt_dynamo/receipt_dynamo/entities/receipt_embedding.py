@@ -85,8 +85,8 @@ class ReceiptLineEmbedding:
     line_vector: list[float]
     # Fetch-join metadata (spec §3.2/§3.3 amendment): ordinary unprojected
     # attributes the resolver's phone/address tiers read after a
-    # SearchVectors -> BatchGetItem join. Computed the same way the Chroma
-    # metadata writer computes its anchor fields; empty means "no anchor".
+    # SearchVectors -> BatchGetItem join. Derived from the row words'
+    # extracted_data anchors; empty means "no anchor".
     normalized_phone_10: str = ""
     normalized_full_address: str = ""
 
@@ -144,9 +144,9 @@ class ReceiptLineEmbedding:
         """Serialize without any GSI1-GSI4 keys.
 
         The normalized anchor attributes are sparse — present only when an
-        anchor exists — mirroring the Chroma metadata writer, which sets
-        ``normalized_phone_10`` / ``normalized_full_address`` keys only when
-        the row carries the corresponding anchor.
+        anchor exists — so ``normalized_phone_10`` /
+        ``normalized_full_address`` keys are set only when the row carries
+        the corresponding anchor.
         """
 
         item = {

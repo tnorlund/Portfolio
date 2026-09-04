@@ -1,4 +1,4 @@
-"""Cross-entity contracts for job, queue, and compaction records."""
+"""Cross-entity contracts for job, queue, and batch records."""
 
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -7,7 +7,6 @@ import pytest
 
 from receipt_dynamo import (
     BatchSummary,
-    CompactionRun,
     CoreMLExportJob,
     Instance,
     InstanceJob,
@@ -74,18 +73,6 @@ def make_queue_job(**overrides):
     return QueueJob(**(values | overrides))
 
 
-def make_compaction_run(**overrides):
-    """Build a valid CompactionRun, overriding only the field under test."""
-    values = {
-        "run_id": str(uuid4()),
-        "image_id": str(uuid4()),
-        "receipt_id": 1,
-        "lines_delta_prefix": "lines/",
-        "words_delta_prefix": "words/",
-    }
-    return CompactionRun(**(values | overrides))
-
-
 def make_batch_summary(**overrides):
     """Build a valid BatchSummary, overriding only the field under test."""
     values = {
@@ -119,17 +106,6 @@ def make_export_job(**overrides):
         (make_queue, {"max_concurrent_jobs": True}, "positive integer"),
         (make_queue, {"job_count": False}, "non-negative integer"),
         (make_queue_job, {"position": True}, "non-negative integer"),
-        (make_compaction_run, {"receipt_id": True}, "must be an integer"),
-        (
-            make_compaction_run,
-            {"lines_merged_vectors": False},
-            "must be an integer",
-        ),
-        (
-            make_compaction_run,
-            {"words_merged_vectors": True},
-            "must be an integer",
-        ),
         (
             make_batch_summary,
             {"receipt_refs": [(str(uuid4()), True)]},
@@ -354,10 +330,3 @@ def test_job_tags_require_string_keys_and_values():
             ValueError, match="keys and values must be strings"
         ):
             make_job(tags=tags)
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("field_name", ["lines_error", "words_error"])
-def test_compaction_errors_require_strings(field_name):
-    with pytest.raises(ValueError, match=f"{field_name} must be a string"):
-        make_compaction_run(**{field_name: 1})
