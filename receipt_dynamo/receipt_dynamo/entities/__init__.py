@@ -91,10 +91,6 @@ from receipt_dynamo.entities.receipt_bundle import (
     ReceiptBundle,
     ReceiptBundlePage,
 )
-from receipt_dynamo.entities.receipt_chatgpt_validation import (  # noqa: F401
-    ReceiptChatGPTValidation,
-    item_to_receipt_chat_gpt_validation,
-)
 from receipt_dynamo.entities.receipt_details import (  # noqa: F401
     ReceiptDetails,
 )
@@ -107,8 +103,6 @@ from receipt_dynamo.entities.receipt_embedding import (
     item_to_receipt_line_embedding,
     item_to_receipt_word_embedding,
 )
-from receipt_dynamo.entities.receipt_field import ReceiptField  # noqa: F401
-from receipt_dynamo.entities.receipt_field import item_to_receipt_field
 from receipt_dynamo.entities.receipt_letter import (  # noqa: F401
     ReceiptLetter,
     item_to_receipt_letter,
@@ -148,10 +142,6 @@ from receipt_dynamo.entities.receipt_summary_record import (
 )
 from receipt_dynamo.entities.receipt_text_geometry_entity import (
     ReceiptTextGeometryEntity,
-)
-from receipt_dynamo.entities.receipt_validation_category import (  # noqa: F401
-    ReceiptValidationCategory,
-    item_to_receipt_validation_category,
 )
 from receipt_dynamo.entities.receipt_word import ReceiptWord  # noqa: F401
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
@@ -228,7 +218,6 @@ __all__ = [
     "PlacesCache",
     "Receipt",
     "ReceiptBarcode",
-    "ReceiptChatGPTValidation",
     "ReceiptBundle",
     "ReceiptBundlePage",
     "MonetaryTotals",
@@ -236,7 +225,6 @@ __all__ = [
     "ReceiptSummaryRecord",
     "ReceiptDetails",
     "ReceiptEmbedding",
-    "ReceiptField",
     "ReceiptLetter",
     "ReceiptLine",
     "ReceiptLineEmbedding",
@@ -245,7 +233,6 @@ __all__ = [
     "ReceiptPlace",
     "ReceiptRow",
     "ReceiptSection",
-    "ReceiptValidationCategory",
     "ReceiptWord",
     "ReceiptWordEmbedding",
     "ReceiptWordLabel",
@@ -270,9 +257,7 @@ __all__ = [
     "item_to_places_cache",
     "item_to_receipt",
     "item_to_receipt_barcode",
-    "item_to_receipt_chat_gpt_validation",
     "item_to_receipt_summary_record",
-    "item_to_receipt_field",
     "item_to_receipt_embedding",
     "item_to_receipt_letter",
     "item_to_receipt_line",
@@ -283,7 +268,6 @@ __all__ = [
     "item_to_receipt_row",
     "item_to_receipt_section",
     "validate_section_row_coverage",
-    "item_to_receipt_validation_category",
     "item_to_receipt_word",
     "item_to_receipt_word_embedding",
     "item_to_receipt_word_label",

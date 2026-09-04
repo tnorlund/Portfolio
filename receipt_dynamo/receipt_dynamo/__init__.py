@@ -31,7 +31,6 @@ from receipt_dynamo.data.shared_exceptions import (
 # =============================================================================
 # Entity imports (explicit, no star imports)
 # =============================================================================
-
 # Item conversion functions
 # Core entities
 # Value objects
@@ -74,10 +73,8 @@ from receipt_dynamo.entities import (
     Point,
     Receipt,
     ReceiptBarcode,
-    ReceiptChatGPTValidation,
     ReceiptDetails,
     ReceiptEmbedding,
-    ReceiptField,
     ReceiptIdentifierMixin,
     ReceiptLetter,
     ReceiptLine,
@@ -87,7 +84,6 @@ from receipt_dynamo.entities import (
     ReceiptRow,
     ReceiptSection,
     ReceiptTextGeometryEntity,
-    ReceiptValidationCategory,
     ReceiptWord,
     ReceiptWordEmbedding,
     ReceiptWordLabel,
@@ -115,9 +111,7 @@ from receipt_dynamo.entities import (
     item_to_places_cache,
     item_to_receipt,
     item_to_receipt_barcode,
-    item_to_receipt_chat_gpt_validation,
     item_to_receipt_embedding,
-    item_to_receipt_field,
     item_to_receipt_letter,
     item_to_receipt_line,
     item_to_receipt_line_embedding,
@@ -125,7 +119,6 @@ from receipt_dynamo.entities import (
     item_to_receipt_place,
     item_to_receipt_row,
     item_to_receipt_section,
-    item_to_receipt_validation_category,
     item_to_receipt_word,
     item_to_receipt_word_embedding,
     item_to_receipt_word_label,
@@ -249,10 +242,8 @@ __all__ = [
     "OCRRoutingDecision",
     "PlacesCache",
     "Receipt",
-    "ReceiptChatGPTValidation",
     "ReceiptDetails",
     "ReceiptEmbedding",
-    "ReceiptField",
     "ReceiptLetter",
     "ReceiptLine",
     "ReceiptLineEmbedding",
@@ -260,7 +251,6 @@ __all__ = [
     "ReceiptPlace",
     "ReceiptRow",
     "ReceiptSection",
-    "ReceiptValidationCategory",
     "ReceiptBarcode",
     "ReceiptWord",
     "ReceiptWordEmbedding",
@@ -286,9 +276,7 @@ __all__ = [
     "item_to_ocr_routing_decision",
     "item_to_places_cache",
     "item_to_receipt",
-    "item_to_receipt_chat_gpt_validation",
     "item_to_receipt_embedding",
-    "item_to_receipt_field",
     "item_to_receipt_letter",
     "item_to_receipt_line",
     "item_to_receipt_line_embedding",
@@ -297,7 +285,6 @@ __all__ = [
     "item_to_receipt_row",
     "item_to_receipt_section",
     "validate_section_row_coverage",
-    "item_to_receipt_validation_category",
     "item_to_receipt_barcode",
     "item_to_receipt_word",
     "item_to_receipt_word_embedding",

@@ -26,11 +26,7 @@ from receipt_dynamo.data._ocr_routing_decision import _OCRRoutingDecision
 from receipt_dynamo.data._places_cache import _PlacesCache
 from receipt_dynamo.data._receipt import _Receipt
 from receipt_dynamo.data._receipt_barcode import _ReceiptBarcode
-from receipt_dynamo.data._receipt_chatgpt_validation import (
-    _ReceiptChatGPTValidation,
-)
 from receipt_dynamo.data._receipt_embedding import _ReceiptEmbedding
-from receipt_dynamo.data._receipt_field import _ReceiptField
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
 from receipt_dynamo.data._receipt_line import _ReceiptLine
 from receipt_dynamo.data._receipt_line_item import _ReceiptLineItem
@@ -39,9 +35,6 @@ from receipt_dynamo.data._receipt_place import _ReceiptPlace
 from receipt_dynamo.data._receipt_row import _ReceiptRow
 from receipt_dynamo.data._receipt_section import _ReceiptSection
 from receipt_dynamo.data._receipt_summary import _ReceiptSummary
-from receipt_dynamo.data._receipt_validation_category import (
-    _ReceiptValidationCategory,
-)
 from receipt_dynamo.data._receipt_word import _ReceiptWord
 from receipt_dynamo.data._receipt_word_label import _ReceiptWordLabel
 from receipt_dynamo.data._word import _Word
@@ -78,9 +71,6 @@ class DynamoClient(
     _PlacesCache,
     _LabelCountCache,
     _ReceiptWordLabel,
-    _ReceiptField,
-    _ReceiptValidationCategory,
-    _ReceiptChatGPTValidation,
     _BatchSummary,
     _ReceiptMetadata,
     _ReceiptPlace,
