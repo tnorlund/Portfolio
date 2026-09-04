@@ -25,3 +25,13 @@ prod is off limits, and dev deploys happen only when the user explicitly asks.
   need AWS credentials.
 - `Pulumi.*.yaml` files hold stack config. Do not add secrets to them; use
   `pulumi config set --secret` on the dev stack when the user asks.
+- Lambda handlers must let infrastructure failures raise. A broad
+  `except Exception` that logs and returns success defeats retries and the DLQ.
+- Resource chains that Pulumi cannot infer (SES receipt rules → S3 bucket
+  policy → Lambda permission, MX records) need explicit `depends_on`; do not
+  create MX records for an inactive rule set.
+- IAM: CloudWatch policies need the log-stream ARN (`:log-stream:*`), layer
+  permissions need the versioned layer ARN, and `s3:GetObject` needs
+  `s3:ListBucket` on the bucket beside it.
+- Step Functions tasks get explicit timeouts and retry policies; see
+  `ERROR_HANDLING_GUIDE.md` for the SNS/DLQ pattern in use.

@@ -17,8 +17,10 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 - `receipt_langsmith/`, `receipt_logo/` trace analytics and logo MCP tools (heavy deps).
 - `receipt_ocr_swift/` Swift Mac worker: Apple Vision OCR + CoreML LayoutLM.
 - `portfolio/` Next.js 16 / React 19 frontend. `infra/` Pulumi AWS stack.
-- Package-specific rules live in nested `AGENTS.md` files inside
-  `portfolio/`, `infra/`, `receipt_dynamo/`, and `receipt_ocr_swift/`.
+- Package-specific rules live in nested `AGENTS.md` files inside `portfolio/`,
+  `infra/`, `receipt_dynamo/`, `receipt_upload/`, `receipt_agent/`,
+  `receipt_embeddings/`, `receipt_ocr_swift/`, `synthesis_loop/`, and
+  `tools/glyph-studio/`.
 
 ## Environment
 
@@ -43,7 +45,12 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 - Frontend: `cd portfolio && npm run lint && npm run type-check && npm test`.
   CI runs `npm run test:ci`.
 - CI (`.github/workflows/main.yml`) pins Python 3.13 and Node 22. Match those.
-- Format only the files you touch; do not reformat unrelated packages.
+- Format only the files you touch; do not reformat unrelated packages. CI lints
+  `receipt_agent` on changed `.py` files only; every other package is linted whole.
+- The CI matrix runs only for PRs targeting `main`. A PR based on another PR
+  branch gets no matrix, so run the package checks locally before marking it ready.
+- Browser Tests failing on `localhost:3001 already used` is a runner flake; rerun
+  the job, do not change code for it.
 
 ## Conventions
 
@@ -64,6 +71,11 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 ## Hard rules
 
 - Never commit directly to `main`; work on feature branches. Never force-push.
+- Agents mark PRs ready for review; the owner merges. In a PR stack, parents are
+  merged with a merge commit and only the leaf is squashed (squashing a parent
+  orphans every child).
+- `scripts/*dev_to_prod*`, `scripts/promote_*`, `scripts/activate_merchant_truth.py`,
+  and any `--live` flag are owner-only; never run them.
 - Production is a hard no-go: never select, preview, refresh, update, destroy, or
   import `tnorlund/portfolio/prod`, and never trigger a production deployment.
 - Pulumi against `tnorlund/portfolio/dev` only when the user explicitly asks for a
