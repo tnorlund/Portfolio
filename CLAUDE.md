@@ -419,7 +419,7 @@ Edit files in `receipt_agent/receipt_agent/agents/question_answering/`. The main
 cd infra && pulumi up --stack dev --yes
 ```
 
-This rebuilds container images via CodeBuild if source files changed (~5 min). The QA agent Lambda image includes `receipt_agent`, `receipt_dynamo`, and `receipt_chroma`.
+This rebuilds container images via CodeBuild if source files changed (~5 min). The QA agent Lambda image includes `receipt_agent`, `receipt_dynamo`, and `receipt_embeddings`.
 
 #### 3. Run the step function
 
@@ -630,6 +630,6 @@ Use **squash merge** so the intermediate screenshot commits collapse into one cl
 |---------|-------------|
 | `receipt_layoutlm` | LayoutLM training, inference, and export |
 | `receipt_dynamo` | DynamoDB entities and data layer |
-| `receipt_chroma` | ChromaDB vector store for label validation |
+| `receipt_embeddings` | DynamoDB-native vector search and embedding formatting |
 | `receipt_upload` | Receipt processing and label validation |
 | `receipt_agent` | LangGraph agents for receipt analysis |

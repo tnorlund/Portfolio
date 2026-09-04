@@ -1,5 +1,7 @@
 # AWS → Mac OCR → AWS: the upload handoff contract
 
+> **Historical note (Sept 2026):** the ChromaDB legs described in this document were retired by the vector-store teardown (see `docs/chroma-removal/`). Vector similarity now runs against native DynamoDB embedding items via `receipt_embeddings`; the `receipt_chroma` package no longer exists.
+
 This document describes the round-trip contract between the Swift OCR worker
 (`receipt_ocr_swift`, runs on a Mac) and the AWS post-processing pipeline
 (receipt persistence, embeddings, Chroma, merchant resolution, and section
