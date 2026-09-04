@@ -692,6 +692,44 @@ class ReceiptLayoutLMTrainer:
         )
         ta_cls = self._transformers.TrainingArguments
         ta_params = inspect.signature(ta_cls.__init__).parameters
+
+        # The kwargs above are built before ``ta_params`` is known, so unlike
+        # every optional argument below they are passed unconditionally. That
+        # breaks whenever Transformers drops one: v5 removed ``warmup_ratio``
+        # (keeping ``warmup_steps``), which failed training outright with
+        # "TrainingArguments.__init__() got an unexpected keyword argument".
+        #
+        # Translate warmup before filtering. Silently dropping it would leave
+        # the run with no warmup at all -- a quiet change to the recipe, which
+        # is worse than the crash because it still produces a number.
+        if "warmup_ratio" not in ta_params and "warmup_steps" in ta_params:
+            ratio = args_kwargs.pop("warmup_ratio", 0.0) or 0.0
+            train_split = datasets.get("train") if datasets else None
+            n_train = len(train_split) if train_split is not None else 0
+            accum = max(1, self.training_config.gradient_accumulation_steps)
+            per_epoch = math.ceil(
+                n_train / max(1, self.training_config.batch_size * accum)
+            )
+            total_steps = per_epoch * max(1, int(self.training_config.epochs))
+            args_kwargs["warmup_steps"] = max(0, round(ratio * total_steps))
+            logger.info(
+                "TrainingArguments has no warmup_ratio; translated %.3f to "
+                "warmup_steps=%d (%d train examples, %d total steps)",
+                ratio,
+                args_kwargs["warmup_steps"],
+                n_train,
+                total_steps,
+            )
+
+        unsupported = [k for k in args_kwargs if k not in ta_params]
+        for key in unsupported:
+            logger.warning(
+                "TrainingArguments does not accept %r in transformers %s; "
+                "dropping it",
+                key,
+                getattr(self._transformers, "__version__", "?"),
+            )
+            args_kwargs.pop(key)
         seqeval_available = True
         try:
             importlib.import_module("seqeval.metrics")
