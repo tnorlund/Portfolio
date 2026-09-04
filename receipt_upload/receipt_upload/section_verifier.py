@@ -98,7 +98,6 @@ def _candidate_label(
 
 
 def verify_receipt_sections(
-    chroma: Any,
     dynamo: VerificationStore,
     rows: Sequence[ReceiptRow],
     row_embeddings: Sequence[Sequence[float]],
@@ -117,7 +116,7 @@ def verify_receipt_sections(
     if len(rows) != len(row_embeddings):
         raise ValueError("rows and row_embeddings must have equal length")
     try:
-        client = _vector_client(chroma, vector_client=vector_client)
+        client = _vector_client(vector_client=vector_client)
     except Exception:  # noqa: BLE001 - unavailable backend means abstain
         _record_verification(dynamo, rows, [])
         return []
