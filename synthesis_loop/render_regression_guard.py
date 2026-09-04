@@ -35,41 +35,85 @@ merchant_profiles.json path.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
+import shutil
 import sys
+from dataclasses import dataclass
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-for path in (HERE, os.path.join(os.path.dirname(HERE), "scripts")):
+REPO = os.path.dirname(HERE)
+for path in (HERE, os.path.join(REPO, "scripts")):
     if path not in sys.path:
         sys.path.insert(0, path)
 
-# (merchant profile key, image_id, receipt_id, slug)
+
+@dataclass(frozen=True)
+class PinnedReceipt:
+    merchant: str
+    image_id: str
+    receipt_id: int
+    slug: str
+    truth_fixture: str | None = None
+
+
 PINNED = [
-    (
+    PinnedReceipt(
         "Costco Wholesale",
         "57cb7f2c-7dcc-4974-9ef8-a460232f3b1d",
         1,
         "costco_golden",
     ),
-    (
+    PinnedReceipt(
         "Costco Wholesale",
         "0324604e-e1f7-4021-b887-7ef7e012c563",
         1,
         "costco_new",
     ),
-    (
+    PinnedReceipt(
         "Vons",
         "678a7c94-4948-4ebf-b8e9-9a17c13051ec",
         2,
         "vons_golden",
     ),
-    (
+    PinnedReceipt(
         "Sprouts Farmers Market",
         "00ded398-af6f-4a49-86f7-c79ccb554e48",
         1,
         "sprouts",
+    ),
+    PinnedReceipt(
+        "Gelson's Westlake Village",
+        "223c03e2-9f7e-481d-bc33-2b0631fbaaf9",
+        1,
+        "gelsons",
+    ),
+    PinnedReceipt(
+        "Trader Joe's",
+        "4c262079-4fec-4724-a8e1-2886f38ea454",
+        1,
+        "trader_joes",
+    ),
+    PinnedReceipt(
+        "Wild Fork",
+        "f008ea77-272b-4554-b8a6-e1676ec6a088",
+        2,
+        "wild_fork",
+    ),
+    PinnedReceipt(
+        "The Stand - American Classics Redefined",
+        "016bda87-f2a9-4dfc-85cc-e2b672ccb27a",
+        1,
+        "the_stand",
+    ),
+    PinnedReceipt(
+        "Dollar Tree",
+        "0944ee8d-4a0d-464e-8109-de35a9ba379a",
+        1,
+        "dollar_tree_fixture",
+        truth_fixture="legacy-profile-without-logo",
     ),
 ]
 
@@ -82,17 +126,127 @@ def _sha256(path: str) -> str:
     return digest.hexdigest()
 
 
+def _install_dollar_tree_fixture() -> None:
+    """Install the explicit Dollar Tree render fixture for this process.
+
+    Dollar Tree has no ACTIVE merchant-truth pointer, so the production
+    online-active path correctly refuses it. The guard still protects its
+    committed compose renderer using the retired profile plus the committed
+    ROM atlas. The fixture intentionally omits the unpublished logo and is
+    named as a fixture in the baseline slug; it never masquerades as ACTIVE.
+    """
+    import render_synthetic_receipts as rsr
+
+    from receipt_dynamo.merchant_truth_loader import (
+        MerchantTruthArtifact,
+        TruthResolutionMode,
+    )
+
+    profile_path = os.path.join(REPO, "scripts", "merchant_profiles.json")
+    with open(profile_path, encoding="utf-8") as handle:
+        profile = copy.deepcopy(json.load(handle)["profiles"]["Dollar Tree"])
+    profile.pop("_comment", None)
+    profile.pop("logo", None)
+    profile.pop("logo_anchor", None)
+
+    font_filename = "dollartree.glyphs.npz"
+    source_font = os.path.join(
+        HERE,
+        "rom_font_atlases",
+        font_filename,
+    )
+    os.makedirs(rsr._BITMATRIX_DIR, exist_ok=True)
+    cached_font = os.path.join(rsr._BITMATRIX_DIR, font_filename)
+    if not os.path.exists(cached_font) or _sha256(cached_font) != _sha256(
+        source_font
+    ):
+        shutil.copyfile(source_font, cached_font)
+    font_hash = _sha256(source_font)
+
+    components = {
+        "identity": {
+            "aliases": ["DOLLAR TREE"],
+            "merchant_name": "Dollar Tree",
+            "normalized_aliases": ["dollar tree"],
+            "slug": "dollar_tree",
+        },
+        "typography": {
+            "section_scale": profile.get("section_scale") or {},
+            "typography": profile.get("typography") or {},
+        },
+        "flags": {
+            key: copy.deepcopy(profile[key])
+            for key in (
+                "compose",
+                "graphics",
+                "header",
+                "logo_reserve_subtitle",
+                "logo_subtitle",
+            )
+            if key in profile
+        },
+        "layout": {
+            "available": "layout_template" in profile,
+            "template": profile.get("layout_template"),
+        },
+        "assets": {
+            "fonts": {
+                face: {
+                    "cache_filename": font_filename,
+                    "content_hash": font_hash,
+                }
+                for face in ("heavy", "regular")
+            },
+            "profile": {},
+        },
+        "stylemap": {"available": False, "document": None},
+    }
+    fixture_hash = hashlib.sha256(
+        json.dumps(
+            components,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    artifact = MerchantTruthArtifact(
+        slug="dollar_tree",
+        version=0,
+        bundle_hash=fixture_hash,
+        expected_bundle_hash=fixture_hash,
+        components=components,
+        mode=TruthResolutionMode.FIXTURE,
+    )
+    rsr._MERCHANT_TRUTH_REGISTRY = rsr._MerchantTruthRegistry(
+        TruthResolutionMode.FIXTURE.value,
+        {"dollar_tree": artifact},
+        [],
+    )
+
+
 def _render_all(out_dir: str) -> dict[str, str]:
     import glyph_review
 
     os.makedirs(out_dir, exist_ok=True)
     manifest: dict[str, str] = {}
-    for merchant, image_id, receipt_id, slug in PINNED:
-        out_png = os.path.join(out_dir, f"{slug}.png")
-        glyph_review.receipt(merchant, image_id, receipt_id, out_png)
-        # glyph_review saves the raw synthetic render (the panel under test,
-        # before the REAL|SYNTH montage) alongside the montage.
-        manifest[slug] = _sha256(f"{out_png}.syn.png")
+    for pin in PINNED:
+        if pin.truth_fixture == "legacy-profile-without-logo":
+            _install_dollar_tree_fixture()
+        try:
+            out_png = os.path.join(out_dir, f"{pin.slug}.png")
+            glyph_review.receipt(
+                pin.merchant,
+                pin.image_id,
+                pin.receipt_id,
+                out_png,
+            )
+            # glyph_review saves the raw synthetic render (the panel under
+            # test, before the REAL|SYNTH montage) alongside the montage.
+            manifest[pin.slug] = _sha256(f"{out_png}.syn.png")
+        finally:
+            if pin.truth_fixture:
+                import render_synthetic_receipts as rsr
+
+                rsr._reset_merchant_truth_registry()
     return manifest
 
 

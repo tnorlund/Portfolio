@@ -1,0 +1,55 @@
+name: Render Regression Guard
+
+on:
+  schedule:
+    - cron: "17 10 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: render-regression-guard
+  cancel-in-progress: false
+
+jobs:
+  render-regression:
+    name: Production render regression
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
+    env:
+      AWS_REGION: us-east-1
+      BITMATRIX_DIR: ${{ runner.temp }}/render-regression-bitmatrix
+      DYNAMODB_TABLE_NAME: ReceiptsTable-dc5be22
+      PYTHONPATH: ${{ github.workspace }}
+      RENDER_CACHE_DIR: ${{ runner.temp }}/render-regression-cache
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          clean: true
+          fetch-depth: 0
+
+      - name: Setup Python
+        run: |
+          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
+            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
+          elif [ -f "/opt/homebrew/bin/python3.12" ]; then
+            echo "/opt/homebrew/bin" >> $GITHUB_PATH
+          fi
+
+      - name: Install render stack
+        run: |
+          PYTHON=$(command -v python3.12 || command -v python3)
+          "$PYTHON" -m venv .venv-render-regression
+          source .venv-render-regression/bin/activate
+          pip install --upgrade pip wheel
+          pip install -e receipt_dynamo
+          pip install --no-deps -e receipt_agent
+          pip install boto3 Pillow numpy segno python-barcode \
+            pydantic pydantic-settings structlog requests tenacity
+
+      - name: Check production render hashes
+        run: |
+          source .venv-render-regression/bin/activate
+          mkdir -p /tmp/rrg
+          python3.12 synthesis_loop/render_regression_guard.py check /tmp/rrg
