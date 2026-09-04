@@ -35,14 +35,13 @@ npm run dev
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install packages
-pip install -e receipt_dynamo
-pip install -e receipt_label
-pip install -e receipt_upload
+# Install packages (same set CI's repository-tests job uses)
+pip install -e receipt_dynamo -e receipt_dynamo_stream -e receipt_chroma \
+  -e receipt_places -e receipt_agent -e receipt_upload
 
-# Run tests
-pip install -e "receipt_label[test]"
-pytest receipt_label/tests/ -v
+# Run tests for a package
+pip install -e "receipt_dynamo[test]"
+pytest receipt_dynamo/tests -m unit
 ```
 
 ### Infrastructure Deployment
@@ -65,13 +64,13 @@ pulumi up
 │   ├── entities/      # Data models
 │   └── tests/         # Unit and integration tests
 │
-├── receipt_label/     # ML-based receipt analysis
-│   ├── models/        # ML models and processors
-│   └── pattern_detection/  # Text pattern recognition
+├── receipt_agent/     # LangGraph agents (QA, validation)
+│   ├── agents/        # Graph definitions and prompts
+│   └── tools/         # Receipt search and lookup tools
 │
-├── receipt_upload/    # OCR and image processing
-│   ├── ocr.py        # Text extraction
-│   └── geometry.py   # Spatial analysis
+├── receipt_upload/    # OCR post-processing and line-item decode
+│   ├── line_items/    # Geometry-based item extraction
+│   └── merchant_resolution/
 │
 ├── receipt_ocr_swift/ # Swift OCR worker
 │   ├── Sources/      # Swift source code
@@ -147,12 +146,12 @@ make format  # Runs black and isort
 ### Testing
 
 ```bash
-# Install test dependencies
-pip install -e "receipt_label[test]"
+# Install test dependencies for a package
+pip install -e "receipt_dynamo[test]"
 
-# Run Python tests
-pytest receipt_label/tests/ -v
-pytest receipt_label/tests/ -m "not integration"
+# Run Python tests (from the repo root)
+pytest receipt_dynamo/tests -v
+pytest receipt_dynamo/tests -m "not integration and not end_to_end"
 
 # Run tests for specific package
 ./scripts/test_runner.sh receipt_dynamo
@@ -250,8 +249,8 @@ All `receipt_*` packages use editable installs:
 
 ```bash
 pip install -e receipt_dynamo
-pip install -e receipt_label
 pip install -e receipt_upload
+pip install -e receipt_agent
 ```
 
 ## 📦 Packages
@@ -259,11 +258,17 @@ pip install -e receipt_upload
 ### receipt_dynamo
 DynamoDB data access layer. Provides entities and client for interacting with receipt data.
 
-### receipt_label
-ML-based receipt analysis and labeling. Uses Ollama and Hugging Face for intelligent field extraction.
-
 ### receipt_upload
-OCR and image processing. Handles text extraction and spatial analysis.
+OCR post-processing, merchant resolution, and geometry-based line-item decode.
+
+### receipt_agent
+LangGraph agents for receipt question answering and label validation.
+
+### receipt_embeddings / receipt_chroma
+Vector storage and search (DynamoDB vector index in prod; Chroma for local tooling).
+
+### receipt_layoutlm
+LayoutLM training, CoreML export, and inference (heavy dependencies; see `.agents/skills/`).
 
 ### receipt_ocr_swift
 Swift-based OCR worker using Apple Vision framework for high-performance text extraction.

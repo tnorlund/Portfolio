@@ -273,9 +273,9 @@ pytest --cov=receipt_agent
 # Type checking
 mypy receipt_agent
 
-# Linting
-ruff check receipt_agent
-ruff format receipt_agent
+# Formatting (CI checks only the .py files changed versus the base branch)
+black --line-length=79 receipt_agent
+isort --profile=black --line-length=79 receipt_agent
 ```
 
 ## Example: Custom Embedding Function
