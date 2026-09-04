@@ -2,15 +2,10 @@
 
 from datetime import datetime
 
-import pytest
-
 from receipt_agent.state.models import (
-    ChromaSearchResult,
     EvidenceType,
     MerchantCandidate,
-    ReceiptContext,
     ValidationResult,
-    ValidationState,
     ValidationStatus,
     VerificationEvidence,
     VerificationStep,
@@ -28,54 +23,6 @@ class TestValidationStatus:
         assert ValidationStatus.ERROR.value == "error"
 
 
-class TestChromaSearchResult:
-    """Tests for ChromaSearchResult model."""
-
-    def test_create_result(self):
-        result = ChromaSearchResult(
-            chroma_id="test-id",
-            image_id="image-123",
-            receipt_id=1,
-            similarity_score=0.85,
-            document_text="Test document",
-            metadata={"key": "value"},
-        )
-
-        assert result.chroma_id == "test-id"
-        assert result.image_id == "image-123"
-        assert result.receipt_id == 1
-        assert result.similarity_score == 0.85
-        assert result.document_text == "Test document"
-        assert result.metadata == {"key": "value"}
-
-    def test_similarity_score_bounds(self):
-        # Valid range
-        result = ChromaSearchResult(
-            chroma_id="test",
-            image_id="img",
-            receipt_id=1,
-            similarity_score=0.0,
-        )
-        assert result.similarity_score == 0.0
-
-        result = ChromaSearchResult(
-            chroma_id="test",
-            image_id="img",
-            receipt_id=1,
-            similarity_score=1.0,
-        )
-        assert result.similarity_score == 1.0
-
-    def test_invalid_similarity_score(self):
-        with pytest.raises(ValueError):
-            ChromaSearchResult(
-                chroma_id="test",
-                image_id="img",
-                receipt_id=1,
-                similarity_score=1.5,  # Invalid
-            )
-
-
 class TestMerchantCandidate:
     """Tests for MerchantCandidate model."""
 
@@ -87,14 +34,14 @@ class TestMerchantCandidate:
             phone_number="555-1234",
             category="Coffee Shop",
             confidence_score=0.9,
-            source="chroma",
+            source="places",
             matched_fields=["name", "phone"],
         )
 
         assert candidate.merchant_name == "Starbucks"
         assert candidate.place_id == "ChIJ123"
         assert candidate.confidence_score == 0.9
-        assert candidate.source == "chroma"
+        assert candidate.source == "places"
         assert "name" in candidate.matched_fields
 
 
@@ -152,7 +99,7 @@ class TestValidationResult:
         merchant = MerchantCandidate(
             merchant_name="Test",
             confidence_score=0.9,
-            source="chroma",
+            source="places",
         )
 
         result = ValidationResult(
@@ -163,50 +110,3 @@ class TestValidationResult:
 
         assert result.validated_merchant is not None
         assert result.validated_merchant.merchant_name == "Test"
-
-
-class TestValidationState:
-    """Tests for ValidationState model."""
-
-    def test_create_state(self):
-        state = ValidationState(
-            image_id="test-image",
-            receipt_id=1,
-        )
-
-        assert state.image_id == "test-image"
-        assert state.receipt_id == 1
-        assert state.current_step == "start"
-        assert state.should_continue is True
-        assert state.iteration_count == 0
-
-    def test_state_with_full_data(self):
-        state = ValidationState(
-            image_id="test-image",
-            receipt_id=1,
-            current_merchant_name="Test Merchant",
-            current_place_id="ChIJ123",
-            current_address="123 Test St",
-            current_phone="555-1234",
-            current_validation_status="MATCHED",
-        )
-
-        assert state.current_merchant_name == "Test Merchant"
-        assert state.current_place_id == "ChIJ123"
-
-    def test_state_with_results(self):
-        chroma_result = ChromaSearchResult(
-            chroma_id="test",
-            image_id="other",
-            receipt_id=2,
-            similarity_score=0.8,
-        )
-
-        state = ValidationState(
-            image_id="test-image",
-            receipt_id=1,
-            chroma_line_results=[chroma_result],
-        )
-
-        assert len(state.chroma_line_results) == 1
-        assert state.chroma_line_results[0].similarity_score == 0.8

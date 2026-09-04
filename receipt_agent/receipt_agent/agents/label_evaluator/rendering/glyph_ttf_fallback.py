@@ -8,7 +8,7 @@ stamped originals.
 
 "Embedding-matched", honestly scoped
 ------------------------------------
-The charter points at #994's Chroma letter embeddings / an HF vision embedder
+The charter points at #994's letter embeddings / an HF vision embedder
 (DINOv2, CLIP) as the matcher. Those need network/model weights that are not
 available in every run, and DeepFont is not trained on thermal fonts anyway. So
 the default matcher here is a self-contained **visual similarity**: render each

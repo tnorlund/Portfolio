@@ -1,15 +1,14 @@
 """
 Pydantic models for agent state management.
 
-These models define the typed state that flows through the LangGraph workflow,
-ensuring type safety and validation at runtime.
+These models define shared, typed result structures used by receipt_agent
+workflows, ensuring type safety and validation at runtime.
 """
 
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any, Optional
+from typing import Any, Optional
 
-from langgraph.graph.message import add_messages
 from pydantic import BaseModel, Field
 
 
@@ -26,34 +25,13 @@ class ValidationStatus(str, Enum):
 class EvidenceType(str, Enum):
     """Type of verification evidence."""
 
-    CHROMA_SIMILARITY = "chroma_similarity"
+    VECTOR_SIMILARITY = "vector_similarity"
     PLACE_ID_MATCH = "place_id_match"
     PHONE_MATCH = "phone_match"
     ADDRESS_MATCH = "address_match"
     CROSS_RECEIPT = "cross_receipt"
     GOOGLE_PLACES = "google_places"
     LLM_REASONING = "llm_reasoning"
-
-
-class ChromaSearchResult(BaseModel):
-    """Result from a ChromaDB similarity search."""
-
-    chroma_id: str = Field(description="ChromaDB document ID")
-    image_id: str = Field(description="Receipt image ID")
-    receipt_id: int = Field(description="Receipt ID within image")
-    similarity_score: float = Field(
-        description="Cosine similarity score",
-        ge=0.0,
-        le=1.0,
-    )
-    document_text: Optional[str] = Field(
-        default=None,
-        description="Original document text",
-    )
-    metadata: dict[str, Any] = Field(
-        default_factory=dict,
-        description="ChromaDB metadata",
-    )
 
 
 class MerchantCandidate(BaseModel):
@@ -82,7 +60,7 @@ class MerchantCandidate(BaseModel):
         le=1.0,
     )
     source: str = Field(
-        description="Source of this candidate (chroma/places/llm)"
+        description="Source of this candidate (vector/places/llm)"
     )
     matched_fields: list[str] = Field(
         default_factory=list,
@@ -149,11 +127,11 @@ class ReceiptContext(BaseModel):
     )
     line_embeddings_available: bool = Field(
         default=False,
-        description="Whether line embeddings exist in ChromaDB",
+        description="Whether line embeddings exist in the vector index",
     )
     word_embeddings_available: bool = Field(
         default=False,
-        description="Whether word embeddings exist in ChromaDB",
+        description="Whether word embeddings exist in the vector index",
     )
 
 
@@ -189,111 +167,6 @@ class ValidationResult(BaseModel):
     timestamp: datetime = Field(
         default_factory=datetime.utcnow,
         description="When validation was performed",
-    )
-
-
-class ValidationState(BaseModel):
-    """
-    Main state object for the validation workflow.
-
-    This is the state that flows through the LangGraph workflow,
-    accumulating information as the agent validates receipt metadata.
-    """
-
-    # Input: Receipt metadata to validate
-    image_id: str = Field(description="Receipt image ID")
-    receipt_id: int = Field(description="Receipt ID within image")
-
-    # Current metadata (from DynamoDB)
-    current_merchant_name: Optional[str] = Field(
-        default=None,
-        description="Current merchant name in metadata",
-    )
-    current_place_id: Optional[str] = Field(
-        default=None,
-        description="Current Google Place ID",
-    )
-    current_address: Optional[str] = Field(
-        default=None,
-        description="Current address in metadata",
-    )
-    current_phone: Optional[str] = Field(
-        default=None,
-        description="Current phone in metadata",
-    )
-    current_validation_status: Optional[str] = Field(
-        default=None,
-        description="Current validation status",
-    )
-
-    # Context loaded from receipt
-    receipt_context: Optional[ReceiptContext] = Field(
-        default=None,
-        description="Context about the receipt",
-    )
-
-    # Retrieved embeddings from ChromaDB (keyed by ChromaDB document ID)
-    receipt_line_embeddings: dict[str, list[float]] = Field(
-        default_factory=dict,
-        description="Line embeddings retrieved from ChromaDB by document ID",
-    )
-    receipt_word_embeddings: dict[str, list[float]] = Field(
-        default_factory=dict,
-        description="Word embeddings retrieved from ChromaDB by document ID",
-    )
-
-    # Agent conversation messages
-    messages: Annotated[list[Any], add_messages] = Field(
-        default_factory=list,
-        description="Agent conversation messages",
-    )
-
-    # ChromaDB search results
-    chroma_line_results: list[ChromaSearchResult] = Field(
-        default_factory=list,
-        description="Similar lines from ChromaDB",
-    )
-    chroma_word_results: list[ChromaSearchResult] = Field(
-        default_factory=list,
-        description="Similar words from ChromaDB",
-    )
-
-    # Merchant candidates found
-    merchant_candidates: list[MerchantCandidate] = Field(
-        default_factory=list,
-        description="Candidate merchants found",
-    )
-
-    # Verification progress
-    verification_steps: list[VerificationStep] = Field(
-        default_factory=list,
-        description="Verification steps completed",
-    )
-
-    # Agent state
-    current_step: str = Field(
-        default="start",
-        description="Current step in workflow",
-    )
-    iteration_count: int = Field(
-        default=0,
-        description="Number of agent iterations",
-    )
-    should_continue: bool = Field(
-        default=True,
-        description="Whether agent should continue",
-    )
-
-    # Final output
-    result: Optional[ValidationResult] = Field(
-        default=None,
-        description="Final validation result",
-    )
-
-    # Error handling
-    errors: list[str] = Field(
-        default_factory=list,
-        description="Errors encountered during validation",
     )
 
 
