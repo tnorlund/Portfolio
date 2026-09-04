@@ -712,22 +712,18 @@ class ReceiptLayoutLMTrainer:
             )
             total_steps = per_epoch * max(1, int(self.training_config.epochs))
             args_kwargs["warmup_steps"] = max(0, round(ratio * total_steps))
-            logger.info(
-                "TrainingArguments has no warmup_ratio; translated %.3f to "
-                "warmup_steps=%d (%d train examples, %d total steps)",
-                ratio,
-                args_kwargs["warmup_steps"],
-                n_train,
-                total_steps,
+            print(
+                f"TrainingArguments has no warmup_ratio; translated {ratio} "
+                f"to warmup_steps={args_kwargs['warmup_steps']} "
+                f"({n_train} train examples, {total_steps} total steps)"
             )
 
         unsupported = [k for k in args_kwargs if k not in ta_params]
         for key in unsupported:
-            logger.warning(
-                "TrainingArguments does not accept %r in transformers %s; "
-                "dropping it",
-                key,
-                getattr(self._transformers, "__version__", "?"),
+            version = getattr(self._transformers, "__version__", "?")
+            print(
+                f"Warning: TrainingArguments does not accept {key!r} in "
+                f"transformers {version}; dropping it"
             )
             args_kwargs.pop(key)
         seqeval_available = True
