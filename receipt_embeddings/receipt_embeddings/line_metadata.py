@@ -15,8 +15,7 @@ import logging
 from collections.abc import Sequence
 from typing import List, Optional, TypedDict
 
-from receipt_dynamo.constants import CORE_LABELS, ValidationStatus
-from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
+from receipt_dynamo.entities import ReceiptLine, ReceiptWord
 
 from receipt_embeddings.normalize import (
     build_full_address_from_words,
@@ -40,8 +39,6 @@ class LineMetadata(TypedDict, total=False):
     y: float
     width: float
     height: float
-    prev_line: str  # Legacy
-    next_line: str  # Legacy
     merchant_name: str
     source: str
     section_label: str  # Optional
@@ -52,48 +49,6 @@ class LineMetadata(TypedDict, total=False):
     normalized_full_address: str  # Optional, only if anchors exist
     normalized_url: str  # Optional, only if anchors exist
     row_line_ids: str  # JSON array of line IDs in the visual row
-    label_status: str  # Optional: validated, auto_suggested, unvalidated
-    valid_labels_array: list[str]  # Canonical valid label array
-    invalid_labels_array: list[str]  # Canonical invalid label array
-
-
-def create_line_metadata(
-    line: ReceiptLine,
-    prev_line: str,
-    next_line: str,
-    merchant_name: Optional[str] = None,
-    avg_word_confidence: Optional[float] = None,
-    section_label: Optional[str] = None,
-    source: str = "openai_embedding_batch",
-) -> LineMetadata:
-    """Create comprehensive metadata for a line embedding."""
-    if avg_word_confidence is None:
-        avg_word_confidence = line.confidence
-
-    if merchant_name:
-        merchant_name = merchant_name.strip().title()
-
-    metadata: LineMetadata = {
-        "image_id": line.image_id,
-        "receipt_id": line.receipt_id,
-        "line_id": line.line_id,
-        "text": line.text,
-        "confidence": line.confidence,
-        "avg_word_confidence": avg_word_confidence,
-        "x": line.bounding_box["x"],
-        "y": line.bounding_box["y"],
-        "width": line.bounding_box["width"],
-        "height": line.bounding_box["height"],
-        "prev_line": prev_line,
-        "next_line": next_line,
-        "merchant_name": merchant_name or "",
-        "source": source,
-    }
-
-    if section_label:
-        metadata["section_label"] = section_label
-
-    return metadata
 
 
 def enrich_line_metadata_with_anchors(
@@ -148,7 +103,7 @@ def create_row_metadata(
     """Create metadata for a visual row embedding.
 
     ``section_label`` (the row's receipt section, e.g. ``TOTAL_LINE``) is
-    emitted only when set — mirrors ``create_line_metadata``.
+    emitted only when set.
     """
     if not row_lines:
         raise ValueError("Cannot create metadata for empty row")
@@ -207,78 +162,9 @@ def enrich_row_metadata_with_anchors(
     return enrich_line_metadata_with_anchors(metadata, list(row_words))
 
 
-def enrich_row_metadata_with_labels(
-    metadata: LineMetadata,
-    row_words: Sequence[ReceiptWord],
-    all_labels: Sequence[ReceiptWordLabel],
-) -> LineMetadata:
-    """Enrich row metadata with aggregated valid/invalid label arrays."""
-    row_word_keys = {
-        (w.image_id, w.receipt_id, w.line_id, w.word_id) for w in row_words
-    }
-
-    row_labels = [
-        lbl
-        for lbl in all_labels
-        if (lbl.image_id, lbl.receipt_id, lbl.line_id, lbl.word_id)
-        in row_word_keys
-    ]
-
-    has_validated = False
-    has_pending = False
-    valid_labels: set[str] = set()
-    invalid_labels: set[str] = set()
-
-    for lbl in row_labels:
-        if not lbl.label:
-            continue
-        normalized_label = lbl.label.strip().upper()
-        if not normalized_label:
-            continue
-        if normalized_label not in CORE_LABELS:
-            continue
-
-        status = lbl.validation_status
-        if status == ValidationStatus.PENDING.value:
-            has_pending = True
-            continue
-        if status == ValidationStatus.VALID.value:
-            valid_labels.add(normalized_label)
-            invalid_labels.discard(normalized_label)
-            has_validated = True
-        elif status == ValidationStatus.INVALID.value:
-            invalid_labels.add(normalized_label)
-            valid_labels.discard(normalized_label)
-            has_validated = True
-
-    canonical_valid = sorted(valid_labels)
-    canonical_invalid = sorted(invalid_labels)
-
-    if canonical_valid:
-        metadata["valid_labels_array"] = canonical_valid
-    else:
-        metadata.pop("valid_labels_array", None)
-
-    if canonical_invalid:
-        metadata["invalid_labels_array"] = canonical_invalid
-    else:
-        metadata.pop("invalid_labels_array", None)
-
-    if has_validated:
-        metadata["label_status"] = "validated"
-    elif has_pending:
-        metadata["label_status"] = "auto_suggested"
-    else:
-        metadata["label_status"] = "unvalidated"
-
-    return metadata
-
-
 __all__ = [
     "LineMetadata",
-    "create_line_metadata",
     "create_row_metadata",
     "enrich_line_metadata_with_anchors",
     "enrich_row_metadata_with_anchors",
-    "enrich_row_metadata_with_labels",
 ]

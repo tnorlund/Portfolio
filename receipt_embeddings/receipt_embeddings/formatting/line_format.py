@@ -16,7 +16,6 @@ no hardcoded tolerances - just the actual geometry of the lines. Connected
 lines are grouped using union-find to form visual rows.
 """
 
-import re
 from collections import defaultdict
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
@@ -274,28 +273,3 @@ def format_line_context_embedding_input(
         f"<TARGET>{target_line.text}</TARGET> <POS>{position}</POS> "
         f"<CONTEXT>{prev_line} {next_line}</CONTEXT>"
     )
-
-
-def parse_prev_next_from_formatted(fmt: str) -> tuple[str, str]:
-    """Parse prev/next lines from formatted embedding input (DEPRECATED).
-
-    Given a string like:
-      "<TARGET>LINE TEXT</TARGET> <POS>…</POS> "
-      "<CONTEXT>PREV_LINE NEXT_LINE</CONTEXT>"
-    return ("PREV_LINE", "NEXT_LINE").
-
-    Args:
-        fmt: Formatted string with CONTEXT tags
-
-    Returns:
-        Tuple of (prev_line, next_line)
-    """
-    m = re.search(r"<CONTEXT>(.*?)</CONTEXT>", fmt)
-    if not m:
-        raise ValueError(f"No <CONTEXT>…</CONTEXT> in {fmt!r}")
-    cont = m.group(1).strip()
-    # Assuming exactly two tokens separated by whitespace
-    parts = cont.split(maxsplit=1)
-    prev = parts[0] if parts else "<EDGE>"
-    next_line = parts[1] if len(parts) > 1 else "<EDGE>"
-    return prev, next_line
