@@ -26,6 +26,7 @@ from scripts.similarity_harness.common import (
 from scripts.similarity_harness.evaluate import (
     CapturedGoldenReplay,
     evaluate_fixture,
+    failed_gates,
 )
 from scripts.similarity_harness.evaluate import main as evaluate_main
 
@@ -266,3 +267,86 @@ def test_cli_evaluate_stays_well_below_runtime_limits(
 
     assert evaluate_seconds < 60
     assert scorecard_path.exists()
+
+
+def test_failed_gates_reports_only_false_gates() -> None:
+    scorecard = {
+        "gates": {
+            "latency_p95_under_100ms": None,
+            "merchant_agreement_at_least_98_percent": True,
+            "neighbor_recall_at_least_0_85": False,
+            "tier_distribution_within_5_percentage_points": False,
+        }
+    }
+    assert failed_gates(scorecard) == [
+        "neighbor_recall_at_least_0_85",
+        "tier_distribution_within_5_percentage_points",
+    ]
+    assert failed_gates({"gates": {}}) == []
+
+
+def test_fail_on_gate_exits_nonzero_only_when_requested(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import scripts.similarity_harness.evaluate as evaluate_module
+
+    def fake_evaluate_fixture(*args: object, **kwargs: object) -> dict:
+        return {
+            "backend": "golden",
+            "gates": {"neighbor_recall_at_least_0_85": False},
+            "metrics": {},
+        }
+
+    monkeypatch.setattr(
+        evaluate_module, "evaluate_fixture", fake_evaluate_fixture
+    )
+    common = [
+        "--backend",
+        "golden",
+        "--fixture",
+        str(GOLDEN_FIXTURE),
+        "--out",
+        str(tmp_path / "scorecard.json"),
+    ]
+    assert evaluate_main(common) == 0
+    assert (
+        "FAILED GATES: neighbor_recall_at_least_0_85"
+        in capsys.readouterr().err
+    )
+    assert evaluate_main([*common, "--fail-on-gate"]) == 1
+
+
+def test_fail_on_gate_passes_on_golden_self_parity(tmp_path: Path) -> None:
+    assert (
+        evaluate_main(
+            [
+                "--backend",
+                "golden",
+                "--fixture",
+                str(GOLDEN_FIXTURE),
+                "--out",
+                str(tmp_path / "scorecard.json"),
+                "--fail-on-gate",
+            ]
+        )
+        == 0
+    )
+
+
+def test_require_canonical_rejects_the_offline_bootstrap(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(SystemExit, match="not canonical"):
+        evaluate_main(
+            [
+                "--backend",
+                "golden",
+                "--fixture",
+                str(GOLDEN_FIXTURE),
+                "--out",
+                str(tmp_path / "scorecard.json"),
+                "--require-canonical",
+            ]
+        )
