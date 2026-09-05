@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple
 
 from receipt_dynamo import DynamoClient
 
-from receipt_upload.dedup._ddb import paginate, raw_client
+from receipt_upload.dedup._ddb import paginate
 
 # Per-env buckets that differ; the dev<->prod counterpart is the mapped value.
 # ``upload-images-image-bucket-4bcea7e`` is SHARED by both envs and is omitted
@@ -107,45 +107,6 @@ def _subtree_items(
         parts = it["SK"]["S"].split("#")
         if len(parts) >= 2 and parts[1] in (padded, unpadded):
             out.append(it)
-    out.extend(_field_items(dynamo, image_id, receipt_id))
-    return out
-
-
-def _field_items(
-    dynamo: DynamoClient, image_id: str, receipt_id: int | None = None
-) -> List[dict]:
-    """Full ``ReceiptField`` rows for an image (or one receipt).
-
-    ReceiptField lives in its own ``PK=FIELD#`` partition, reachable via GSI1
-    (``GSI1PK=IMAGE#{id}``). GSI1 projects keys only, so each full item is
-    fetched from the base table.
-    """
-    client = raw_client(dynamo)
-    out = []
-    for it in paginate(
-        dynamo,
-        TableName=dynamo.table_name,
-        IndexName="GSI1",
-        KeyConditionExpression="#pk = :pk AND begins_with(#sk, :sk)",
-        ExpressionAttributeNames={"#pk": "GSI1PK", "#sk": "GSI1SK"},
-        ExpressionAttributeValues={
-            ":pk": {"S": f"IMAGE#{image_id}"},
-            ":sk": {"S": "RECEIPT#"},
-        },
-    ):
-        sk = it.get("GSI1SK", {}).get("S", "")
-        if "#FIELD#" not in sk:
-            continue
-        if receipt_id is not None and not sk.startswith(
-            f"RECEIPT#{receipt_id:05d}#FIELD#"
-        ):
-            continue
-        full = client.get_item(
-            TableName=dynamo.table_name,
-            Key={"PK": it["PK"], "SK": it["SK"]},
-        ).get("Item")
-        if full:
-            out.append(full)
     return out
 
 
@@ -186,12 +147,10 @@ def build_plan(
 
     s3_refs: List[Tuple[str, str]] = []
 
-    # new images: copy the whole partition (+ ReceiptField rows) + the
-    # image's own S3 objects
+    # new images: copy the whole partition + the image's own S3 objects
     for image_id in sorted(new_image_ids):
         plan.new_images.append(image_id)
         plan.dynamo_items.extend(partition_items(src, image_id))
-        plan.dynamo_items.extend(_field_items(src, image_id))
         if image_id in src_images:
             s3_refs.extend(_entity_s3_refs(src_images[image_id]))
 
