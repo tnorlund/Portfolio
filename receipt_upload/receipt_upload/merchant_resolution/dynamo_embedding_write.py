@@ -26,7 +26,7 @@ from receipt_embeddings.formatting import LineLike
 from receipt_embeddings.formatting.word_format import (
     WordLike as ContextWordLike,
 )
-from receipt_embeddings.label_status import WordLabelLike, word_label_statuses
+from receipt_embeddings.label_status import WordLabelLike
 from receipt_embeddings.protocols import (
     DynamoEmbeddingClient,
     DynamoQueryWriteClient,
@@ -38,12 +38,6 @@ from receipt_embeddings.write_requests import build_embedding_write_requests
 from receipt_embeddings.writer import EmbeddingWriteRequest
 
 logger = logging.getLogger(__name__)
-
-# Canonical terminal-verdict rule (any VALID or INVALID -> "validated",
-# else PENDING -> "pending", else "none"); kept under the historical
-# private name for existing importers/tests. INVALID-only words must stay
-# in the validated population (E3 review P1-2; codex flip P2; #1513).
-_word_label_statuses = word_label_statuses
 
 
 def build_ingest_embedding_requests(

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import re
 import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any, cast
@@ -11,6 +10,7 @@ from typing import Any, cast
 from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
 from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
 
+from receipt_embeddings.keys import CANONICAL_KEY_RE as _CANONICAL_KEY
 from receipt_embeddings.keys import canonical_key_from_item as _canonical_key
 from receipt_embeddings.protocols import DynamoVectorLowLevelClient
 from receipt_embeddings.service_limits import (
@@ -30,10 +30,6 @@ from receipt_embeddings.vector_client import FilterValue, ScoredItem
 
 DEFAULT_TABLE_NAME = "ReceiptsTable-dc5be22"
 DEFAULT_REGION = "us-east-1"
-_CANONICAL_KEY = re.compile(
-    r"^IMAGE#(?P<image_id>[^#]+)#RECEIPT#(?P<receipt_id>[0-9]+)#"
-    r"LINE#(?P<line_id>[0-9]+)(?:#WORD#(?P<word_id>[0-9]+))?$"
-)
 # Fetch-join ruling (spec §3.2/§3.3 amendment): the line index's projection
 # omits fields the resolver's phone/address tiers need, so line retrieval is
 # SearchVectors -> strongly consistent BatchGetItem of the neighbor items ->
