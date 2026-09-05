@@ -1570,6 +1570,24 @@ class MerchantResolver:
             return None
 
         labeled_words.sort(key=lambda w: (w.line_id, w.word_id))
+        if label_name == "MERCHANT_NAME":
+            # A merchant name is one printed phrase, so take it from ONE
+            # line. Joining every labelled word across lines splices
+            # fragments the model happened to tag on different header
+            # lines: "TERRIBLE'S 226" / "TERRIBLE HERBST #226" became
+            # "TERRIBLE'S TERRIBLE", which then poisoned the Places text
+            # query and was persisted verbatim as the merchant name.
+            # Address lines are the opposite case -- multi-line by
+            # nature -- so this applies to merchant names only.
+            by_line: dict[int, list[ReceiptWord]] = {}
+            for word in labeled_words:
+                by_line.setdefault(word.line_id, []).append(word)
+            # Longest labelled span wins; ties go to the higher line.
+            best_line = max(
+                by_line,
+                key=lambda lid: (len(by_line[lid]), -lid),
+            )
+            labeled_words = by_line[best_line]
         text = " ".join(word.text for word in labeled_words)
         normalized = " ".join(text.split())
         return normalized if len(normalized) >= 2 else None
