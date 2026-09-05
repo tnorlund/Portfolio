@@ -12,7 +12,9 @@ from receipt_dynamo.amounts import (
 from receipt_dynamo.amounts import SUBTOTAL_KEYWORD_RE as _SUBTOTAL_RE
 from receipt_dynamo.amounts import TAX_KEYWORD_RE as _TAX_RE
 from receipt_dynamo.amounts import TOTAL_KEYWORD_RE as _TOTAL_RE
-from receipt_dynamo.amounts import parse_receipt_amount
+from receipt_dynamo.amounts import (
+    parse_receipt_amount,
+)
 
 _SUMMARY_RE = re.compile(
     r"\b("
