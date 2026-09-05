@@ -37,12 +37,7 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install packages
 pip install -e receipt_dynamo
-pip install -e receipt_label
 pip install -e receipt_upload
-
-# Run tests
-pip install -e "receipt_label[test]"
-pytest receipt_label/tests/ -v
 ```
 
 ### Infrastructure Deployment
@@ -64,10 +59,6 @@ pulumi up
 ├── receipt_dynamo/    # DynamoDB data access layer
 │   ├── entities/      # Data models
 │   └── tests/         # Unit and integration tests
-│
-├── receipt_label/     # ML-based receipt analysis
-│   ├── models/        # ML models and processors
-│   └── pattern_detection/  # Text pattern recognition
 │
 ├── receipt_upload/    # OCR and image processing
 │   ├── ocr.py        # Text extraction
@@ -147,13 +138,6 @@ make format  # Runs black and isort
 ### Testing
 
 ```bash
-# Install test dependencies
-pip install -e "receipt_label[test]"
-
-# Run Python tests
-pytest receipt_label/tests/ -v
-pytest receipt_label/tests/ -m "not integration"
-
 # Run tests for specific package
 ./scripts/test_runner.sh receipt_dynamo
 
@@ -240,7 +224,6 @@ All `receipt_*` packages use editable installs:
 
 ```bash
 pip install -e receipt_dynamo
-pip install -e receipt_label
 pip install -e receipt_upload
 ```
 
@@ -248,9 +231,6 @@ pip install -e receipt_upload
 
 ### receipt_dynamo
 DynamoDB data access layer. Provides entities and client for interacting with receipt data.
-
-### receipt_label
-ML-based receipt analysis and labeling. Uses Ollama and Hugging Face for intelligent field extraction.
 
 ### receipt_upload
 OCR and image processing. Handles text extraction and spatial analysis.
