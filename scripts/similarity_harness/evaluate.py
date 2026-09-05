@@ -517,6 +517,12 @@ def evaluate_fixture(
     }
 
 
+def failed_gates(scorecard: Mapping[str, Any]) -> list[str]:
+    """Names of gates that evaluated to False (None means not applicable)."""
+    gates = scorecard.get("gates", {})
+    return sorted(name for name, passed in gates.items() if passed is False)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -525,6 +531,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--out", type=Path, default=Path("scorecard.json"))
     parser.add_argument("--recall-k", type=int, default=DEFAULT_RECALL_K)
+    parser.add_argument(
+        "--fail-on-gate",
+        action="store_true",
+        help="exit 1 when any gate in the scorecard is False "
+        "(default: write the scorecard and exit 0 regardless)",
+    )
+    parser.add_argument(
+        "--require-canonical",
+        action="store_true",
+        help="refuse fixtures whose source.canonical is not true "
+        "(the committed golden.json is an offline bootstrap, not the "
+        "live-captured canonical set; see CANONICAL_POINTER.md)",
+    )
     parser.add_argument(
         "--backend-factory",
         help="Dynamo client factory using module:callable syntax",
@@ -542,6 +561,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not 1 <= args.recall_k <= 100:
         raise SystemExit("--recall-k must be between 1 and 100")
     fixture = load_fixture(args.fixture)
+    if args.require_canonical and not fixture["source"].get("canonical"):
+        raise SystemExit(
+            f"fixture {args.fixture} is not canonical "
+            "(source.canonical is not true); fetch the blessed set per "
+            "tests/fixtures/similarity/CANONICAL_POINTER.md or drop "
+            "--require-canonical"
+        )
     if args.backend == "dynamo":
         table_name = os.environ.setdefault("DYNAMODB_TABLE_NAME", DEV_TABLE)
         if table_name != DEV_TABLE:
@@ -567,6 +593,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(canonical_json_bytes(scorecard))
     print(json.dumps(scorecard["metrics"], indent=2, sort_keys=True))
+    failing = failed_gates(scorecard)
+    if failing:
+        print(
+            "FAILED GATES: " + ", ".join(failing),
+            file=sys.stderr,
+        )
+        if args.fail_on_gate:
+            return 1
     return 0
 
 
