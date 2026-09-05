@@ -92,8 +92,6 @@ from receipt_dynamo.entities.receipt_embedding import (
     ReceiptLineEmbedding,
     ReceiptWordEmbedding,
     item_to_receipt_embedding,
-    item_to_receipt_line_embedding,
-    item_to_receipt_word_embedding,
 )
 from receipt_dynamo.entities.receipt_letter import (  # noqa: F401
     ReceiptLetter,
@@ -249,7 +247,6 @@ __all__ = [
     "item_to_receipt_embedding",
     "item_to_receipt_letter",
     "item_to_receipt_line",
-    "item_to_receipt_line_embedding",
     "item_to_receipt_line_item",
     "item_to_receipt_metadata",
     "item_to_receipt_place",
@@ -257,7 +254,6 @@ __all__ = [
     "item_to_receipt_section",
     "validate_section_row_coverage",
     "item_to_receipt_word",
-    "item_to_receipt_word_embedding",
     "item_to_receipt_word_label",
     "item_to_word",
     # Utility functions

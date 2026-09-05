@@ -281,24 +281,12 @@ class ReceiptWordEmbedding:
 ReceiptEmbedding = ReceiptLineEmbedding | ReceiptWordEmbedding
 
 
-def item_to_receipt_line_embedding(
-    item: dict[str, Any],
-) -> ReceiptLineEmbedding:
-    return ReceiptLineEmbedding.from_item(item)
-
-
-def item_to_receipt_word_embedding(
-    item: dict[str, Any],
-) -> ReceiptWordEmbedding:
-    return ReceiptWordEmbedding.from_item(item)
-
-
 def item_to_receipt_embedding(item: dict[str, Any]) -> ReceiptEmbedding:
     item_type = item.get("TYPE", {}).get("S")
     if item_type == ReceiptLineEmbedding.TYPE:
-        return item_to_receipt_line_embedding(item)
+        return ReceiptLineEmbedding.from_item(item)
     if item_type == ReceiptWordEmbedding.TYPE:
-        return item_to_receipt_word_embedding(item)
+        return ReceiptWordEmbedding.from_item(item)
     raise ValueError(f"unsupported embedding item TYPE: {item_type!r}")
 
 
@@ -308,6 +296,4 @@ __all__ = [
     "ReceiptLineEmbedding",
     "ReceiptWordEmbedding",
     "item_to_receipt_embedding",
-    "item_to_receipt_line_embedding",
-    "item_to_receipt_word_embedding",
 ]
