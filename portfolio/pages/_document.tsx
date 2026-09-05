@@ -1,4 +1,5 @@
 import { Head, Html, Main, NextScript } from "next/document";
+import type { DocumentProps } from "next/document";
 
 function getPublicAnalyticsId(
     value: string | undefined,
@@ -17,7 +18,8 @@ const GTM_ID = getPublicAnalyticsId(
     /^GTM-[A-Z0-9]+$/
 );
 
-export default function Document() {
+export default function Document(props: DocumentProps) {
+    const isPlanner = props.__NEXT_DATA__.page === "/planner";
     return (
         <Html lang="en">
             <Head>
@@ -25,7 +27,7 @@ export default function Document() {
                     name="viewport"
                     content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes"
                 />
-                {GTM_ID && (
+                {!isPlanner && GTM_ID && (
                     <script
                         dangerouslySetInnerHTML={{
                             __html: `
@@ -38,7 +40,7 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
                         }}
                     />
                 )}
-                {GA_MEASUREMENT_ID && (
+                {!isPlanner && GA_MEASUREMENT_ID && (
                     <>
                         <script
                             async
@@ -60,7 +62,7 @@ gtag('config', ${JSON.stringify(GA_MEASUREMENT_ID)}, { send_page_view: false });
                 )}
             </Head>
             <body>
-                {GTM_ID && (
+                {!isPlanner && GTM_ID && (
                     <noscript>
                         <iframe
                             src={`https://www.googletagmanager.com/ns.html?id=${encodeURIComponent(

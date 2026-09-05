@@ -60,6 +60,7 @@ class ErrorBoundary extends React.Component<
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter();
+  const isPlanner = router.pathname === "/planner";
   const hasTrackedInitialPageView = useRef(false);
   // One QueryClient per app instance (not per render) so the cache survives
   // page navigations but is never shared across SSR requests
@@ -77,16 +78,17 @@ export default function App({ Component, pageProps }: AppProps) {
   );
 
   useEffect(() => {
-    if (!router.isReady || hasTrackedInitialPageView.current) {
+    if (isPlanner || !router.isReady || hasTrackedInitialPageView.current) {
       return;
     }
 
     hasTrackedInitialPageView.current = true;
     trackPageView(router.asPath);
-  }, [router.asPath, router.isReady]);
+  }, [router.asPath, router.isReady, isPlanner]);
 
   useEffect(() => {
     const handleRouteChange = (url: string) => {
+      if (url.split("?")[0] === "/planner") return;
       trackPageView(url);
     };
 
@@ -97,13 +99,16 @@ export default function App({ Component, pageProps }: AppProps) {
     };
   }, [router.events]);
 
-  useEffect(() => initializeScrollDepthTracking(), []);
+  useEffect(() => {
+    if (!isPlanner) return initializeScrollDepthTracking();
+  }, [isPlanner]);
 
   useEffect(() => {
     // Report Web Vitals for Real User Monitoring
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !isPlanner) {
       import('web-vitals').then(({ onCLS, onINP, onFCP, onLCP, onTTFB }) => {
         const reportWebVitals = (metric: any) => {
+          if (window.location.pathname === "/planner") return;
           // Log to console in development
           if (process.env.NODE_ENV === 'development') {
             console.log(metric);
@@ -150,22 +155,22 @@ export default function App({ Component, pageProps }: AppProps) {
         onTTFB(reportWebVitals);
       });
     }
-  }, []);
+  }, [isPlanner]);
 
   return (
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <PerformanceProvider>
+        <PerformanceProvider enabled={!isPlanner && process.env.NODE_ENV === "development"}>
         <Suspense fallback={<div>Loading...</div>}>
           <div>
-            <header>
+            {!isPlanner && <header>
               <h1>
                 <Link href="/">Tyler Norlund</Link>
               </h1>
-            </header>
+            </header>}
             <Component {...pageProps} />
-            <ReaderInsight />
-            {process.env.NODE_ENV === "development" && <PerformanceOverlay />}
+            {!isPlanner && <ReaderInsight />}
+            {!isPlanner && process.env.NODE_ENV === "development" && <PerformanceOverlay />}
           </div>
         </Suspense>
         </PerformanceProvider>

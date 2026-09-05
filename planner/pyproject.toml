@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "personal-planner"
+version = "0.1.0"
+description = "A private personal planner with a shared HTTP and MCP service"
+requires-python = ">=3.13,<3.14"
+dependencies = ["boto3>=1.35", "mcp>=1.10,<2"]
+
+[project.optional-dependencies]
+test = ["moto[dynamodb]>=5", "pytest", "pytest-cov", "pytest-xdist", "pytest-timeout", "pytest-rerunfailures"]
+lint = ["black", "isort"]
+
+[project.scripts]
+planner-api = "planner.http:main"
+planner-mcp = "planner.mcp:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["planner"]
+
+[tool.black]
+line-length = 79
+
+[tool.isort]
+profile = "black"
+line_length = 79
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--confcutdir=."
