@@ -19,7 +19,6 @@ COPY receipt_agent/ /tmp/receipt_agent/
 # receipt_places depends on receipt_dynamo
 # receipt_upload depends on receipt_dynamo, receipt_embeddings, receipt_places
 # receipt_agent depends on receipt_dynamo, receipt_upload, and receipt_places
-# (receipt_chroma retired: Chroma teardown)
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir --no-deps /tmp/receipt_embeddings && \
     pip install --no-cache-dir /tmp/receipt_places && \

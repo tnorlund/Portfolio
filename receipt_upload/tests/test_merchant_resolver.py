@@ -1,18 +1,20 @@
 """
 Integration tests for MerchantResolver.
 
-Tests the two-tier merchant resolution strategy:
-- Tier 1: Fast metadata filtering on phone/address in ChromaDB
-- Tier 2: Place ID Finder agent fallback for Google Places API
+Tests the tiered merchant resolution strategy:
+- Similarity tier: vector-neighbor metadata match on phone/address/name
+- Place ID Finder agent fallback for Google Places API
 
-All external services (ChromaDB, DynamoDB, Places API) are mocked.
+All external services (vector index, DynamoDB, Places API) are mocked.
 """
 
+from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
+from receipt_embeddings import ScoredItem
 
 from receipt_upload.merchant_resolution import (
     MerchantResolver,
@@ -24,12 +26,34 @@ from receipt_upload.merchant_resolution import (
 TEST_IMAGE_ID = "00000000-0000-4000-8000-000000000001"
 
 
-@pytest.fixture(autouse=True)
-def _chroma_backend(monkeypatch):
-    """These tests exercise the legacy Chroma-wrapper similarity path with
-    Chroma-style mock clients; the post-teardown default backend is
-    dynamodb, so pin the backend the mocks speak."""
-    monkeypatch.setenv("VECTOR_BACKEND", "chroma")
+class _FakeVectorClient:
+    """In-memory ``VectorSearchClient`` stand-in for the line index.
+
+    ``results`` mirrors the neighbor shape the resolver consumes:
+    ``{"metadatas": [[...]], "distances": [[...]]}``. Setting ``error``
+    makes ``search`` raise, to exercise the resolver's error handling.
+    """
+
+    def __init__(self) -> None:
+        self.results: Dict[str, Any] = {"metadatas": [[]], "distances": [[]]}
+        self.error: Optional[Exception] = None
+
+    def search(self, vector, index, top_k, filters=None) -> List[ScoredItem]:
+        if self.error is not None:
+            raise self.error
+        metadatas = self.results["metadatas"][0]
+        distances = self.results["distances"][0]
+        return [
+            ScoredItem(
+                key=f"{meta.get('image_id')}#{meta.get('receipt_id')}",
+                distance=float(distance),
+                metadata=dict(meta),
+            )
+            for meta, distance in zip(metadatas, distances)
+        ]
+
+    def get_vector(self, key: str) -> List[float]:
+        raise KeyError(key)
 
 
 def _label(
@@ -61,16 +85,16 @@ class TestMerchantResolverTier1Phone:
 
     @pytest.fixture
     def mock_lines_client(self):
-        """Create mock ChromaClient for lines collection."""
-        client = MagicMock()
-        return client
+        """Create an in-memory vector client for the line index."""
+        return _FakeVectorClient()
 
     @pytest.fixture
-    def resolver(self, mock_dynamo_client):
+    def resolver(self, mock_dynamo_client, mock_lines_client):
         """Create MerchantResolver with mock clients."""
         return MerchantResolver(
             dynamo_client=mock_dynamo_client,
             places_client=None,
+            vector_client=mock_lines_client,
         )
 
     def test_phone_match_returns_merchant_result(
@@ -92,9 +116,9 @@ class TestMerchantResolverTier1Phone:
         mock_line.calculate_centroid.return_value = (0.5, 0.1)
         lines = [mock_line]
 
-        # Mock ChromaDB query to return matching receipt
+        # Neighbor metadata for a matching receipt
         # Distance of 0.1 = similarity of 0.95 (1 - 0.1/2)
-        mock_lines_client.query.return_value = {
+        mock_lines_client.results = {
             "metadatas": [
                 [
                     {
@@ -119,7 +143,6 @@ class TestMerchantResolverTier1Phone:
         line_embeddings = {1: fake_embedding}
 
         result = resolver.resolve(
-            lines_client=mock_lines_client,
             lines=lines,
             words=words,
             image_id="current-image",
@@ -128,7 +151,7 @@ class TestMerchantResolverTier1Phone:
         )
 
         assert result.place_id == "ChIJ_test_place_id"
-        assert result.resolution_tier == "chroma_phone"
+        assert result.resolution_tier == "similarity_phone"
         # With phone match boost: 0.95 + 0.20 = 1.0 (capped)
         assert result.confidence >= 0.95
         assert result.source_image_id == "other-image"
@@ -149,8 +172,8 @@ class TestMerchantResolverTier1Phone:
         mock_line.calculate_centroid.return_value = (0.5, 0.1)
         lines = [mock_line]
 
-        # Mock ChromaDB to return only the current receipt
-        mock_lines_client.query.return_value = {
+        # Only the current receipt comes back as a neighbor
+        mock_lines_client.results = {
             "metadatas": [
                 [
                     {
@@ -168,7 +191,6 @@ class TestMerchantResolverTier1Phone:
         line_embeddings = {1: fake_embedding}
 
         result = resolver.resolve(
-            lines_client=mock_lines_client,
             lines=lines,
             words=words,
             image_id="current-image",
@@ -188,8 +210,8 @@ class TestMerchantResolverTier1Phone:
         mock_line.calculate_centroid.return_value = (0.5, 0.1)
         lines = [mock_line]
 
-        # No matching results from ChromaDB
-        mock_lines_client.query.return_value = {
+        # No neighbors from the vector index
+        mock_lines_client.results = {
             "metadatas": [[]],
             "distances": [[]],
         }
@@ -199,7 +221,6 @@ class TestMerchantResolverTier1Phone:
         line_embeddings = {1: fake_embedding}
 
         result = resolver.resolve(
-            lines_client=mock_lines_client,
             lines=lines,
             words=words,
             image_id="test-image",
@@ -222,16 +243,16 @@ class TestMerchantResolverTier1Address:
 
     @pytest.fixture
     def mock_lines_client(self):
-        """Create mock ChromaClient for lines collection."""
-        client = MagicMock()
-        return client
+        """Create an in-memory vector client for the line index."""
+        return _FakeVectorClient()
 
     @pytest.fixture
-    def resolver(self, mock_dynamo_client):
+    def resolver(self, mock_dynamo_client, mock_lines_client):
         """Create MerchantResolver with mock clients."""
         return MerchantResolver(
             dynamo_client=mock_dynamo_client,
             places_client=None,
+            vector_client=mock_lines_client,
         )
 
     def test_address_match_returns_merchant_result(
@@ -252,9 +273,9 @@ class TestMerchantResolverTier1Address:
         mock_line.calculate_centroid.return_value = (0.5, 0.1)
         lines = [mock_line]
 
-        # Mock ChromaDB query to return matching receipt
+        # Neighbor metadata for a matching receipt
         # Distance of 0.4 = similarity of 0.80 (1 - 0.4/2)
-        mock_lines_client.query.return_value = {
+        mock_lines_client.results = {
             "metadatas": [
                 [
                     {
@@ -279,7 +300,6 @@ class TestMerchantResolverTier1Address:
         line_embeddings = {1: fake_embedding}
 
         result = resolver.resolve(
-            lines_client=mock_lines_client,
             lines=lines,
             words=words,
             image_id="current-image",
@@ -288,7 +308,7 @@ class TestMerchantResolverTier1Address:
         )
 
         assert result.place_id == "ChIJ_address_place_id"
-        assert result.resolution_tier == "chroma_address"
+        assert result.resolution_tier == "similarity_address"
         # Similarity 0.80 + address match boost 0.15 = 0.95
         assert result.confidence >= 0.80
         assert result.source_image_id == "other-image"
@@ -309,11 +329,8 @@ class TestMerchantResolverTier2PlaceIdFinder:
 
     @pytest.fixture
     def mock_lines_client(self):
-        """Create mock ChromaClient."""
-        client = MagicMock()
-        # Return empty results for Tier 1 (no matches)
-        client.query.return_value = {"metadatas": [[]], "distances": [[]]}
-        return client
+        """Vector client returning no neighbors (similarity tier misses)."""
+        return _FakeVectorClient()
 
     def test_tier2_fallback_when_tier1_fails(
         self,
@@ -325,6 +342,7 @@ class TestMerchantResolverTier2PlaceIdFinder:
         resolver = MerchantResolver(
             dynamo_client=mock_dynamo_client,
             places_client=mock_places_client,
+            vector_client=mock_lines_client,
         )
 
         words = [MagicMock(spec=ReceiptWord, line_id=1, extracted_data={})]
@@ -350,7 +368,6 @@ class TestMerchantResolverTier2PlaceIdFinder:
             resolver, "_run_place_id_finder", return_value=tier2_result
         ):
             result = resolver.resolve(
-                lines_client=mock_lines_client,
                 lines=lines,
                 words=words,
                 image_id="test-image",
@@ -373,6 +390,7 @@ class TestMerchantResolverTier2PlaceIdFinder:
         resolver = MerchantResolver(
             dynamo_client=mock_dynamo_client,
             places_client=mock_places_client,
+            vector_client=mock_lines_client,
         )
 
         words = [MagicMock(spec=ReceiptWord, line_id=1, extracted_data={})]
@@ -389,7 +407,6 @@ class TestMerchantResolverTier2PlaceIdFinder:
             resolver, "_run_place_id_finder", return_value=MerchantResult()
         ):
             result = resolver.resolve(
-                lines_client=mock_lines_client,
                 lines=lines,
                 words=words,
                 image_id="test-image",
@@ -480,12 +497,12 @@ class TestMerchantResolverHelpers:
 
 
 class TestMerchantResolverOCRCrossValidation:
-    """Test OCR text cross-validation of ChromaDB matches.
+    """Test OCR text cross-validation of similarity matches.
 
     The resolver should reject matches whose merchant name has zero
     meaningful token overlap with the receipt's OCR text.  This catches
     metadata-poisoning and over-representation bugs (e.g. Sprouts
-    dominating ChromaDB, wrong phone metadata).
+    dominating the index, wrong phone metadata).
     """
 
     @pytest.fixture
@@ -495,13 +512,14 @@ class TestMerchantResolverOCRCrossValidation:
 
     @pytest.fixture
     def mock_lines_client(self):
-        return MagicMock()
+        return _FakeVectorClient()
 
     @pytest.fixture
-    def resolver(self, mock_dynamo_client):
+    def resolver(self, mock_dynamo_client, mock_lines_client):
         return MerchantResolver(
             dynamo_client=mock_dynamo_client,
             places_client=None,
+            vector_client=mock_lines_client,
         )
 
     def _make_line(self, line_id: int, text: str, y: float = 0.1):
@@ -563,7 +581,7 @@ class TestMerchantResolverOCRCrossValidation:
     def test_mismatched_merchant_rejected_falls_to_tier2(
         self, resolver, mock_lines_client, mock_dynamo_client
     ):
-        """ChromaDB returns wrong merchant → rejected → falls to Tier 2."""
+        """Neighbor has the wrong merchant → rejected → falls to Tier 2."""
         words = [
             MagicMock(
                 spec=ReceiptWord,
@@ -576,8 +594,8 @@ class TestMerchantResolverOCRCrossValidation:
             self._make_line(2, "(805) 495-6229", y=0.9),
         ]
 
-        # ChromaDB returns "Sprouts Farmers Market" (wrong)
-        mock_lines_client.query.return_value = {
+        # Neighbor is "Sprouts Farmers Market" (wrong)
+        mock_lines_client.results = {
             "metadatas": [
                 [
                     {
@@ -608,7 +626,6 @@ class TestMerchantResolverOCRCrossValidation:
             resolver, "_run_place_id_finder", return_value=tier2_result
         ):
             result = resolver.resolve(
-                lines_client=mock_lines_client,
                 lines=lines,
                 words=words,
                 image_id="test-image",
@@ -623,7 +640,7 @@ class TestMerchantResolverOCRCrossValidation:
     def test_correct_merchant_passes_cross_validation(
         self, resolver, mock_lines_client, mock_dynamo_client
     ):
-        """ChromaDB returns correct merchant → passes → returned."""
+        """Neighbor has the correct merchant → passes → returned."""
         words = [
             MagicMock(
                 spec=ReceiptWord,
@@ -636,8 +653,8 @@ class TestMerchantResolverOCRCrossValidation:
             self._make_line(2, "(805) 495-6229", y=0.9),
         ]
 
-        # ChromaDB correctly returns "Sprouts Farmers Market"
-        mock_lines_client.query.return_value = {
+        # Neighbor correctly carries "Sprouts Farmers Market"
+        mock_lines_client.results = {
             "metadatas": [
                 [
                     {
@@ -658,7 +675,6 @@ class TestMerchantResolverOCRCrossValidation:
         line_embeddings = {1: [0.1] * 1536, 2: [0.2] * 1536}
 
         result = resolver.resolve(
-            lines_client=mock_lines_client,
             lines=lines,
             words=words,
             image_id="test-image",
@@ -668,7 +684,7 @@ class TestMerchantResolverOCRCrossValidation:
 
         # Should accept the correct match
         assert result.merchant_name == "Sprouts Farmers Market"
-        assert result.resolution_tier == "chroma_phone"
+        assert result.resolution_tier == "similarity_phone"
         assert result.place_id == "ChIJZxmMXO4k6IARlo_-qBA0nBQ"
 
     def test_second_match_used_when_first_rejected(
@@ -687,8 +703,8 @@ class TestMerchantResolverOCRCrossValidation:
             self._make_line(2, "(805) 495-6229", y=0.9),
         ]
 
-        # ChromaDB returns 2 matches: wrong (Sprouts) then right (AIM)
-        mock_lines_client.query.return_value = {
+        # Two neighbors: wrong (Sprouts) then right (AIM)
+        mock_lines_client.results = {
             "metadatas": [
                 [
                     {
@@ -724,7 +740,6 @@ class TestMerchantResolverOCRCrossValidation:
         line_embeddings = {1: [0.1] * 1536, 2: [0.2] * 1536}
 
         result = resolver.resolve(
-            lines_client=mock_lines_client,
             lines=lines,
             words=words,
             image_id="test-image",
@@ -734,7 +749,7 @@ class TestMerchantResolverOCRCrossValidation:
 
         # Should pick AIM Mail Center (2nd match) not Sprouts (1st)
         assert result.merchant_name == "AIM Mail Center"
-        assert result.resolution_tier == "chroma_phone"
+        assert result.resolution_tier == "similarity_phone"
 
 
 class TestMerchantResolverErrorHandling:
@@ -747,16 +762,17 @@ class TestMerchantResolverErrorHandling:
 
     @pytest.fixture
     def mock_lines_client(self):
-        """Create mock ChromaClient."""
-        return MagicMock()
+        """Create an in-memory vector client for the line index."""
+        return _FakeVectorClient()
 
-    def test_chroma_query_error_is_handled(
+    def test_vector_search_error_is_handled(
         self, mock_dynamo_client, mock_lines_client
     ):
-        """Test that ChromaDB query errors are handled gracefully."""
+        """Test that vector search errors are handled gracefully."""
         resolver = MerchantResolver(
             dynamo_client=mock_dynamo_client,
             places_client=None,
+            vector_client=mock_lines_client,
         )
 
         words = [
@@ -770,15 +786,14 @@ class TestMerchantResolverErrorHandling:
         mock_line.calculate_centroid.return_value = (0.5, 0.1)
         lines = [mock_line]
 
-        # Mock ChromaDB to raise exception
-        mock_lines_client.query.side_effect = Exception("ChromaDB error")
+        # Make the vector search raise
+        mock_lines_client.error = Exception("vector index error")
 
         # Provide pre-cached line embeddings
         fake_embedding = [0.1] * 1536
         line_embeddings = {1: fake_embedding}
 
         result = resolver.resolve(
-            lines_client=mock_lines_client,
             lines=lines,
             words=words,
             image_id="test-image",
@@ -796,6 +811,7 @@ class TestMerchantResolverErrorHandling:
         resolver = MerchantResolver(
             dynamo_client=mock_dynamo_client,
             places_client=None,
+            vector_client=mock_lines_client,
         )
 
         words = [
@@ -809,8 +825,8 @@ class TestMerchantResolverErrorHandling:
         mock_line.calculate_centroid.return_value = (0.5, 0.1)
         lines = [mock_line]
 
-        # Mock ChromaDB to return a match with distance
-        mock_lines_client.query.return_value = {
+        # Neighbor match with distance
+        mock_lines_client.results = {
             "metadatas": [
                 [
                     {
@@ -833,7 +849,6 @@ class TestMerchantResolverErrorHandling:
         line_embeddings = {1: fake_embedding}
 
         result = resolver.resolve(
-            lines_client=mock_lines_client,
             lines=lines,
             words=words,
             image_id="test-image",
@@ -851,6 +866,7 @@ class TestMerchantResolverErrorHandling:
         resolver = MerchantResolver(
             dynamo_client=mock_dynamo_client,
             places_client=None,
+            vector_client=mock_lines_client,
         )
 
         words = [
@@ -864,7 +880,7 @@ class TestMerchantResolverErrorHandling:
         mock_line.calculate_centroid.return_value = (0.5, 0.1)
         lines = [mock_line]
 
-        mock_lines_client.query.return_value = {
+        mock_lines_client.results = {
             "metadatas": [
                 [
                     {
@@ -888,7 +904,6 @@ class TestMerchantResolverErrorHandling:
             mock_dynamo_client.get_receipt_place.return_value = mock_place
 
             result = resolver.resolve(
-                lines_client=mock_lines_client,
                 lines=lines,
                 words=words,
                 image_id="test-image",
@@ -963,7 +978,7 @@ class TestGetPlaceFromDynamo:
     def test_similarity_search_prefers_dynamo_merchant_name(
         self, resolver, mock_dynamo_client
     ):
-        """ChromaDB match has stale name, DynamoDB has corrected name → uses DynamoDB."""
+        """Neighbor has stale name, DynamoDB has corrected name → uses DynamoDB."""
 
         def _make_line(line_id, text, y=0.1):
             line = MagicMock(spec=ReceiptLine, line_id=line_id, text=text)
@@ -976,20 +991,21 @@ class TestGetPlaceFromDynamo:
             _make_line(1, "Coffee House Corrected", y=0.1),
         ]
 
-        mock_lines_client = MagicMock()
-        mock_lines_client.query.return_value = {
+        mock_lines_client = _FakeVectorClient()
+        mock_lines_client.results = {
             "metadatas": [
                 [
                     {
                         "image_id": "other-img",
                         "receipt_id": 2,
-                        "merchant_name": "Stale Coffee Name",  # ChromaDB stale
+                        "merchant_name": "Stale Coffee Name",  # stale
                         "normalized_phone_10": None,
                     }
                 ]
             ],
             "distances": [[0.1]],
         }
+        resolver._vector_client = mock_lines_client
 
         # DynamoDB returns corrected merchant_name
         mock_place = MagicMock()
@@ -1000,17 +1016,16 @@ class TestGetPlaceFromDynamo:
         query_line = _make_line(1, "Coffee House Corrected")
 
         result = resolver._similarity_search_impl(
-            lines_client=mock_lines_client,
             query_line=query_line,
             current_image_id="current-img",
             current_receipt_id=1,
             expected_phone=None,
             expected_address=None,
-            resolution_tier="chroma_text",
+            resolution_tier="similarity_text",
         )
 
         assert result.place_id == "ChIJ_coffee"
-        # Should use DynamoDB name, not the stale ChromaDB one
+        # Should use DynamoDB name, not the stale neighbor metadata
         assert result.merchant_name == "Coffee House Corrected"
 
 
@@ -1179,8 +1194,8 @@ class TestWriteTimeValidationLogic:
         assert merchant_name_matches_receipt("Sprouts Farmers Market", lines)
 
 
-class TestMerchantResolverChromaTextGuard:
-    """Tier 1 chroma_text requires corroboration (HIGH_CONFIDENCE_THRESHOLD).
+class TestMerchantResolverSimilarityTextGuard:
+    """similarity_text requires corroboration (HIGH_CONFIDENCE_THRESHOLD).
 
     Regression guard for a brand-new merchant ("Poke Market") being
     mislabeled as a 0.79 embedding neighbor ("Jamba") on a name-only match
@@ -1197,7 +1212,7 @@ class TestMerchantResolverChromaTextGuard:
 
     @pytest.fixture
     def mock_lines_client(self):
-        return MagicMock()
+        return _FakeVectorClient()
 
     def _setup(self, mock_dynamo_client, mock_places_client):
         resolver = MerchantResolver(
@@ -1209,7 +1224,7 @@ class TestMerchantResolverChromaTextGuard:
         line.calculate_centroid.return_value = (0.5, 0.1)
         return resolver, words, [line], {1: [0.1] * 1536}
 
-    def test_chroma_text_below_high_confidence_defers_to_tier2(
+    def test_similarity_text_below_high_confidence_defers_to_tier2(
         self, mock_dynamo_client, mock_places_client, mock_lines_client
     ):
         resolver, words, lines, embeds = self._setup(
@@ -1219,7 +1234,7 @@ class TestMerchantResolverChromaTextGuard:
             place_id="ChIJ_jamba",
             merchant_name="Jamba",
             confidence=0.79,
-            resolution_tier="chroma_text",
+            resolution_tier="similarity_text",
         )
         tier2 = MerchantResult(
             place_id="ChIJ_poke",
@@ -1232,7 +1247,6 @@ class TestMerchantResolverChromaTextGuard:
             patch.object(resolver, "_run_place_id_finder", return_value=tier2),
         ):
             result = resolver.resolve(
-                lines_client=mock_lines_client,
                 lines=lines,
                 words=words,
                 image_id="img",
@@ -1244,7 +1258,7 @@ class TestMerchantResolverChromaTextGuard:
         assert result.merchant_name == "Poke Market"
         assert result.resolution_tier == "place_id_finder"
 
-    def test_chroma_text_at_high_confidence_is_accepted(
+    def test_similarity_text_at_high_confidence_is_accepted(
         self, mock_dynamo_client, mock_places_client, mock_lines_client
     ):
         resolver, words, lines, embeds = self._setup(
@@ -1254,14 +1268,13 @@ class TestMerchantResolverChromaTextGuard:
             place_id="ChIJ_strong",
             merchant_name="Strong Match",
             confidence=0.87,
-            resolution_tier="chroma_text",
+            resolution_tier="similarity_text",
         )
         with (
             patch.object(resolver, "_similarity_search", return_value=strong),
             patch.object(resolver, "_run_place_id_finder") as mock_tier2,
         ):
             result = resolver.resolve(
-                lines_client=mock_lines_client,
                 lines=lines,
                 words=words,
                 image_id="img",
@@ -1275,7 +1288,7 @@ class TestMerchantResolverChromaTextGuard:
 class TestMerchantResolverLabeledFields:
     """Tests for MERCHANT_NAME/ADDRESS_LINE resolver hints."""
 
-    def test_labeled_places_search_runs_before_chroma(
+    def test_labeled_places_search_runs_before_similarity(
         self,
     ):
         dynamo = MagicMock()
@@ -1334,10 +1347,9 @@ class TestMerchantResolverLabeledFields:
                 "_run_labeled_place_search",
                 return_value=labeled_result,
             ) as labeled_search,
-            patch.object(resolver, "_similarity_search") as chroma_search,
+            patch.object(resolver, "_similarity_search") as similarity_search,
         ):
             result = resolver.resolve(
-                lines_client=MagicMock(),
                 lines=[line],
                 words=words,
                 image_id="current-image",
@@ -1358,7 +1370,7 @@ class TestMerchantResolverLabeledFields:
             # can be replaced (see prefer_receipt_name_over_address).
             labeled_merchant_name="Whole Foods",
         )
-        chroma_search.assert_not_called()
+        similarity_search.assert_not_called()
 
     def test_place_query_enriched_with_full_merchant_line(self):
         """The Places text query is the full MERCHANT_NAME line (carries the
@@ -1419,7 +1431,6 @@ class TestMerchantResolverLabeledFields:
             patch.object(resolver, "_similarity_search"),
         ):
             resolver.resolve(
-                lines_client=MagicMock(),
                 lines=[l1, l2],
                 words=words,
                 image_id="img",
@@ -1491,7 +1502,6 @@ class TestMerchantResolverLabeledFields:
             patch.object(resolver, "_similarity_search"),
         ):
             resolver.resolve(
-                lines_client=MagicMock(),
                 lines=[l1, l2],
                 words=words,
                 image_id="img",
@@ -1545,7 +1555,6 @@ class TestMerchantResolverLabeledFields:
             ),
         ):
             result = resolver.resolve(
-                lines_client=MagicMock(),
                 lines=[line],
                 words=words,
                 image_id="current-image",
@@ -1561,7 +1570,7 @@ class TestMerchantResolverLabeledFields:
         """Tier 1 Places leads at upload time via the Apple-NLP phone.
 
         The merchant name is only PENDING (not VALID) — but phone comes from NLP
-        extracted_data, so Tier 1 fires and resolves before any Chroma query.
+        extracted_data, so Tier 1 fires and resolves before any similarity query.
         """
         resolver = MerchantResolver(
             dynamo_client=MagicMock(),
@@ -1608,10 +1617,9 @@ class TestMerchantResolverLabeledFields:
                 "_run_labeled_place_search",
                 return_value=places_result,
             ) as places,
-            patch.object(resolver, "_similarity_search") as chroma,
+            patch.object(resolver, "_similarity_search") as similarity,
         ):
             result = resolver.resolve(
-                lines_client=MagicMock(),
                 lines=[line],
                 words=words,
                 image_id="img",
@@ -1623,10 +1631,10 @@ class TestMerchantResolverLabeledFields:
         places.assert_called_once()
         assert places.call_args.kwargs["phone"] == "7023618183"
         assert result.place_id == "ChIJ_whole_foods"
-        chroma.assert_not_called()  # Tier 1 short-circuited before Chroma
+        similarity.assert_not_called()  # Tier 1 short-circuited first
 
     def test_places_not_attempted_without_phone_or_address(self):
-        """No NLP phone/address -> skip Tier 1 Places, fall through to Chroma.
+        """No NLP phone/address -> skip Tier 1 Places, fall through to similarity.
 
         A PENDING name alone never drives a Places lookup (preserves the #959
         "don't resolve on an unvalidated hint" guarantee).
@@ -1664,7 +1672,6 @@ class TestMerchantResolverLabeledFields:
             ),
         ):
             result = resolver.resolve(
-                lines_client=MagicMock(),
                 lines=[line],
                 words=words,
                 image_id="img",

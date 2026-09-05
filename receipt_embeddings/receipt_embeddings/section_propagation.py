@@ -1,8 +1,4 @@
-"""Pure NumPy section propagation shared by research and runtime callers.
-
-Promoted verbatim from ``receipt_chroma.section_propagation`` (Chroma
-teardown) so the section verifier carries no receipt_chroma dependency.
-"""
+"""Pure NumPy section propagation shared by research and runtime callers."""
 
 from __future__ import annotations
 

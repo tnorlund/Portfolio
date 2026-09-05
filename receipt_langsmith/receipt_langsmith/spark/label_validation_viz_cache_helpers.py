@@ -186,6 +186,7 @@ def extract_validation_traces(
             F.col("name").isin(
                 [
                     "label_validation_chroma",
+                    "label_validation_similarity",
                     "label_validation_llm",
                     "llm_batch_validation",
                 ]
@@ -393,7 +394,12 @@ def _extract_validations(
         outputs = trace.get("outputs") or {}
         duration = trace.get("duration_ms") or 0.0
 
-        if name in ("label_validation_chroma", "chroma_label_validation"):
+        if name in (
+            "label_validation_chroma",
+            "chroma_label_validation",
+            "label_validation_similarity",
+            "similarity_label_validation",
+        ):
             chroma_duration_ms += duration
             if "validations" in outputs:
                 chroma_validations.extend(outputs["validations"])

@@ -6,7 +6,6 @@ the correct configuration for caching and performance optimization.
 """
 
 import logging
-import os
 from collections.abc import Callable
 from typing import Any, Optional
 
@@ -17,11 +16,6 @@ try:
     from receipt_dynamo.data.dynamo_client import DynamoClient
 except ImportError:  # pragma: no cover - optional dependency
     DynamoClient = None
-
-try:
-    from receipt_chroma import ChromaClient
-except ImportError:  # pragma: no cover - optional dependency
-    ChromaClient = None
 
 try:
     from receipt_places import PlacesClient, PlacesConfig
@@ -72,207 +66,6 @@ def create_dynamo_client(
 
     client = DynamoClient(table_name=table)
     logger.info("Created DynamoDB client for table: %s", table)
-    return client
-
-
-def create_chroma_client(
-    persist_directory: Optional[str] = None,
-    mode: str = "read",
-    settings: Optional[Settings] = None,
-) -> Any:
-    """
-    Create a ChromaDB client for similarity search.
-
-    The client provides access to:
-    - Line embeddings (collection: "lines")
-    - Word embeddings (collection: "words")
-
-    If RECEIPT_AGENT_CHROMA_LINES_DIRECTORY and
-    RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY are set, creates separate clients
-    for each collection and returns a DualChromaClient.
-
-    Args:
-        persist_directory: Local path to ChromaDB (defaults to settings)
-        mode: Operation mode ("read", "write", "delta")
-        settings: Configuration settings
-
-    Returns:
-        ChromaClient instance from receipt_chroma, or DualChromaClient if
-        separate directories are set
-
-    Raises:
-        ReceiptAgentConfigurationError: If no Chroma connection is configured
-    """
-    if settings is None:
-        settings = get_settings()
-
-    # Check for separate lines/words directories first (new approach)
-    lines_dir = os.environ.get("RECEIPT_AGENT_CHROMA_LINES_DIRECTORY")
-    words_dir = os.environ.get("RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY")
-
-    if lines_dir and words_dir:
-        # Create separate clients for lines and words
-        if ChromaClient is None:
-            raise ImportError(
-                "receipt_chroma package required for ChromaDB operations"
-            )
-
-        try:
-            lines_client = ChromaClient(persist_directory=lines_dir, mode=mode)
-            words_client = ChromaClient(persist_directory=words_dir, mode=mode)
-
-            # Create DualChromaClient wrapper
-            class DualChromaClient:
-                """
-                Routes queries to separate line and word ChromaDB clients.
-
-                This wrapper provides a unified interface when lines and words
-                are stored in separate ChromaDB directories. It routes operations
-                based on collection_name parameter.
-
-                Supported operations (read-only):
-                - query: Search for similar embeddings
-                - get: Retrieve embeddings by ID
-                - list_collections: Returns ["lines", "words"]
-                - get_collection: Get collection handle
-
-                Note: Write operations (add, delete, update) are not supported.
-                This wrapper is intended for read-only similarity search workflows.
-
-                Attributes:
-                    lines_client: ChromaClient for the "lines" collection
-                    words_client: ChromaClient for the "words" collection
-                """
-
-                def __init__(self, lines_client, words_client):
-                    self.lines_client = lines_client
-                    self.words_client = words_client
-
-                def query(self, collection_name, **kwargs):
-                    """Route query based on collection_name."""
-                    if collection_name == "lines":
-                        return self.lines_client.query(
-                            collection_name="lines",
-                            **kwargs,
-                        )
-                    elif collection_name == "words":
-                        return self.words_client.query(
-                            collection_name="words",
-                            **kwargs,
-                        )
-                    else:
-                        raise ValueError(
-                            f"Unknown collection: {collection_name}"
-                        )
-
-                def get(self, collection_name, **kwargs):
-                    """Route get based on collection_name."""
-                    if collection_name == "lines":
-                        return self.lines_client.get(
-                            collection_name="lines",
-                            **kwargs,
-                        )
-                    elif collection_name == "words":
-                        return self.words_client.get(
-                            collection_name="words",
-                            **kwargs,
-                        )
-                    else:
-                        raise ValueError(
-                            f"Unknown collection: {collection_name}"
-                        )
-
-                def list_collections(self):
-                    """Return both collections."""
-                    return ["lines", "words"]
-
-                def get_collection(self, collection_name, **kwargs):
-                    """Route get_collection based on collection_name."""
-                    if collection_name == "lines":
-                        return self.lines_client.get_collection(
-                            "lines",
-                            **kwargs,
-                        )
-                    elif collection_name == "words":
-                        return self.words_client.get_collection(
-                            "words",
-                            **kwargs,
-                        )
-                    else:
-                        raise ValueError(
-                            f"Unknown collection: {collection_name}"
-                        )
-
-                def __enter__(self):
-                    if hasattr(self.lines_client, "__enter__"):
-                        self.lines_client.__enter__()
-                    if hasattr(self.words_client, "__enter__"):
-                        self.words_client.__enter__()
-                    return self
-
-                def __exit__(self, exc_type, exc_val, exc_tb):
-                    if hasattr(self.lines_client, "__exit__"):
-                        self.lines_client.__exit__(exc_type, exc_val, exc_tb)
-                    if hasattr(self.words_client, "__exit__"):
-                        self.words_client.__exit__(exc_type, exc_val, exc_tb)
-
-                def close(self):
-                    """Close both underlying ChromaDB clients."""
-                    if hasattr(self.lines_client, "close"):
-                        self.lines_client.close()
-                    if hasattr(self.words_client, "close"):
-                        self.words_client.close()
-
-            client = DualChromaClient(lines_client, words_client)
-            logger.info("Created ChromaDB client at: %s", lines_dir)
-            logger.info("Created ChromaDB client at: %s", words_dir)
-            return client
-
-        except ImportError as e:
-            logger.error(
-                "Failed to import receipt_chroma. "
-                "Install with: pip install receipt_chroma"
-            )
-            raise ImportError(
-                "receipt_chroma package required for ChromaDB operations"
-            ) from e
-
-    # Fall back to a single local or Chroma Cloud client.
-    persist_dir = persist_directory or settings.chroma_persist_directory
-
-    # Chroma Cloud env vars
-    cloud_api_key = os.environ.get("CHROMA_CLOUD_API_KEY", "").strip() or None
-    cloud_tenant = os.environ.get("CHROMA_CLOUD_TENANT") or None
-    cloud_database = os.environ.get("CHROMA_CLOUD_DATABASE") or None
-
-    if ChromaClient is None:
-        logger.error(
-            "Failed to import receipt_chroma. "
-            "Install with: pip install receipt_chroma"
-        )
-        raise ImportError(
-            "receipt_chroma package required for ChromaDB operations"
-        )
-
-    if cloud_api_key:
-        client = ChromaClient(
-            cloud_api_key=cloud_api_key,
-            cloud_tenant=cloud_tenant,
-            cloud_database=cloud_database,
-            mode=mode,
-        )
-        logger.info("Created Chroma Cloud client (tenant=%s)", cloud_tenant)
-    elif persist_dir:
-        client = ChromaClient(persist_directory=persist_dir, mode=mode)
-        logger.info("Created ChromaDB client at: %s", persist_dir)
-    else:
-        raise ReceiptAgentConfigurationError(
-            "No ChromaDB backend configured. Set CHROMA_CLOUD_API_KEY, "
-            "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY, "
-            "RECEIPT_AGENT_CHROMA_LINES_DIRECTORY + "
-            "RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"
-        )
-
     return client
 
 
@@ -359,7 +152,7 @@ def create_embed_fn(
     settings: Optional[Settings] = None,
 ) -> Callable[[list[str]], list[list[float]]]:
     """
-    Create an embedding function for ChromaDB queries.
+    Create an embedding function for vector similarity queries.
 
     Uses OpenAI's embedding API by default.
 
@@ -423,7 +216,6 @@ def create_all_clients(
 
     This is a convenience function that creates properly configured:
     - DynamoDB client
-    - ChromaDB client
     - Places API (with caching)
     - Embedding function
 
@@ -431,14 +223,12 @@ def create_all_clients(
         settings: Configuration settings
 
     Returns:
-        Dictionary with keys: dynamo_client, chroma_client, places_api,
-        embed_fn
+        Dictionary with keys: dynamo_client, places_api, embed_fn
     """
     if settings is None:
         settings = get_settings()
 
     dynamo = create_dynamo_client(settings=settings)
-    chroma = create_chroma_client(settings=settings)
     embed_fn = create_embed_fn(settings=settings)
 
     # Places client uses its own built-in DynamoDB caching
@@ -446,7 +236,6 @@ def create_all_clients(
 
     return {
         "dynamo_client": dynamo,
-        "chroma_client": chroma,
         "places_api": places,
         "embed_fn": embed_fn,
     }

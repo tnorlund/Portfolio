@@ -172,7 +172,7 @@ class QAAgentStepFunction(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # S3 permissions (batch bucket only — ChromaDB is via Chroma Cloud)
+        # S3 permissions (batch bucket only)
         aws.iam.RolePolicy(
             f"{name}-lambda-s3-policy",
             role=lambda_role.id,
@@ -300,10 +300,6 @@ class QAAgentStepFunction(ComponentResource):
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_PROJECT": "qa-agent-marquee",
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                # Vector search backend seam (chroma | dynamodb)
-                "VECTOR_BACKEND": (
-                    Config("portfolio").get("vector-backend") or "chroma"
-                ),
                 "BATCH_BUCKET": self.batch_bucket.id,
             },
         }
@@ -316,7 +312,6 @@ class QAAgentStepFunction(ComponentResource):
                 "receipt_agent",
                 "receipt_dynamo",
                 "receipt_embeddings",
-                "receipt_chroma",
                 "receipt_places",
             ],
             lambda_function_name=f"{name}-run-question",

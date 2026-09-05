@@ -14,7 +14,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from receipt_chroma.embedding.formatting import build_receipt_rows
+from receipt_embeddings.formatting import build_receipt_rows
 from receipt_upload.section_assignment import (
     assign_row_sections,
     load_prior_model,

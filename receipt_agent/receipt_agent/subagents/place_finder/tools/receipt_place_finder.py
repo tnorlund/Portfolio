@@ -50,8 +50,6 @@ from receipt_agent.subagents.place_finder.tools import (
 finder = receipt_place_finder.ReceiptPlaceFinder(
     dynamo_client,
     places_client,
-    chroma_client,
-    embed_fn,
 )
 report = await finder.find_all_place_data_agentic()
 finder.print_summary(report)
@@ -83,18 +81,17 @@ import asyncio
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
+
+from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
+from receipt_dynamo.entities import ReceiptPlace
 
 from receipt_agent.subagents.place_finder import (
     create_receipt_place_finder_graph,
     run_receipt_place_finder,
 )
-
-from receipt_dynamo.constants import MerchantValidationStatus, ValidationMethod
-from receipt_dynamo.entities import ReceiptPlace
 
 logger = logging.getLogger(__name__)
 
@@ -136,17 +133,6 @@ ADDRESS_SUFFIXES = [
 # ======================================================================
 # Custom exceptions
 # ======================================================================
-
-
-class AgenticSearchRequirementsError(ValueError):
-    """Raised when agent-based search is requested without required
-    dependencies."""
-
-    def __init__(self):
-        super().__init__(
-            "Agent-based search requires chroma_client and embed_fn. "
-            "Provide both when initializing ReceiptPlaceFinder."
-        )
 
 
 # ======================================================================
@@ -336,9 +322,7 @@ class ReceiptPlaceFinder:
 
     Example:
         ```python
-        finder = ReceiptPlaceFinder(
-            dynamo_client, places_client, chroma_client, embed_fn
-        )
+        finder = ReceiptPlaceFinder(dynamo_client, places_client)
 
         # Find place data using agent (recommended)
         report = await finder.find_all_place_data_agentic()
@@ -358,8 +342,6 @@ class ReceiptPlaceFinder:
         self,
         dynamo_client: Any,
         places_client: Optional[Any] = None,
-        chroma_client: Optional[Any] = None,
-        embed_fn: Optional[Callable[[list[str]], list[list[float]]]] = None,
         settings: Optional[Any] = None,
     ):
         """
@@ -369,14 +351,10 @@ class ReceiptPlaceFinder:
             dynamo_client: DynamoDB client with list_receipt_places() method
             places_client: Google Places client (PlacesClient from
                 receipt_places)
-            chroma_client: ChromaDB client for agent-based search
-            embed_fn: Embedding function for agent-based search
             settings: Optional settings for agent-based search
         """
         self.dynamo = dynamo_client
         self.places = places_client
-        self.chroma = chroma_client
-        self.embed_fn = embed_fn
         self.settings = settings
         self._receipts_with_missing_metadata: list[ReceiptRecord] = []
         self._last_report: Optional[FinderResult] = None
@@ -483,7 +461,7 @@ class ReceiptPlaceFinder:
         - Examine receipt content (lines, words, labels)
         - Extract place data from receipt itself
         - Search Google Places API for missing fields
-        - Use similar receipts for verification
+        - Use other receipts from the same merchant for verification
         - Determine the best values for each field
 
         Args:
@@ -492,9 +470,6 @@ class ReceiptPlaceFinder:
         Returns:
             FinderResult with all matches
         """
-        if not self.chroma or not self.embed_fn:
-            raise AgenticSearchRequirementsError()
-
         # Load receipts if not already loaded
         if not self._receipts_with_missing_metadata:
             self.load_receipts_with_missing_place_data()
@@ -504,8 +479,6 @@ class ReceiptPlaceFinder:
             self._agent_graph, self._agent_state_holder = (
                 create_receipt_place_finder_graph(
                     dynamo_client=self.dynamo,
-                    chroma_client=self.chroma,
-                    embed_fn=self.embed_fn,
                     places_api=self.places,
                     settings=self.settings,
                 )

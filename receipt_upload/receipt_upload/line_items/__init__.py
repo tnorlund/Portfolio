@@ -1,4 +1,4 @@
-"""Line-item labeling: deterministic geometry + semantic (Chroma) recovery."""
+"""Line-item labeling: deterministic geometry + semantic (kNN) recovery."""
 
 from receipt_upload.line_items.labels import (
     DECODER_PROPOSED_BY,

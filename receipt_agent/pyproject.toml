@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "receipt_agent"
 version = "0.2.0"
-description = "Agentic validation for receipt metadata using LangGraph and ChromaDB"
+description = "Agentic validation for receipt metadata using LangGraph"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.13"
@@ -17,7 +17,6 @@ keywords = [
     "validation",
     "agent",
     "langgraph",
-    "chromadb",
     "langsmith",
 ]
 classifiers = [
@@ -33,8 +32,6 @@ dependencies = [
     # Internal packages (transitive deps: boto3, requests, pydantic*, tenacity, structlog, openai)
     "receipt-dynamo",              # DynamoDB client for receipts
     "receipt-embeddings",          # Vector-search seam (VectorSearchClient)
-    # receipt-chroma retired (Chroma teardown): every remaining use in this
-    # package is a lazy/guarded import for legacy snapshot flows.
     "receipt-places",              # Google Places API (brings pydantic*, tenacity, structlog)
     # LangGraph/LangChain for agent orchestration
     "langgraph>=0.2.0",

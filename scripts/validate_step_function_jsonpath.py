@@ -74,7 +74,7 @@ def test_group_chunks_merge_jsonpaths():
             "total_chunks": 7,
             "chunks": [],
             "chunks_s3_key": "chunks/c5df280d-32c7-4377-80d0-eb3e34417c37/chunks.json",
-            "chunks_s3_bucket": "chromadb-dev-shared-buckets-vectors-c239843",
+            "chunks_s3_bucket": "embedding-dev-batch-bucket-example",
             "use_s3": True,
             # Note: poll_results_s3_key is NOT here (this was the bug)
         },
@@ -82,7 +82,7 @@ def test_group_chunks_merge_jsonpaths():
             "batch_id": "c5df280d-32c7-4377-80d0-eb3e34417c37",
             "poll_results": None,
             "poll_results_s3_key": "poll_results/c5df280d-32c7-4377-80d0-eb3e34417c37/poll_results.json",
-            "poll_results_s3_bucket": "chromadb-dev-shared-buckets-vectors-c239843",
+            "poll_results_s3_bucket": "embedding-dev-batch-bucket-example",
         },
         "chunk_results": [],
         "poll_results": [],

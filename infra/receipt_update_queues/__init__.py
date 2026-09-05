@@ -1,24 +1,19 @@
 """Receipt update pipeline: summary/line-item queues, updaters, and the
-DynamoDB stream processor — relocated OUT of infra/chromadb_compaction
-(teardown PR #2 of the Chroma removal).
+DynamoDB stream processor.
 
-These resources are Chroma-independent: the stream processor fans label/
-place/section/summary events to the summary and line-item updaters (and
-runs the native vector-freshening leg), none of which touch Chroma. They
-historically lived inside the chromadb_compaction component only because
-the stream processor ALSO fed the lines/words compaction queues — which
-it still does here via the passed-in URLs, until the compaction stack is
-deleted and those two env vars are dropped.
+The stream processor fans label/place/section/summary events to the
+summary and line-item updaters and runs the native vector-freshening
+leg. The resources were relocated out of a retired vector-store
+compaction component (see docs/chroma-removal/).
 
 EVERY resource in this module is an alias-preserving MOVE: logical names
 are byte-identical to their old names and each resource carries an
-explicit ``pulumi.Alias`` to its old URN (old parent chain
-``chromadb:compaction:Infrastructure$chromadb:queues:SQSQueues`` or
-``$chromadb:compaction:HybridLambda``), so Pulumi updates state in place
-and the physical queues/Lambdas (whose URLs/names are baked into
-deployed env vars) are never replaced. A correct deploy of this move
-shows ZERO create/replace for the moved resources — verify with
-``pulumi preview`` before merging any change here.
+explicit ``pulumi.Alias`` to its old URN (the frozen historical parent
+chains in ``_QUEUES_CHAIN`` / ``_LAMBDA_CHAIN`` below), so Pulumi updates
+state in place and the physical queues/Lambdas (whose URLs/names are
+baked into deployed env vars) are never replaced. A correct deploy of
+this move shows ZERO create/replace for the moved resources — verify
+with ``pulumi preview`` before merging any change here.
 
 The one intentional exception: a NEW dedicated IAM role (the old shared
 role stays behind with the compaction Lambda). Repointing a Lambda's
@@ -39,20 +34,22 @@ from pulumi import Alias, ComponentResource, Output, ResourceOptions
 from lambda_layer import dynamo_layer, dynamo_stream_layer
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
-# Stream-processor handler + utils moved here with the compaction-stack
-# deletion (teardown PR #3); previously bundled from chromadb_compaction.
+# Stream-processor handler + utils are bundled from this component's
+# own lambdas/ directory.
 _LOCAL_LAMBDAS = Path(__file__).parent / "lambdas"
 
 
 def _old_parent(chain: str, instance_name: str) -> str:
     """URN of the OLD parent component instance (frozen historical
-    type literals; stack/project resolved at runtime)."""
+    type literals; stack/project resolved at runtime). These literals
+    are alias targets and must never be edited."""
     return (
         f"urn:pulumi:{pulumi.get_stack()}::{pulumi.get_project()}::"
-        f"chromadb:compaction:Infrastructure${chain}::{instance_name}"
+        f"{_OLD_ROOT_TYPE}${chain}::{instance_name}"
     )
 
 
+_OLD_ROOT_TYPE = "chromadb:compaction:Infrastructure"
 _QUEUES_CHAIN = "chromadb:queues:SQSQueues"
 _LAMBDA_CHAIN = "chromadb:compaction:HybridLambda"
 
@@ -72,11 +69,8 @@ class ReceiptUpdateQueues(ComponentResource):
         opts: Optional[ResourceOptions] = None,
     ):
         """``queues_name``/``lambdas_name`` MUST equal the old component's
-        child prefixes (``chromadb-{stack}-queues`` / ``chromadb-{stack}``)
-        so auto-named physical resources keep their identities.
-
-        The compaction stack is deleted: no lines/words env vars are
-        set, so the stream publisher's compaction legs self-disable.
+        child prefixes (as passed from ``infra/__main__.py``) so
+        auto-named physical resources keep their identities.
         """
         super().__init__("receipt:update:Queues", name, None, opts)
         if stack is None:
@@ -90,7 +84,7 @@ class ReceiptUpdateQueues(ComponentResource):
         ]
 
         # ------------------------------------------------------------------
-        # Queues (moved from ChromaDBQueues; logical names byte-identical)
+        # Queues (moved from the retired component; logical names byte-identical)
         # ------------------------------------------------------------------
         self.summary_dlq = aws.sqs.Queue(
             f"{queues_name}-summary-dlq",

@@ -53,13 +53,13 @@ from urllib.parse import urlparse
 # Prefer the sibling checkouts of the monorepo packages over any installed
 # copies so the backfill always runs the branch's code.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-for _pkg in ("receipt_dynamo", "receipt_chroma"):
+for _pkg in ("receipt_dynamo", "receipt_embeddings"):
     _path = _REPO_ROOT / _pkg
     if _path.is_dir():
         sys.path.insert(0, str(_path))
 
 # NOTE: the grouping version is owned by the canonical row builder in
-# receipt_chroma.embedding.formatting.receipt_rows. It is deliberately NOT
+# receipt_embeddings.formatting.receipt_rows. It is deliberately NOT
 # duplicated here -- a local copy would silently drift from the value the
 # builder actually stamps on each row.
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
@@ -134,7 +134,7 @@ def build_rows_for_receipt(client: Any, image_id: str, receipt_id: int):
     """Group a receipt's lines into visual rows -> ReceiptRow entities.
 
     Row construction is delegated to the canonical builder in
-    ``receipt_chroma.embedding.formatting.receipt_rows``, which reads the
+    ``receipt_embeddings.formatting.receipt_rows``, which reads the
     receipt's WORDS to populate ``price_column_x``/``label_text``/
     ``amount_text`` -- the product-to-price pairing that line-item
     extraction consumes.
@@ -152,15 +152,12 @@ def build_rows_for_receipt(client: Any, image_id: str, receipt_id: int):
     list-of-lists of ReceiptLine from group_lines_into_visual_rows (top to
     bottom, each row left to right), parallel to rows_entities.
     """
-    # Import via the public facade, not receipt_chroma.embedding.formatting
-    # .receipt_rows -- tests/unit/test_public_api.py enforces that external
-    # callers use the facade.
-    from receipt_chroma.embedding.formatting import (
+    # Import via the public facade, not receipt_embeddings.formatting
+    # .receipt_rows, so external callers stay on the supported surface.
+    from receipt_embeddings.formatting import (
         build_receipt_rows as build_paired_receipt_rows,
     )
-    from receipt_chroma.embedding.formatting import (
-        group_lines_into_visual_rows,
-    )
+    from receipt_embeddings.formatting import group_lines_into_visual_rows
 
     lines = client.list_receipt_lines_from_receipt(image_id, receipt_id)
     if not lines:

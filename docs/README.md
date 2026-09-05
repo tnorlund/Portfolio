@@ -5,9 +5,9 @@ Active documentation now covers only the handful of Markdown files that are refe
 ## 🔍 Active sections
 
 - **Architecture & ADRs**: `docs/architecture/overview.md`, `docs/architecture/CANONICAL_FIELDS_DEPRECATION.md`, and the networking/performance callouts capture the up-to-date service map referenced by the infrastructure code.
-- **Package Architecture**: `RECEIPT_LABEL_MIGRATION.md` explains the evolution from monolithic `receipt_label` to specialized packages (`receipt_chroma`, `receipt_places`, `receipt_agent`, etc.) and the architectural decisions behind the split.
+- **Package Architecture**: `RECEIPT_LABEL_MIGRATION.md` explains the evolution from monolithic `receipt_label` to specialized packages (`receipt_embeddings`, `receipt_places`, `receipt_agent`, etc.) and the architectural decisions behind the split.
 - **Metadata & agents**: `AGENT_REFACTORING_PLAN.md`, `METADATA_AGENTS_DIRECTORY.md`, `METADATA_AGENTS_EVOLUTION.md`, `METADATA_AGENTS_REVIEW.md`, `REFACTORING_SUMMARY.md`, and `PENDING_LABELS_BEST_PRACTICES.md` document the ongoing metadata & agent workflows the step functions and Lambdas still rely on.
-- **Chroma/delta guidance**: The `receipt_chroma` package still owns the Chroma Cloud, S3 delta, and snapshot flow. `DELTA_VALIDATION_AND_RETRY_IMPLEMENTATION.md` documents delta validation details.
+- **Vector store removal**: `chroma-removal/` is the historical record of the ChromaDB teardown; vector search now lives in `receipt_embeddings` on DynamoDB.
 - **Development onboarding**: `development/setup.md`, `development/testing.md`, `development/ci-cd.md`, and `development/TESTING_STRATEGY.md` contain the scripts and workflow instructions the repo tooling still consults.
 - **Operations runbook**: `operations/deployment.md` remains the deployment playbook referenced in `infra/` automation.
 

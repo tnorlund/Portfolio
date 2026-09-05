@@ -48,7 +48,9 @@ def query_all(table, **kwargs):
     resp = table.query(**kwargs)
     items.extend(resp["Items"])
     while "LastEvaluatedKey" in resp:
-        resp = table.query(**kwargs, ExclusiveStartKey=resp["LastEvaluatedKey"])
+        resp = table.query(
+            **kwargs, ExclusiveStartKey=resp["LastEvaluatedKey"]
+        )
         items.extend(resp["Items"])
     return items
 
@@ -141,8 +143,12 @@ def load_receipt_data(table, image_id: str, receipt_id: int):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Test LLM label validation locally")
-    parser.add_argument("--image-id", required=True, help="Image ID to test with")
+    parser = argparse.ArgumentParser(
+        description="Test LLM label validation locally"
+    )
+    parser.add_argument(
+        "--image-id", required=True, help="Image ID to test with"
+    )
     parser.add_argument(
         "--receipt-id", type=int, default=1, help="Receipt ID (default: 1)"
     )
@@ -170,7 +176,9 @@ def main():
     dynamo = boto3.resource("dynamodb", region_name="us-east-1")
     table = dynamo.Table(TABLE_NAME)
 
-    print(f"Loading data for image {args.image_id}, receipt {args.receipt_id}...")
+    print(
+        f"Loading data for image {args.image_id}, receipt {args.receipt_id}..."
+    )
     words, labels = load_receipt_data(table, args.image_id, args.receipt_id)
 
     print(f"  Words: {len(words)}")
@@ -197,14 +205,16 @@ def main():
         return
 
     for p in pending:
-        print(f"    [{p['line_id']}:{p['word_id']}] '{p['word_text']}' -> {p['label']}")
+        print(
+            f"    [{p['line_id']}:{p['word_id']}] '{p['word_text']}' -> {p['label']}"
+        )
 
     # Build prompt
     from receipt_upload.label_validation.llm_validator import (
         build_validation_prompt,
     )
 
-    # Empty evidence (we skip ChromaDB in local test)
+    # Empty evidence (no similarity lookups in the local test)
     similar_evidence = {f"{l['line_id']}_{l['word_id']}": [] for l in pending}
 
     prompt = build_validation_prompt(

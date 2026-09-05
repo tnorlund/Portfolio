@@ -1,12 +1,16 @@
 """
-Change detection logic for ChromaDB-relevant fields.
+Change detection for fields that drive downstream receipt updates.
+
+The allowlist below decides which entity modifications fan out to the
+summary / line-item update queues; changes to any other field are
+ignored by the stream processor.
 """
 
 from typing import Dict, Optional
 
 from receipt_dynamo_stream.models import FieldChange, StreamEntity
 
-CHROMADB_RELEVANT_FIELDS = {
+UPDATE_RELEVANT_FIELDS = {
     "RECEIPT_PLACE": [
         "merchant_name",
         "merchant_category",
@@ -36,13 +40,13 @@ CHROMADB_RELEVANT_FIELDS = {
 }
 
 
-def get_chromadb_relevant_changes(
+def get_update_relevant_changes(
     entity_type: str,
     old_entity: Optional[StreamEntity],
     new_entity: Optional[StreamEntity],
 ) -> Dict[str, FieldChange]:
-    """Identify changes to fields that affect ChromaDB metadata."""
-    fields_to_check = CHROMADB_RELEVANT_FIELDS.get(entity_type, [])
+    """Identify changes to fields that trigger downstream updates."""
+    fields_to_check = UPDATE_RELEVANT_FIELDS.get(entity_type, [])
     changes: Dict[str, FieldChange] = {}
 
     for field in fields_to_check:
@@ -55,4 +59,4 @@ def get_chromadb_relevant_changes(
     return changes
 
 
-__all__ = ["CHROMADB_RELEVANT_FIELDS", "get_chromadb_relevant_changes"]
+__all__ = ["UPDATE_RELEVANT_FIELDS", "get_update_relevant_changes"]

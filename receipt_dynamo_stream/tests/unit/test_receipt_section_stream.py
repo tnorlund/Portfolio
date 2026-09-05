@@ -9,14 +9,14 @@ from typing import Any, Optional
 
 from receipt_dynamo.entities.receipt_section import ReceiptSection
 from receipt_dynamo_stream.change_detection import (
-    get_chromadb_relevant_changes,
+    get_update_relevant_changes,
 )
 from receipt_dynamo_stream.message_builder import (
     _extract_entity_data,
     build_entity_change_message,
     build_messages_from_records,
 )
-from receipt_dynamo_stream.models import ChromaDBCollection
+from receipt_dynamo_stream.models import TargetQueue
 from receipt_dynamo_stream.parsing import detect_entity_type
 
 IMAGE_ID = "550e8400-e29b-41d4-a716-446655440000"
@@ -76,10 +76,7 @@ def test_detect_entity_type_section_does_not_shadow_others() -> None:
         == "RECEIPT_WORD_LABEL"
     )
     assert detect_entity_type("RECEIPT#00001#LINE#00001") == "RECEIPT_LINE"
-    assert (
-        detect_entity_type("RECEIPT#00001#COMPACTION_RUN#abc")
-        == "COMPACTION_RUN"
-    )
+    assert detect_entity_type("RECEIPT#00001#SUMMARY") == "RECEIPT_SUMMARY"
 
 
 # Watched-field change detection
@@ -88,7 +85,7 @@ def test_detect_entity_type_section_does_not_shadow_others() -> None:
 def test_section_validation_status_change_is_relevant() -> None:
     old = _make_section(validation_status="PENDING")
     new = _make_section(validation_status="VALID")
-    changes = get_chromadb_relevant_changes("RECEIPT_SECTION", old, new)
+    changes = get_update_relevant_changes("RECEIPT_SECTION", old, new)
     assert set(changes) == {"validation_status"}
     assert changes["validation_status"].old == "PENDING"
     assert changes["validation_status"].new == "VALID"
@@ -97,7 +94,7 @@ def test_section_validation_status_change_is_relevant() -> None:
 def test_section_line_ids_and_confidence_changes_are_relevant() -> None:
     old = _make_section(line_ids=[1, 2], confidence=0.5)
     new = _make_section(line_ids=[1, 2, 3], confidence=0.9)
-    changes = get_chromadb_relevant_changes("RECEIPT_SECTION", old, new)
+    changes = get_update_relevant_changes("RECEIPT_SECTION", old, new)
     assert set(changes) == {"line_ids", "confidence"}
 
 
@@ -105,14 +102,15 @@ def test_section_irrelevant_field_change_is_ignored() -> None:
     old = _make_section()
     new = _make_section()
     new.model_source = "section-seed-v1"
-    changes = get_chromadb_relevant_changes("RECEIPT_SECTION", old, new)
+    changes = get_update_relevant_changes("RECEIPT_SECTION", old, new)
     assert changes == {}
 
 
 # Entity data extraction
 
 
-def test_extract_entity_data_receipt_section_targets_lines_only() -> None:
+def test_extract_entity_data_non_items_section_has_no_targets() -> None:
+    """Non-ITEMS sections are freshened inline, not routed to a queue."""
     section = _make_section()
     entity_data, collections = _extract_entity_data("RECEIPT_SECTION", section)
     assert entity_data == {
@@ -121,7 +119,14 @@ def test_extract_entity_data_receipt_section_targets_lines_only() -> None:
         "receipt_id": 1,
         "section_type": "HEADER",
     }
-    assert collections == [ChromaDBCollection.LINES]
+    assert collections == []
+
+
+def test_extract_entity_data_items_section_targets_line_items() -> None:
+    section = _make_section(section_type="ITEMS")
+    entity_data, collections = _extract_entity_data("RECEIPT_SECTION", section)
+    assert entity_data["section_type"] == "ITEMS"
+    assert collections == [TargetQueue.LINE_ITEMS]
 
 
 # Message building
@@ -130,31 +135,41 @@ def test_extract_entity_data_receipt_section_targets_lines_only() -> None:
 def test_section_modify_builds_message() -> None:
     record = _record(
         "MODIFY",
-        _make_section(validation_status="PENDING"),
-        _make_section(validation_status="VALID"),
+        _make_section(section_type="ITEMS", validation_status="PENDING"),
+        _make_section(section_type="ITEMS", validation_status="VALID"),
     )
     message = build_entity_change_message(record)
     assert message is not None
     assert message.entity_type == "RECEIPT_SECTION"
     assert message.event_name == "MODIFY"
-    assert message.collections == (ChromaDBCollection.LINES,)
+    assert message.collections == (TargetQueue.LINE_ITEMS,)
     assert message.entity_data["image_id"] == IMAGE_ID
     assert message.entity_data["receipt_id"] == 1
 
 
 def test_section_remove_builds_message_without_changes() -> None:
     """REMOVE of a section must trigger recompute even with no field diff."""
-    record = _record("REMOVE", _make_section(), None)
+    record = _record("REMOVE", _make_section(section_type="ITEMS"), None)
     message = build_entity_change_message(record)
     assert message is not None
     assert message.event_name == "REMOVE"
     assert message.entity_type == "RECEIPT_SECTION"
-    assert message.collections == (ChromaDBCollection.LINES,)
+    assert message.collections == (TargetQueue.LINE_ITEMS,)
+
+
+def test_non_items_section_change_builds_no_message() -> None:
+    """HEADER/FOOTER/... section changes have no queue consumer left."""
+    record = _record(
+        "MODIFY",
+        _make_section(validation_status="PENDING"),
+        _make_section(validation_status="VALID"),
+    )
+    assert build_entity_change_message(record) is None
 
 
 def test_section_insert_builds_message_via_records_pipeline() -> None:
     """INSERT of a section (QA creating one) must produce a message."""
-    record = _record("INSERT", None, _make_section())
+    record = _record("INSERT", None, _make_section(section_type="ITEMS"))
     messages = build_messages_from_records([record])
     assert len(messages) == 1
     assert messages[0].entity_type == "RECEIPT_SECTION"

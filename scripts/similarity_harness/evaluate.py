@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.13
-"""Score a vector-search backend against the captured Chroma reference."""
+"""Score a vector-search backend against the captured golden reference."""
 
 from __future__ import annotations
 
@@ -32,6 +32,12 @@ if _cached is not None and getattr(_cached, "__file__", None) is None:
     ]:
         del sys.modules[_name]
 
+from receipt_embeddings import (  # noqa: E402
+    FilterValue,
+    ScoredItem,
+    VectorSearchClient,
+)
+from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
 from scripts.similarity_harness.common import DEFAULT_RECALL_K  # noqa: E402
 from scripts.similarity_harness.common import (
     MERCHANT_FAMILY,
@@ -46,13 +52,6 @@ from scripts.similarity_harness.common import (
     round_vector,
     scored_item_from_dict,
 )
-
-from receipt_embeddings import (  # noqa: E402
-    FilterValue,
-    ScoredItem,
-    VectorSearchClient,
-)
-from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
 
 DEFAULT_FIXTURE = (
     REPOSITORY_ROOT / "tests" / "fixtures" / "similarity" / "golden.json"
@@ -78,11 +77,11 @@ def _query_signature(
     )
 
 
-class CapturedChromaReplay:
-    """Replay captured Chroma answers through ``VectorSearchClient``.
+class CapturedGoldenReplay:
+    """Replay captured golden answers through ``VectorSearchClient``.
 
-    This is the offline ``--backend chroma`` self-parity sanity check. It
-    validates fixture wiring without reopening Chroma Cloud and keeps
+    This is the offline ``--backend golden`` self-parity sanity check. It
+    validates fixture wiring without any live vector store and keeps
     evaluation pure given one fixture.
     """
 
@@ -124,7 +123,7 @@ class CapturedChromaReplay:
             query = self._queries[signature]
         except KeyError as exc:
             raise KeyError(
-                "query was not captured in the Chroma fixture"
+                "query was not captured in the golden fixture"
             ) from exc
         observation = query["expected"].get("observation", {})
         self.last_latency_ms = float(observation.get("latency_ms", 0.0))
@@ -189,8 +188,8 @@ def build_backend(
     *,
     factory_path: str | None = None,
 ) -> VectorSearchClient:
-    if name == "chroma":
-        return CapturedChromaReplay(fixture)
+    if name == "golden":
+        return CapturedGoldenReplay(fixture)
     if name == "fake":
         return FakeVectorIndex(corpus_items(fixture))
     if name == "dynamo":
@@ -521,7 +520,7 @@ def evaluate_fixture(
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--backend", required=True, choices=("fake", "dynamo", "chroma")
+        "--backend", required=True, choices=("fake", "dynamo", "golden")
     )
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--out", type=Path, default=Path("scorecard.json"))

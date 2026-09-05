@@ -20,7 +20,7 @@ help:
 	@echo ""
 	@echo "Local Development Commands:"
 	@echo "  make export-sample-data - Export sample receipt data for local testing"
-	@echo "  make analytics-cache ENV=dev - Cache DynamoDB, ChromaDB, and raw images"
+	@echo "  make analytics-cache ENV=dev - Cache DynamoDB and raw images"
 	@echo "  make analytics-cache-validate ENV=dev - Validate the analytics cache"
 	@echo "  make analytics-cache-serve ENV=dev - Start cached DynamoDB Local"
 

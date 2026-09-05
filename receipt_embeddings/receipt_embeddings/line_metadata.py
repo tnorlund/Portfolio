@@ -1,9 +1,7 @@
 """Line/row metadata creation for receipt embeddings.
 
-Promoted from ``receipt_chroma.embedding.metadata.line_metadata`` (Chroma
-teardown) with imports repointed at ``receipt_embeddings.normalize``; the
-metadata shapes are backend-neutral and feed the native DynamoDB embedding
-items.
+The metadata shapes are backend-neutral and feed the native DynamoDB
+embedding items.
 
 Row-based approach (v2):
 Visual rows may contain multiple ReceiptLine entities when Apple Vision OCR

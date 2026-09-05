@@ -1,17 +1,16 @@
-"""Cross-backend neighbor-metadata contracts for vector consumers.
+"""Neighbor-metadata contract for vector consumers.
 
 The real MerchantResolver reads a fixed set of metadata fields from every
-line-index neighbor (``RESOLVER_NEIGHBOR_METADATA_KEYS``). The Chroma
-path's metadata shape is the contract: whatever keys Chroma's own
-metadata builders surface for a neighbor, the Dynamo fetch-join path must
-surface identically for the same neighbor — including the sparseness of
-the two normalized anchor keys, which exist only when the row carries the
-corresponding anchor.
+line-index neighbor (``RESOLVER_NEIGHBOR_METADATA_KEYS``). The row-metadata
+builders define the contract: whatever keys they surface for a neighbor,
+the Dynamo fetch-join path must surface identically for the same neighbor
+— including the sparseness of the two normalized anchor keys, which exist
+only when the row carries the corresponding anchor.
 
 Both sides of the comparison are produced by the REAL production code:
-Chroma metadata by ``receipt_chroma``'s row-metadata builders, Dynamo
-metadata by ``ReceiptLineEmbedding`` items round-tripped through a
-botocore-stubbed SearchVectors + BatchGetItem join.
+reference metadata by the row-metadata builders, Dynamo metadata by
+``ReceiptLineEmbedding`` items round-tripped through a botocore-stubbed
+SearchVectors + BatchGetItem join.
 """
 
 from __future__ import annotations
@@ -23,23 +22,14 @@ from typing import Any
 import boto3
 import pytest
 from botocore.stub import Stubber
+from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
 
-pytest.importorskip(
-    "chromadb",
-    reason="imports the backfill script's chroma source; the CI receipt_embeddings leg is chromadb-free",
-)
-
-from receipt_chroma.embedding.metadata.line_metadata import (
+from receipt_embeddings import RESOLVER_NEIGHBOR_METADATA_KEYS
+from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
+from receipt_embeddings.line_metadata import (
     create_row_metadata,
     enrich_row_metadata_with_anchors,
 )
-from receipt_dynamo.entities import EMBEDDING_DIMENSIONS
-
-from receipt_embeddings import (
-    RESOLVER_NEIGHBOR_METADATA_KEYS,
-    ChromaVectorSearchClient,
-)
-from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 from receipt_embeddings.writer import EmbeddingWriteRequest
 
 TABLE = "ReceiptsTable-dc5be22"
@@ -107,31 +97,10 @@ def _row(anchored: bool) -> tuple[list[_Line], list[_Word]]:
     return [line], words
 
 
-def _chroma_neighbor_metadata(anchored: bool) -> dict[str, Any]:
+def _reference_neighbor_metadata(anchored: bool) -> dict[str, Any]:
     row_lines, row_words = _row(anchored)
     metadata = create_row_metadata(row_lines, merchant_name="Fixture Mart")
-    metadata = dict(enrich_row_metadata_with_anchors(metadata, row_words))
-    key = f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00002"
-    client = ChromaVectorSearchClient(
-        _FakeChromaCollectionClient(metadata, key)
-    )
-    result = client.search(
-        [0.01] * EMBEDDING_DIMENSIONS, "line-embeddings", 10
-    )[0]
-    return dict(result.metadata)
-
-
-class _FakeChromaCollectionClient:
-    def __init__(self, metadata: dict[str, Any], key: str) -> None:
-        self._metadata = metadata
-        self._key = key
-
-    def query(self, **_kwargs: Any) -> dict[str, Any]:
-        return {
-            "ids": [[self._key]],
-            "metadatas": [[self._metadata]],
-            "distances": [[0.125]],
-        }
+    return dict(enrich_row_metadata_with_anchors(metadata, row_words))
 
 
 def _search_dynamo(anchored: bool) -> dict[str, Any]:
@@ -202,16 +171,16 @@ def _search_dynamo(anchored: bool) -> dict[str, Any]:
 def test_backends_surface_identical_resolver_metadata_keys_with_anchors() -> (
     None
 ):
-    chroma_metadata = _chroma_neighbor_metadata(anchored=True)
+    reference_metadata = _reference_neighbor_metadata(anchored=True)
     dynamo_metadata = _search_dynamo(anchored=True)
 
-    chroma_keys = set(chroma_metadata) & RESOLVER_NEIGHBOR_METADATA_KEYS
+    reference_keys = set(reference_metadata) & RESOLVER_NEIGHBOR_METADATA_KEYS
     dynamo_keys = set(dynamo_metadata) & RESOLVER_NEIGHBOR_METADATA_KEYS
-    assert chroma_keys == RESOLVER_NEIGHBOR_METADATA_KEYS
+    assert reference_keys == RESOLVER_NEIGHBOR_METADATA_KEYS
     assert dynamo_keys == RESOLVER_NEIGHBOR_METADATA_KEYS
     for name in RESOLVER_NEIGHBOR_METADATA_KEYS:
-        assert chroma_metadata[name] == dynamo_metadata[name], name
-    assert json.loads(chroma_metadata["row_line_ids"]) == [2]
+        assert reference_metadata[name] == dynamo_metadata[name], name
+    assert json.loads(reference_metadata["row_line_ids"]) == [2]
     assert dynamo_metadata["row_line_ids"] == [2]
 
 
@@ -220,31 +189,31 @@ def test_backends_omit_anchor_keys_identically_without_anchors() -> None:
     """Sparseness is part of the contract: a row with no phone/address
     anchor has NO normalized_* keys on either backend, so the resolver's
     truthiness checks behave identically."""
-    chroma_metadata = _chroma_neighbor_metadata(anchored=False)
+    reference_metadata = _reference_neighbor_metadata(anchored=False)
     dynamo_metadata = _search_dynamo(anchored=False)
 
-    chroma_keys = set(chroma_metadata) & RESOLVER_NEIGHBOR_METADATA_KEYS
+    reference_keys = set(reference_metadata) & RESOLVER_NEIGHBOR_METADATA_KEYS
     dynamo_keys = set(dynamo_metadata) & RESOLVER_NEIGHBOR_METADATA_KEYS
-    assert chroma_keys == dynamo_keys
+    assert reference_keys == dynamo_keys
     assert "normalized_phone_10" not in dynamo_metadata
     assert "normalized_full_address" not in dynamo_metadata
-    for name in chroma_keys:
-        assert chroma_metadata[name] == dynamo_metadata[name], name
+    for name in reference_keys:
+        assert reference_metadata[name] == dynamo_metadata[name], name
 
 
 @pytest.mark.unit
-def test_anchor_values_match_the_chroma_writer_computation() -> None:
+def test_anchor_values_match_the_metadata_builder_computation() -> None:
     """The Dynamo item's anchors come from the SAME enrichment function the
-    Chroma line-delta writer uses, so the stored values are byte-equal."""
-    chroma_metadata = _chroma_neighbor_metadata(anchored=True)
+    row-metadata builder uses, so the stored values are byte-equal."""
+    reference_metadata = _reference_neighbor_metadata(anchored=True)
     dynamo_metadata = _search_dynamo(anchored=True)
 
     assert (
         dynamo_metadata["normalized_phone_10"]
-        == chroma_metadata["normalized_phone_10"]
+        == reference_metadata["normalized_phone_10"]
         == "5551234567"
     )
     assert (
         dynamo_metadata["normalized_full_address"]
-        == chroma_metadata["normalized_full_address"]
+        == reference_metadata["normalized_full_address"]
     )

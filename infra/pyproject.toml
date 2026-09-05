@@ -57,11 +57,9 @@ strict_equality = true
 # Ignore missing imports for third-party libraries
 [[tool.mypy.overrides]]
 module = [
-    "receipt_chroma.*",
     "receipt_dynamo.*",
     "boto3.*",
     "botocore.*",
-    "chromadb.*",
     "openai.*",
     "pulumi.*",
     "pulumi_aws.*",
@@ -121,7 +119,7 @@ logging-modules = ["logging"]
 
 [tool.pylint.imports]
 # Allow imports at any level for these modules
-allow-any-import-level = ["boto3", "botocore", "chromadb", "openai"]
+allow-any-import-level = ["boto3", "botocore", "openai"]
 
 [tool.pytest.ini_options]
 # Configure pytest to not import packages when collecting tests

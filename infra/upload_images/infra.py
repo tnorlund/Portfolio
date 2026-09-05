@@ -545,7 +545,7 @@ class UploadImages(ComponentResource):
             "role_arn": process_ocr_role.arn,
             "timeout": 900,  # 15 minutes (longer for merchant validation + embedding)
             "memory_size": 3072,  # 3GB - optimal for ~2.2GB actual usage
-            "ephemeral_storage": 4096,  # 4GB for ChromaDB snapshot downloads (words=3.1GB)
+            "ephemeral_storage": 4096,  # 4GB scratch for image processing
             "environment": {
                 "DYNAMO_TABLE_NAME": dynamodb_table.name,
                 # DynamoVectorSearchClient.from_env reads this spelling;
@@ -567,13 +567,7 @@ class UploadImages(ComponentResource):
                 "RECEIPT_SUMMARY_QUEUE_URL": pulumi.Output.from_input(
                     summary_queue_url or ""
                 ),
-                # Vector search backend seam (chroma | dynamodb)
-                "VECTOR_BACKEND": (
-                    pulumi.Config("portfolio").get("vector-backend")
-                    or "chroma"
-                ),
-                # Gates the EMF metrics the ingest cloud upsert emits, matching
-                # the compaction Lambda's flag.
+                # Gates the EMF metrics the ingest pipeline emits.
                 "ENABLE_METRICS": "true",
                 # Note: SQS queue URLs removed - DynamoDB streams handle routing
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
@@ -612,7 +606,6 @@ class UploadImages(ComponentResource):
             source_paths=[
                 "receipt_dynamo",
                 "receipt_embeddings",
-                "receipt_chroma",
                 "receipt_agent",
                 "receipt_places",
                 "receipt_upload",

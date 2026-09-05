@@ -93,8 +93,6 @@ pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
 # so the shared Lambda-egress and interface-endpoint security groups are
 # gone along with the NAT egress layer below.
 
-# Task 3 snapshot bucket retired with the Chroma teardown (PR #6)
-
 # --- Removed Config reading for VPC resources ---
 
 pulumi.export("region", aws.config.region)
@@ -139,7 +137,6 @@ from components.shared_label_evaluator_resources import (
 
 label_evaluator_shared = create_shared_label_evaluator_resources()
 
-# Create ChromaDB compaction infrastructure using shared bucket
 # Note: currency validation, create labels, and validation-by-merchant workflows are
 # temporarily disabled to decouple from receipt_label.
 
@@ -182,14 +179,10 @@ billing_alerts = BillingAlerts(
 # Lambdas (process-ocr, word-similarity cache generator) now run outside
 # the VPC with default Lambda egress — the NAT existed only for them.
 
-# ChromaDB compaction stack DELETED (teardown PR #3 of the Chroma
-# removal): the 10GB enhanced-compaction Lambda, lines/words queues,
-# docker pipeline and alarms are gone. The shared snapshot bucket
-# followed in the bucket-teardown PR (#6) — no Chroma storage remains.
-
-# Summary/line-item update pipeline + stream processor (Chroma-free;
-# relocated in #1530). Without lines/words env vars the stream
-# publisher's compaction legs self-disable.
+# Summary/line-item update pipeline + stream processor. The
+# ``queues_name``/``lambdas_name`` prefixes are frozen physical-resource
+# identities inherited from the retired vector-store compaction stack
+# (see docs/chroma-removal/); renaming them would replace live queues.
 receipt_update_queues = ReceiptUpdateQueues(
     f"receipt-updates-{pulumi.get_stack()}",
     queues_name=f"chromadb-{pulumi.get_stack()}-queues",
@@ -464,8 +457,6 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
     role=ml_training_role.name,
     policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
 )
-
-# ChromaDB compaction infrastructure already created above
 
 # Create spot interruption handler
 # spot_handler = SpotInterruptionHandler(
@@ -1225,10 +1216,9 @@ pulumi.export(
     "trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.name
 )
 
-# Label Refresh Lambda: RETIRED (Chroma teardown PR #4). It re-evaluated
-# labels on word-text changes by querying the Chroma words collection's
-# label_{X} filter surface, which matched nothing in production; the
-# pipeline-consolidation plan called for its removal.
+# Label Refresh Lambda: RETIRED with the vector-store teardown (see
+# docs/chroma-removal/); the pipeline-consolidation plan called for its
+# removal.
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport
@@ -1291,10 +1281,9 @@ pulumi.export(
     label_evaluator_shared.viz_cache_bucket_name,
 )
 
-# Label Evaluator Step Function: RETIRED 2026-09-02 (teardown PR #1 of the
-# Chroma removal, closing #1523). It was the last Chroma consumer with no
-# vector-seam route; the pipeline-consolidation plan supersedes it. Shared
-# resources it merely referenced (chromadb bucket, OCR queue, EMR analytics,
+# Label Evaluator Step Function: RETIRED 2026-09-02 (vector-store
+# teardown, closing #1523); the pipeline-consolidation plan supersedes it.
+# Shared resources it merely referenced (OCR queue, EMR analytics,
 # LangSmith bulk export, label_evaluator_shared viz-cache/batch buckets)
 # all remain — the viz-cache API routes keep serving the frozen cache.
 

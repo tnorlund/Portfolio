@@ -1,10 +1,10 @@
 """Tests for the shared async/sync LLM validation runner.
 
-The ``receipt_upload.label_validation`` package __init__ imports the Chroma
-validator (heavy, and broken under Python 3.14), so we load ``llm_runner`` from
-its file directly and stub the two lazily-imported heavy deps
-(``receipt_agent.constants`` and the LLM validator). This exercises the JSON
-hand-off and the grok-apply decision logic without standing up Chroma/OpenRouter.
+The ``receipt_upload.label_validation`` package __init__ imports the LLM
+validator (heavy), so we load ``llm_runner`` from its file directly and stub
+the two lazily-imported heavy deps (``receipt_agent.constants`` and the LLM
+validator). This exercises the JSON hand-off and the grok-apply decision logic
+without standing up OpenRouter.
 """
 
 import importlib.util

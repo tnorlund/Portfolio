@@ -5,7 +5,7 @@ the same LLM infrastructure as the label evaluator (gpt-oss:120b-cloud).
 
 The LLM sees:
 1. Full receipt text with pending labels highlighted
-2. Similar validated words from ChromaDB
+2. Similar validated words from the vector index
 3. Merchant context
 4. Mathematical relationships between currency amounts
 

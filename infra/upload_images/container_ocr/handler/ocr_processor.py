@@ -1282,7 +1282,7 @@ class OCRProcessor:
             self.dynamo.delete_receipt_words(words_to_delete)
 
         # Rebuild ReceiptLine.text for lines with overlaid, added, or
-        # deleted words so downstream consumers (Chroma embeddings,
+        # deleted words so downstream consumers (native embeddings,
         # merchant resolution, agents, cache generators) see the
         # corrected text.
         lines_to_update: list[ReceiptLine] = []
@@ -1378,7 +1378,7 @@ class OCRProcessor:
                 )
 
         # Re-embed the full receipt so the native DynamoDB vector corpus
-        # reflects corrected text (Chroma teardown): write_native_embeddings
+        # reflects corrected text: write_native_embeddings
         # sweeps the stale *_EMBEDDING items (with UnprocessedItems retries)
         # and rewrites from the receipt's current text in ONE batched OpenAI
         # call. Failure is surfaced, not swallowed (codex flip P1): the

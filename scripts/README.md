@@ -19,7 +19,7 @@ Common script categories:
 
 ## Local analytics cache
 
-Use `local_analytics_cache.py` to mirror DynamoDB, native ChromaDB snapshots,
-and their raw S3 images locally. It supports fast validation/invalidation and
+Use `local_analytics_cache.py` to mirror DynamoDB and its raw S3 images
+locally. It supports fast validation/invalidation and
 can hydrate DynamoDB Local so the existing `DynamoClient` works against the
 cache. See [the local analytics cache guide](../docs/local-analytics-cache.md).

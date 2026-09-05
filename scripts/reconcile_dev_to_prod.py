@@ -25,9 +25,10 @@ Usage:
     python scripts/reconcile_dev_to_prod.py --no-dry-run    # apply
     python scripts/reconcile_dev_to_prod.py --skip-health-gate
 
-The ChromaDB/embedding leg self-heals via the prod stream processor + embedding
-step functions, but only if that chain is healthy — so apply is gated on a
-compaction-queue health check (DLQs empty, backlog bounded) unless overridden.
+The summary/line-item update leg self-heals via the prod stream processor +
+embedding step functions, but only if that chain is healthy — so apply is
+gated on an update-queue health check (DLQs empty, backlog bounded) unless
+overridden.
 """
 
 import argparse
@@ -49,30 +50,25 @@ sys.path.insert(0, str(SCRIPT_DIR.parent))
 # not the outer namespace directory, in a fresh checkout with no editable install.
 sys.path.insert(0, str(SCRIPT_DIR.parent / "receipt_dynamo"))
 
+# Reuse the proven copy engine (bucket rewrite + embedding reset + batch writes)
+from copy_dynamodb_dev_to_prod import (
+    copy_all_images,
+    get_table_and_bucket_names,
+)
+
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.export_image import export_image
-
-# Reuse the proven copy engine (bucket rewrite + embedding reset + batch writes)
-from copy_dynamodb_dev_to_prod import copy_all_images, get_table_and_bucket_names
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-# Prod compaction health-gate targets (see `pulumi stack output --stack prod`)
+# Prod update-queue health-gate targets. The queues are discovered by their
+# Pulumi name prefix (the ReceiptUpdateQueues component keeps its historical
+# resource name so live infra is never replaced); "-dlq-" names are DLQs.
 PROD_QUEUE_PREFIX = "chromadb-prod-queues"
-PROD_QUEUE_NAMES = [
-    "chromadb-prod-queues-words-queue-f9c636f",
-    "chromadb-prod-queues-lines-queue-bf0a05b",
-    "chromadb-prod-queues-summary-queue-367f9ad",
-]
-PROD_DLQ_NAMES = [
-    "chromadb-prod-queues-words-dlq-e715852",
-    "chromadb-prod-queues-lines-dlq-c67b0c1",
-    "chromadb-prod-queues-summary-dlq-1ebd871",
-]
 BACKLOG_LIMIT = 500  # refuse to start if a live queue is already this deep
 
 # Entity TYPEs (DynamoDB "TYPE" attr) that a REPLACE can safely delete, because
@@ -81,16 +77,28 @@ BACKLOG_LIMIT = 500  # refuse to start if a live queue is already this deep
 # this set, the REPLACE is skipped (not deleted) to avoid silent data loss.
 RESTORABLE_TYPES = {
     # restored by copy_image_entities
-    "IMAGE", "RECEIPT", "LINE", "WORD", "LETTER",
-    "RECEIPT_LINE", "RECEIPT_WORD", "RECEIPT_LETTER", "RECEIPT_WORD_LABEL",
+    "IMAGE",
+    "RECEIPT",
+    "LINE",
+    "WORD",
+    "LETTER",
+    "RECEIPT_LINE",
+    "RECEIPT_WORD",
+    "RECEIPT_LETTER",
+    "RECEIPT_WORD_LABEL",
     # Legacy metadata is replayed by copy_image_entities after a whole-image
     # REPLACE; keeping it restorable prevents the mirror from dropping dev rows.
-    "RECEIPT_METADATA", "RECEIPT_PLACE", "RECEIPT_BARCODE",
+    "RECEIPT_METADATA",
+    "RECEIPT_PLACE",
+    "RECEIPT_BARCODE",
     "OCR_ROUTING_DECISION",
     # restored by the filtered sync_ocr_jobs step
     "OCR_JOB",
-    # derived / regenerated after copy (safe to drop on replace)
-    "RECEIPT_SUMMARY", "COMPACTION_RUN", "EMBEDDING_STATUS",
+    # derived / regenerated after copy (safe to drop on replace);
+    # COMPACTION_RUN items are orphans left by the retired vector store
+    "RECEIPT_SUMMARY",
+    "COMPACTION_RUN",
+    "EMBEDDING_STATUS",
 }
 
 
@@ -100,12 +108,18 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     One bulk scan per child entity, grouped by image, then hashed. Only
     content that must match across environments is included.
     """
-    words = defaultdict(list)      # image_id -> [(receipt, line, word, text)]
-    labels = defaultdict(list)     # image_id -> [(receipt, line, word, label, status)]
-    places = defaultdict(list)     # image_id -> [(receipt_id, merchant, place_id)]
-    receipts = defaultdict(set)    # image_id -> {receipt_id}
-    barcodes = defaultdict(list)   # image_id -> [(receipt, barcode_id, symbology, text)]
-    images = set()                 # image_ids with an Image row (may be childless)
+    words = defaultdict(list)  # image_id -> [(receipt, line, word, text)]
+    labels = defaultdict(
+        list
+    )  # image_id -> [(receipt, line, word, label, status)]
+    places = defaultdict(
+        list
+    )  # image_id -> [(receipt_id, merchant, place_id)]
+    receipts = defaultdict(set)  # image_id -> {receipt_id}
+    barcodes = defaultdict(
+        list
+    )  # image_id -> [(receipt, barcode_id, symbology, text)]
+    images = set()  # image_ids with an Image row (may be childless)
 
     def _scan(list_fn, sink):
         lek = None
@@ -120,7 +134,9 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     _scan(
         client.list_receipt_words,
         lambda b: [
-            words[w.image_id].append((w.receipt_id, w.line_id, w.word_id, w.text))
+            words[w.image_id].append(
+                (w.receipt_id, w.line_id, w.word_id, w.text)
+            )
             for w in b
         ],
     )
@@ -128,7 +144,13 @@ def _fingerprint_env(client: DynamoClient) -> dict:
         client.list_receipt_word_labels,
         lambda b: [
             labels[l.image_id].append(
-                (l.receipt_id, l.line_id, l.word_id, l.label, str(l.validation_status))
+                (
+                    l.receipt_id,
+                    l.line_id,
+                    l.word_id,
+                    l.label,
+                    str(l.validation_status),
+                )
             )
             for l in b
         ],
@@ -141,7 +163,11 @@ def _fingerprint_env(client: DynamoClient) -> dict:
         client.list_receipt_places,
         lambda b: [
             places[p.image_id].append(
-                (p.receipt_id, p.merchant_name or "", getattr(p, "place_id", "") or "")
+                (
+                    p.receipt_id,
+                    p.merchant_name or "",
+                    getattr(p, "place_id", "") or "",
+                )
             )
             for p in b
         ],
@@ -171,8 +197,12 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     )
 
     all_ids = (
-        set(words) | set(labels) | set(receipts) | set(places)
-        | set(barcodes) | images
+        set(words)
+        | set(labels)
+        | set(receipts)
+        | set(places)
+        | set(barcodes)
+        | images
     )
     out = {}
     for iid in all_ids:
@@ -205,12 +235,16 @@ def plan(dev_fp: dict, prod_fp: dict) -> dict:
 
     adds = sorted(dev_source - prod_ids)
     replaces = sorted(
-        iid for iid in (dev_source & prod_ids) if dev_fp[iid]["fp"] != prod_fp[iid]["fp"]
+        iid
+        for iid in (dev_source & prod_ids)
+        if dev_fp[iid]["fp"] != prod_fp[iid]["fp"]
     )
     deletes = sorted(prod_ids - dev_source)
     # dev images with no receipts are simply never promoted (not an error)
     empties_skipped = sorted(
-        iid for iid, v in dev_fp.items() if not v["has_receipts"] and iid not in prod_ids
+        iid
+        for iid, v in dev_fp.items()
+        if not v["has_receipts"] and iid not in prod_ids
     )
     return {
         "add": adds,
@@ -218,6 +252,15 @@ def plan(dev_fp: dict, prod_fp: dict) -> dict:
         "delete": deletes,
         "empty_skipped": empties_skipped,
     }
+
+
+def _discover_queues(sqs, prefix: str) -> tuple[list, list]:
+    """Return (live_queue_names, dlq_names) under the Pulumi name prefix."""
+    urls = sqs.list_queues(QueueNamePrefix=prefix).get("QueueUrls", [])
+    names = sorted(url.rsplit("/", 1)[-1] for url in urls)
+    dlqs = [n for n in names if "-dlq-" in n]
+    live = [n for n in names if n not in dlqs]
+    return live, dlqs
 
 
 def _queue_depths(sqs, names: list) -> dict:
@@ -241,20 +284,28 @@ def _queue_depths(sqs, names: list) -> dict:
 
 
 def health_gate(strict: bool = True) -> bool:
-    """Pre-apply check on the prod compaction chain. Returns True if healthy."""
+    """Pre-apply check on the prod update-queue chain. Returns True if healthy."""
     sqs = boto3.client("sqs", region_name="us-east-1")
-    live = _queue_depths(sqs, PROD_QUEUE_NAMES)
-    dead = _queue_depths(sqs, PROD_DLQ_NAMES)
-    logger.info("Prod compaction health:")
+    live_names, dlq_names = _discover_queues(sqs, PROD_QUEUE_PREFIX)
+    if not live_names:
+        logger.warning(
+            f"  ⚠️  no SQS queues found under prefix {PROD_QUEUE_PREFIX!r}"
+        )
+        return not strict
+    live = _queue_depths(sqs, live_names)
+    dead = _queue_depths(sqs, dlq_names)
+    logger.info("Prod update-queue health:")
     logger.info(f"  live queues: {live}")
     logger.info(f"  DLQs:        {dead}")
 
     dlq_bad = [n for n, v in dead.items() if isinstance(v, int) and v > 0]
-    backlog_bad = [n for n, v in live.items() if isinstance(v, int) and v > BACKLOG_LIMIT]
+    backlog_bad = [
+        n for n, v in live.items() if isinstance(v, int) and v > BACKLOG_LIMIT
+    ]
     err = [n for n, v in {**live, **dead}.items() if isinstance(v, str)]
 
     if dlq_bad:
-        logger.warning(f"  ⚠️  messages in DLQ (stuck compaction): {dlq_bad}")
+        logger.warning(f"  ⚠️  messages in DLQ (stuck consumers): {dlq_bad}")
     if backlog_bad:
         logger.warning(f"  ⚠️  live backlog > {BACKLOG_LIMIT}: {backlog_bad}")
     if err:
@@ -262,10 +313,10 @@ def health_gate(strict: bool = True) -> bool:
 
     healthy = not (dlq_bad or backlog_bad or err)
     if healthy:
-        logger.info("  ✅ compaction chain healthy")
+        logger.info("  ✅ update-queue chain healthy")
     elif strict:
         logger.error(
-            "  ❌ compaction chain unhealthy — refusing to apply. "
+            "  ❌ update-queue chain unhealthy — refusing to apply. "
             "Drain/redrive the DLQ and re-check, or pass --skip-health-gate."
         )
     return healthy
@@ -295,7 +346,9 @@ def _partition_types(ddb, table: str, image_id: str) -> set:
     return types
 
 
-def guard_replaces(prod_table: str, replaces: list, max_workers: int = 16) -> tuple:
+def guard_replaces(
+    prod_table: str, replaces: list, max_workers: int = 16
+) -> tuple:
     """Split REPLACE ids into safe (only restorable types) and guarded (would
     lose data). A guarded image is left untouched, not deleted. Queries run in
     parallel over a shared boto3 client (clients are thread-safe)."""
@@ -303,7 +356,9 @@ def guard_replaces(prod_table: str, replaces: list, max_workers: int = 16) -> tu
     safe, guarded = [], []
 
     def _check(iid):
-        return iid, sorted(_partition_types(ddb, prod_table, iid) - RESTORABLE_TYPES)
+        return iid, sorted(
+            _partition_types(ddb, prod_table, iid) - RESTORABLE_TYPES
+        )
 
     with ThreadPoolExecutor(max_workers=max_workers) as ex:
         for iid, bad in ex.map(_check, replaces):
@@ -337,7 +392,9 @@ def apply_plan(p: dict, dev_client, prod_client, dev_config, prod_config):
         # Parallelized — each image is an independent partition and each cascade
         # delete removes thousands of child items, so serial deletes dominate the
         # wall clock on a large run.
-        logger.info(f"Deleting {len(to_delete)} prod images (pure + replace)...")
+        logger.info(
+            f"Deleting {len(to_delete)} prod images (pure + replace)..."
+        )
 
         def _del(iid):
             res = prod_client.delete_image_details(iid)
@@ -348,7 +405,9 @@ def apply_plan(p: dict, dev_client, prod_client, dev_config, prod_config):
             for iid, n in ex.map(_del, to_delete):
                 done += 1
                 if done % 25 == 0 or done == len(to_delete):
-                    logger.info(f"  deleted {done}/{len(to_delete)} (last: {iid} {n} items)")
+                    logger.info(
+                        f"  deleted {done}/{len(to_delete)} (last: {iid} {n} items)"
+                    )
 
         if not to_copy:
             logger.info("No images to add/replace.")
@@ -387,15 +446,19 @@ def apply_plan(p: dict, dev_client, prod_client, dev_config, prod_config):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Mirror prod to dev (image granularity)")
+    ap = argparse.ArgumentParser(
+        description="Mirror prod to dev (image granularity)"
+    )
     ap.add_argument("--dry-run", action="store_true", default=True)
     ap.add_argument("--no-dry-run", action="store_false", dest="dry_run")
     ap.add_argument(
         "--skip-health-gate",
         action="store_true",
-        help="Apply even if the prod compaction chain looks unhealthy",
+        help="Apply even if the prod update-queue chain looks unhealthy",
     )
-    ap.add_argument("--limit-list", type=int, default=25, help="Ids to print per bucket")
+    ap.add_argument(
+        "--limit-list", type=int, default=25, help="Ids to print per bucket"
+    )
     ap.add_argument(
         "--protect",
         default="",
@@ -433,7 +496,9 @@ def main():
     logger.info(f"  ADD     (new dev images):        {len(p['add'])}")
     logger.info(f"  REPLACE (content changed):       {len(p['replace'])}")
     logger.info(f"  DELETE  (gone/empty on dev):     {len(p['delete'])}")
-    logger.info(f"  skipped (empty dev images):      {len(p['empty_skipped'])}")
+    logger.info(
+        f"  skipped (empty dev images):      {len(p['empty_skipped'])}"
+    )
     if guarded:
         logger.warning(
             f"  GUARDED (unrestorable types, left as-is): {len(guarded)}"
@@ -443,7 +508,9 @@ def main():
     for bucket in ("add", "replace", "delete"):
         if p[bucket]:
             shown = p[bucket][: args.limit_list]
-            logger.info(f"  {bucket}: {shown}{' ...' if len(p[bucket]) > len(shown) else ''}")
+            logger.info(
+                f"  {bucket}: {shown}{' ...' if len(p[bucket]) > len(shown) else ''}"
+            )
 
     if not (p["add"] or p["replace"] or p["delete"] or guarded):
         logger.info("\n✅ prod already matches dev. Nothing to do.")
