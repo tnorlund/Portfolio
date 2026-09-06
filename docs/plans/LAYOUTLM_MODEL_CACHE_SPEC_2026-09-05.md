@@ -177,9 +177,12 @@ tests if any exist):
    - pointer present → downloads `bundle_key`, extracts into `<version_id>/`,
      validates identity, logs `source=pointer cached=false`; second call hits
      the cache, logs `cached=true`, performs no `getObject`.
-   - pointer absent, alias present → uses alias ETag as version; second call
-     with a **changed** ETag downloads again into a new directory and the old
-     directory is pruned after the new one is in place.
+   - pointer absent, alias present → uses alias ETag as version; a second call
+     with a **changed** ETag downloads again into a new directory and keeps the
+     previous one (design step 5 retains current plus one); a third distinct
+     ETag prunes the oldest, after the new version is in place.
+     (Corrected during review: the original wording demanded pruning on the
+     second version, contradicting step 5. The implementation follows step 5.)
    - pointer `export_id` ≠ bundle's `model_identity.json` → throws
      `identityMismatch`, and the temp directory is removed.
    - neither pointer nor alias → throws `noActiveModel`; a pre-existing

@@ -215,6 +215,14 @@ public final class OCRWorker {
                 )
             } catch ModelDownloaderError.noActiveModel(let env) {
                 modelLogger.warning("layoutlm_no_active_model env=\(env)")
+            } catch let error as ModelDownloaderError {
+                // A malformed pointer, an identity mismatch, or a failed
+                // extraction must not take Vision OCR down with it. Fail
+                // loudly for the model, keep draining the queue without it —
+                // the same degraded mode as a missing pointer.
+                modelLogger.error(
+                    "layoutlm_model_unavailable env=\(config.environment) reason=\(error.errorDescription ?? String(describing: error))"
+                )
             }
             if let bundle = layoutLMBundlePath {
                 do {
