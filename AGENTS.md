@@ -11,7 +11,7 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 - `receipt_dynamo_stream/` lightweight DynamoDB stream parsing.
 - `receipt_upload/` receipt upload, OCR post-processing, line-item decode.
 - `receipt_agent/` LangGraph agents (QA, validation) over receipt data.
-- `receipt_chroma/`, `receipt_embeddings/` vector storage and search.
+- `receipt_embeddings/` native DynamoDB vector storage and search (`SearchVectors`).
 - `receipt_places/` Google Places client with DynamoDB cache.
 - `receipt_layoutlm/` LayoutLM training, inference, CoreML export (heavy deps).
 - `receipt_langsmith/`, `receipt_logo/` trace analytics and logo MCP tools (heavy deps).

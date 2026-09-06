@@ -34,7 +34,7 @@ pulumi up --stack tnorlund/portfolio/dev --yes
 ```
 
 CodeBuild rebuilds the QA Lambda image (`receipt_agent`, `receipt_dynamo`,
-`receipt_chroma`) when sources changed, ~5 min.
+`receipt_embeddings`) when sources changed, ~5 min.
 
 ## 2. Run the step function
 

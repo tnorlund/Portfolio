@@ -49,7 +49,7 @@ NPM_VERIFICATION_SCRIPTS = {"lint", "type-check", "test:ci"}
 RECEIPT_UPLOAD_LOCAL_STACK = (
     "receipt_dynamo",
     "receipt_dynamo_stream",
-    "receipt_chroma",
+    "receipt_embeddings",
     "receipt_places",
     "receipt_agent",
     "receipt_upload",

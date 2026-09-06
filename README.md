@@ -263,8 +263,8 @@ OCR post-processing, merchant resolution, and geometry-based line-item decode.
 ### receipt_agent
 LangGraph agents for receipt question answering and label validation.
 
-### receipt_embeddings / receipt_chroma
-Vector storage and search (DynamoDB vector index in prod; Chroma for local tooling).
+### receipt_embeddings
+Native DynamoDB vector storage and search (`SearchVectors`); Chroma was removed in #1576.
 
 ### receipt_layoutlm
 LayoutLM training, CoreML export, and inference (heavy dependencies; see `.agents/skills/`).
