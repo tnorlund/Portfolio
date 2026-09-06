@@ -6259,47 +6259,144 @@ async def get_active_model_impl(dynamo_client) -> dict:
         return {"error": str(e)}
 
 
+def coreml_bundle_reference(job) -> tuple[str, str]:
+    """Resolve a Job's immutable export identity without accessing services."""
+    from urllib.parse import urlparse
+
+    results = job.results or {}
+    if isinstance(results, str):
+        results = json.loads(results)
+    export_id = results.get("coreml_export_id")
+    uri = results.get("coreml_versioned_bundle_s3_uri")
+    if uri:
+        parsed = urlparse(uri)
+        match = re.fullmatch(
+            r"/coreml/versions/([A-Za-z0-9_-]+)/layoutlm-coreml-bundle\.zip",
+            parsed.path,
+        )
+        if parsed.scheme != "s3" or not parsed.netloc or not match:
+            raise ValueError("job has an invalid versioned CoreML bundle URI")
+        if export_id and export_id != match[1]:
+            raise ValueError("job CoreML export ID does not match bundle URI")
+        export_id = match[1]
+    if not export_id:
+        raise ValueError(
+            "job has no exported CoreML bundle; export before promoting"
+        )
+    if not isinstance(export_id, str) or not re.fullmatch(
+        r"[A-Za-z0-9_-]+", export_id
+    ):
+        raise ValueError("job has an invalid CoreML export ID")
+    return export_id, (
+        f"coreml/versions/{export_id}/layoutlm-coreml-bundle.zip"
+    )
+
+
 async def set_active_model_impl(
     dynamo_client,
     job_name: str,
+    training_bucket: str | None = None,
+    s3_client=None,
+    resolved_job=None,
 ) -> dict:
-    """Mark a training job as the active model for inference services."""
+    """Promote an exported bundle and align the active Job tag and S3 pointer.
+
+    Preflight the target bucket before changing tags. If publishing the pointer
+    fails, restore the previous tags and report any failed compensation. S3 and
+    DynamoDB cannot participate in one atomic transaction.
+    """
+    from datetime import datetime, timezone
+
+    import boto3
+
     try:
-        # Find the job
-        jobs, _ = dynamo_client.get_job_by_name(job_name)
-        if not jobs:
-            return {"error": f"No job found with name: {job_name}"}
-        job = jobs[0]
+        if resolved_job is not None:
+            # Reuse the Job just copied by the CLI. Both a name-index query
+            # and the client's default primary-key read may lag that write.
+            job = resolved_job
+            if job.name != job_name:
+                raise ValueError(
+                    "resolved job does not match the requested job name"
+                )
+        else:
+            jobs, _ = dynamo_client.get_job_by_name(job_name)
+            if not jobs:
+                return {
+                    "success": False,
+                    "error": f"No job found with name: {job_name}",
+                }
+            job = jobs[0]
+        export_id, bundle_key = coreml_bundle_reference(job)
+        training_bucket = training_bucket or _load_config().get(
+            "layoutlm_training_bucket"
+        )
+        if not training_bucket:
+            raise ValueError("layoutlm_training_bucket is not configured")
+        s3 = s3_client or boto3.client("s3")
+        head = s3.head_object(Bucket=training_bucket, Key=bundle_key)
+        pointer = {
+            "schema_version": 1,
+            "export_id": export_id,
+            "training_job_id": job.job_id,
+            "training_job_name": job.name,
+            "bundle_key": bundle_key,
+            "bundle_etag": head["ETag"],
+            "bundle_size_bytes": head["ContentLength"],
+            "promoted_at": datetime.now(timezone.utc).isoformat(),
+            "promoted_by": "set_active_model",
+        }
+        if not pointer["bundle_etag"] or pointer["bundle_size_bytes"] <= 0:
+            raise ValueError("exported CoreML bundle is empty or has no ETag")
 
-        # Clear old active model tag
         old_active = dynamo_client.get_active_model_job()
-        if old_active:
-            old_active.tags = {
-                k: v
-                for k, v in (old_active.tags or {}).items()
-                if k != "active_model"
-            }
-            dynamo_client.update_job(old_active)
+        originals = [(job, dict(job.tags or {}))]
+        if old_active and old_active.job_id != job.job_id:
+            originals.insert(0, (old_active, dict(old_active.tags or {})))
+        try:
+            if len(originals) == 2:
+                old_active.tags = {
+                    k: v
+                    for k, v in (old_active.tags or {}).items()
+                    if k != "active_model"
+                }
+                dynamo_client.update_job(old_active)
+            job.tags = {**(job.tags or {}), "active_model": "true"}
+            dynamo_client.update_job(job)
+            s3.put_object(
+                Bucket=training_bucket,
+                Key="coreml/active.json",
+                Body=json.dumps(pointer).encode("utf-8"),
+                ContentType="application/json",
+                CacheControl="no-cache",
+            )
+        except Exception as error:
+            rollback_errors = []
+            for original, tags in reversed(originals):
+                original.tags = tags
+                try:
+                    dynamo_client.update_job(original)
+                except Exception as rollback_error:
+                    rollback_errors.append(str(rollback_error))
+            if rollback_errors:
+                raise RuntimeError(
+                    f"{error}; tag rollback failed: {rollback_errors}"
+                ) from error
+            raise
 
-        # Set new active model
-        job.tags = {**(job.tags or {}), "active_model": "true"}
-        dynamo_client.update_job(job)
-
-        r = job.results or {}
-        if isinstance(r, str):
-            r = json.loads(r)
-
+        results = job.results or {}
+        if isinstance(results, str):
+            results = json.loads(results)
         return {
             "success": True,
             "name": job.name,
             "job_id": job.job_id,
-            "best_f1": r.get("best_f1"),
+            "best_f1": results.get("best_f1"),
+            "pointer": pointer,
             "message": f"Set {job.name} as the active model",
         }
-
-    except Exception as e:
+    except Exception as error:
         logger.exception("Error setting active model")
-        return {"error": str(e)}
+        return {"success": False, "error": str(error)}
 
 
 async def get_label_distribution_impl(dynamo_client) -> dict:
