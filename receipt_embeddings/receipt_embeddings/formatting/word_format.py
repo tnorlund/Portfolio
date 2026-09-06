@@ -26,35 +26,6 @@ class WordLike(Protocol):
         """Calculate the centroid coordinates of the word."""
 
 
-def _get_word_position(word: WordLike) -> str:
-    """
-    Get word position in 3x3 grid format matching batch system.
-
-    Replicates logic from embedding/word/submit.py
-    Uses normalized coordinates (0.0-1.0) from calculate_centroid()
-    """
-    # Calculate centroid coordinates (normalized 0.0–1.0)
-    x_center, y_center = word.calculate_centroid()
-
-    # Determine vertical bucket (y=0 at bottom in receipt coordinate system)
-    if y_center > 0.66:
-        vertical = "top"
-    elif y_center > 0.33:
-        vertical = "middle"
-    else:
-        vertical = "bottom"
-
-    # Determine horizontal bucket
-    if x_center < 0.33:
-        horizontal = "left"
-    elif x_center < 0.66:
-        horizontal = "center"
-    else:
-        horizontal = "right"
-
-    return f"{vertical}-{horizontal}"
-
-
 def format_word_context_embedding_input(
     target_word: WordLike,
     all_words: Sequence[WordLike],

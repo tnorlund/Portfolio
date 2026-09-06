@@ -32,7 +32,7 @@ Environment Variables:
     GOOGLE_PLACES_API_KEY: Google Places API key
     LANGCHAIN_API_KEY: LangSmith API key (tracing)
     FIX_PLACE_RESOLUTION_MODE: "agent" or "tiered" (both resolve through
-        the tiered cascade; the Chroma tier-3 agent is retired)
+        the tiered cascade; the vector-backed tier-3 agent is retired)
     FIX_PLACE_TIER2_MODEL: Cheap structured picker model
     FIX_PLACE_AGENT_MODEL: Tier 3 tool-calling model
     FIX_PLACE_AGENT_RECURSION_LIMIT: Hard graph step cap (maximum 12)
@@ -113,9 +113,9 @@ async def _run_place_finder(
 ) -> tuple[dict[str, Any], Any, dict[str, Any]]:
     """Resolve one receipt through the deterministic + picker tiers.
 
-    The Chroma-backed tier-3 agent is RETIRED (Chroma teardown): its
-    tools needed unfiltered word queries and invalid-label arrays the
-    native embedding items don't carry. Every configuration now resolves
+    The tier-3 agent is RETIRED (vector-store teardown): its tools
+    needed unfiltered word queries and invalid-label arrays the native
+    embedding items don't carry. Every configuration now resolves
     through the tiered cascade; a miss returns a structured not-found.
     """
     # pylint: disable=import-outside-toplevel
@@ -142,8 +142,7 @@ async def _run_place_finder(
             "found": False,
             "resolution_tier": "tiered",
             "reasoning": (
-                "tiered resolution missed; the Chroma-only tier-3 "
-                "agent is retired (Chroma teardown)"
+                "tiered resolution missed; the tier-3 agent is retired"
             ),
         },
         details,
@@ -197,7 +196,7 @@ def handler(  # pylint: disable=unused-argument
         # The tiered cascade contains a bounded agent and a single
         # structured picker; rerunning it would multiply both limits and
         # cost, and the retrying tier-3 agent it hedged against is
-        # retired (Chroma teardown). One attempt, always.
+        # retired. One attempt, always.
         max_attempts = 1
         agent_result = None
         details = None

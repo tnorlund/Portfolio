@@ -68,7 +68,6 @@ def load_config(env: str = "dev"):
 
     config = {
         "dynamodb_table_name": outputs.get("dynamodb_table_name"),
-        "chromadb_bucket": outputs.get("embedding_chromadb_bucket_name"),
         "openai_api_key": secrets.get("portfolio:OPENAI_API_KEY"),
         "openrouter_api_key": secrets.get("portfolio:OPENROUTER_API_KEY"),
         "langchain_api_key": secrets.get("portfolio:LANGCHAIN_API_KEY"),
@@ -85,7 +84,9 @@ def load_config(env: str = "dev"):
         os.environ["LANGCHAIN_PROJECT"] = "merchant-analysis"
 
     # Default OpenRouter settings
-    os.environ.setdefault("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    os.environ.setdefault(
+        "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+    )
     os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-oss-120b")
 
     return config
@@ -261,7 +262,8 @@ def main():
 
     logger.info("Using DynamoDB table: %s", config["dynamodb_table_name"])
 
-    # Import pattern_discovery module directly (avoid chromadb import issues with Python 3.14)
+    # Import the pattern_discovery module file directly (skip the package
+    # __init__ so the script stays runnable without the full agent stack)
     import importlib.util
 
     pattern_discovery_path = os.path.join(

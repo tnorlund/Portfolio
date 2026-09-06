@@ -2,33 +2,21 @@
 Guardrailed agentic tools for receipt metadata validation.
 
 These tools are designed to be used by a ReAct agent with full autonomy
-while enforcing constraints on how ChromaDB can be queried.
+while enforcing constraints on how receipt data can be queried.
 
 Guard Rails:
 - Tools construct record IDs internally (agent can't make arbitrary queries)
-- Collections are hardcoded ("lines", "words")
-- Current receipt is automatically excluded from search results (when context is set)
 - Result counts are capped
 - Decision tool enforces valid status values
 """
 
 import logging
-import os
 from dataclasses import dataclass
-from typing import Any, Callable, Literal, Optional
+from typing import Any, Literal, Optional
 
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
-from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
-from receipt_agent.utils.chroma_types import (
-    ChromaWhereClause,
-    extract_query_metadata_rows,
-)
-from receipt_agent.utils.label_metadata import (
-    combine_where_clauses,
-    metadata_matches_label_state,
-)
 from receipt_agent.tools.places import _format_place_result, _place_to_dict
 from receipt_agent.utils.receipt_text import format_receipt_text_receipt_space
 
@@ -56,82 +44,13 @@ class ReceiptContext:
 
 
 def _build_line_id(image_id: str, receipt_id: int, line_id: int) -> str:
-    """Build ChromaDB document ID for a line."""
+    """Build the embedding record ID for a line."""
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-
-
-def _build_word_id(
-    image_id: str, receipt_id: int, line_id: int, word_id: int
-) -> str:
-    """Build ChromaDB document ID for a word."""
-    return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}#WORD#{word_id:05d}"
 
 
 # ==============================================================================
 # Tool Input Schemas
 # ==============================================================================
-
-
-class FindSimilarToMyLineInput(BaseModel):
-    """Input for find_similar_to_my_line tool."""
-
-    line_id: int = Field(
-        description="Line ID on this receipt to use for similarity search"
-    )
-    n_results: int = Field(
-        default=10, ge=1, le=20, description="Number of results (max 20)"
-    )
-
-
-class FindSimilarToMyWordInput(BaseModel):
-    """Input for find_similar_to_my_word tool."""
-
-    line_id: int = Field(description="Line ID containing the word")
-    word_id: int = Field(description="Word ID to use for similarity search")
-    n_results: int = Field(
-        default=10, ge=1, le=20, description="Number of results (max 20)"
-    )
-
-
-class SearchLinesInput(BaseModel):
-    """Input for search_lines tool."""
-
-    query: str = Field(
-        description="Text to search for (address, phone, merchant name)"
-    )
-    n_results: int = Field(
-        default=10, ge=1, le=20, description="Number of results (max 20)"
-    )
-    merchant_filter: Optional[str] = Field(
-        default=None, description="Optionally filter by merchant"
-    )
-    label_filter: Optional[str] = Field(
-        default=None,
-        description="Optional label filter (checks valid/invalid label arrays)",
-    )
-    label_state: str = Field(
-        default="any",
-        description="Label state to filter: valid, invalid, or any",
-        pattern="^(valid|invalid|any)$",
-    )
-
-
-class SearchWordsInput(BaseModel):
-    """Input for search_words tool."""
-
-    query: str = Field(description="Word text to search for")
-    label_filter: Optional[str] = Field(
-        default=None,
-        description="Filter by label: MERCHANT_NAME, PHONE, ADDRESS, TOTAL, etc.",
-    )
-    label_state: str = Field(
-        default="any",
-        description="Label state to filter: valid, invalid, or any",
-        pattern="^(valid|invalid|any)$",
-    )
-    n_results: int = Field(
-        default=10, ge=1, le=20, description="Number of results (max 20)"
-    )
 
 
 class GetMerchantConsensusInput(BaseModel):
@@ -198,95 +117,24 @@ class FindBusinessesAtAddressInput(BaseModel):
 # ==============================================================================
 
 
-def ensure_chroma_state(
-    state: dict,
-) -> tuple[Any, Callable[[list[str]], list[list[float]]]]:
-    """
-    Ensure chroma_client and embed_fn are loaded in state, lazy-loading if needed.
-
-    Args:
-        state: State dictionary that may contain chroma_client, embed_fn, chromadb_bucket
-
-    Returns:
-        Tuple of (chroma_client, embed_fn)
-
-    Raises:
-        RuntimeError: If chroma_client/embed_fn are not available and cannot be lazy-loaded
-    """
-    chroma_client = state.get("chroma_client")
-    embed_fn = state.get("embed_fn")
-
-    # If both are already loaded, return them
-    if chroma_client and embed_fn:
-        return chroma_client, embed_fn
-
-    # Try to lazy-load if bucket is available
-    chromadb_bucket = state.get("chromadb_bucket") or os.environ.get(
-        "CHROMADB_BUCKET"
-    )
-    if not chromadb_bucket:
-        raise RuntimeError(
-            "ChromaDB client and embedding function are not available and "
-            "cannot be lazy-loaded: chromadb_bucket is not configured. "
-            "Either provide chroma_client and embed_fn when creating tools, "
-            "or set chromadb_bucket for lazy loading."
-        )
-
-    try:
-        logger.info(
-            "Lazy-loading ChromaDB (dual collections) and embeddings..."
-        )
-        chroma_client, embed_fn = load_dual_chroma_from_s3(
-            chromadb_bucket=chromadb_bucket,
-            base_chroma_path=os.environ.get(
-                "RECEIPT_AGENT_CHROMA_PERSIST_DIRECTORY"
-            ),
-            verify_integrity=False,
-        )
-        # Cache in state for subsequent calls
-        state["chroma_client"] = chroma_client
-        state["embed_fn"] = embed_fn
-        return chroma_client, embed_fn
-
-    except Exception as e:
-        raise RuntimeError(
-            f"Failed to lazy-load ChromaDB client and embedding function: {e!s}. "
-            "Ensure chromadb_bucket is configured correctly and accessible."
-        ) from e
-
-
 def create_agentic_tools(
     dynamo_client: Any,
-    chroma_client: Any,
-    embed_fn: Callable[[list[str]], list[list[float]]],
     places_api: Optional[Any] = None,
-    chromadb_bucket: Optional[str] = None,
 ) -> tuple[list[Any], dict]:
     """
     Create guardrailed tools for the agentic validator.
 
     Args:
         dynamo_client: DynamoDB client
-        chroma_client: ChromaDB client (may be None, will be lazy-loaded via ensure_chroma_state if bucket provided)
-        embed_fn: Embedding function (may be None, will be lazy-loaded via ensure_chroma_state if bucket provided)
         places_api: Optional Google Places API client
-        chromadb_bucket: Optional S3 bucket name for lazy loading ChromaDB collections
 
     Returns:
         (tools, state_holder) - tools list and a dict to hold runtime state
-
-    Note:
-        Tools that use chroma_client or embed_fn will automatically lazy-load them
-        via ensure_chroma_state() if they are None and chromadb_bucket is configured.
-        If lazy loading fails, tools will return error responses.
     """
     # State holder - will be populated before each validation
     state = {
         "context": None,
         "decision": None,
-        "chroma_client": chroma_client,  # Cache ChromaDB client
-        "embed_fn": embed_fn,  # Cache embedding function
-        "chromadb_bucket": chromadb_bucket,  # Store bucket for lazy loading
     }
 
     # ========== CONTEXT TOOLS ==========
@@ -438,418 +286,6 @@ def create_agentic_tools(
 
         return ctx.metadata
 
-    # ========== SIMILARITY SEARCH TOOLS (using MY embeddings) ==========
-
-    @tool(args_schema=FindSimilarToMyLineInput)
-    def find_similar_to_my_line(
-        line_id: int, n_results: int = 10
-    ) -> list[dict]:
-        """
-        Find lines on OTHER receipts similar to one of YOUR lines.
-
-        Uses the stored embedding for your line to search ChromaDB.
-        Automatically excludes your receipt from results.
-
-        Args:
-            line_id: Which of your lines to use (from get_my_lines)
-            n_results: How many results to return (max 20)
-
-        Returns similar lines with:
-        - image_id, receipt_id: Which receipt this line is from
-        - text: The line text
-        - similarity: How similar (0.0 to 1.0)
-        - merchant_name, address, phone: Metadata from that receipt
-        """
-        ctx: ReceiptContext = state["context"]
-        if ctx is None:
-            return [{"error": "No receipt context set"}]
-
-        # Ensure ChromaDB is loaded
-        try:
-            chroma_client, _ = ensure_chroma_state(state)
-        except RuntimeError as e:
-            return [{"error": str(e)}]
-
-        # Build the record ID for this line
-        doc_id = _build_line_id(ctx.image_id, ctx.receipt_id, line_id)
-
-        # Get the embedding for this line
-        if ctx.line_embeddings and doc_id in ctx.line_embeddings:
-            query_embedding = ctx.line_embeddings[doc_id]
-        else:
-            # Try to fetch from ChromaDB
-            try:
-                result = chroma_client.get(
-                    collection_name="lines",
-                    ids=[doc_id],
-                    include=["embeddings"],
-                )
-                if result.get("embeddings") and len(result["embeddings"]) > 0:
-                    query_embedding = result["embeddings"][0]
-                else:
-                    return [
-                        {"error": f"No embedding found for line {line_id}"}
-                    ]
-            except Exception as e:
-                logger.exception(
-                    "Error getting embedding for line_id=%s doc_id=%s",
-                    line_id,
-                    doc_id,
-                )
-                return [{"error": f"Could not get embedding: {e}"}]
-
-        # Search for similar lines
-        try:
-            results = chroma_client.query(
-                collection_name="lines",
-                query_embeddings=[query_embedding],
-                n_results=n_results + 10,  # Get extra to filter out self
-                include=["metadatas", "documents", "distances"],
-            )
-
-            output = []
-            ids = results.get("ids", [[]])[0]
-            documents = results.get("documents", [[]])[0]
-            metadatas = extract_query_metadata_rows(results)
-            distances = results.get("distances", [[]])[0]
-
-            for _doc_id, doc, meta, dist in zip(
-                ids, documents, metadatas, distances, strict=True
-            ):
-                # Skip if same receipt
-                if (
-                    meta.get("image_id") == ctx.image_id
-                    and int(meta.get("receipt_id", -1)) == ctx.receipt_id
-                ):
-                    continue
-
-                similarity = max(0.0, 1.0 - (dist / 2))
-
-                output.append(
-                    {
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "text": doc,
-                        "similarity": round(similarity, 4),
-                        "merchant_name": meta.get("merchant_name"),
-                        "address": meta.get("normalized_full_address"),
-                        "phone": meta.get("normalized_phone_10"),
-                        "place_id": meta.get("place_id"),
-                    }
-                )
-
-                if len(output) >= n_results:
-                    break
-
-            logger.info(
-                "find_similar_to_my_line(%s) returned %s results",
-                line_id,
-                len(output),
-            )
-            return output
-
-        except Exception as e:
-            logger.exception("Error in similarity search")
-            return [{"error": str(e)}]
-
-    @tool(args_schema=FindSimilarToMyWordInput)
-    def find_similar_to_my_word(
-        line_id: int, word_id: int, n_results: int = 10
-    ) -> list[dict]:
-        """
-        Find words on OTHER receipts similar to one of YOUR words.
-
-        Uses the stored embedding for your word to search ChromaDB.
-        Automatically excludes your receipt from results.
-
-        Args:
-            line_id: Line containing the word
-            word_id: Which word to use (from get_my_words)
-            n_results: How many results to return (max 20)
-
-        Returns similar words with:
-        - image_id, receipt_id: Which receipt
-        - text: The word text
-        - label: What label it has
-        - similarity: How similar (0.0 to 1.0)
-        """
-        ctx: ReceiptContext = state["context"]
-        if ctx is None:
-            return [{"error": "No receipt context set"}]
-
-        # Ensure ChromaDB is loaded
-        try:
-            chroma_client, _ = ensure_chroma_state(state)
-        except RuntimeError as e:
-            return [{"error": str(e)}]
-
-        # Build the record ID for this word
-        doc_id = _build_word_id(ctx.image_id, ctx.receipt_id, line_id, word_id)
-
-        # Get the embedding for this word
-        if ctx.word_embeddings and doc_id in ctx.word_embeddings:
-            query_embedding = ctx.word_embeddings[doc_id]
-        else:
-            # Try to fetch from ChromaDB
-            try:
-                result = chroma_client.get(
-                    collection_name="words",
-                    ids=[doc_id],
-                    include=["embeddings"],
-                )
-                if result.get("embeddings") and len(result["embeddings"]) > 0:
-                    query_embedding = result["embeddings"][0]
-                else:
-                    return [
-                        {
-                            "error": f"No embedding found for word {line_id}/{word_id}"
-                        }
-                    ]
-            except Exception as e:
-                logger.exception(
-                    "Error getting embedding for word line_id=%s word_id=%s doc_id=%s",
-                    line_id,
-                    word_id,
-                    doc_id,
-                )
-                return [{"error": f"Could not get embedding: {e}"}]
-
-        # Search for similar words
-        try:
-            results = chroma_client.query(
-                collection_name="words",
-                query_embeddings=[query_embedding],
-                n_results=n_results + 10,
-                include=["metadatas", "documents", "distances"],
-            )
-
-            output = []
-            ids = results.get("ids", [[]])[0]
-            documents = results.get("documents", [[]])[0]
-            metadatas = extract_query_metadata_rows(results)
-            distances = results.get("distances", [[]])[0]
-
-            for _doc_id, doc, meta, dist in zip(
-                ids, documents, metadatas, distances, strict=True
-            ):
-                # Skip if same receipt
-                if (
-                    meta.get("image_id") == ctx.image_id
-                    and int(meta.get("receipt_id", -1)) == ctx.receipt_id
-                ):
-                    continue
-
-                similarity = max(0.0, 1.0 - (dist / 2))
-
-                output.append(
-                    {
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "text": doc,
-                        "label": meta.get("label"),
-                        "similarity": round(similarity, 4),
-                    }
-                )
-
-                if len(output) >= n_results:
-                    break
-
-            logger.info(
-                "find_similar_to_my_word(%s, %s) returned %s results",
-                line_id,
-                word_id,
-                len(output),
-            )
-            return output
-
-        except Exception as e:
-            logger.exception("Error in word similarity search")
-            return [{"error": str(e)}]
-
-    # ========== TEXT SEARCH TOOLS (generate new embedding) ==========
-
-    @tool(args_schema=SearchLinesInput)
-    def search_lines(
-        query: str,
-        n_results: int = 10,
-        merchant_filter: Optional[str] = None,
-        label_filter: Optional[str] = None,
-        label_state: str = "any",
-    ) -> list[dict]:
-        """
-        Search for lines similar to arbitrary text.
-
-        Generates a new embedding for the query text and searches ChromaDB.
-
-        Args:
-            query: Text to search for (e.g., "123 Main Street" or "510-555-1234")
-            n_results: How many results (max 20)
-            merchant_filter: Optionally limit results to a specific merchant
-            label_filter: Optional label to filter by
-            label_state: Whether to check valid, invalid, or both label arrays
-
-        Returns matching lines with merchant metadata.
-        """
-        ctx: ReceiptContext = state["context"]
-
-        # Ensure ChromaDB is loaded
-        try:
-            chroma_client, embed_fn = ensure_chroma_state(state)
-        except RuntimeError as e:
-            return [{"error": str(e)}]
-
-        try:
-            # Generate embedding for query
-            query_embedding = embed_fn([query])[0]
-
-            merchant_clause: Optional[ChromaWhereClause] = None
-            if merchant_filter:
-                merchant_clause = {
-                    "merchant_name": {"$eq": merchant_filter.strip()}
-                }
-
-            where_clause = combine_where_clauses([merchant_clause])
-            query_n_results = (
-                n_results + 5 if not label_filter else max(n_results * 5, 50)
-            )
-
-            results = chroma_client.query(
-                collection_name="lines",
-                query_embeddings=[query_embedding],
-                n_results=query_n_results,
-                where=where_clause,
-                include=["metadatas", "documents", "distances"],
-            )
-
-            output = []
-            ids = results.get("ids", [[]])[0]
-            documents = results.get("documents", [[]])[0]
-            metadatas = extract_query_metadata_rows(results)
-            distances = results.get("distances", [[]])[0]
-
-            for _doc_id, doc, meta, dist in zip(
-                ids, documents, metadatas, distances, strict=True
-            ):
-                # Skip if same receipt (if context is set)
-                if ctx and (
-                    meta.get("image_id") == ctx.image_id
-                    and int(meta.get("receipt_id", -1)) == ctx.receipt_id
-                ):
-                    continue
-
-                similarity = max(0.0, 1.0 - (dist / 2))
-                if label_filter and not metadata_matches_label_state(
-                    meta, label_filter, label_state
-                ):
-                    continue
-
-                output.append(
-                    {
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "text": doc,
-                        "similarity": round(similarity, 4),
-                        "merchant_name": meta.get("merchant_name"),
-                        "address": meta.get("normalized_full_address"),
-                        "phone": meta.get("normalized_phone_10"),
-                    }
-                )
-
-                if len(output) >= n_results:
-                    break
-
-            logger.info(
-                "search_lines('%s...') returned %s results",
-                query[:30],
-                len(output),
-            )
-            return output
-
-        except Exception as e:
-            logger.exception("Error in search_lines")
-            return [{"error": str(e)}]
-
-    @tool(args_schema=SearchWordsInput)
-    def search_words(
-        query: str,
-        label_filter: Optional[str] = None,
-        label_state: str = "any",
-        n_results: int = 10,
-    ) -> list[dict]:
-        """
-        Search for words similar to arbitrary text.
-
-        Args:
-            query: Word to search for
-            label_filter: Filter by label (MERCHANT_NAME, PHONE, ADDRESS, TOTAL)
-            label_state: Whether to check valid, invalid, or both label arrays
-            n_results: How many results (max 20)
-
-        Returns matching words with their labels.
-        """
-        ctx: ReceiptContext = state["context"]
-
-        # Ensure ChromaDB is loaded
-        try:
-            chroma_client, embed_fn = ensure_chroma_state(state)
-        except RuntimeError as e:
-            return [{"error": str(e)}]
-
-        try:
-            query_embedding = embed_fn([query])[0]
-
-            query_n_results = (
-                n_results + 5 if not label_filter else max(n_results * 5, 50)
-            )
-
-            results = chroma_client.query(
-                collection_name="words",
-                query_embeddings=[query_embedding],
-                n_results=query_n_results,
-                where=None,
-                include=["metadatas", "documents", "distances"],
-            )
-
-            output = []
-            ids = results.get("ids", [[]])[0]
-            documents = results.get("documents", [[]])[0]
-            metadatas = extract_query_metadata_rows(results)
-            distances = results.get("distances", [[]])[0]
-
-            for _doc_id, doc, meta, dist in zip(
-                ids, documents, metadatas, distances, strict=True
-            ):
-                if ctx and (
-                    meta.get("image_id") == ctx.image_id
-                    and int(meta.get("receipt_id", -1)) == ctx.receipt_id
-                ):
-                    continue
-
-                similarity = max(0.0, 1.0 - (dist / 2))
-                if label_filter and not metadata_matches_label_state(
-                    meta, label_filter, label_state
-                ):
-                    continue
-
-                output.append(
-                    {
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "text": doc,
-                        "label": meta.get("label"),
-                        "similarity": round(similarity, 4),
-                    }
-                )
-
-                if len(output) >= n_results:
-                    break
-
-            return output
-
-        except Exception as e:
-            logger.exception("Error in search_words")
-            return [{"error": str(e)}]
-
     # ========== AGGREGATION TOOLS ==========
 
     @tool(args_schema=GetMerchantConsensusInput)
@@ -961,75 +397,21 @@ def create_agentic_tools(
         Use this to verify a Place ID is legitimate and consistently used.
         """
         try:
-            # Ensure ChromaDB is loaded
-            try:
-                chroma_client, embed_fn = ensure_chroma_state(state)
-            except RuntimeError as e:
-                return {
-                    "error": str(e),
-                    "place_id": place_id,
-                    "receipt_count": 0,
-                    "message": "ChromaDB not available",
-                }
-
-            # Verify collection exists before querying
-            try:
-                collection = chroma_client.get_collection("lines")
-                logger.debug(
-                    "Found 'lines' collection with %s vectors",
-                    collection.count(),
-                )
-            except Exception as e:
-                error_str = str(e)
-                if (
-                    "not found" in error_str.lower()
-                    or "does not exist" in error_str.lower()
-                ):
-                    # Collection not found - this shouldn't happen if ensure_chroma_state succeeded
-                    # Return error since ensure_chroma_state should have loaded everything
-                    logger.exception(
-                        "'lines' collection not found in ChromaDB even after lazy loading"
-                    )
-                    return {
-                        "error": "Collection 'lines' not found in ChromaDB",
-                        "place_id": place_id,
-                        "receipt_count": 0,
-                        "message": "ChromaDB 'lines' collection not available",
-                    }
-                else:
-                    raise  # Re-raise if it's a different error
-
-            # Query ChromaDB for lines with this place_id
-            # We need to use query() with an embedding and a where filter
-            # Generate a dummy embedding to satisfy the query requirement
-            dummy_embedding = embed_fn(["place id lookup"])[0]
-
-            results = chroma_client.query(
-                collection_name="lines",
-                query_embeddings=[dummy_embedding],
-                n_results=100,
-                where={"place_id": {"$eq": place_id}},
-                include=["metadatas"],
+            places, _ = dynamo_client.list_receipt_places_with_place_id(
+                place_id=place_id,
+                limit=100,
             )
 
-            # Query results are nested in lists
-            metadatas = extract_query_metadata_rows(results)
-
-            if not metadatas:
+            if not places:
                 return {
                     "place_id": place_id,
                     "receipt_count": 0,
                     "message": "No receipts found with this Place ID",
                 }
 
-            # Extract unique receipts
-            receipt_set = set()
-            for meta in metadatas:
-                image_id = meta.get("image_id")
-                receipt_id = meta.get("receipt_id")
-                if image_id and receipt_id:
-                    receipt_set.add((image_id, int(receipt_id)))
-
+            receipt_set = {
+                (place.image_id, int(place.receipt_id)) for place in places
+            }
             receipt_count = len(receipt_set)
 
             return {
@@ -1044,7 +426,7 @@ def create_agentic_tools(
                 "error": f"{e!s}",
                 "place_id": place_id,
                 "receipt_count": 0,
-                "message": "Error querying ChromaDB",
+                "message": "Error querying DynamoDB",
             }
 
     # ========== COMPARISON TOOL ==========
@@ -1248,10 +630,6 @@ def create_agentic_tools(
         get_my_words,
         get_receipt_text,
         get_my_place,
-        find_similar_to_my_line,
-        find_similar_to_my_word,
-        search_lines,
-        search_words,
         get_merchant_consensus,
         get_place_id_info,
         compare_with_receipt,
@@ -1283,8 +661,16 @@ def create_agentic_tools(
 
                 geometry = geocode_result.get("geometry") or {}
                 location = geometry.get("location") or {}
-                lat = location["lat"] if "lat" in location else location.get("latitude")
-                lng = location["lng"] if "lng" in location else location.get("longitude")
+                lat = (
+                    location["lat"]
+                    if "lat" in location
+                    else location.get("latitude")
+                )
+                lng = (
+                    location["lng"]
+                    if "lng" in location
+                    else location.get("longitude")
+                )
 
                 if lat is None or lng is None:
                     return {

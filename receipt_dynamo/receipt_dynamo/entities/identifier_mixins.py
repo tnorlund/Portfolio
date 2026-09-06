@@ -319,7 +319,7 @@ class JobIdentifierMixin:
     Mixin for entities that belong to a training/processing job.
 
     Provides validation and key generation for job-related entities
-    like JobStatus, JobCheckpoint, JobLog, JobMetric, etc.
+    like JobLog, JobMetric, etc.
 
     Attributes:
         job_id: UUID string identifying the job

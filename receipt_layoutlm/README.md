@@ -10,7 +10,10 @@ current runtime.
 
 Last updated: 2026-07-09 UTC.
 
-- Active deployed model: `layoutlm-v23-qty-pinned`.
+- Active deployed model: `layoutlm-v31-nonproduct-clean-20260729` (8 merged
+  classes: `AMOUNT` = all money fields, `ADDRESS` = address + phone; no
+  line-item labels). See `EVALUATION.md` for why its reported F1 is not a
+  usable baseline.
 - Active model held-out F1: about `0.719` on its original canonical split.
 - Completed full-core adversarial retrain:
   `layoutlm-v25-adversarial-real-20260708-022719`.

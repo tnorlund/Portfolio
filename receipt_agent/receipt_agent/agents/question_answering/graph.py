@@ -10,8 +10,8 @@ LangGraph workflow for answering questions about receipts.
 
 Flow: START -> plan -> agent <-> tools -> shape -> synthesize -> END
 
-This agent uses ChromaDB for semantic search and DynamoDB for receipt data
-to answer questions like:
+This agent uses DynamoDB vector indexes for semantic search and DynamoDB
+for receipt data to answer questions like:
 - "How much did I spend on coffee this year?"
 - "Show me all receipts with dairy products"
 - "How much tax did I pay last quarter?"
@@ -26,6 +26,8 @@ from typing import Any, Callable, Optional
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
+from receipt_embeddings.vector_client import VectorSearchClient
+
 from receipt_agent.agents.question_answering.state import (
     AmountItem,
     AnswerWithEvidence,
@@ -40,8 +42,6 @@ from receipt_agent.agents.question_answering.tools import (
 )
 from receipt_agent.config.settings import Settings, get_settings
 from receipt_agent.utils.llm_factory import create_llm
-
-from receipt_embeddings.vector_client import VectorSearchClient
 
 logger = logging.getLogger(__name__)
 
@@ -854,7 +854,6 @@ def route_after_shape(state: QAState, state_holder: dict) -> str:
 
 def create_qa_graph(
     dynamo_client: Any,
-    chroma_client: Any,
     embed_fn: Callable[[list[str]], list[list[float]]],
     settings: Optional[Settings] = None,
     *,
@@ -867,11 +866,10 @@ def create_qa_graph(
 
     Args:
         dynamo_client: DynamoDB client
-        chroma_client: ChromaDB client
         embed_fn: Function to generate embeddings
         settings: Optional settings
         vector_client: Optional injected similarity backend; defaults to
-            the ``VECTOR_BACKEND`` selection (chroma unless set)
+            the DynamoDB vector indexes on the session's table
 
     Returns:
         (compiled_graph, state_holder) - The graph and state dict
@@ -882,7 +880,6 @@ def create_qa_graph(
     # Create tools with injected dependencies
     tools, state_holder = create_qa_tools(
         dynamo_client=dynamo_client,
-        chroma_client=chroma_client,
         embed_fn=embed_fn,
         vector_client=vector_client,
     )

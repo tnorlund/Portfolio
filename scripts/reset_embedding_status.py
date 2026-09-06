@@ -5,19 +5,18 @@ Reset embedding statuses and delete batch summaries.
 This script:
 1. Deletes BatchSummary records from DynamoDB (filtered by collection)
 2. Resets ReceiptWords and/or ReceiptLines to NONE status
-3. Optionally clears ChromaDB snapshots from S3
 
 Usage:
     # Reset only LINES (for row-based embedding migration)
     python scripts/reset_embedding_status.py --env dev --collection lines --dry-run
-    python scripts/reset_embedding_status.py --env dev --collection lines --no-dry-run --clear-snapshots
+    python scripts/reset_embedding_status.py --env dev --collection lines --no-dry-run
 
     # Reset only WORDS
     python scripts/reset_embedding_status.py --env dev --collection words --no-dry-run
 
     # Reset both (default, legacy behavior)
     python scripts/reset_embedding_status.py --env dev --dry-run
-    python scripts/reset_embedding_status.py --env dev --no-dry-run --clear-snapshots
+    python scripts/reset_embedding_status.py --env dev --no-dry-run
 
     # Use parallel workers for faster processing (recommended: 8-16)
     python scripts/reset_embedding_status.py --env dev --collection lines --parallel 10 --no-dry-run
@@ -29,8 +28,6 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import Lock
-
-import boto3
 
 # Add parent directories to path for imports
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -290,71 +287,6 @@ def reset_embedding_status(
     return stats
 
 
-def clear_chromadb_snapshots(
-    bucket: str, dry_run: bool = True, collection: str = "both"
-) -> dict:
-    """Clear ChromaDB snapshots from S3.
-
-    Args:
-        bucket: S3 bucket name
-        dry_run: If True, don't actually delete
-        collection: "lines", "words", or "both"
-    """
-    s3 = boto3.client("s3")
-    stats = {"lines_deleted": 0, "words_deleted": 0, "errors": []}
-
-    # Determine which collections to clear
-    if collection == "lines":
-        collections_to_clear = ["lines"]
-    elif collection == "words":
-        collections_to_clear = ["words"]
-    else:
-        collections_to_clear = ["lines", "words"]
-
-    for coll in collections_to_clear:
-        prefix = f"{coll}/snapshot/"
-        logger.info("Listing objects in s3://%s/%s", bucket, prefix)
-
-        try:
-            paginator = s3.get_paginator("list_objects_v2")
-            objects_to_delete = []
-
-            for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
-                for obj in page.get("Contents", []):
-                    objects_to_delete.append({"Key": obj["Key"]})
-
-            if not objects_to_delete:
-                logger.info("No objects found for %s snapshots", coll)
-                continue
-
-            logger.info(
-                "Found %d objects to delete for %s",
-                len(objects_to_delete),
-                coll,
-            )
-
-            if dry_run:
-                stats[f"{coll}_deleted"] = len(objects_to_delete)
-            else:
-                # Delete in batches of 1000 (S3 limit)
-                for i in range(0, len(objects_to_delete), 1000):
-                    batch = objects_to_delete[i : i + 1000]
-                    s3.delete_objects(Bucket=bucket, Delete={"Objects": batch})
-                    stats[f"{coll}_deleted"] += len(batch)
-                    logger.info(
-                        "Deleted %d/%d objects for %s",
-                        stats[f"{coll}_deleted"],
-                        len(objects_to_delete),
-                        coll,
-                    )
-
-        except Exception:
-            logger.exception("Error clearing %s snapshots", coll)
-            stats["errors"].append(f"clear_{coll}")
-
-    return stats
-
-
 def main():
     parser = argparse.ArgumentParser(
         description="Reset embedding statuses and delete batch summaries"
@@ -386,12 +318,6 @@ def main():
         help="Actually make changes (disables dry-run)",
     )
     parser.add_argument(
-        "--clear-snapshots",
-        action="store_true",
-        default=False,
-        help="Also clear ChromaDB snapshots from S3",
-    )
-    parser.add_argument(
         "--parallel",
         type=int,
         default=1,
@@ -415,10 +341,6 @@ def main():
             f"This will DELETE {collection_desc} BatchSummary records and "
             f"RESET {collection_desc} embedding statuses!"
         )
-        if args.clear_snapshots:
-            logger.warning(
-                f"This will also DELETE {collection_desc} ChromaDB snapshots from S3!"
-            )
         logger.warning("Press Ctrl+C within 5 seconds to abort...")
         import time
 
@@ -455,24 +377,6 @@ def main():
         parallel=args.parallel,
     )
 
-    snapshot_stats = None
-    if args.clear_snapshots:
-        logger.info("")
-        logger.info("=" * 60)
-        logger.info(
-            f"Step 3: Clear {collection_label} ChromaDB snapshots from S3"
-        )
-        logger.info("=" * 60)
-        bucket = config.get("chromadb_bucket_name") or config.get(
-            "embedding_chromadb_bucket_name"
-        )
-        if bucket:
-            snapshot_stats = clear_chromadb_snapshots(
-                bucket, dry_run=args.dry_run, collection=args.collection
-            )
-        else:
-            logger.error("Could not find ChromaDB bucket in config")
-
     # Print summary
     logger.info("")
     logger.info("=" * 60)
@@ -484,21 +388,7 @@ def main():
     if args.collection in ("lines", "both"):
         logger.info("ReceiptLines reset to NONE: %d", stats["lines_reset"])
 
-    if snapshot_stats:
-        if args.collection in ("lines", "both"):
-            logger.info(
-                "S3 lines snapshot objects deleted: %d",
-                snapshot_stats.get("lines_deleted", 0),
-            )
-        if args.collection in ("words", "both"):
-            logger.info(
-                "S3 words snapshot objects deleted: %d",
-                snapshot_stats.get("words_deleted", 0),
-            )
-
     all_errors = stats["errors"]
-    if snapshot_stats:
-        all_errors.extend(snapshot_stats.get("errors", []))
 
     if all_errors:
         logger.warning("%d errors occurred:", len(all_errors))

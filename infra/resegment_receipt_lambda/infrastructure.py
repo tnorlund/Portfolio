@@ -195,7 +195,6 @@ class ResegmentReceiptLambda(ComponentResource):
                 "receipt_dynamo",
                 "receipt_dynamo_stream",
                 "receipt_embeddings",
-                "receipt_chroma",
                 "receipt_upload",
                 "receipt_places",
             ],

@@ -2,7 +2,7 @@
 """Run QA-agent questions locally and inject results into the dev viz cache.
 
 Runs the LOCAL working-copy receipt_agent code (unmerged edits included)
-against the dev stack's DynamoDB table and Chroma Cloud database, builds
+against the dev stack's DynamoDB table (including its vector indexes), builds
 the same question-{i}.json payloads the EMR job produces, and uploads them
 to the dev cache bucket so dev.tylernorlund.com serves them immediately —
 no merge, CI, deploy, step function, LangSmith export, or EMR required.
@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 import boto3
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-for pkg in ("receipt_agent", "receipt_dynamo", "receipt_chroma"):
+for pkg in ("receipt_agent", "receipt_dynamo", "receipt_embeddings"):
     sys.path.insert(0, os.path.join(REPO, pkg))
 
 DEV_LAMBDA_HINT = "run-question"
@@ -41,9 +41,6 @@ ENV_KEYS = [
     "OPENROUTER_MODEL",
     "RECEIPT_AGENT_OPENAI_API_KEY",
     "OPENAI_API_KEY",
-    "CHROMA_CLOUD_API_KEY",
-    "CHROMA_CLOUD_TENANT",
-    "CHROMA_CLOUD_DATABASE",
 ]
 
 
@@ -208,7 +205,6 @@ async def run_questions(rq, indexes, concurrency):
         create_qa_graph,
     )
     from receipt_agent.clients.factory import (
-        create_chroma_client,
         create_dynamo_client,
         create_embed_fn,
     )
@@ -216,7 +212,6 @@ async def run_questions(rq, indexes, concurrency):
     dynamo_client = create_dynamo_client(
         table_name=os.environ["DYNAMODB_TABLE_NAME"]
     )
-    chroma_client = create_chroma_client(mode="read")
     embed_fn = create_embed_fn()
 
     sem = asyncio.Semaphore(concurrency)
@@ -227,7 +222,6 @@ async def run_questions(rq, indexes, concurrency):
             answer_question,
             create_qa_graph,
             dynamo_client,
-            chroma_client,
             embed_fn,
             rq.QUESTIONS[i],
             i,

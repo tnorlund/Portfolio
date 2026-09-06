@@ -26,14 +26,14 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 
 - Python 3.13 venv at `.venv/` (created by `.cursor/install.sh`) with the same
   editable package set as CI's `repository-tests` job: `receipt_dynamo`,
-  `receipt_dynamo_stream`, `receipt_chroma`, `receipt_places`, `receipt_agent`,
+  `receipt_embeddings`, `receipt_dynamo_stream`, `receipt_places`, `receipt_agent`,
   `receipt_upload`. Activate with `source .venv/bin/activate`.
 - NOT installed (PySpark, torch, CoreML): `receipt_langsmith`, `receipt_layoutlm`,
   `receipt_logo`. Run `pip install -e "<package>[test]"` before working on those.
 - Node 22 with `portfolio/node_modules` installed via `npm ci`. Run every npm
   command from `portfolio/`, never from the repo root.
 - No AWS credentials by default. Unit tests use `moto` and pass offline; skip
-  anything marked integration/e2e or that reaches real AWS, Pulumi, or Chroma Cloud.
+  anything marked integration/e2e or that reaches real AWS or Pulumi.
 
 ## Checks
 

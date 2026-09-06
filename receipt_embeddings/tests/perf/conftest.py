@@ -42,7 +42,7 @@ def _aws_test_env() -> None:
     os.environ.pop("DYNAMODB_ENDPOINT_URL", None)
 
 
-def _create_table(client: Any, *, with_gsitype: bool) -> None:
+def _create_table(client: Any) -> None:
     attribute_definitions = [
         {"AttributeName": "PK", "AttributeType": "S"},
         {"AttributeName": "SK", "AttributeType": "S"},
@@ -56,17 +56,6 @@ def _create_table(client: Any, *, with_gsitype: bool) -> None:
         "AttributeDefinitions": attribute_definitions,
         "BillingMode": "PAY_PER_REQUEST",
     }
-    if with_gsitype:
-        attribute_definitions.append(
-            {"AttributeName": "TYPE", "AttributeType": "S"}
-        )
-        kwargs["GlobalSecondaryIndexes"] = [
-            {
-                "IndexName": "GSITYPE",
-                "KeySchema": [{"AttributeName": "TYPE", "KeyType": "HASH"}],
-                "Projection": {"ProjectionType": "ALL"},
-            }
-        ]
     client.create_table(**kwargs)
     client.get_waiter("table_exists").wait(TableName=TABLE)
 
@@ -78,16 +67,5 @@ def receipts_client() -> Iterator[Any]:
     _aws_test_env()
     with moto.mock_aws():
         client = boto3.client("dynamodb", region_name=REGION)
-        _create_table(client, with_gsitype=False)
-        yield client
-
-
-@pytest.fixture
-def gsitype_client() -> Iterator[Any]:
-    boto3 = pytest.importorskip("boto3")
-    moto = pytest.importorskip("moto")
-    _aws_test_env()
-    with moto.mock_aws():
-        client = boto3.client("dynamodb", region_name=REGION)
-        _create_table(client, with_gsitype=True)
+        _create_table(client)
         yield client

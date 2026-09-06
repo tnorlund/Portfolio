@@ -111,8 +111,8 @@ class FakeVectorIndex:
                 f"top_k must be between 1 and {MAX_SEARCH_RESULTS}"
             )
 
-        # Same contract as build_chroma_where: filters are flat equality
-        # predicates; where-operator syntax never reaches a backend.
+        # Filters are flat equality predicates; where-operator syntax
+        # never reaches a backend.
         for filter_key in filters or ():
             if filter_key.startswith("$"):
                 raise ValueError(

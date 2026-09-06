@@ -151,7 +151,12 @@ class LabelValidationSparkProcessor(BaseSparkProcessor):
             ).alias("embed_duration_ms"),
             F.sum(
                 F.when(
-                    F.col("name") == "label_validation_chroma",
+                    F.col("name").isin(
+                        [
+                            "label_validation_chroma",
+                            "label_validation_similarity",
+                        ]
+                    ),
                     F.col("duration_ms"),
                 ).otherwise(0)
             ).alias("chroma_duration_ms"),
@@ -206,9 +211,12 @@ class LabelValidationSparkProcessor(BaseSparkProcessor):
             )
             .withColumn(
                 "chroma_validated",
-                F.get_json_object(F.col("outputs"), "$.chroma_validated").cast(
-                    "int"
-                ),
+                F.coalesce(
+                    F.get_json_object(
+                        F.col("outputs"), "$.similarity_validated"
+                    ),
+                    F.get_json_object(F.col("outputs"), "$.chroma_validated"),
+                ).cast("int"),
             )
             .withColumn(
                 "llm_validated",

@@ -102,6 +102,11 @@ from receipt_agent.agents.label_evaluator.currency_subagent import (
     identify_line_item_rows,
     parse_currency_evaluation_response,
 )
+from receipt_agent.agents.label_evaluator.financial_structured import (
+    TwoTierFinancialResult,
+    run_two_tier_financial_validation,
+    run_two_tier_financial_validation_async,
+)
 from receipt_agent.agents.label_evaluator.financial_subagent import (
     FinancialValue,
     MathIssue,
@@ -159,12 +164,6 @@ from receipt_agent.agents.label_evaluator.llm_review import (
     review_all_issues,
     review_issues_batch,
     review_issues_with_receipt_context,
-    review_single_issue,
-)
-from receipt_agent.agents.label_evaluator.financial_structured import (
-    TwoTierFinancialResult,
-    run_two_tier_financial_validation,
-    run_two_tier_financial_validation_async,
 )
 from receipt_agent.agents.label_evaluator.metadata_subagent import (
     FORMAT_VALIDATED_LABELS,
@@ -204,12 +203,6 @@ from receipt_agent.agents.label_evaluator.word_context import (
     get_same_line_words,
 )
 from receipt_agent.constants import LINE_ITEM_EVALUATION_LABELS
-from receipt_agent.utils.chroma_helpers import (
-    SimilarWordResult,
-    build_word_chroma_id,
-    format_similar_words_for_prompt,
-    query_similar_validated_words,
-)
 
 __all__ = [
     # Graph and runners (full workflow with I/O)
@@ -231,7 +224,6 @@ __all__ = [
     "OtherReceiptData",
     "ReviewContext",
     "ReviewResult",
-    "SimilarWordResult",
     # Helper functions (for testing and extension)
     "build_word_contexts",
     "assemble_visual_lines",
@@ -255,10 +247,6 @@ __all__ = [
     "calculate_angle_degrees",
     "calculate_distance",
     "convert_polar_to_cartesian",
-    # ChromaDB similarity search
-    "build_word_chroma_id",
-    "query_similar_validated_words",
-    "format_similar_words_for_prompt",
     # Receipt text assembly for LLM review
     "LINE_ITEM_EVALUATION_LABELS",
     "assemble_receipt_text",
@@ -271,7 +259,6 @@ __all__ = [
     "review_all_issues",
     "review_issues_batch",
     "review_issues_with_receipt_context",
-    "review_single_issue",
     # LangSmith custom evaluators
     "create_label_evaluator",
     "label_accuracy_evaluator",

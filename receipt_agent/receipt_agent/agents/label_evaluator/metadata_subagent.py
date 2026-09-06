@@ -27,7 +27,6 @@ Output:
     ]
 """
 
-import asyncio
 import logging
 import re
 import string
@@ -119,8 +118,7 @@ TIER1_PAYMENT_PATTERNS = [
 TIER1_STORE_HOURS_PATTERNS = [
     # Day RANGES (hyphen required — single day names are ambiguous)
     re.compile(
-        r"^(MON|TUE|WED|THU|FRI|SAT|SUN)"
-        r"-(MON|TUE|WED|THU|FRI|SAT|SUN):?$",
+        r"^(MON|TUE|WED|THU|FRI|SAT|SUN)" r"-(MON|TUE|WED|THU|FRI|SAT|SUN):?$",
         re.I,
     ),
     # Time ranges: 7AM-10PM, 9:00AM-5:00PM
@@ -482,17 +480,15 @@ def evaluate_metadata_labels(
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
-    chroma_client: Any | None = None,
 ) -> list[dict]:
     """
     Evaluate metadata labels on a receipt.
 
-    Uses a two-tier deterministic pipeline:
+    Uses a deterministic pipeline:
     - Tier 1: Regex patterns and Google Places matching (auto-resolve)
-    - Tier 2: ChromaDB consensus (for remaining words)
 
-    Unresolved words after both tiers are not included in results
-    (they retain their current labels unchanged).
+    Unresolved words are not included in results (they retain their
+    current labels unchanged).
 
     Args:
         visual_lines: Visual lines from the receipt (words with labels)
@@ -500,7 +496,6 @@ def evaluate_metadata_labels(
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
-        chroma_client: Optional ChromaDB client for consensus pre-check
 
     Returns:
         List of decisions ready for apply_llm_decisions()
@@ -554,56 +549,9 @@ def evaluate_metadata_labels(
         logger.info("All metadata words auto-resolved (Tier 1)")
         return auto_results
 
-    # Step 1.7: ChromaDB consensus auto-resolve for remaining words
-    if chroma_client and remaining_words:
-        from receipt_agent.utils.chroma_helpers import chroma_resolve_words
-
-        chroma_word_dicts = [
-            {
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "line_id": mw.word_context.word.line_id,
-                "word_id": mw.word_context.word.word_id,
-                "current_label": mw.current_label,
-                "word_text": mw.word_context.word.text,
-            }
-            for mw in remaining_words
-        ]
-        chroma_resolved, chroma_unresolved_dicts = chroma_resolve_words(
-            chroma_client=chroma_client,
-            words=chroma_word_dicts,
-            merchant_name=merchant_name,
-        )
-        if chroma_resolved:
-            for word_dict, decision in chroma_resolved:
-                auto_results.append({
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": word_dict["line_id"],
-                        "word_id": word_dict["word_id"],
-                        "current_label": word_dict["current_label"],
-                        "word_text": word_dict["word_text"],
-                    },
-                    "llm_review": decision,
-                })
-            chroma_unresolved_ids = {
-                (d["line_id"], d["word_id"]) for d in chroma_unresolved_dicts
-            }
-            remaining_words = [
-                mw for mw in remaining_words
-                if (mw.word_context.word.line_id, mw.word_context.word.word_id)
-                in chroma_unresolved_ids
-            ]
-            logger.info(
-                "ChromaDB auto-resolved %d/%d metadata words (Tier 2)",
-                len(chroma_resolved),
-                len(chroma_resolved) + len(remaining_words),
-            )
-
     if remaining_words:
         logger.info(
-            "%d metadata words unresolved after Tier 1+2 (kept as-is)",
+            "%d metadata words unresolved after Tier 1 (kept as-is)",
             len(remaining_words),
         )
 
@@ -630,17 +578,15 @@ async def evaluate_metadata_labels_async(
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
-    chroma_client: Any | None = None,
 ) -> list[dict]:
     """
     Async version of evaluate_metadata_labels.
 
-    Uses a two-tier deterministic pipeline:
+    Uses a deterministic pipeline:
     - Tier 1: Regex patterns and Google Places matching (auto-resolve)
-    - Tier 2: ChromaDB consensus (for remaining words)
 
-    Unresolved words after both tiers are not included in results
-    (they retain their current labels unchanged).
+    Unresolved words are not included in results (they retain their
+    current labels unchanged).
 
     Decorated with @traceable so calls auto-nest under this span in
     LangSmith when called inside a tracing_context(parent=root).
@@ -651,7 +597,6 @@ async def evaluate_metadata_labels_async(
         image_id: Image ID for output format
         receipt_id: Receipt ID for output format
         merchant_name: Merchant name for context
-        chroma_client: Optional ChromaDB client for consensus pre-check
 
     Returns:
         List of decisions ready for apply_llm_decisions()
@@ -705,57 +650,9 @@ async def evaluate_metadata_labels_async(
         logger.info("All metadata words auto-resolved (Tier 1)")
         return auto_results
 
-    # Step 1.7: ChromaDB consensus auto-resolve for remaining words
-    if chroma_client and remaining_words:
-        from receipt_agent.utils.chroma_helpers import chroma_resolve_words
-
-        chroma_word_dicts = [
-            {
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-                "line_id": mw.word_context.word.line_id,
-                "word_id": mw.word_context.word.word_id,
-                "current_label": mw.current_label,
-                "word_text": mw.word_context.word.text,
-            }
-            for mw in remaining_words
-        ]
-        chroma_resolved, chroma_unresolved_dicts = await asyncio.to_thread(
-            chroma_resolve_words,
-            chroma_client=chroma_client,
-            words=chroma_word_dicts,
-            merchant_name=merchant_name,
-        )
-        if chroma_resolved:
-            for word_dict, decision in chroma_resolved:
-                auto_results.append({
-                    "image_id": image_id,
-                    "receipt_id": receipt_id,
-                    "issue": {
-                        "line_id": word_dict["line_id"],
-                        "word_id": word_dict["word_id"],
-                        "current_label": word_dict["current_label"],
-                        "word_text": word_dict["word_text"],
-                    },
-                    "llm_review": decision,
-                })
-            chroma_unresolved_ids = {
-                (d["line_id"], d["word_id"]) for d in chroma_unresolved_dicts
-            }
-            remaining_words = [
-                mw for mw in remaining_words
-                if (mw.word_context.word.line_id, mw.word_context.word.word_id)
-                in chroma_unresolved_ids
-            ]
-            logger.info(
-                "ChromaDB auto-resolved %d/%d metadata words (Tier 2)",
-                len(chroma_resolved),
-                len(chroma_resolved) + len(remaining_words),
-            )
-
     if remaining_words:
         logger.info(
-            "%d metadata words unresolved after Tier 1+2 (kept as-is)",
+            "%d metadata words unresolved after Tier 1 (kept as-is)",
             len(remaining_words),
         )
 

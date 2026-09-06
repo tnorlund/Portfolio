@@ -5,14 +5,12 @@ vendored Lambda fork) must:
 
 - register ``similar_labeled_words`` with the same schema and serve the
   spec §3.7 search-then-join through it,
-- retire ``validate_word_similarity`` to a deprecation pointer that
-  never touches Chroma,
+- retire ``validate_word_similarity`` to a deprecation pointer,
 - serve the SEMANTIC modes of search_receipts / search_product_lines
   through the VectorSearchClient seam, trimmed to the 100-result
   SearchVectors cap, and
-- with VECTOR_BACKEND=dynamodb, allow the semantic modes to proceed
-  without Chroma credentials while text modes keep the structured
-  chroma_not_configured error.
+- answer the retired substring/label modes with a structured
+  "unavailable" result instead of raising.
 """
 
 import asyncio
@@ -24,8 +22,6 @@ from types import SimpleNamespace
 
 import pytest
 from test_receipt_mcp_section_tools import SERVER_FILES, _load_module
-
-from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 
 IMG = "3f2a1b0c-4d5e-4f70-8192-a3b4c5d6e7f8"
 NEIGHBOR_IMG = "9e8d7c6b-5a49-4382-a1b0-c9d8e7f6a5b4"
@@ -148,7 +144,6 @@ def test_both_servers_agree_on_similarity_surface():
         "search_receipts_impl",
         "search_product_lines_impl",
         "get_vector_search_client",
-        "_vector_backend",
     ):
         assert inspect.getsource(
             getattr(stdio, function_name)
@@ -156,15 +151,8 @@ def test_both_servers_agree_on_similarity_surface():
 
 
 # ---------------------------------------------------------------------------
-# validate_word_similarity: deprecation pointer, no Chroma traffic
+# validate_word_similarity: deprecation pointer
 # ---------------------------------------------------------------------------
-
-
-class _ExplodingChroma:
-    def __getattr__(self, name):
-        raise AssertionError(
-            f"retired tool must not touch Chroma (accessed {name!r})"
-        )
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
@@ -173,7 +161,6 @@ def test_validate_word_similarity_returns_deprecation_pointer(label):
 
     result = asyncio.run(
         module.validate_word_similarity_impl(
-            _ExplodingChroma(),
             image_id=IMG,
             receipt_id=1,
             line_id=2,
@@ -273,7 +260,6 @@ def test_search_receipts_semantic_uses_seam_and_caps_depth(label):
 
     result = asyncio.run(
         module.search_receipts_impl(
-            None,
             lambda texts: [[1.0, 0.0] for _ in texts],
             query="coffee",
             search_type="semantic",
@@ -307,7 +293,6 @@ def test_search_product_lines_semantic_post_filters_sections(label):
 
     result = asyncio.run(
         module.search_product_lines_impl(
-            None,
             lambda texts: [[1.0, 0.0] for _ in texts],
             query="milk",
             search_type="semantic",
@@ -318,18 +303,20 @@ def test_search_product_lines_semantic_post_filters_sections(label):
 
     assert "error" not in result
     texts = {item["text"] for item in result["items"]}
-    # TOTAL_LINE is one of the sections Chroma excluded with $nin inside
-    # the ANN query; the seam port excludes it after retrieval.
+    # TOTAL_LINE is a non-item section; the seam port excludes it after
+    # retrieval (SearchVectors has no $nin-style metadata filter).
     assert texts == {"RAW MILK 5.99"}
     assert result["raw_total"] == 5.99
 
 
 # ---------------------------------------------------------------------------
-# Dispatch: VECTOR_BACKEND=dynamodb without Chroma credentials
+# Dispatch through call_tool
 # ---------------------------------------------------------------------------
 
 
-def _install_stub_embed_factory(monkeypatch):
+def _install_stub_embed_factory(monkeypatch, module):
+    # Pre-seed the config cache so get_embed_fn never reaches Pulumi.
+    module._config = {"dynamodb_table_name": "ReceiptsTable-test"}
     factory_mod = types.ModuleType("receipt_agent.clients.factory")
     factory_mod.create_embed_fn = lambda: (
         lambda texts: [[1.0, 0.0] for _ in texts]
@@ -346,20 +333,14 @@ def _tool_result(module, name, arguments):
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_dynamodb_backend_serves_semantic_without_chroma(label, monkeypatch):
+def test_semantic_dispatch_uses_vector_seam(label, monkeypatch):
     module = _load_module(label, SERVER_FILES[label])
-    monkeypatch.setenv("VECTOR_BACKEND", "dynamodb")
-    _install_stub_embed_factory(monkeypatch)
+    _install_stub_embed_factory(monkeypatch, module)
     module.get_dynamo_client = lambda: SimpleNamespace()
-
-    def _no_chroma():
-        raise module.ChromaNotConfiguredError("no chroma configured")
-
-    module.get_chroma_clients = _no_chroma
     stub = _StubVectorClient(
         results=[_neighbor(IMG, 1, "ORGANIC COFFEE 12.99", distance=0.2)]
     )
-    module.get_vector_search_client = lambda chroma_client=None: stub
+    module.get_vector_search_client = lambda: stub
 
     result = _tool_result(
         module,
@@ -372,21 +353,17 @@ def test_dynamodb_backend_serves_semantic_without_chroma(label, monkeypatch):
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_text_mode_unavailable_under_dynamodb_backend(label, monkeypatch):
-    """Chroma teardown: the retired Chroma-only modes answer with a
-    structured "unavailable" result instead of raising — and the server
-    must never even attempt to build a Chroma client on this backend."""
+def test_text_mode_answers_structured_unavailable(label, monkeypatch):
+    """The retired substring/label modes answer with a structured
+    "unavailable" result instead of raising, and never hit the seam."""
     module = _load_module(label, SERVER_FILES[label])
-    monkeypatch.setenv("VECTOR_BACKEND", "dynamodb")
-    _install_stub_embed_factory(monkeypatch)
+    _install_stub_embed_factory(monkeypatch, module)
     module.get_dynamo_client = lambda: SimpleNamespace()
 
-    def _no_chroma():
-        raise AssertionError(
-            "get_chroma_clients must not be called on dynamodb backend"
-        )
+    def _no_seam():
+        raise AssertionError("retired modes must not query the vector seam")
 
-    module.get_chroma_clients = _no_chroma
+    module.get_vector_search_client = _no_seam
 
     result = _tool_result(
         module,
@@ -394,27 +371,25 @@ def test_text_mode_unavailable_under_dynamodb_backend(label, monkeypatch):
         {"query": "coffee", "search_type": "text"},
     )
 
-    assert "unavailable on the dynamodb backend" in result["error"]
+    assert "not supported by the DynamoDB vector indexes" in result["error"]
     assert result["search_type"] == "text"
     assert result["results"] == []
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_dynamodb_backend_threads_session_table(label, monkeypatch):
+def test_seam_threads_session_table(label, monkeypatch):
     """E3 review P1-3: get_vector_search_client must hand the session's
     configured table/client to the seam, never the env fallback."""
     import receipt_embeddings.backend as backend_mod
 
     module = _load_module(label, SERVER_FILES[label])
-    monkeypatch.setenv("VECTOR_BACKEND", "dynamodb")
     sentinel_boto = object()
     module.get_dynamo_client = lambda: SimpleNamespace(
         _client=sentinel_boto, table_name="ReceiptsTable-session"
     )
     captured = {}
 
-    def _capture(chroma_client, **kwargs):
-        del chroma_client
+    def _capture(**kwargs):
         captured.update(kwargs)
         return _StubVectorClient()
 
@@ -426,45 +401,10 @@ def test_dynamodb_backend_threads_session_table(label, monkeypatch):
     assert captured["dynamodb_client"] is sentinel_boto
 
 
-class _FakeDynamoBackend(DynamoVectorSearchClient):
-    """isinstance-compatible stub; skips the real constructor."""
-
-    def __init__(self, results):  # pylint: disable=super-init-not-called
-        self.results = results
-
-    def search(self, vector, index, top_k, filters=None):
-        del vector, index, top_k, filters
-        return self.results
-
-    def get_vector(self, key):
-        raise KeyError(key)
-
-
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_has_price_label_is_unknown_under_dynamo_backend(label):
-    """E3 review P2-5: Dynamo line metadata never carries the Chroma
+def test_has_price_label_is_unknown_without_flag(label):
+    """E3 review P2-5: DynamoDB line metadata never carries a
     label_LINE_TOTAL flag — report "unknown", not a false False."""
-    module = _load_module(label, SERVER_FILES[label])
-    fake = _FakeDynamoBackend(
-        [_neighbor(IMG, 1, "RAW MILK 5.99", distance=0.1)]
-    )
-
-    result = asyncio.run(
-        module.search_product_lines_impl(
-            None,
-            lambda texts: [[1.0, 0.0] for _ in texts],
-            query="milk",
-            search_type="semantic",
-            limit=10,
-            vector_client=fake,
-        )
-    )
-
-    assert result["items"][0]["has_price_label"] == "unknown"
-
-
-@pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_has_price_label_keeps_chroma_semantics_off_dynamo(label):
     module = _load_module(label, SERVER_FILES[label])
     stub = _StubVectorClient(
         results=[_neighbor(IMG, 1, "RAW MILK 5.99", distance=0.1)]
@@ -472,7 +412,6 @@ def test_has_price_label_keeps_chroma_semantics_off_dynamo(label):
 
     result = asyncio.run(
         module.search_product_lines_impl(
-            None,
             lambda texts: [[1.0, 0.0] for _ in texts],
             query="milk",
             search_type="semantic",
@@ -481,4 +420,28 @@ def test_has_price_label_keeps_chroma_semantics_off_dynamo(label):
         )
     )
 
-    assert result["items"][0]["has_price_label"] is False
+    assert result["items"][0]["has_price_label"] == "unknown"
+
+
+@pytest.mark.parametrize("label", sorted(SERVER_FILES))
+def test_has_price_label_passes_through_explicit_flag(label):
+    module = _load_module(label, SERVER_FILES[label])
+    stub = _StubVectorClient(
+        results=[
+            _neighbor(
+                IMG, 1, "RAW MILK 5.99", distance=0.1, label_LINE_TOTAL=True
+            )
+        ]
+    )
+
+    result = asyncio.run(
+        module.search_product_lines_impl(
+            lambda texts: [[1.0, 0.0] for _ in texts],
+            query="milk",
+            search_type="semantic",
+            limit=10,
+            vector_client=stub,
+        )
+    )
+
+    assert result["items"][0]["has_price_label"] is True
