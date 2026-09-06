@@ -275,15 +275,44 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
             s3 = boto3.client("s3")
             # Conditional creation also protects against retries or concurrent
             # delivery of the same export ID. Never replace an existing version.
-            with open(zip_path, "rb") as bundle_zip:
-                versioned = s3.put_object(
-                    Bucket=bucket,
-                    Key=versioned_key,
-                    Body=bundle_zip,
-                    ContentType="application/zip",
-                    IfNoneMatch="*",
+            #
+            # SQS is at-least-once: if a crash lands after this upload but
+            # before the message is deleted, the redelivered job hits the
+            # existing object and S3 answers 412 PreconditionFailed. That is
+            # not a failed export -- the immutable version is already there --
+            # so verify it is the same artifact and reuse it rather than
+            # recording FAILED and dropping the message.
+            try:
+                with open(zip_path, "rb") as bundle_zip:
+                    versioned = s3.put_object(
+                        Bucket=bucket,
+                        Key=versioned_key,
+                        Body=bundle_zip,
+                        ContentType="application/zip",
+                        IfNoneMatch="*",
+                    )
+                versioned_etag = versioned["ETag"]
+            except ClientError as e:
+                code = e.response.get("Error", {}).get("Code", "")
+                status = e.response.get("ResponseMetadata", {}).get(
+                    "HTTPStatusCode"
                 )
-            versioned_etag = versioned["ETag"]
+                if code != "PreconditionFailed" and status != 412:
+                    raise
+                existing = s3.head_object(Bucket=bucket, Key=versioned_key)
+                local_size = os.path.getsize(zip_path)
+                if int(existing.get("ContentLength", -1)) != local_size:
+                    raise RuntimeError(
+                        f"immutable version s3://{bucket}/{versioned_key} "
+                        f"already exists with size {existing.get('ContentLength')}, "
+                        f"but this export produced {local_size} bytes; refusing "
+                        "to overwrite or reuse a different artifact"
+                    ) from e
+                versioned_etag = existing["ETag"]
+                print(
+                    f"Immutable version already present at "
+                    f"s3://{bucket}/{versioned_key} (redelivery); reusing it"
+                )
             canonical_etag = None
             try:
                 s3.upload_file(zip_path, bucket, CANONICAL_BUNDLE_KEY)

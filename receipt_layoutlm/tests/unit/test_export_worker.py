@@ -82,7 +82,9 @@ def test_export_worker_cannot_overwrite_an_immutable_version(exported):
     s3.put_object(Bucket="training-dev", Key=key, Body=b"original")
     result = export_worker.process_export_job(message)
     assert result["status"] == "FAILED"
-    assert "PreconditionFailed" in result["error_message"]
+    # A *different* artifact under the same immutable key is a real
+    # conflict, not a redelivery: it must fail and must not be reused.
+    assert "refusing to overwrite or reuse" in result["error_message"]
     assert (
         s3.get_object(Bucket="training-dev", Key=key)["Body"].read()
         == b"original"
@@ -91,3 +93,35 @@ def test_export_worker_cannot_overwrite_an_immutable_version(exported):
         obj["Key"]
         for obj in s3.list_objects_v2(Bucket="training-dev")["Contents"]
     }
+
+
+def test_export_worker_redelivery_reuses_identical_immutable_version(
+    exported,
+):
+    """SQS is at-least-once. A redelivered job must not turn a valid,
+    already-published version into a FAILED export."""
+    s3, message = exported
+    key = "coreml/versions/export-1/layoutlm-coreml-bundle.zip"
+
+    first = export_worker.process_export_job(message)
+    assert first["status"] == "SUCCEEDED"
+    original = s3.get_object(Bucket="training-dev", Key=key)
+    original_body = original["Body"].read()
+
+    second = export_worker.process_export_job(dict(message))
+    assert second["status"] == "SUCCEEDED"
+    assert second["versioned_bundle_etag"] == first["versioned_bundle_etag"]
+    assert (
+        second["versioned_bundle_s3_uri"] == first["versioned_bundle_s3_uri"]
+    )
+
+    after = s3.get_object(Bucket="training-dev", Key=key)
+    assert after["Body"].read() == original_body
+    assert after["ETag"] == original["ETag"]
+    versions = [
+        obj["Key"]
+        for obj in s3.list_objects_v2(
+            Bucket="training-dev", Prefix="coreml/versions/"
+        )["Contents"]
+    ]
+    assert versions == [key]

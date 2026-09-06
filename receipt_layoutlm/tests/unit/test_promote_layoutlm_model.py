@@ -330,3 +330,62 @@ def test_promote_script_does_not_wait_for_copied_job_name_index(
     assert target.jobs["job-1"].results["coreml_versioned_bundle_etag"] == (
         s3.head_object(Bucket="training-prod", Key=KEY)["ETag"]
     )
+
+
+def test_promote_pointer_write_is_conditional_on_prior_etag(server, s3):
+    """A racing promotion between preflight and publish must lose: S3 is
+    the arbiter, the loser's tags roll back, the pointer is untouched."""
+    from botocore.exceptions import ClientError
+
+    selected = job()
+    old = SimpleNamespace(
+        job_id="old", name="old", results={}, tags={"active_model": "true"}
+    )
+    dynamo = FakeDynamo([old, selected])
+    s3.put_object(Bucket="training-dev", Key=KEY, Body=b"bundle")
+    prior = s3.put_object(
+        Bucket="training-dev",
+        Key="coreml/active.json",
+        Body=b'{"export_id": "someone-else"}',
+    )
+    racing = Mock(wraps=s3)
+    racing.put_object.side_effect = ClientError(
+        {
+            "Error": {"Code": "PreconditionFailed", "Message": "raced"},
+            "ResponseMetadata": {"HTTPStatusCode": 412},
+        },
+        "PutObject",
+    )
+    result = asyncio.run(
+        server.set_active_model_impl(
+            dynamo, selected.name, "training-dev", racing
+        )
+    )
+    assert result["success"] is False
+    assert "PreconditionFailed" in result["error"]
+    # The write was conditional on the ETag read during preflight.
+    sent = racing.put_object.call_args.kwargs
+    assert sent["Key"] == "coreml/active.json"
+    assert sent["IfMatch"] == prior["ETag"]
+    assert "IfNoneMatch" not in sent
+    # Loser rolls back; the pointer still names the winner.
+    assert dynamo.jobs["old"].tags == old.tags
+    assert dynamo.jobs["job-1"].tags == selected.tags
+    body = s3.get_object(Bucket="training-dev", Key="coreml/active.json")
+    assert json.loads(body["Body"].read()) == {"export_id": "someone-else"}
+
+
+def test_promote_first_pointer_write_requires_absence(server, s3):
+    selected = job()
+    dynamo = FakeDynamo([selected])
+    s3.put_object(Bucket="training-dev", Key=KEY, Body=b"bundle")
+    spy = Mock(wraps=s3)
+    result = asyncio.run(
+        server.set_active_model_impl(
+            dynamo, selected.name, "training-dev", spy
+        )
+    )
+    assert result["success"] is True
+    sent = spy.put_object.call_args.kwargs
+    assert sent["IfNoneMatch"] == "*"
+    assert "IfMatch" not in sent

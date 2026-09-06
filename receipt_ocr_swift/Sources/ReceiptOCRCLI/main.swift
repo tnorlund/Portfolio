@@ -125,7 +125,13 @@ struct ReceiptOCR: AsyncParsableCommand {
                 rawBucketName: config.rawBucketName,
                 layoutLMModelS3Bucket: config.layoutLMModelS3Bucket,
                 layoutLMModelS3Key: config.layoutLMModelS3Key,
-                layoutLMLocalCachePath: config.layoutLMLocalCachePath
+                layoutLMLocalCachePath: config.layoutLMLocalCachePath,
+                // Both runner scripts pass --log-level, so this is the path
+                // production always takes. Dropping these two fields here
+                // reset the pointer key to its default and labelled every
+                // env-tagged log line "local".
+                layoutLMPointerKey: config.layoutLMPointerKey,
+                environment: config.environment
             )
         } else {
             effectiveConfig = config

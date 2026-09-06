@@ -6308,6 +6308,7 @@ async def set_active_model_impl(
     from datetime import datetime, timezone
 
     import boto3
+    import botocore.exceptions
 
     try:
         if resolved_job is not None:
@@ -6334,6 +6335,24 @@ async def set_active_model_impl(
             raise ValueError("layoutlm_training_bucket is not configured")
         s3 = s3_client or boto3.client("s3")
         head = s3.head_object(Bucket=training_bucket, Key=bundle_key)
+        # Capture the pointer's current ETag so the write below can be
+        # conditional. Two overlapping promotions would otherwise both read
+        # the same old_active, both flip tags, and race on active.json; the
+        # table could end with two active Jobs while workers load whichever
+        # pointer landed last. S3 is the arbiter: the loser's write fails
+        # with 412 and falls into the rollback path.
+        try:
+            prior_pointer_etag = s3.head_object(
+                Bucket=training_bucket, Key="coreml/active.json"
+            )["ETag"]
+        except botocore.exceptions.ClientError as e:
+            if e.response.get("Error", {}).get("Code") not in (
+                "404",
+                "NoSuchKey",
+                "NotFound",
+            ):
+                raise
+            prior_pointer_etag = None
         pointer = {
             "schema_version": 1,
             "export_id": export_id,
@@ -6362,12 +6381,22 @@ async def set_active_model_impl(
                 dynamo_client.update_job(old_active)
             job.tags = {**(job.tags or {}), "active_model": "true"}
             dynamo_client.update_job(job)
+            # Conditional on the ETag read during preflight (or on absence):
+            # a concurrent promotion that landed in between makes this raise
+            # PreconditionFailed, which the except below turns into a tag
+            # rollback instead of a split-brain pointer.
+            write_condition = (
+                {"IfMatch": prior_pointer_etag}
+                if prior_pointer_etag
+                else {"IfNoneMatch": "*"}
+            )
             s3.put_object(
                 Bucket=training_bucket,
                 Key="coreml/active.json",
                 Body=json.dumps(pointer).encode("utf-8"),
                 ContentType="application/json",
                 CacheControl="no-cache",
+                **write_condition,
             )
         except Exception as error:
             rollback_errors = []
