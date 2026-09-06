@@ -47,7 +47,8 @@ struct ReceiptOCR: AsyncParsableCommand {
     @Option(name: .long, help: "Path to CoreML LayoutLM model bundle for local processing") var layoutlmModel: String?
     @Option(name: .long, help: "S3 bucket containing LayoutLM model bundle for worker mode") var layoutlmModelBucket: String?
     @Option(name: .long, help: "S3 key (path) to LayoutLM model bundle zip for worker mode") var layoutlmModelKey: String?
-    @Option(name: .long, help: "Local cache path for downloaded model (default: .models/layoutlm)") var layoutlmCachePath: String?
+    @Option(name: .long, help: "S3 active model pointer key (default: coreml/active.json)") var layoutlmPointerKey: String?
+    @Option(name: .long, help: "Local cache path for downloaded model (default: .models/layoutlm/<env>, or .models/layoutlm/local)") var layoutlmCachePath: String?
 
     mutating func run() async throws {
         // Barcode-only mode: fast per-image detection for the backfill (no OCR,
@@ -108,7 +109,8 @@ struct ReceiptOCR: AsyncParsableCommand {
             localstackEndpoint: localstackEndpoint,
             layoutLMModelS3Bucket: layoutlmModelBucket,
             layoutLMModelS3Key: layoutlmModelKey,
-            layoutLMLocalCachePath: layoutlmCachePath
+            layoutLMLocalCachePath: layoutlmCachePath,
+            layoutLMPointerKey: layoutlmPointerKey
         )
         // Override log level from flag if provided
         let effectiveConfig: Config

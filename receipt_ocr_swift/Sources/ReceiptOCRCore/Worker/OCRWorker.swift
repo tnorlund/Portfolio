@@ -204,14 +204,18 @@ public final class OCRWorker {
         if let bucket = config.layoutLMModelS3Bucket,
            let key = config.layoutLMModelS3Key,
            !bucket.isEmpty, !key.isEmpty {
-            modelLogger.info("layoutlm_download_start bucket=\(bucket) key=\(key)")
             let downloader = ModelDownloader(s3: s3Client, logger: modelLogger)
-            layoutLMBundlePath = try await downloader.ensureModelDownloaded(
-                bucket: bucket,
-                key: key,
-                localCachePath: config.layoutLMLocalCachePath
-            )
-            modelLogger.info("layoutlm_download_complete path=\(layoutLMBundlePath?.path ?? "nil")")
+            do {
+                layoutLMBundlePath = try await downloader.ensureModelDownloaded(
+                    bucket: bucket,
+                    key: key,
+                    localCachePath: config.layoutLMLocalCachePath,
+                    pointerKey: config.layoutLMPointerKey,
+                    env: config.environment
+                )
+            } catch ModelDownloaderError.noActiveModel(let env) {
+                modelLogger.warning("layoutlm_no_active_model env=\(env)")
+            }
             if let bundle = layoutLMBundlePath {
                 do {
                     let cfg = try LayoutLMConfig.load(from: bundle.appendingPathComponent("config.json"))
