@@ -193,6 +193,39 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     record = ReceiptSummaryRecord.from_summary(summary)
     dynamo_client.upsert_receipt_summary(record)
 
+    # Close the race with a merge deleting the parent after our initial
+    # guard. Parent-first deletion + a consistent child sweep handles writes
+    # before deletion; this consistent POST-write read handles writes after
+    # deletion, even when the sweep already finished. Errors propagate for
+    # SQS retry, whose initial guard also removes an orphan summary.
+    parent = (
+        dynamo_client._client.get_item(  # pylint: disable=protected-access
+            TableName=dynamo_client.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
+            },
+            ConsistentRead=True,
+            ProjectionExpression="PK",
+        )
+    )
+    if "Item" not in parent:
+        try:
+            dynamo_client.delete_receipt_summary(record)
+        except EntityNotFoundError:
+            pass  # The merge sweep or another worker already removed it.
+        logger.info(
+            "Removed late summary for deleted receipt %s#%s",
+            image_id,
+            receipt_id,
+        )
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "skipped": "parent receipt deleted",
+            "orphan_summary_deleted": True,
+        }
+
     result = {
         "image_id": image_id,
         "receipt_id": receipt_id,

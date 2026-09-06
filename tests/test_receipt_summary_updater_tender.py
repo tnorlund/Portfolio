@@ -48,6 +48,14 @@ class FakeClient:
     """Minimal DynamoClient stand-in for update_receipt_summary."""
 
     def __init__(self, existing_summary=None, receipt_exists=True):
+        self.table_name = "test-table"
+        self._client = SimpleNamespace(
+            get_item=lambda **kwargs: (
+                {"Item": {"PK": {"S": IMAGE_ID}}}
+                if self.receipt_exists
+                else {}
+            )
+        )
         self.existing_summary = existing_summary
         self.receipt_exists = receipt_exists
         self.upserted = []

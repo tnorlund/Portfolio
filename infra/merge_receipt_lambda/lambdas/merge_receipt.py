@@ -28,11 +28,16 @@ Environment Variables:
     RAW_BUCKET: S3 bucket for raw receipt images
     SITE_BUCKET: S3 bucket for CDN images
     OPENAI_API_KEY: OpenAI API key (for embeddings)
+    SUMMARY_QUEUE_URL: SQS queue for summary recomputation
+    LINE_ITEM_QUEUE_URL: SQS queue for row/line-item recomputation
 """
 
 import io
+import json
 import logging
 import os
+import time
+from dataclasses import fields
 from typing import TYPE_CHECKING, Any
 
 import boto3
@@ -54,7 +59,7 @@ def _delete_native_embedding_items(
 ) -> int:
     """Best-effort delete of a source receipt's ``#EMBEDDING`` items.
 
-    ``delete_receipt`` removes the receipt's entity rows but native
+    ``delete_receipt`` removes only the parent Receipt row; native
     DynamoDB embedding items would otherwise linger and keep the deleted
     fragment queryable via SearchVectors (codex review P1). Returns the
     number of items deleted; never raises.
@@ -79,6 +84,110 @@ def _delete_native_embedding_items(
             receipt_id,
         )
         return 0
+
+
+def _collect_receipt_assets(receipt: Any) -> set[tuple[str, str]]:
+    """Snapshot explicit raw/CDN references, never infer keys from a prefix."""
+    assets = set()
+    if receipt.raw_s3_bucket and receipt.raw_s3_key:
+        assets.add((receipt.raw_s3_bucket, receipt.raw_s3_key))
+    if receipt.cdn_s3_bucket:
+        for field in fields(receipt):
+            if field.name.startswith("cdn_") and field.name.endswith("s3_key"):
+                key = getattr(receipt, field.name)
+                if key:
+                    assets.add((receipt.cdn_s3_bucket, key))
+    return assets
+
+
+def _purge_receipt_children(
+    client: Any, image_id: str, receipt_id: int
+) -> int:
+    """Purge all child types after successful parent deletion.
+
+    The trailing delimiter protects neighboring IDs, including IDs wider
+    than five digits. Read the base table consistently so summaries written
+    before parent deletion are visible. The summary processor's post-write
+    parent check removes summaries written AFTER this sweep by an in-flight
+    worker; repeated sweeps or deleting the parent last cannot close that race.
+    """
+    dynamo = client._client  # pylint: disable=protected-access
+    deleted = 0
+    pages = dynamo.get_paginator("query").paginate(
+        TableName=client.table_name,
+        KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
+        ExpressionAttributeValues={
+            ":pk": {"S": f"IMAGE#{image_id}"},
+            ":prefix": {"S": f"RECEIPT#{receipt_id:05d}#"},
+        },
+        ProjectionExpression="PK, SK",
+        ConsistentRead=True,
+    )
+    for page in pages:
+        items = page.get("Items", [])
+        for start in range(0, len(items), 25):
+            pending = [
+                {"DeleteRequest": {"Key": item}}
+                for item in items[start : start + 25]
+            ]
+            # Bound retries so throttling cannot consume the Lambda timeout
+            # and prevent the other best-effort steps from running.
+            for attempt in range(5):
+                response = dynamo.batch_write_item(
+                    RequestItems={client.table_name: pending}
+                )
+                remaining = response.get("UnprocessedItems", {}).get(
+                    client.table_name, []
+                )
+                deleted += len(pending) - len(remaining)
+                pending = remaining
+                if not pending:
+                    break
+                if attempt < 4:
+                    time.sleep(0.1 * 2**attempt)
+            if pending:
+                raise RuntimeError(
+                    f"Child purge exhausted retries for {image_id}"
+                    f"#{receipt_id}: {len(pending)} unprocessed deletes"
+                )
+    return deleted
+
+
+def _delete_receipt_assets(
+    s3_client: Any, assets: set[tuple[str, str]]
+) -> None:
+    """Delete captured references; one failed object must not skip the rest."""
+    for bucket, key in sorted(assets):
+        try:
+            s3_client.delete_object(Bucket=bucket, Key=key)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "Failed to delete receipt asset s3://%s/%s", bucket, key
+            )
+
+
+def _enqueue_recompute(image_id: str, receipt_id: int) -> None:
+    """Send one request per updater, independently best-effort."""
+    for env_name in ("SUMMARY_QUEUE_URL", "LINE_ITEM_QUEUE_URL"):
+        try:
+            boto3.client("sqs").send_message(
+                QueueUrl=os.environ[env_name],
+                MessageBody=json.dumps(
+                    {
+                        "entity_data": {
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                        }
+                    }
+                ),
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "Failed to enqueue %s recompute for %s#%s",
+                env_name,
+                image_id,
+                receipt_id,
+            )
 
 
 # Validation-heavy Lambda entrypoint; `context` is the AWS-provided arg.
@@ -504,6 +613,16 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         deleted_receipts = []
         for rid in sorted(receipt_ids, reverse=True):
             logger.info("Deleting original receipt %d...", rid)
+            assets = set()
+            try:
+                # Capture from the source Receipt while it still exists.
+                assets = _collect_receipt_assets(
+                    client.get_receipt(image_id, rid)
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.exception(
+                    "Failed to collect assets for %s#%s", image_id, rid
+                )
             deletion_result = delete_receipt(client, image_id, rid)
             if deletion_result.success:
                 deleted_receipts.append(rid)
@@ -519,6 +638,21 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                         removed,
                         rid,
                     )
+                try:
+                    removed_children = _purge_receipt_children(
+                        client, image_id, rid
+                    )
+                    logger.info(
+                        "Deleted %d child rows for %s#%s",
+                        removed_children,
+                        image_id,
+                        rid,
+                    )
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.exception(
+                        "Failed to purge children for %s#%s", image_id, rid
+                    )
+                _delete_receipt_assets(s3_client, assets)
             else:
                 logger.error(
                     "  Failed to delete receipt %d: %s",
@@ -527,7 +661,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 )
 
         # ============================================================
-        # Step 14: Update Image entity receipt count
+        # Step 14: Request derived rows for the merged receipt
+        # ============================================================
+        _enqueue_recompute(image_id, new_receipt_id)
+
+        # ============================================================
+        # Step 15: Update Image entity receipt count
         # ============================================================
         remaining_receipts = client.get_receipts_from_image(image_id)
         image_entity.receipt_count = len(remaining_receipts)
