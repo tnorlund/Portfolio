@@ -7,15 +7,16 @@ from pathlib import Path
 # Add parent directory to path so 'infra' package can be imported
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import api_gateway
 import pulumi
 import pulumi_aws as aws
+from pulumi import Output
+
+import api_gateway
 from components.http_api_route import (
     RouteDefinition,
     create_lambda_route,
     create_lambda_routes,
 )
-from pulumi import Output
 
 # Auto-enable Docker BuildKit based on Pulumi config
 config = pulumi.Config("portfolio")
