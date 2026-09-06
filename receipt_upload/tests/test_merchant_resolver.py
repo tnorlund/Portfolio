@@ -562,10 +562,21 @@ class TestMerchantResolverOCRCrossValidation:
         assert resolver._merchant_name_matches_receipt("", lines)
 
     def test_short_merchant_name_passes(self, resolver):
-        """Single-token merchant names pass (too short to validate)."""
+        """Three-character merchant names pass (too short to validate)."""
         lines = [self._make_line(1, "Something Else Entirely")]
-        # "JOi" → only token is "joi" (3 chars) → 1 token < 2 → pass
         assert resolver._merchant_name_matches_receipt("JOi", lines)
+
+    @pytest.mark.parametrize("merchant", ["Freddy's", "Target", "Costco"])
+    def test_single_token_wrong_merchant_rejected(self, resolver, merchant):
+        """A phone/address neighbor still needs brand evidence in the OCR."""
+        lines = [self._make_line(1, "RIVER DISCOUNT LIQUOR")]
+        assert not resolver._merchant_name_matches_receipt(merchant, lines)
+
+    @pytest.mark.parametrize("merchant", ["Freddy's", "Target", "Costco"])
+    def test_single_token_matching_merchant_passes(self, resolver, merchant):
+        """Distinctive single-token brands can validate against the header."""
+        lines = [self._make_line(1, merchant.upper())]
+        assert resolver._merchant_name_matches_receipt(merchant, lines)
 
     def test_tokenizer_ignores_short_words(self, resolver):
         """Tokens under 3 chars are ignored."""

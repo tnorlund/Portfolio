@@ -125,8 +125,10 @@ class _FakeDynamo:
         return list(self.sections)
 
 
+@pytest.mark.parametrize("merchant_name", [None, "Unrelated Merchant"])
 def test_lines_worker_orders_merchant_sections_verification(
     monkeypatch,
+    merchant_name,
 ):
     """Merchant resolution must precede section assignment (sections are
     merchant-conditioned), and assignment must precede verification. The
@@ -181,7 +183,7 @@ def test_lines_worker_orders_merchant_sections_verification(
         def resolve(self, **kwargs) -> MerchantResult:
             calls.append("resolve_merchant")
             assert "lines_client" not in kwargs
-            return MerchantResult(merchant_name=None)
+            return MerchantResult(merchant_name=merchant_name)
 
     def _fake_assign(dynamo, rows, assign_lines, merchant_name, model=None):
         calls.append("assign_sections")
@@ -210,11 +212,13 @@ def test_lines_worker_orders_merchant_sections_verification(
     monkeypatch.setattr(
         verifier_module, "verify_receipt_sections", _fake_verify
     )
-    monkeypatch.setattr(
-        vector_search_module,
-        "vector_search_client",
-        lambda *_a, **_k: fake_vector_client,
-    )
+
+    def _factory(*, dynamodb_client, table_name):
+        assert dynamodb_client is fake_dynamo._client
+        assert table_name == "table"
+        return fake_vector_client
+
+    monkeypatch.setattr(vector_search_module, "vector_search_client", _factory)
 
     row_line_ids_list = [row.line_ids for row in persisted_rows]
     row_embeddings = [[0.1, 0.2] for _ in persisted_rows]

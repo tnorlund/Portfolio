@@ -427,7 +427,6 @@ def _run_lines_pipeline_worker(
         # One vector-search backend for the whole worker, bound to the SAME
         # table as the rest of the session (never the from_env fallback).
         vector_client = vector_search_client(
-            None,
             dynamodb_client=dynamo._client,  # pylint: disable=protected-access
             table_name=table_name,
         )
@@ -484,7 +483,7 @@ def _run_lines_pipeline_worker(
         if validated_merchant_name and not merchant_name_matches_receipt(
             validated_merchant_name, lines
         ):
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "Write-time validation: merchant_name %r rejected "
                 "— no token overlap with receipt OCR text for %s#%d",
                 validated_merchant_name,
@@ -562,7 +561,7 @@ def _run_lines_pipeline_worker(
         # Verification is independent evidence; an unavailable neighbor
         # index must not discard the deterministic section proposal.
         except Exception as error:
-            logging.getLogger(__name__).exception(
+            logger.exception(
                 "Section KNN verification failed for %s#%d: %s",
                 image_id,
                 receipt_id,
@@ -687,7 +686,6 @@ def _run_words_pipeline_worker(
         # Run label validation
         dynamo = DynamoClient(table_name)
         vector_client = vector_search_client(
-            None,
             dynamodb_client=dynamo._client,  # pylint: disable=protected-access
             table_name=table_name,
         )
