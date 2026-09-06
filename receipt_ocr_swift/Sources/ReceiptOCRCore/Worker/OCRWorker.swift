@@ -204,14 +204,26 @@ public final class OCRWorker {
         if let bucket = config.layoutLMModelS3Bucket,
            let key = config.layoutLMModelS3Key,
            !bucket.isEmpty, !key.isEmpty {
-            modelLogger.info("layoutlm_download_start bucket=\(bucket) key=\(key)")
             let downloader = ModelDownloader(s3: s3Client, logger: modelLogger)
-            layoutLMBundlePath = try await downloader.ensureModelDownloaded(
-                bucket: bucket,
-                key: key,
-                localCachePath: config.layoutLMLocalCachePath
-            )
-            modelLogger.info("layoutlm_download_complete path=\(layoutLMBundlePath?.path ?? "nil")")
+            do {
+                layoutLMBundlePath = try await downloader.ensureModelDownloaded(
+                    bucket: bucket,
+                    key: key,
+                    localCachePath: config.layoutLMLocalCachePath,
+                    pointerKey: config.layoutLMPointerKey,
+                    env: config.environment
+                )
+            } catch ModelDownloaderError.noActiveModel(let env) {
+                modelLogger.warning("layoutlm_no_active_model env=\(env)")
+            } catch let error as ModelDownloaderError {
+                // A malformed pointer, an identity mismatch, or a failed
+                // extraction must not take Vision OCR down with it. Fail
+                // loudly for the model, keep draining the queue without it —
+                // the same degraded mode as a missing pointer.
+                modelLogger.error(
+                    "layoutlm_model_unavailable env=\(config.environment) reason=\(error.errorDescription ?? String(describing: error))"
+                )
+            }
             if let bundle = layoutLMBundlePath {
                 do {
                     let cfg = try LayoutLMConfig.load(from: bundle.appendingPathComponent("config.json"))

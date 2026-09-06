@@ -287,6 +287,7 @@ enable_sagemaker = ml_cfg.get_bool("enable-sagemaker") or False
 
 # Training bucket - either from SageMaker training infra or existing bucket name
 layoutlm_training_bucket_name: Optional[Output[str]] = None
+pulumi.export("layoutlm_model_pointer_key", "coreml/active.json")
 
 if enable_sagemaker:
     from sagemaker_training import SageMakerTrainingInfra

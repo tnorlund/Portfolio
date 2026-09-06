@@ -22,6 +22,7 @@ import Testing
     }
 
     final class S3Mock: S3ClientProtocol {
+        func headObject(bucket: String, key: String) async throws -> S3ObjectHead? { nil }
         var objects: [String: Data] = [:]
         func getObject(bucket: String, key: String) async throws -> Data {
             guard let data = objects["\(bucket):\(key)"] else {
