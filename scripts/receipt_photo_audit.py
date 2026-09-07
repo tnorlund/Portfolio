@@ -197,6 +197,14 @@ def coverage_report(
         raise AuditError("Library scope must be full or partial")
     if not isinstance(library.get("enumeration_complete"), bool):
         raise AuditError("enumeration_complete must be a boolean")
+    enumeration_issues = library.get("enumeration_issues", [])
+    if not isinstance(enumeration_issues, list) or any(
+        not isinstance(issue, str) or not issue.strip()
+        for issue in enumeration_issues
+    ):
+        raise AuditError(
+            "enumeration_issues must be a list of nonempty strings"
+        )
     expected = library.get("expected_assets")
     if expected is not None and (
         not isinstance(expected, int)
@@ -281,6 +289,10 @@ def coverage_report(
             verification.get("result") == "passed",
             verification.get("revision") == asset["revision"],
             verification.get("receipt_ids") == ids,
+            isinstance(project.get("snapshot_at"), str)
+            and bool(project["snapshot_at"].strip())
+            and verification.get("checked_snapshot_at")
+            == project["snapshot_at"],
             verification.get("project_fingerprint")
             == receipt_fingerprint(project, image_id, ids),
             _evidence(verification.get("evidence")),
@@ -305,6 +317,7 @@ def coverage_report(
         and library["enumeration_complete"]
         and expected is not None
         and expected == len(assets)
+        and not enumeration_issues
     )
     processed = all(
         row["status"] in {"not_receipt", "verified", "duplicate_verified"}
@@ -314,8 +327,10 @@ def coverage_report(
         "schema_version": 1,
         "environment": "dev",
         "expected_assets": expected,
+        "project_snapshot_at": project.get("snapshot_at"),
         "observed_assets": len(assets),
         "library_enumeration_complete": enumerated,
+        "enumeration_issues": enumeration_issues,
         "all_receipts_processed": enumerated and processed,
         "counts": dict(counts),
         "distinct_verified_images": len(

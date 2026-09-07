@@ -37,6 +37,9 @@ writing a manifest. A project inventory alone is not a Photos-library scan.
   tax, total, and reconciliation through receipt MCP tools. Verify advertised
   image URLs by fetching and decoding them. After corrections, refresh only
   the affected derivatives, let asynchronous work settle, then read back again.
+  Repeat content QA for each new project snapshot; unchanged summary metadata
+  cannot prove that item names, quantities or discounts stayed correct. Bind
+  passed QA to that snapshot's timestamp as well as its project fingerprint.
 - Back up unmodified originals and all companions using
   `scripts/backup_receipt_exports.py`, verify hashes, and test restoration.
   Record local backup and independent backup separately. Neither a processed

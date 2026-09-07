@@ -69,6 +69,13 @@ previous evidence. Partial or malformed output is not a successful checkpoint.
    Use available previews and bounded batches, recording the resume position,
    observed IDs and the native library count. A keyword search or scrolling a
    recent-date window does not certify a full scan.
+   Compare the library footer, filtered Select All count and actual export
+   count. Record disagreements, inaccessible scope and ambiguous source
+   identities in `enumeration_issues`; do not choose whichever denominator
+   makes the scan appear complete. Clear an issue only after saving evidence
+   that resolves it. Confirm each batch's exported files decode and match its
+   selection count before advancing the checkpoint. A closed export dialog
+   does not mean the background export has finished.
 3. Classify each photo as `receipt`, `not_receipt`, `uncertain`, or `unavailable`
    with a reference to the actual inspection evidence. Do not infer that a
    blank/unreadable image is a non-receipt. Record source identity and revision;
@@ -94,7 +101,8 @@ previous evidence. Partial or malformed output is not a successful checkpoint.
 
 Use small resumable batches sized for the available time, storage and tool
 latency. Stop cleanly at the run budget with `enumeration_complete: false`.
-A later incremental scan may skip unchanged **verified** sources, but must
+A later incremental scan may reuse the classification of unchanged **verified**
+sources, but must refresh receipt MCP QA for each new project snapshot and
 revisit unresolved candidates and in-flight jobs. Newly synced or edited assets
 invalidate a timestamp-only high-water mark; periodically do a full reconciliation.
 
@@ -163,6 +171,7 @@ For a synthetic, one-photo example, the other inputs are:
   "schema_version": 1,
   "scope": "full",
   "enumeration_complete": true,
+  "enumeration_issues": [],
   "expected_assets": 1,
   "assets": [{
     "asset_key": "library-id:stable-source-id",
@@ -186,6 +195,7 @@ For a synthetic, one-photo example, the other inputs are:
       "revision": "sha256:SOURCE_HASH",
       "receipt_ids": [1],
       "result": "passed",
+      "checked_snapshot_at": "EXACT_SNAPSHOT_AT_FROM_REVIEWED_PROJECT",
       "project_fingerprint": "HASH_FROM_REVIEWED_REPORT",
       "evidence": ["/private/state/runs/RUN/mcp-final.json"]
     }
@@ -201,8 +211,13 @@ unreviewed classifications, and missing QA evidence prevent a completion claim.
 A not-yet-imported candidate has no ledger entry; a recorded attempt without a
 returned ID is unresolved and must not be treated as safe to retry.
 
-After QA, save the current report row's `project_fingerprint` in the
-verification record. It binds that attestation to the image/receipt metadata
+After fresh MCP QA, save the project's exact `snapshot_at` as
+`checked_snapshot_at` and the current report row's `project_fingerprint` in the
+verification record. Every new snapshot requires a fresh content review,
+including line items and sections, even when image/receipt/summary metadata
+matches. Background reprocessing can change items without changing those
+records; arithmetic can still balance while names, quantities or discount
+rows regress. The fingerprint binds the attestation to image/receipt metadata
 and summary fields, so changed project records require review again. Do not
 backfill current fingerprints onto historical QA without checking the current
 results. The fingerprint is not a digest of all OCR words, items, or CDN bytes;
@@ -215,6 +230,11 @@ Likewise, `enumeration_complete` comes from the actual Photos traversal; the
 helper cannot prove that an agent enumerated the library truthfully. Separate
 ledger fields for `local_backup` and `independent_backup` should record manifests,
 hashes and restore evidence; processing completeness never implies backup safety.
+
+`enumeration_issues` is an optional list of unresolved issue descriptions
+(default `[]`). Any entry blocks full coverage even when the declared expected
+count matches the manifest. This field preserves observed blockers; it does
+not independently discover count discrepancies or validate their resolution.
 
 ## Optional schedule
 

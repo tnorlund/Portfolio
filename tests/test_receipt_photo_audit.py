@@ -42,6 +42,7 @@ def inputs():
                     "revision": "sha256:abc",
                     "receipt_ids": [1],
                     "result": "passed",
+                    "checked_snapshot_at": "2026-09-07T12:00:00+00:00",
                     "evidence": ["mcp-final.json"],
                 },
             }
@@ -51,6 +52,7 @@ def inputs():
         "schema_version": 1,
         "environment": "dev",
         "complete": True,
+        "snapshot_at": "2026-09-07T12:00:00+00:00",
         "images": [{"image_id": "image-one"}],
         "receipts": [{"image_id": "image-one", "receipt_id": 1}],
         "summaries": [{"image_id": "image-one", "receipt_id": 1}],
@@ -80,6 +82,30 @@ def test_partial_enumeration_never_claims_complete(change):
     assert not audit.coverage_report(library, ledger, project)[
         "all_receipts_processed"
     ]
+
+
+def test_unresolved_library_counts_block_even_matching_manifest_count():
+    library, ledger, project = inputs()
+    library["enumeration_issues"] = [
+        "Footer and Select All disagree on the number of photo assets"
+    ]
+    result = audit.coverage_report(library, ledger, project)
+    assert not result["library_enumeration_complete"]
+    assert not result["all_receipts_processed"]
+    assert result["enumeration_issues"] == library["enumeration_issues"]
+    assert result["counts"] == {"verified": 1}
+    library["enumeration_issues"] = []
+    assert audit.coverage_report(library, ledger, project)[
+        "all_receipts_processed"
+    ]
+
+
+@pytest.mark.parametrize("issues", [None, "blocked", False, [""], [" "], [1]])
+def test_malformed_enumeration_issues_are_rejected(issues):
+    library, ledger, project = inputs()
+    library["enumeration_issues"] = issues
+    with pytest.raises(audit.AuditError, match="enumeration_issues"):
+        audit.coverage_report(library, ledger, project)
 
 
 @pytest.mark.parametrize("classification", ["uncertain", "unavailable"])
@@ -286,6 +312,24 @@ def test_changed_summary_invalidates_prior_qa():
     result = audit.coverage_report(library, ledger, project)
     assert result["counts"] == {"imported_needs_review": 1}
     assert not result["all_receipts_processed"]
+
+
+def test_new_snapshot_requires_fresh_content_review_with_unchanged_metadata():
+    library, ledger, project = inputs()
+    project["snapshot_at"] = "2026-09-07T13:00:00+00:00"
+    result = audit.coverage_report(library, ledger, project)
+    assert result["counts"] == {"imported_needs_review": 1}
+    assert not result["all_receipts_processed"]
+
+
+@pytest.mark.parametrize("timestamp", [None, "", " ", False])
+def test_missing_snapshot_time_cannot_bind_qa(timestamp):
+    library, ledger, project = inputs()
+    project["snapshot_at"] = timestamp
+    ledger["photos"][0]["verification"]["checked_snapshot_at"] = timestamp
+    assert not audit.coverage_report(library, ledger, project)[
+        "all_receipts_processed"
+    ]
 
 
 def test_unrelated_receipt_changes_do_not_invalidate_qa():
