@@ -1067,6 +1067,25 @@ class TestModuleLevelFunctions:
         assert "b" not in tokens
         assert "grocery" in tokens
 
+    @pytest.mark.parametrize("name", ["Smith's", "Smith’s", "Smiths"])
+    @pytest.mark.parametrize("ocr", ["SMITH'S", "SMITH’S", "SMITHS"])
+    def test_merchant_apostrophe_variants_match(self, name, ocr):
+        """A missing or typographic apostrophe must not reject the right store."""
+        assert merchant_name_matches_receipt(name, [self._make_line(1, ocr)])
+
+    @pytest.mark.parametrize("name", ["Smith's", "Smith’s", "Smiths"])
+    def test_merchant_apostrophe_does_not_bypass_validation(self, name):
+        assert not merchant_name_matches_receipt(
+            name, [self._make_line(1, "SPROUTS FARMERS MARKET")]
+        )
+
+    def test_tokenize_text_keeps_other_word_boundaries(self):
+        assert tokenize_text("'Smiths' / Fresh-Market") == {
+            "smiths",
+            "fresh",
+            "market",
+        }
+
     def test_module_level_merchant_name_matches_receipt_pass(self):
         """Module-level function detects token overlap."""
         lines = [self._make_line(1, "AIM MAIL CENTER #18")]

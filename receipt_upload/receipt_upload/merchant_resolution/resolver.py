@@ -435,6 +435,9 @@ def locality_from_lines(line_texts: List[str]) -> Optional[str]:
 
 def tokenize_text(text: str) -> Set[str]:
     """Extract lowercase alphanumeric tokens (>= *_MIN_TOKEN_LEN* chars) from *text*."""
+    # OCR often omits apostrophes in logos ("Smith's" -> "Smiths"). Join
+    # apostrophes inside words, but retain other punctuation as boundaries.
+    text = re.sub(r"(?<=[a-zA-Z])['’](?=[a-zA-Z])", "", text)
     return {
         t
         for t in re.split(r"[^a-zA-Z0-9]+", text.lower())
