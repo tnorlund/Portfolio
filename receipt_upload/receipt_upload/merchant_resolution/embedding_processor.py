@@ -1235,6 +1235,7 @@ class MerchantResolvingEmbeddingProcessor:
         merchant_result = MerchantResult()
         validation_stats: Dict[str, Any] = {}
         lines_stats: Dict[str, Any] = {}
+        pipeline_errors: Dict[str, str] = {}
 
         try:
             # =================================================================
@@ -1399,10 +1400,16 @@ class MerchantResolvingEmbeddingProcessor:
                             ),
                             similarity_matches=similarity_matches,
                         )
+                    else:
+                        pipeline_errors["lines"] = str(
+                            lines_result.get("error")
+                            or "Lines pipeline did not succeed"
+                        )
                 except Exception as e:
                     _log(f"WARNING: Lines pipeline failed: {e}")
                     logger.exception("Lines pipeline error")
                     merchant_result = MerchantResult()
+                    pipeline_errors["lines"] = str(e)
 
                 async_llm_payload = None
                 try:
@@ -1418,10 +1425,16 @@ class MerchantResolvingEmbeddingProcessor:
                                 "async_llm_payload",
                             )
                         }
+                    else:
+                        pipeline_errors["words"] = str(
+                            words_result.get("error")
+                            or "Words pipeline did not succeed"
+                        )
                 except Exception as e:
                     _log(f"WARNING: Words pipeline failed: {e}")
                     logger.exception("Words pipeline error")
                     validation_stats = {}
+                    pipeline_errors["words"] = str(e)
 
             _log("Phase 2 complete: parallel pipelines finished")
 
@@ -1530,12 +1543,14 @@ class MerchantResolvingEmbeddingProcessor:
         except Exception as e:
             _log(f"WARNING: Processing failed: {e}")
             logger.exception("Processing failed")
+            pipeline_errors["processing"] = str(e)
 
         return {
-            # A receipt is only fully processed once its native embedding
-            # items are durable; without them it is invisible to
-            # SearchVectors and nothing downstream will heal it.
-            "success": native_write_ok,
+            # Durable vectors alone do not certify merchant/label processing.
+            # Surface synchronous failures to the handler's failure metrics;
+            # deferred label validation still completes independently.
+            "success": native_write_ok and not pipeline_errors,
+            "pipeline_errors": pipeline_errors,
             "native_embeddings": native_report,
             "run_id": run_id,
             "lines_count": len(lines),
