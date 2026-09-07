@@ -56,3 +56,9 @@ Stop cleanup if a source cannot be identified unambiguously, any backup
 verification fails, an independent restore has not been demonstrated, or
 the receipt result is incomplete. This utility intentionally has no
 Photos deletion command. Upload or OCR success never triggers deletion.
+
+## Repeatable audits and imports
+
+Use the [shared Claude Code/Codex workflow](receipt-photos-automation.md) to
+maintain source-photo identities, resume library audits, distinguish incomplete
+imports from verified receipts, and prepare read-only scheduled checks.
