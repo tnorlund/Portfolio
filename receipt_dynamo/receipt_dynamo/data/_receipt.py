@@ -1,4 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_receipt.py
+import time
 from collections import Counter
 from typing import Any
 
@@ -12,6 +13,7 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBThroughputError,
     EntityNotFoundError,
     EntityValidationError,
 )
@@ -43,6 +45,100 @@ _RECEIPT_DETAILS_CONVERTERS = {
 
 
 class _Receipt(FlattenedStandardMixin):
+    @handle_dynamodb_errors("receipt_exists_consistent")
+    def receipt_exists_consistent(
+        self, image_id: str, receipt_id: int
+    ) -> bool:
+        """Check the parent on the base table after a derived-row write."""
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
+            },
+            ConsistentRead=True,
+            ProjectionExpression="PK",
+        )
+        return "Item" in response
+
+    @handle_dynamodb_errors("purge_receipt_children")
+    def purge_receipt_children(self, image_id: str, receipt_id: int) -> int:
+        """Delete canonical and legacy children, never the parent or a neighbor.
+
+        Parent-first deletion plus each writer's post-write consistent check
+        covers both orderings of the deletion race. Retry throttled batches
+        at most five times so failures reach the caller's retry policy.
+        """
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
+        deleted = 0
+        prefixes = sorted(
+            {f"RECEIPT#{receipt_id:05d}#", f"RECEIPT#{receipt_id}#"}
+        )
+        for prefix in prefixes:
+            pages = self._client.get_paginator("query").paginate(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":prefix": {"S": prefix},
+                },
+                ProjectionExpression="PK, SK",
+                ConsistentRead=True,
+            )
+            for page in pages:
+                items = page.get("Items", [])
+                for start in range(0, len(items), 25):
+                    pending = [
+                        {"DeleteRequest": {"Key": item}}
+                        for item in items[start : start + 25]
+                    ]
+                    for attempt in range(5):
+                        response = self._client.batch_write_item(
+                            RequestItems={self.table_name: pending}
+                        )
+                        remaining = response.get("UnprocessedItems", {}).get(
+                            self.table_name, []
+                        )
+                        deleted += len(pending) - len(remaining)
+                        pending = remaining
+                        if not pending:
+                            break
+                        if attempt < 4:
+                            time.sleep(0.1 * 2**attempt)
+                    if pending:
+                        raise DynamoDBThroughputError(
+                            "Child purge exhausted retries for "
+                            f"{image_id}#{receipt_id}"
+                        )
+        return deleted
+
+    @handle_dynamodb_errors("get_receipts_from_image_consistent")
+    def get_receipts_from_image_consistent(
+        self, image_id: str
+    ) -> list[Receipt]:
+        """Read surviving asset owners without GSI or eventual-read lag."""
+        self._validate_image_id(image_id)
+        pages = self._client.get_paginator("query").paginate(
+            TableName=self.table_name,
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
+            FilterExpression="#type = :type",
+            ExpressionAttributeNames={"#type": "TYPE"},
+            ExpressionAttributeValues={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":prefix": {"S": "RECEIPT#"},
+                ":type": {"S": "RECEIPT"},
+            },
+            ConsistentRead=True,
+        )
+        return [
+            item_to_receipt(item)
+            for page in pages
+            for item in page.get("Items", [])
+        ]
+
     @staticmethod
     def _convert_receipt_details_item(item):
         """Convert one GSI4 item into its ReceiptDetails collection name."""

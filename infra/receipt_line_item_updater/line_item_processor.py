@@ -176,6 +176,56 @@ def update_receipt_line_items(
     receipt_id: int,
     reocr_mechanism: str | None = None,
 ) -> dict[str, Any]:
+    """Recompute live receipts; remove writes racing parent deletion."""
+    if dynamo_client is None:
+        raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+    skipped = {"items": 0, "reason": "parent receipt deleted"}
+    if not dynamo_client.receipt_exists_consistent(image_id, receipt_id):
+        dynamo_client.purge_receipt_children(image_id, receipt_id)
+        return skipped
+    try:
+        result = _recompute_receipt_line_items(
+            image_id, receipt_id, reocr_mechanism
+        )
+        item_count = result["items"]
+        if not item_count:
+            # Match the summary's legacy VALID LINE_TOTAL fallback when
+            # extraction has no rows; never retain a stale extracted count.
+            last_key = None
+            while True:
+                labels, last_key = (
+                    dynamo_client.list_receipt_word_labels_for_receipt(
+                        image_id, receipt_id, last_evaluated_key=last_key
+                    )
+                )
+                item_count += sum(
+                    label.label == "LINE_TOTAL"
+                    and label.validation_status == "VALID"
+                    for label in labels
+                )
+                if last_key is None:
+                    break
+        # The count is finalized AFTER the item rewrite. This conditional
+        # field-only update preserves timestamp_computed, so the existing
+        # summary stream routing does not create a recompute loop.
+        dynamo_client.update_receipt_summary_item_count(
+            image_id, receipt_id, item_count
+        )
+    finally:
+        # Also clean partial writes when extraction/queueing raised. A
+        # parent deleted after this read is covered by the merge's sweep;
+        # a write after the sweep is removed here. Failures reach SQS retry.
+        alive = dynamo_client.receipt_exists_consistent(image_id, receipt_id)
+        if not alive:
+            dynamo_client.purge_receipt_children(image_id, receipt_id)
+    return result if alive else skipped
+
+
+def _recompute_receipt_line_items(
+    image_id: str,
+    receipt_id: int,
+    reocr_mechanism: str | None = None,
+) -> dict[str, Any]:
     """Recompute and rewrite RECEIPT_LINE_ITEM rows for one receipt.
 
     ``reocr_mechanism`` is an optional diagnosed OCR-failure mechanism
