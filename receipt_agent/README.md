@@ -138,9 +138,12 @@ pytest
 # Run with coverage
 pytest --cov=receipt_agent
 
-# Formatting / linting (repo-wide)
-make format
-make lint
+# Type checking
+mypy receipt_agent
+
+# Formatting (CI checks only the .py files changed versus the base branch)
+black --line-length=79 receipt_agent
+isort --profile=black --line-length=79 receipt_agent
 ```
 
 ## Places API Caching

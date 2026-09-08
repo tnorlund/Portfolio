@@ -14,7 +14,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 MAINTAINER_PATH = (
     ROOT
-    / ".codex"
+    / ".agents"
     / "skills"
     / "dependabot-maintainer"
     / "scripts"
