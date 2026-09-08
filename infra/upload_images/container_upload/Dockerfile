@@ -3,7 +3,7 @@
 # Simple presign + DynamoDB job creation endpoint
 
 # Stage 1: Build and install dependencies (cached layer)
-FROM public.ecr.aws/lambda/python:3.13 AS dependencies
+FROM public.ecr.aws/lambda/python:3.14 AS dependencies
 
 # Copy only the dependency package (triggers rebuild only when this changes)
 COPY receipt_dynamo/ /tmp/receipt_dynamo/

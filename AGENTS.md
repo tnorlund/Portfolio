@@ -45,7 +45,9 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
   `receipt_dynamo` uses markers `unit`, `integration`, `end_to_end`.
 - Frontend: `cd portfolio && npm run lint && npm run type-check && npm test`.
   CI runs `npm run test:ci`.
-- CI (`.github/workflows/main.yml`) pins Python 3.13 and Node 22. Match those.
+- Baseline CI pins Python 3.13 and Node 22. Container Lambda packages also
+  have required Python 3.14 tests and native Linux ARM64 image import checks.
+  LayoutLM containers and ZIP Lambdas remain on Python 3.13.
 - Format only the files you touch; do not reformat unrelated packages. CI lints
   `receipt_agent` on changed `.py` files only; every other package is linted whole.
 - The CI matrix runs only for PRs targeting `main`. A PR based on another PR

@@ -1,0 +1,68 @@
+name: Lambda image compatibility
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      needed: ${{ steps.plan.outputs.needed }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          python - <<'PY'
+          import os, subprocess
+          needed = subprocess.check_output(["python", "scripts/lambda_image_import_check.py", "--needs-build"], text=True).strip()
+          matrix = subprocess.check_output(["python", "scripts/lambda_image_import_check.py", "--matrix"], text=True).strip()
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"needed={needed}\nmatrix={matrix}\n")
+          PY
+
+  build:
+    name: Linux ARM64 (${{ matrix.name }})
+    needs: plan
+    if: needs.plan.outputs.needed == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the deployed Dockerfile
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: |
+          # CodeBuild stages its context without the legacy root .dockerignore.
+          # Build the unchanged Dockerfile from tracked source, with no .git or credentials.
+          context_dir="$RUNNER_TEMP/lambda-image-context"
+          mkdir -p "$context_dir"
+          git archive HEAD | tar -x -C "$context_dir"
+          rm "$context_dir/.dockerignore"
+          docker build --platform linux/arm64 --file "$context_dir/$DOCKERFILE" \
+            --tag lambda-import-check "$context_dir"
+      - name: Import installed packages and handler without network access
+        env:
+          IMAGE_NAME: ${{ matrix.name }}
+        run: |
+          docker run --rm --network none \
+            --entrypoint /var/lang/bin/python \
+            --volume "$PWD/scripts/lambda_image_import_check.py:/ci/check.py:ro" \
+            --workdir /var/task \
+            --env PYTHONPATH=/var/task \
+            lambda-import-check /ci/check.py "$IMAGE_NAME"
