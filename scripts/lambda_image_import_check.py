@@ -12,6 +12,7 @@ import importlib
 import json
 import os
 import platform
+import subprocess
 import sys
 from unittest.mock import patch
 
@@ -101,12 +102,14 @@ IMAGES = [
 
 
 def import_image(name: str) -> None:
-    from botocore.client import BaseClient
+    # The matrix-planning runner uses only stdlib; botocore lives in images.
+    BaseClient = importlib.import_module("botocore.client").BaseClient
 
     if sys.version_info[:2] != (3, 14):
         raise RuntimeError(f"Expected Python 3.14, got {sys.version}")
     if platform.system() != "Linux" or platform.machine() != "aarch64":
         raise RuntimeError("Run this check inside the Linux ARM64 image")
+    subprocess.run([sys.executable, "-m", "pip", "check"], check=True)
     image = next(image for image in IMAGES if image[0] == name)
     for key in (
         "DYNAMODB_TABLE_NAME",

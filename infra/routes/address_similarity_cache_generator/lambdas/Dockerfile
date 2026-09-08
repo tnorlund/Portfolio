@@ -12,9 +12,10 @@ COPY receipt_dynamo/ /tmp/receipt_dynamo/
 COPY receipt_embeddings/ /tmp/receipt_embeddings/
 
 # receipt_dynamo: DynamoDB client and constants
-# receipt_embeddings: backend-neutral embedding interfaces
+# receipt_embeddings: install its declared runtime dependencies too;
+# the package initializer imports the OpenAI writer even for key helpers.
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
-    pip install --no-cache-dir --no-deps /tmp/receipt_embeddings && \
+    pip install --no-cache-dir /tmp/receipt_embeddings && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_embeddings
 
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
