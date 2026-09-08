@@ -3,6 +3,7 @@
 # pylint: disable=redefined-outer-name
 
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, cast
 
@@ -276,3 +277,15 @@ def test_route_lambda_definition_rejects_two_log_group_names() -> None:
             explicit_log_group_name="/aws/lambda/function",
             use_function_log_group_name=True,
         )
+
+
+def test_reader_assets_are_owned_by_data_package() -> None:
+    root = Path(__file__).resolve().parents[2]
+    assert Path(route_lambda.API_DYNAMO_ASSET_PATH).resolve() == (
+        root / "receipt_dynamo/receipt_dynamo/api_read.py"
+    )
+    assert Path(route_lambda.API_DYNAMO_ERRORS_PATH).resolve() == (
+        root / "receipt_dynamo/receipt_dynamo/data/shared_exceptions.py"
+    )
+    assert Path(route_lambda.API_DYNAMO_ASSET_PATH).is_file()
+    assert Path(route_lambda.API_DYNAMO_ERRORS_PATH).is_file()

@@ -65,7 +65,7 @@ jobs:
         run: |
           "$PYTHON_BIN" scripts/check_python_version_consistency.py
 
-      - name: Test inbound email trust boundaries
+      - name: Test Lambda trust and API contracts
         run: |
           "$PYTHON_BIN" -m venv .venv-email-receipt
           source .venv-email-receipt/bin/activate
