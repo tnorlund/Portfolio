@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      profile_dev_api:
+        description: "Deploy and capture dev /images + /receipts profiles"
+        required: false
+        type: boolean
+        default: false
 
 # Superseded PR runs are cancelled (a new push makes the old one moot), but
 # main-push runs are NEVER cancelled: their `deploy` job runs `pulumi up`, and
@@ -59,15 +65,20 @@ jobs:
         run: |
           "$PYTHON_BIN" scripts/check_python_version_consistency.py
 
-      - name: Test inbound email trust boundaries
+      - name: Test Lambda trust and API contracts
         run: |
           "$PYTHON_BIN" -m venv .venv-email-receipt
           source .venv-email-receipt/bin/activate
-          python -m pip install --quiet boto3 pytest
+          python -m pip install --quiet boto3 pytest "pulumi>=3.261.0,<4" "pulumi-aws>=7.44.0,<8"
           python -m pytest -q \
             infra/tests/test_email_receipt_inbox_handler.py \
             infra/tests/test_ats_verification_ingest.py \
             infra/tests/test_ats_verification_mcp.py
+          python -m pytest -q --import-mode=importlib \
+            infra/components/test_lambda_profiler.py \
+            infra/components/test_route_lambda.py \
+            infra/routes/images/handler/test_handler.py \
+            infra/routes/receipts/handler/test_handler.py
 
       - name: Clean up job workspace
         if: always()
@@ -389,6 +400,99 @@ jobs:
         run: |
           rm -rf portfolio/node_modules portfolio/.next portfolio/out
           rm -rf portfolio/playwright-report portfolio/test-results
+
+  # ============================================================================
+  # MANUAL: targeted dev API profiling (never runs on push or pull_request)
+  # ============================================================================
+
+  profile-dev-api:
+    name: Profile dev API Lambdas
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.profile_dev_api
+    needs:
+      - lambda-syntax
+      - repository-tests
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-development
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Install infrastructure and profiling tools
+        run: |
+          pip install -e infra -e receipt_dynamo
+          pip install boto3 flameprof pytest tuna
+
+      - name: Test profiling instrumentation
+        run: |
+          python -m pytest -q --import-mode=importlib \
+            receipt_dynamo/tests/unit/test_api_read.py \
+            infra/components/test_lambda_profiler.py \
+            infra/components/test_route_lambda.py \
+            infra/routes/images/handler/test_handler.py \
+            infra/routes/receipts/handler/test_handler.py \
+            scripts/test_capture_dev_api_profiles.py
+
+      - name: Deploy dev stack
+        id: profiled-dev-deploy
+        working-directory: infra
+        env:
+          ENABLE_DEV_LAMBDA_PROFILING: "1"
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          test "$(aws sts get-caller-identity --query Account --output text)" = "681647709217"
+          pulumi preview --stack tnorlund/portfolio/dev --non-interactive
+          pulumi up --stack tnorlund/portfolio/dev --yes --non-interactive
+
+      - name: Capture handler and import profiles
+        run: |
+          mkdir -p api-profile-artifacts
+          python scripts/capture_dev_api_profiles.py \
+            --route images \
+            --route receipts \
+            --output-dir api-profile-artifacts \
+            | tee api-profile-artifacts/summary.json
+
+          for route in images receipts; do
+            flameprof \
+              --out "api-profile-artifacts/${route}-handler.svg" \
+              "api-profile-artifacts/${route}.prof"
+            if [ -s "api-profile-artifacts/${route}.importtime" ]; then
+              tuna \
+                --outdir "api-profile-artifacts/${route}-imports" \
+                "api-profile-artifacts/${route}.importtime"
+            fi
+          done
+
+      - name: Disable dev profiling
+        if: always() && contains(fromJSON('["success", "failure"]'), steps.profiled-dev-deploy.outcome)
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          test "$(aws sts get-caller-identity --query Account --output text)" = "681647709217"
+          pulumi preview --stack tnorlund/portfolio/dev --non-interactive
+          pulumi up --stack tnorlund/portfolio/dev --yes --non-interactive
+
+      - name: Upload dev API profiles
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-api-lambda-profiles-${{ github.sha }}
+          path: api-profile-artifacts/
+          retention-days: 7
 
   # ============================================================================
   # STAGE 2: Deploy (only after ALL tests pass, main branch only)

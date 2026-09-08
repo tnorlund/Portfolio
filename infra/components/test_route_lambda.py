@@ -3,6 +3,7 @@
 # pylint: disable=redefined-outer-name
 
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Callable, cast
 
@@ -179,6 +180,68 @@ def test_create_route_lambda_with_inline_policy_and_named_log_group(
     assert resources.policy_attachment is None
 
 
+def test_create_route_lambda_enables_dev_profiling(
+    mocked_resources: CreatedResources,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENABLE_DEV_LAMBDA_PROFILING", "1")
+    definition = route_lambda.RouteLambdaDefinition(
+        role_name="api_images_lambda_role",
+        basic_execution_attachment_name="api_images_basic_execution",
+        function_name="api_images_GET_lambda",
+        log_group_name="api_images_log_group",
+        handler_directory="/tmp/handler",
+        environment={"TABLE_NAME": "table-name"},
+        enable_dev_profiling=True,
+        extra_code_assets={"_api_dynamo.py": "/tmp/api_dynamo.py"},
+    )
+
+    route_lambda.create_route_lambda(definition)
+
+    function_args = mocked_resources["functions"][0][1]
+    assert function_args["environment"] == {
+        "variables": {
+            "TABLE_NAME": "table-name",
+            "LAMBDA_PROFILE_ENABLED": "1",
+            "PYTHONPROFILEIMPORTTIME": "2",
+        }
+    }
+    code_assets = function_args["code"].assets
+    assert set(code_assets) == {
+        ".",
+        "_api_dynamo.py",
+        "_lambda_profiler.py",
+    }
+    assert code_assets["_api_dynamo.py"].path == "/tmp/api_dynamo.py"
+    assert code_assets["_lambda_profiler.py"].path == (
+        route_lambda.PROFILER_ASSET_PATH
+    )
+
+
+def test_dev_profiler_is_inert_without_deploy_opt_in(
+    mocked_resources: CreatedResources,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ENABLE_DEV_LAMBDA_PROFILING", raising=False)
+    definition = route_lambda.RouteLambdaDefinition(
+        role_name="role",
+        basic_execution_attachment_name="basic",
+        function_name="function",
+        log_group_name="logs",
+        handler_directory="/tmp/handler",
+        environment={"TABLE_NAME": "table-name"},
+        enable_dev_profiling=True,
+    )
+
+    route_lambda.create_route_lambda(definition)
+
+    function_args = mocked_resources["functions"][0][1]
+    assert function_args["environment"] == {
+        "variables": {"TABLE_NAME": "table-name"}
+    }
+    assert "_lambda_profiler.py" in function_args["code"].assets
+
+
 @pytest.mark.parametrize(
     ("changes", "message"),
     [
@@ -214,3 +277,15 @@ def test_route_lambda_definition_rejects_two_log_group_names() -> None:
             explicit_log_group_name="/aws/lambda/function",
             use_function_log_group_name=True,
         )
+
+
+def test_reader_assets_are_owned_by_data_package() -> None:
+    root = Path(__file__).resolve().parents[2]
+    assert Path(route_lambda.API_DYNAMO_ASSET_PATH).resolve() == (
+        root / "receipt_dynamo/receipt_dynamo/api_read.py"
+    )
+    assert Path(route_lambda.API_DYNAMO_ERRORS_PATH).resolve() == (
+        root / "receipt_dynamo/receipt_dynamo/data/shared_exceptions.py"
+    )
+    assert Path(route_lambda.API_DYNAMO_ASSET_PATH).is_file()
+    assert Path(route_lambda.API_DYNAMO_ERRORS_PATH).is_file()
