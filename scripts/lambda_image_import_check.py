@@ -14,6 +14,7 @@ import os
 import platform
 import subprocess
 import sys
+from pathlib import Path
 from unittest.mock import patch
 
 IMAGES = [
@@ -165,12 +166,45 @@ def import_image(name: str) -> None:
     )
 
 
+def build_needed(root: Path, event: str, before: str = "") -> bool:
+    """Use the entire pushed range; unknown/shallow history builds conservatively."""
+    if event == "workflow_dispatch":
+        return True
+    base = "HEAD^1" if event == "pull_request" else before
+    if (
+        not base
+        or subprocess.run(
+            ["git", "cat-file", "-e", f"{base}^{{commit}}"],
+            cwd=root,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+    ):
+        return True
+    changed = subprocess.check_output(
+        ["git", "diff", "--name-only", base, "HEAD"],
+        cwd=root,
+        text=True,
+    ).splitlines()
+    return any(
+        Path(path).name in {"Dockerfile", "pyproject.toml", "setup.py"}
+        or Path(path).name.startswith("requirements")
+        or path
+        in {
+            ".github/workflows/lambda-images.yml",
+            "scripts/lambda_image_import_check.py",
+        }
+        for path in changed
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "image", nargs="?", choices=[image[0] for image in IMAGES]
     )
     parser.add_argument("--matrix", action="store_true")
+    parser.add_argument("--needs-build", action="store_true")
     args = parser.parse_args()
     if args.matrix:
         print(
@@ -182,6 +216,16 @@ def main() -> None:
                     ]
                 }
             )
+        )
+    elif args.needs_build:
+        print(
+            str(
+                build_needed(
+                    Path.cwd(),
+                    os.environ.get("EVENT_NAME", ""),
+                    os.environ.get("BEFORE_SHA", ""),
+                )
+            ).lower()
         )
     elif args.image:
         import_image(args.image)

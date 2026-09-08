@@ -20,19 +20,14 @@ jobs:
       - id: plan
         env:
           EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
           python - <<'PY'
-          import os, pathlib, subprocess
-          changed = subprocess.check_output(["git", "diff", "--name-only", "HEAD^1", "HEAD"], text=True).splitlines()
-          needed = os.environ["EVENT_NAME"] == "workflow_dispatch" or any(
-              pathlib.PurePosixPath(path).name in {"Dockerfile", "pyproject.toml", "setup.py"}
-              or pathlib.PurePosixPath(path).name.startswith("requirements")
-              or path in {".github/workflows/lambda-images.yml", "scripts/lambda_image_import_check.py"}
-              for path in changed
-          )
+          import os, subprocess
+          needed = subprocess.check_output(["python", "scripts/lambda_image_import_check.py", "--needs-build"], text=True).strip()
           matrix = subprocess.check_output(["python", "scripts/lambda_image_import_check.py", "--matrix"], text=True).strip()
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"needed={str(needed).lower()}\nmatrix={matrix}\n")
+              out.write(f"needed={needed}\nmatrix={matrix}\n")
           PY
 
   build:
