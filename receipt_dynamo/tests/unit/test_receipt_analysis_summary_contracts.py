@@ -1,10 +1,9 @@
-"""Contracts for receipt analysis aggregates and persisted summaries."""
+"""Contracts for receipt summaries and persisted summary records."""
 
 from datetime import datetime
 
 import pytest
 
-from receipt_dynamo.entities.receipt_analysis import ReceiptAnalysis
 from receipt_dynamo.entities.receipt_summary import (
     MonetaryTotals,
     ReceiptSummary,
@@ -20,46 +19,6 @@ pytestmark = pytest.mark.unit
 
 IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
 TIMESTAMP = "2023-05-15T10:30:00+00:00"
-
-
-def test_receipt_analysis_defaults_are_independent():
-    first = ReceiptAnalysis(image_id=IMAGE_ID, receipt_id=1)
-    second = ReceiptAnalysis(image_id=IMAGE_ID, receipt_id=1)
-
-    first.validation_categories.append("mutated")
-
-    assert second.validation_categories == []
-    assert second.validation_results == []
-    assert second.chatgpt_validations == []
-    assert "available=no analyses" in repr(second)
-
-
-@pytest.mark.parametrize(
-    ("kwargs", "message"),
-    [
-        ({"receipt_id": True}, "receipt_id must be an integer"),
-        ({"receipt_id": 0}, "receipt_id must be positive"),
-        ({"image_id": "invalid"}, "uuid must be a valid UUID"),
-        (
-            {"validation_categories": ["invalid"]},
-            "validation_categories must contain",
-        ),
-        (
-            {"validation_results": ["invalid"]},
-            "validation_results must contain",
-        ),
-        (
-            {"chatgpt_validations": ["invalid"]},
-            "chatgpt_validations must contain",
-        ),
-    ],
-)
-def test_receipt_analysis_rejects_invalid_contracts(
-    kwargs: dict, message: str
-):
-    params = {"image_id": IMAGE_ID, "receipt_id": 1, **kwargs}
-    with pytest.raises(ValueError, match=message):
-        ReceiptAnalysis(**params)
 
 
 @pytest.mark.parametrize(

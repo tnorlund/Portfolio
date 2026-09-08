@@ -1,0 +1,56 @@
+# Codex execpolicy rules for this repository (loaded when the project is trusted).
+# Declarative backstop for the hard rules in AGENTS.md; the PreToolUse hook in
+# .codex/hooks.json handles the cases that need argument parsing.
+
+prefix_rule(
+    pattern = ["git", "push", "--force"],
+    decision = "forbidden",
+    justification = "Force-pushing is not allowed in this repository.",
+    match = ["git push --force origin feature", "git push --force"],
+    not_match = ["git push -u origin feature"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "-f"],
+    decision = "forbidden",
+    justification = "Force-pushing is not allowed in this repository.",
+    match = ["git push -f", "git push -f origin feature"],
+    not_match = ["git push -u origin feature"],
+)
+
+prefix_rule(
+    pattern = ["git", "push", "--force-with-lease"],
+    decision = "forbidden",
+    justification = "Force-pushing is not allowed in this repository.",
+)
+
+prefix_rule(
+    pattern = ["pulumi", "destroy"],
+    decision = "forbidden",
+    justification = "Agents never destroy Pulumi stacks.",
+)
+
+prefix_rule(
+    pattern = ["pulumi", "stack", "rm"],
+    decision = "forbidden",
+    justification = "Agents never remove Pulumi stacks.",
+)
+
+prefix_rule(
+    pattern = ["pulumi", "stack", "select", "prod"],
+    decision = "forbidden",
+    justification = "Production is a hard no-go.",
+)
+
+prefix_rule(
+    pattern = ["pulumi", "stack", "select", "tnorlund/portfolio/prod"],
+    decision = "forbidden",
+    justification = "Production is a hard no-go.",
+)
+
+prefix_rule(
+    pattern = ["pulumi", "up"],
+    decision = "prompt",
+    justification = "Dev deploys only when the user asked; pin --stack tnorlund/portfolio/dev and preview first.",
+    match = ["pulumi up --stack tnorlund/portfolio/dev"],
+)

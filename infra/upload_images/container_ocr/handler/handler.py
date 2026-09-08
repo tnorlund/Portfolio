@@ -7,8 +7,7 @@ Combines:
 2. Merchant validation and embedding
 
 Updated: 2026-01-14 - Fixed entity serialization: use asdict() and **unpacking instead of to_dict/from_dict
-Updated: 2026-01-15 - Added chroma_label_validation trace for visibility into Phase 2 parallelism
-Updated: 2026-01-18 - Force rebuild with latest receipt_chroma and receipt_upload packages
+Updated: 2026-01-15 - Added similarity_label_validation trace for visibility into Phase 2 parallelism
 """
 
 import json
@@ -72,6 +71,8 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     embedding_skipped_count = 0
     total_ocr_duration = 0.0
     total_embedding_duration = 0.0
+    dual_write_written_count = 0
+    dual_write_failed_count = 0
     # Messages to redrive (the llm-validation mapping reports these so SQS
     # retries / DLQs them instead of silently deleting on a swallowed error).
     batch_item_failures: list[Dict[str, str]] = []
@@ -117,6 +118,8 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 total_ocr_duration += result["ocr_duration"]
             if result.get("embedding_duration"):
                 total_embedding_duration += result["embedding_duration"]
+            dual_write_written_count += result.get("dual_write_written", 0)
+            dual_write_failed_count += result.get("dual_write_failed", 0)
 
         except Exception as exc:  # pylint: disable=broad-exception-caught
             _log(f"ERROR: Failed to process record: {exc}")
@@ -148,6 +151,10 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
             "UploadLambdaEmbeddingSuccess": embedding_success_count,
             "UploadLambdaEmbeddingFailed": embedding_failed_count,
             "UploadLambdaEmbeddingSkipped": embedding_skipped_count,
+            # Dual-run engine writes (SPEC §3.4): non-fatal by design, so
+            # the Failed metric is the only detection path.
+            "UploadLambdaDualWriteWritten": dual_write_written_count,
+            "UploadLambdaDualWriteFailed": dual_write_failed_count,
             # Deferred-grok consumer failures (redriven to DLQ). Alarm on >0 so a
             # grok/OpenRouter outage or bad payload is never silently dropped.
             "UploadLambdaLLMValidationFailed": llm_validation_failures,
@@ -218,11 +225,26 @@ def _emit_section_observability(
     """Emit per-receipt row/section/verification metrics via EMF.
 
     Metrics-only: pulls the observability keys the lines pipeline returns
-    (row provenance, deterministic section proposals, Chroma verification
+    (row provenance, deterministic section proposals, vector verification
     outcomes) into one alarmable EMF log line. Never raises and never
     changes pipeline behavior.
     """
     try:
+        if embedding_result.get("verification_error"):
+            # Keep this alarm metric scoped to the receipt table so dev
+            # failures cannot trigger the production alarm. Existing
+            # section metrics retain their original dimension set.
+            emf_metrics.log_metrics(
+                {"UploadLambdaSectionVerificationError": 1.0},
+                dimensions={"TableName": os.environ["DYNAMODB_TABLE_NAME"]},
+                properties={
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "verification_error": embedding_result[
+                        "verification_error"
+                    ],
+                },
+            )
         metric_map = {
             "UploadLambdaReceiptRows": embedding_result.get("row_count"),
             "UploadLambdaSectionsProposed": embedding_result.get(
@@ -344,11 +366,9 @@ def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
         validated,
     )
 
-    # NOTE: grok corrections land in DynamoDB (the source of truth); Chroma's
-    # label metadata for these words converges on the next compaction. Pushing
-    # corrections into Chroma immediately via a corrective delta is deferred to
-    # the words-compaction reliability work (#990) — it overwhelms the current
-    # words-compaction subsystem, so it lands stacked on that fix.
+    # NOTE: grok corrections land in DynamoDB (the source of truth); the
+    # native embedding items' label attributes converge via the stream
+    # processor's vector-freshening leg.
 
     # Best-effort cleanup of the staged payload (idempotent if already gone).
     try:
@@ -377,7 +397,6 @@ def _process_single_record(
         site_bucket=os.environ["SITE_BUCKET"],
         ocr_job_queue_url=os.environ["OCR_JOB_QUEUE_URL"],
         ocr_results_queue_url=os.environ["OCR_RESULTS_QUEUE_URL"],
-        chromadb_bucket=os.environ.get("CHROMADB_BUCKET", ""),
     )
 
     # Step 1: Process OCR (parse, classify, store in DynamoDB)
@@ -441,9 +460,10 @@ def _process_single_record(
             # Initialize merchant-resolving embedding processor once
             # This processor generates embeddings, resolves merchant info, and
             # enriches the receipt in DynamoDB
+            dual_write_written = 0
+            dual_write_failed = 0
             embedding_processor = MerchantResolvingEmbeddingProcessor(
                 table_name=os.environ["DYNAMO_TABLE_NAME"],
-                chromadb_bucket=os.environ["CHROMADB_BUCKET"],
                 google_places_api_key=os.environ.get("GOOGLE_PLACES_API_KEY"),
                 openai_api_key=os.environ.get("OPENAI_API_KEY"),
             )
@@ -487,10 +507,18 @@ def _process_single_record(
                     if merchant_found:
                         total_merchants_found += 1
 
-                    # The processor reports False when no CompactionRun was
-                    # written. Its deltas are then orphaned in S3, nothing
-                    # will merge them, and it published nothing to Chroma
-                    # Cloud -- so this is a real failure even though no
+                    dual_write = (
+                        embedding_result.get("native_embeddings") or {}
+                    )
+                    dual_write_written += dual_write.get("written", 0)
+                    dual_write_failed += dual_write.get("failed", 0) + (
+                        1 if dual_write.get("error") else 0
+                    )
+
+                    # The processor reports False when the native DynamoDB
+                    # embedding write was absent or incomplete: the receipt
+                    # is then invisible to SearchVectors until the healing
+                    # backfill runs -- a real failure even though no
                     # exception was raised.
                     receipt_ok = bool(embedding_result.get("success", True))
                     if receipt_ok:
@@ -504,27 +532,21 @@ def _process_single_record(
                     else:
                         _log(
                             "ERROR: Embeddings incomplete for receipt %s: "
-                            "no compaction run was created, so its deltas "
-                            "are orphaned and nothing was published",
+                            "native embedding write absent or partial",
                             rid,
                         )
                         logger.error(
                             "Embedding incomplete for %s#%s: "
-                            "compaction_run_created=%s",
+                            "native_embeddings=%s",
                             image_id,
                             rid,
-                            embedding_result.get(
-                                "compaction_run_created", False
-                            ),
+                            embedding_result.get("native_embeddings"),
                         )
 
                     all_embedding_results.append(
                         {
                             "receipt_id": rid,
                             "success": receipt_ok,
-                            "compaction_run_created": embedding_result.get(
-                                "compaction_run_created", receipt_ok
-                            ),
                             "merchant_found": merchant_found,
                             "merchant_name": embedding_result.get(
                                 "merchant_name"
@@ -605,6 +627,8 @@ def _process_single_record(
                 "merchant_place_id": first_result.get("merchant_place_id"),
                 "merchants_found_count": total_merchants_found,
                 "all_embedding_results": all_embedding_results,
+                "dual_write_written": dual_write_written,
+                "dual_write_failed": dual_write_failed,
             }
 
         except Exception as exc:  # pylint: disable=broad-exception-caught

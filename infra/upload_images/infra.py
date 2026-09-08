@@ -34,12 +34,6 @@ google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
-# Chroma Cloud: the upload path queries Cloud (no per-receipt snapshot download).
-# Batch step functions keep using the local S3 snapshot.
-chroma_cloud_enabled = config.get("CHROMA_CLOUD_ENABLED") or ""
-chroma_cloud_api_key = config.get_secret("CHROMA_CLOUD_API_KEY") or ""
-chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
-chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 # Defer grok label validation to the async queue/consumer (off by default).
 llm_validation_async = config.get("LLM_VALIDATION_ASYNC") or "false"
 
@@ -61,7 +55,6 @@ class UploadImages(ComponentResource):
         name: str,
         raw_bucket: Bucket,
         site_bucket: Bucket,
-        chromadb_bucket_name: pulumi.Input[str] | None = None,
         vpc_subnet_ids: pulumi.Input[list[str]] | None = None,
         security_group_id: pulumi.Input[str] | None = None,
         label_validation_project_name: pulumi.Input[str] | None = None,
@@ -394,7 +387,6 @@ class UploadImages(ComponentResource):
                 image_bucket.arn,
                 self.ocr_queue.arn,
                 artifacts_bucket.arn,
-                pulumi.Output.from_input(chromadb_bucket_name),
                 self.llm_validation_queue.arn,
                 pulumi.Output.from_input(summary_queue_arn or ""),
             ).apply(
@@ -414,6 +406,7 @@ class UploadImages(ComponentResource):
                                         "dynamodb:UpdateItem",
                                         "dynamodb:DeleteItem",
                                         "dynamodb:BatchWriteItem",
+                                        "dynamodb:SearchVectors",
                                     ],
                                     "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
                                 },
@@ -424,7 +417,7 @@ class UploadImages(ComponentResource):
                                         "s3:PutObject",
                                         "s3:HeadObject",
                                         # Consumer deletes the staged async LLM
-                                        # payload on the chromadb bucket after use.
+                                        # payload (raw bucket) after use.
                                         "s3:DeleteObject",
                                     ],
                                     "Resource": [
@@ -432,12 +425,7 @@ class UploadImages(ComponentResource):
                                         args[2] + "/*",  # site_bucket
                                         args[3] + "/*",  # image_bucket
                                         args[5] + "/*",  # artifacts_bucket
-                                    ]
-                                    + (
-                                        [f"arn:aws:s3:::{args[6]}/*"]
-                                        if args[6]
-                                        else []
-                                    ),
+                                    ],
                                 },
                                 {
                                     # Explicit read access on the image
@@ -455,30 +443,19 @@ class UploadImages(ComponentResource):
                                     ],
                                 },
                             ]
-                            + (
-                                [
-                                    {
-                                        "Effect": "Allow",
-                                        "Action": "s3:ListBucket",
-                                        "Resource": f"arn:aws:s3:::{args[6]}",
-                                    }
-                                ]
-                                if args[6]
-                                else []
-                            )
                             + [
                                 {
                                     "Effect": "Allow",
                                     "Action": "sqs:SendMessage",
                                     "Resource": [
                                         args[4],  # ocr_queue.arn
-                                        args[7],  # llm_validation_queue.arn
+                                        args[6],  # llm_validation_queue.arn
                                     ]
                                     + (
                                         # summary queue (post-re-OCR
                                         # line-item refresh)
-                                        [args[8]]
-                                        if args[8]
+                                        [args[7]]
+                                        if args[7]
                                         else []
                                     ),
                                 },
@@ -568,9 +545,13 @@ class UploadImages(ComponentResource):
             "role_arn": process_ocr_role.arn,
             "timeout": 900,  # 15 minutes (longer for merchant validation + embedding)
             "memory_size": 3072,  # 3GB - optimal for ~2.2GB actual usage
-            "ephemeral_storage": 4096,  # 4GB for ChromaDB snapshot downloads (words=3.1GB)
+            "ephemeral_storage": 4096,  # 4GB scratch for image processing
             "environment": {
                 "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                # DynamoVectorSearchClient.from_env reads this spelling;
+                # without it the client falls back to the hard-coded dev
+                # table (codex review P1).
+                "DYNAMODB_TABLE_NAME": dynamodb_table.name,
                 "S3_BUCKET": image_bucket.bucket,
                 "RAW_BUCKET": raw_bucket.bucket,
                 "SITE_BUCKET": site_bucket.bucket,
@@ -586,16 +567,7 @@ class UploadImages(ComponentResource):
                 "RECEIPT_SUMMARY_QUEUE_URL": pulumi.Output.from_input(
                     summary_queue_url or ""
                 ),
-                "CHROMADB_BUCKET": chromadb_bucket_name,
-                # Chroma Cloud: the upload path reads from Cloud (skipping the
-                # S3 snapshot) and upserts freshly embedded vectors straight to
-                # it, so they are queryable without waiting for compaction.
-                "CHROMA_CLOUD_ENABLED": chroma_cloud_enabled,
-                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
-                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
-                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
-                # Gates the EMF metrics the ingest cloud upsert emits, matching
-                # the compaction Lambda's flag.
+                # Gates the EMF metrics the ingest pipeline emits.
                 "ENABLE_METRICS": "true",
                 # Note: SQS queue URLs removed - DynamoDB streams handle routing
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
@@ -633,7 +605,7 @@ class UploadImages(ComponentResource):
             build_context_path=".",  # Project root for monorepo access
             source_paths=[
                 "receipt_dynamo",
-                "receipt_chroma",
+                "receipt_embeddings",
                 "receipt_agent",
                 "receipt_places",
                 "receipt_upload",

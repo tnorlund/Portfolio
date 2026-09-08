@@ -4,12 +4,10 @@
 The cache contains:
 
 * A SQLite mirror of every item in the selected DynamoDB table.
-* Native ChromaDB snapshots for the ``lines`` and ``words`` collections.
 * Raw S3 images referenced by DynamoDB Image and Receipt records.
 
-DynamoDB is scanned in parallel, ChromaDB uses the repository's optimized
-snapshot downloader, and raw images are downloaded concurrently. Existing
-images and unchanged ChromaDB versions are reused on subsequent syncs.
+DynamoDB is scanned in parallel and raw images are downloaded
+concurrently. Existing images are reused on subsequent syncs.
 """
 
 from __future__ import annotations
@@ -41,12 +39,10 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "receipt_chroma"))
 
 SCHEMA_VERSION = 1
 DEFAULT_CACHE_DIR = REPO_ROOT / ".cache" / "analytics"
-CHROMA_COLLECTIONS = ("lines", "words")
-COMPONENTS = ("dynamodb", "chroma", "raw_images")
+COMPONENTS = ("dynamodb", "raw_images")
 LOG = logging.getLogger("local-analytics-cache")
 
 
@@ -56,7 +52,9 @@ def _utc_now() -> str:
 
 def _json_default(value: Any) -> Any:
     if isinstance(value, Decimal):
-        return int(value) if value == value.to_integral_value() else float(value)
+        return (
+            int(value) if value == value.to_integral_value() else float(value)
+        )
     if isinstance(value, (Binary, bytes, bytearray)):
         raw = bytes(value)
         return {"__base64__": base64.b64encode(raw).decode("ascii")}
@@ -81,7 +79,9 @@ def _restore_binary_values(value: Any) -> Any:
     if isinstance(value, dict):
         if set(value) == {"__base64__"}:
             return base64.b64decode(value["__base64__"])
-        return {key: _restore_binary_values(item) for key, item in value.items()}
+        return {
+            key: _restore_binary_values(item) for key, item in value.items()
+        }
     if isinstance(value, list):
         return [_restore_binary_values(item) for item in value]
     return value
@@ -100,7 +100,9 @@ def _string_attribute(item: dict[str, Any], name: str) -> str | None:
 
 def _native_item(item: dict[str, Any]) -> dict[str, Any]:
     deserializer = TypeDeserializer()
-    return {key: deserializer.deserialize(value) for key, value in item.items()}
+    return {
+        key: deserializer.deserialize(value) for key, value in item.items()
+    }
 
 
 def _safe_object_path(cache_root: Path, bucket: str, key: str) -> Path:
@@ -134,7 +136,9 @@ def _load_manifest(cache_root: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"Cannot read cache manifest {path}: {exc}") from exc
+        raise RuntimeError(
+            f"Cannot read cache manifest {path}: {exc}"
+        ) from exc
     return data if isinstance(data, dict) else {}
 
 
@@ -180,21 +184,20 @@ def _pulumi_outputs(env: str) -> dict[str, Any]:
 @dataclass(frozen=True)
 class SourceConfig:
     table_name: str | None
-    chroma_bucket: str | None
     raw_bucket: str | None
 
 
-def _resolve_sources(args: argparse.Namespace, components: set[str]) -> SourceConfig:
+def _resolve_sources(
+    args: argparse.Namespace, components: set[str]
+) -> SourceConfig:
     table_name = args.table_name or os.environ.get("DYNAMODB_TABLE_NAME")
-    chroma_bucket = args.chroma_bucket or os.environ.get("CHROMADB_BUCKET")
     raw_bucket = args.raw_bucket or os.environ.get("RAW_BUCKET")
 
-    needs_discovery = ("dynamodb" in components and not table_name) or (
-        "chroma" in components and not chroma_bucket
+    needs_discovery = "dynamodb" in components and not table_name
+    outputs: dict[str, Any] = (
+        _pulumi_outputs(args.env) if needs_discovery else {}
     )
-    outputs: dict[str, Any] = _pulumi_outputs(args.env) if needs_discovery else {}
     table_name = table_name or outputs.get("dynamodb_table_name")
-    chroma_bucket = chroma_bucket or outputs.get("embedding_chromadb_bucket_name")
     raw_bucket = raw_bucket or outputs.get("raw_bucket_name")
 
     if "dynamodb" in components and not table_name:
@@ -202,12 +205,7 @@ def _resolve_sources(args: argparse.Namespace, components: set[str]) -> SourceCo
             "DynamoDB table was not found. Pass --table-name or set "
             "DYNAMODB_TABLE_NAME."
         )
-    if "chroma" in components and not chroma_bucket:
-        raise RuntimeError(
-            "ChromaDB bucket was not found. Pass --chroma-bucket or set "
-            "CHROMADB_BUCKET."
-        )
-    return SourceConfig(table_name, chroma_bucket, raw_bucket)
+    return SourceConfig(table_name, raw_bucket)
 
 
 def _parse_components(value: str) -> set[str]:
@@ -244,8 +242,7 @@ class DynamoSQLiteWriter:
         self.connection.execute("PRAGMA journal_mode=OFF")
         self.connection.execute("PRAGMA synchronous=OFF")
         self.connection.execute("PRAGMA temp_store=MEMORY")
-        self.connection.executescript(
-            """
+        self.connection.executescript("""
             CREATE TABLE dynamo_items (
                 pk TEXT NOT NULL,
                 sk TEXT NOT NULL,
@@ -276,8 +273,7 @@ class DynamoSQLiteWriter:
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             ) WITHOUT ROWID;
-            """
-        )
+            """)
         self.lock = threading.Lock()
         self.row_count = 0
 
@@ -351,19 +347,15 @@ class DynamoSQLiteWriter:
             self.connection.execute(
                 "CREATE INDEX dynamo_items_image_idx ON dynamo_items(image_id)"
             )
-            self.connection.execute(
-                """CREATE INDEX dynamo_items_raw_s3_idx
-                ON dynamo_items(raw_s3_bucket, raw_s3_key)"""
-            )
-            self.connection.executescript(
-                """
+            self.connection.execute("""CREATE INDEX dynamo_items_raw_s3_idx
+                ON dynamo_items(raw_s3_bucket, raw_s3_key)""")
+            self.connection.executescript("""
                 CREATE VIEW images AS
                 SELECT * FROM dynamo_items WHERE entity_type = 'IMAGE';
 
                 CREATE VIEW receipts AS
                 SELECT * FROM dynamo_items WHERE entity_type = 'RECEIPT';
-                """
-            )
+                """)
             self.connection.executemany(
                 "INSERT OR REPLACE INTO cache_metadata(key, value) VALUES (?, ?)",
                 [(key, _json_dump(value)) for key, value in metadata.items()],
@@ -375,9 +367,9 @@ class DynamoSQLiteWriter:
                 ).fetchall()
             )
             self.row_count = int(
-                self.connection.execute("SELECT COUNT(*) FROM dynamo_items").fetchone()[
-                    0
-                ]
+                self.connection.execute(
+                    "SELECT COUNT(*) FROM dynamo_items"
+                ).fetchone()[0]
             )
             self.connection.execute("ANALYZE")
             self.connection.commit()
@@ -415,10 +407,16 @@ def _scan_segment(
         writer.add(items)
         pages += 1
         scanned += int(response.get("ScannedCount", len(items)))
-        capacity += float(response.get("ConsumedCapacity", {}).get("CapacityUnits", 0))
+        capacity += float(
+            response.get("ConsumedCapacity", {}).get("CapacityUnits", 0)
+        )
         last_key = response.get("LastEvaluatedKey")
         if not last_key:
-            return {"pages": pages, "scanned": scanned, "capacity_units": capacity}
+            return {
+                "pages": pages,
+                "scanned": scanned,
+                "capacity_units": capacity,
+            }
         kwargs["ExclusiveStartKey"] = last_key
 
 
@@ -431,7 +429,9 @@ def sync_dynamodb(
     raw_bucket_override: str | None,
     raw_bucket_fallback: str | None,
 ) -> dict[str, Any]:
-    LOG.info("Scanning DynamoDB table %s with %d segments", table_name, segments)
+    LOG.info(
+        "Scanning DynamoDB table %s with %d segments", table_name, segments
+    )
     table = client.describe_table(TableName=table_name)["Table"]
     writer = DynamoSQLiteWriter(
         destination,
@@ -519,116 +519,9 @@ def sync_dynamodb(
     }
 
 
-def _chroma_version(s3_client: Any, bucket: str, collection: str) -> str:
-    response = s3_client.get_object(
-        Bucket=bucket,
-        Key=f"{collection}/snapshot/latest-pointer.txt",
-    )
-    return response["Body"].read().decode("utf-8").strip()
-
-
-def _download_chroma_collection(
-    s3_client: Any,
-    bucket: str,
-    collection: str,
-    destination: Path,
-    workers: int,
-) -> dict[str, Any]:
-    from receipt_chroma.s3 import download_snapshot_atomic
-
-    destination.mkdir(parents=True, exist_ok=True)
-    result = download_snapshot_atomic(
-        bucket=bucket,
-        collection=collection,
-        local_path=str(destination),
-        verify_integrity=True,
-        s3_client=s3_client,
-        parallel=True,
-        max_workers=workers,
-    )
-    if result.get("status") != "downloaded":
-        raise RuntimeError(f"ChromaDB {collection} download failed: {result}")
-    return result
-
-
-def sync_chroma(
-    s3_client: Any,
-    bucket: str,
-    cache_root: Path,
-    staging_root: Path,
-    previous: dict[str, Any],
-    workers: int,
-    force: bool,
-) -> tuple[dict[str, Any], dict[str, Path]]:
-    LOG.info("Checking ChromaDB snapshot versions in s3://%s", bucket)
-    versions: dict[str, str] = {}
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = {
-            executor.submit(_chroma_version, s3_client, bucket, name): name
-            for name in CHROMA_COLLECTIONS
-        }
-        for future in as_completed(futures):
-            versions[futures[future]] = future.result()
-
-    previous_collections = previous.get("collections", {})
-    collection_stats: dict[str, Any] = {}
-    staged: dict[str, Path] = {}
-    downloads: dict[Any, tuple[str, Path]] = {}
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        for collection in CHROMA_COLLECTIONS:
-            current_path = cache_root / "chroma" / collection
-            old = previous_collections.get(collection, {})
-            unchanged = (
-                not force
-                and previous.get("valid") is True
-                and old.get("version_id") == versions[collection]
-                and any(current_path.rglob("chroma.sqlite3"))
-            )
-            if unchanged:
-                collection_stats[collection] = {
-                    **old,
-                    "version_id": versions[collection],
-                    "reused": True,
-                }
-                LOG.info(
-                    "Reusing ChromaDB %s snapshot %s", collection, versions[collection]
-                )
-                continue
-
-            destination = staging_root / "chroma" / collection
-            future = executor.submit(
-                _download_chroma_collection,
-                s3_client,
-                bucket,
-                collection,
-                destination,
-                workers,
-            )
-            downloads[future] = (collection, destination)
-
-        for future in as_completed(downloads):
-            collection, destination = downloads[future]
-            result = future.result()
-            collection_stats[collection] = {
-                "version_id": result.get("version_id"),
-                "path": f"chroma/{collection}",
-                "reused": False,
-            }
-            staged[collection] = destination
-            LOG.info("Downloaded ChromaDB %s snapshot", collection)
-
-    return (
-        {
-            "valid": True,
-            "bucket": bucket,
-            "collections": collection_stats,
-            "synced_at": _utc_now(),
-        },
-        staged,
-    )
-
-
-def _iter_raw_image_rows(db_path: Path) -> Iterator[tuple[str, str, str | None]]:
+def _iter_raw_image_rows(
+    db_path: Path,
+) -> Iterator[tuple[str, str, str | None]]:
     with sqlite3.connect(db_path) as connection:
         rows = connection.execute(
             "SELECT bucket, object_key, sha256 FROM raw_images ORDER BY bucket, object_key"
@@ -636,7 +529,9 @@ def _iter_raw_image_rows(db_path: Path) -> Iterator[tuple[str, str, str | None]]
         yield from rows
 
 
-def _load_previous_images(db_path: Path) -> dict[tuple[str, str], dict[str, Any]]:
+def _load_previous_images(
+    db_path: Path,
+) -> dict[tuple[str, str], dict[str, Any]]:
     if not db_path.exists():
         return {}
     try:
@@ -743,7 +638,9 @@ def _download_raw_image(
         temp_path.unlink(missing_ok=True)
 
 
-def _save_image_results(db_path: Path, results: Iterable[dict[str, Any]]) -> None:
+def _save_image_results(
+    db_path: Path, results: Iterable[dict[str, Any]]
+) -> None:
     with sqlite3.connect(db_path) as connection:
         connection.executemany(
             """
@@ -819,7 +716,9 @@ def sync_raw_images(
             f"s3://{item['bucket']}/{item['key']}: {item['error']}"
             for item in failures[:3]
         )
-        raise RuntimeError(f"{len(failures)} raw image downloads failed: {examples}")
+        raise RuntimeError(
+            f"{len(failures)} raw image downloads failed: {examples}"
+        )
 
     downloaded = sum(item["status"] == "downloaded" for item in results)
     cached = sum(item["status"] == "cached" for item in results)
@@ -827,25 +726,13 @@ def sync_raw_images(
         "valid": True,
         "path": "raw-images",
         "object_count": len(results),
-        "size_bytes": sum(int(item.get("size_bytes") or 0) for item in results),
+        "size_bytes": sum(
+            int(item.get("size_bytes") or 0) for item in results
+        ),
         "downloaded": downloaded,
         "reused": cached,
         "synced_at": _utc_now(),
     }
-
-
-def _swap_directory(source: Path, destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    old = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.old")
-    if destination.exists():
-        os.replace(destination, old)
-    try:
-        os.replace(source, destination)
-    except Exception:
-        if old.exists() and not destination.exists():
-            os.replace(old, destination)
-        raise
-    shutil.rmtree(old, ignore_errors=True)
 
 
 def sync_cache(args: argparse.Namespace) -> dict[str, Any]:
@@ -876,7 +763,6 @@ def sync_cache(args: argparse.Namespace) -> dict[str, Any]:
     dynamo_temp = staging_root / "dynamodb.sqlite3"
     active_db = cache_root / "dynamodb.sqlite3"
     db_for_images = dynamo_temp if "dynamodb" in components else active_db
-    staged_chroma: dict[str, Path] = {}
     raw_bucket_override = args.raw_bucket or os.environ.get("RAW_BUCKET")
 
     try:
@@ -893,7 +779,9 @@ def sync_cache(args: argparse.Namespace) -> dict[str, Any]:
 
         if "raw_images" in components:
             if not db_for_images.exists():
-                raise RuntimeError("DynamoDB cache is required to discover raw images")
+                raise RuntimeError(
+                    "DynamoDB cache is required to discover raw images"
+                )
             manifest["components"]["raw_images"] = sync_raw_images(
                 s3_client,
                 cache_root,
@@ -903,22 +791,8 @@ def sync_cache(args: argparse.Namespace) -> dict[str, Any]:
                 args.refresh_images,
             )
 
-        if "chroma" in components:
-            chroma_stats, staged_chroma = sync_chroma(
-                s3_client,
-                str(sources.chroma_bucket),
-                cache_root,
-                staging_root,
-                manifest["components"].get("chroma", {}),
-                args.chroma_workers,
-                args.force_chroma,
-            )
-            manifest["components"]["chroma"] = chroma_stats
-
         if "dynamodb" in components:
             os.replace(dynamo_temp, active_db)
-        for collection, staged_path in staged_chroma.items():
-            _swap_directory(staged_path, cache_root / "chroma" / collection)
 
         manifest["updated_at"] = _utc_now()
         manifest.setdefault("created_at", manifest["updated_at"])
@@ -938,7 +812,6 @@ def sync_cache(args: argparse.Namespace) -> dict[str, Any]:
 def _component_paths(cache_root: Path, component: str) -> list[Path]:
     return {
         "dynamodb": [cache_root / "dynamodb.sqlite3"],
-        "chroma": [cache_root / "chroma"],
         "raw_images": [cache_root / "raw-images"],
     }[component]
 
@@ -1063,7 +936,9 @@ def _start_dynamodb_local_container(args: argparse.Namespace) -> str:
         ) from exc
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or exc.stdout or str(exc)).strip()
-        raise RuntimeError(f"Could not start DynamoDB Local: {detail}") from exc
+        raise RuntimeError(
+            f"Could not start DynamoDB Local: {detail}"
+        ) from exc
     return name
 
 
@@ -1103,7 +978,9 @@ def _delete_local_table(client: Any, table_name: str) -> None:
     raise RuntimeError(f"Timed out deleting local DynamoDB table {table_name}")
 
 
-def _create_local_table(client: Any, table_name: str, schema: dict[str, Any]) -> None:
+def _create_local_table(
+    client: Any, table_name: str, schema: dict[str, Any]
+) -> None:
     kwargs: dict[str, Any] = {
         "TableName": table_name,
         "KeySchema": schema["KeySchema"],
@@ -1138,7 +1015,9 @@ def _create_local_table(client: Any, table_name: str, schema: dict[str, Any]) ->
 def _write_local_batch(
     client: Any, table_name: str, items: Sequence[dict[str, Any]]
 ) -> int:
-    request_items = {table_name: [{"PutRequest": {"Item": item}} for item in items]}
+    request_items = {
+        table_name: [{"PutRequest": {"Item": item}} for item in items]
+    }
     for attempt in range(10):
         response = client.batch_write_item(RequestItems=request_items)
         request_items = response.get("UnprocessedItems", {})
@@ -1199,7 +1078,9 @@ def serve_dynamodb_cache(args: argparse.Namespace) -> dict[str, Any]:
         container = None
     except (BotoCoreError, ClientError):
         if args.no_docker:
-            raise RuntimeError(f"No DynamoDB-compatible server at {endpoint_url}")
+            raise RuntimeError(
+                f"No DynamoDB-compatible server at {endpoint_url}"
+            )
         container = _start_dynamodb_local_container(args)
         client = _wait_for_dynamodb(endpoint_url, args.region)
 
@@ -1218,7 +1099,9 @@ def serve_dynamodb_cache(args: argparse.Namespace) -> dict[str, Any]:
         and _table_exists(client, table_name)
     )
     if current:
-        imported = int(local_state.get("item_count", state.get("row_count", 0)))
+        imported = int(
+            local_state.get("item_count", state.get("row_count", 0))
+        )
         LOG.info("DynamoDB Local already matches the cache; skipping import")
     else:
         LOG.info("Importing the cache into DynamoDB Local at %s", endpoint_url)
@@ -1243,7 +1126,9 @@ def serve_dynamodb_cache(args: argparse.Namespace) -> dict[str, Any]:
             "hydrated_at": _utc_now(),
         }
         temp = local_state_path.with_suffix(".tmp")
-        temp.write_text(json.dumps(local_state, indent=2, sort_keys=True) + "\n")
+        temp.write_text(
+            json.dumps(local_state, indent=2, sort_keys=True) + "\n"
+        )
         os.replace(temp, local_state_path)
 
     return {
@@ -1255,31 +1140,36 @@ def serve_dynamodb_cache(args: argparse.Namespace) -> dict[str, Any]:
             "DYNAMODB_ENDPOINT_URL": endpoint_url,
             "DYNAMODB_TABLE_NAME": table_name,
         },
-        "chroma": {
-            name: str(args.cache_root / "chroma" / name) for name in CHROMA_COLLECTIONS
-        },
     }
 
 
 def stop_dynamodb_cache(args: argparse.Namespace) -> dict[str, Any]:
     name = _container_name(args.env, args.port)
-    result = subprocess.run(["docker", "stop", name], capture_output=True, text=True)
+    result = subprocess.run(
+        ["docker", "stop", name], capture_output=True, text=True
+    )
     if result.returncode != 0 and "No such container" not in result.stderr:
         raise RuntimeError(result.stderr.strip())
     return {"container": name, "stopped": result.returncode == 0}
 
 
-def _validate_dynamodb_local(cache_root: Path, state: dict[str, Any]) -> list[str]:
+def _validate_dynamodb_local(
+    cache_root: Path, state: dict[str, Any]
+) -> list[str]:
     errors: list[str] = []
     db_path = cache_root / state.get("path", "dynamodb.sqlite3")
     if not db_path.exists():
         return [f"DynamoDB cache is missing: {db_path}"]
     try:
-        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as connection:
-            quick_check = connection.execute("PRAGMA quick_check").fetchone()[0]
-            count = connection.execute("SELECT COUNT(*) FROM dynamo_items").fetchone()[
+        with sqlite3.connect(
+            f"file:{db_path}?mode=ro", uri=True
+        ) as connection:
+            quick_check = connection.execute("PRAGMA quick_check").fetchone()[
                 0
             ]
+            count = connection.execute(
+                "SELECT COUNT(*) FROM dynamo_items"
+            ).fetchone()[0]
     except sqlite3.Error as exc:
         return [f"DynamoDB cache cannot be read: {exc}"]
     if quick_check != "ok":
@@ -1291,32 +1181,14 @@ def _validate_dynamodb_local(cache_root: Path, state: dict[str, Any]) -> list[st
     return errors
 
 
-def _validate_chroma_local(cache_root: Path, state: dict[str, Any]) -> list[str]:
-    errors: list[str] = []
-    for collection in CHROMA_COLLECTIONS:
-        path = cache_root / "chroma" / collection
-        sqlite_files = list(path.rglob("chroma.sqlite3")) if path.exists() else []
-        if not sqlite_files:
-            errors.append(f"ChromaDB {collection} cache is missing from {path}")
-            continue
-        try:
-            with sqlite3.connect(
-                f"file:{sqlite_files[0]}?mode=ro", uri=True
-            ) as connection:
-                check = connection.execute("PRAGMA quick_check").fetchone()[0]
-            if check != "ok":
-                errors.append(f"ChromaDB {collection} quick_check failed: {check}")
-        except sqlite3.Error as exc:
-            errors.append(f"ChromaDB {collection} cannot be read: {exc}")
-    return errors
-
-
 def _validate_images_local(cache_root: Path, db_path: Path) -> list[str]:
     errors: list[str] = []
     if not db_path.exists():
         return ["Raw images cannot be checked without the DynamoDB cache"]
     try:
-        with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as connection:
+        with sqlite3.connect(
+            f"file:{db_path}?mode=ro", uri=True
+        ) as connection:
             rows = connection.execute(
                 "SELECT bucket, object_key, local_path, size_bytes, status FROM raw_images"
             ).fetchall()
@@ -1371,55 +1243,55 @@ def validate_cache(args: argparse.Namespace) -> dict[str, Any]:
             continue
         if component == "dynamodb":
             errors.extend(_validate_dynamodb_local(cache_root, state))
-        elif component == "chroma":
-            errors.extend(_validate_chroma_local(cache_root, state))
         elif component == "raw_images":
             errors.extend(
-                _validate_images_local(cache_root, cache_root / "dynamodb.sqlite3")
+                _validate_images_local(
+                    cache_root, cache_root / "dynamodb.sqlite3"
+                )
             )
 
     if not args.local_only:
-        session = boto3.Session(profile_name=args.profile, region_name=args.region)
-        if "dynamodb" in selected and component_states.get("dynamodb", {}).get("valid"):
+        session = boto3.Session(
+            profile_name=args.profile, region_name=args.region
+        )
+        if "dynamodb" in selected and component_states.get("dynamodb", {}).get(
+            "valid"
+        ):
             state = component_states["dynamodb"]
             table = session.client("dynamodb").describe_table(
                 TableName=state["table_name"]
             )["Table"]
-            if state.get("table_arn") and state["table_arn"] != table.get("TableArn"):
+            if state.get("table_arn") and state["table_arn"] != table.get(
+                "TableArn"
+            ):
                 errors.append("DynamoDB cache points at a different table ARN")
             if int(state.get("described_item_count", -1)) != int(
                 table.get("ItemCount", -2)
             ):
-                errors.append("DynamoDB approximate item count changed; sync the cache")
+                errors.append(
+                    "DynamoDB approximate item count changed; sync the cache"
+                )
             warnings.append(
                 "DynamoDB DescribeTable item counts are approximate; only a sync "
                 "can detect same-count item updates."
             )
 
         s3_client = session.client("s3")
-        if "chroma" in selected and component_states.get("chroma", {}).get("valid"):
-            state = component_states["chroma"]
-            for collection in CHROMA_COLLECTIONS:
-                remote = _chroma_version(s3_client, state["bucket"], collection)
-                local = (
-                    state.get("collections", {}).get(collection, {}).get("version_id")
-                )
-                if remote != local:
-                    errors.append(
-                        f"ChromaDB {collection} changed ({local} -> {remote}); sync the cache"
-                    )
-
         if (
             args.deep
             and "raw_images" in selected
             and (cache_root / "dynamodb.sqlite3").exists()
         ):
             db_path = cache_root / "dynamodb.sqlite3"
-            with sqlite3.connect(f"file:{db_path}?mode=ro", uri=True) as connection:
+            with sqlite3.connect(
+                f"file:{db_path}?mode=ro", uri=True
+            ) as connection:
                 rows = connection.execute(
                     "SELECT bucket, object_key, etag, size_bytes FROM raw_images"
                 ).fetchall()
-            with ThreadPoolExecutor(max_workers=args.image_workers) as executor:
+            with ThreadPoolExecutor(
+                max_workers=args.image_workers
+            ) as executor:
                 remote_errors = executor.map(
                     lambda row: _validate_image_remote(s3_client, row), rows
                 )
@@ -1450,12 +1322,6 @@ def _print_status(manifest: dict[str, Any], cache_root: Path) -> None:
         f"valid={dynamo.get('valid', False)} rows={dynamo.get('row_count', 0):,} "
         f"path={dynamo.get('path', '-')}"
     )
-    chroma = components.get("chroma", {})
-    versions = ", ".join(
-        f"{name}={chroma.get('collections', {}).get(name, {}).get('version_id', '-')}"
-        for name in CHROMA_COLLECTIONS
-    )
-    print(f"ChromaDB: valid={chroma.get('valid', False)} {versions}")
     images = components.get("raw_images", {})
     print(
         "Raw images: "
@@ -1488,10 +1354,9 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument(
         "--components",
         default="all",
-        help="Comma-separated: dynamodb,chroma,images (default: all)",
+        help="Comma-separated: dynamodb,images (default: all)",
     )
     sync.add_argument("--table-name", help="DynamoDB table override")
-    sync.add_argument("--chroma-bucket", help="ChromaDB S3 bucket override")
     sync.add_argument(
         "--raw-bucket",
         help="Override the raw S3 bucket recorded in DynamoDB items",
@@ -1499,15 +1364,15 @@ def build_parser() -> argparse.ArgumentParser:
     sync.add_argument("--scan-segments", type=int, default=8)
     sync.add_argument("--consistent-read", action="store_true")
     sync.add_argument("--image-workers", type=int, default=32)
-    sync.add_argument("--chroma-workers", type=int, default=16)
     sync.add_argument(
         "--refresh-images",
         action="store_true",
         help="HEAD cached images and redownload changed objects",
     )
-    sync.add_argument("--force-chroma", action="store_true")
 
-    status = subparsers.add_parser("status", help="Show cached versions and counts")
+    status = subparsers.add_parser(
+        "status", help="Show cached versions and counts"
+    )
     _add_common_arguments(status)
     status.add_argument("--json", action="store_true", dest="as_json")
 
@@ -1546,10 +1411,14 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--no-docker", action="store_true")
     serve.add_argument("--force-import", action="store_true")
     serve.add_argument("--import-workers", type=int, default=16)
-    serve.add_argument("--docker-image", default="amazon/dynamodb-local:latest")
+    serve.add_argument(
+        "--docker-image", default="amazon/dynamodb-local:latest"
+    )
     serve.add_argument("--json", action="store_true", dest="as_json")
 
-    stop = subparsers.add_parser("stop", help="Stop the DynamoDB Local container")
+    stop = subparsers.add_parser(
+        "stop", help="Stop the DynamoDB Local container"
+    )
     _add_common_arguments(stop)
     stop.add_argument("--port", type=int, default=8000)
     stop.add_argument("--json", action="store_true", dest="as_json")
@@ -1567,11 +1436,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.command == "sync":
-            if (
-                args.scan_segments < 1
-                or args.image_workers < 1
-                or args.chroma_workers < 1
-            ):
+            if args.scan_segments < 1 or args.image_workers < 1:
                 parser.error("worker and segment counts must be positive")
             result = sync_cache(args)
             _print_status(result, args.cache_root)
@@ -1624,8 +1489,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
                 print(f"export DYNAMODB_ENDPOINT_URL={result['endpoint_url']}")
                 print(f"export DYNAMODB_TABLE_NAME={result['table_name']}")
-                for name, path in result["chroma"].items():
-                    print(f"ChromaDB {name}: {path}")
             return 0
         if args.command == "stop":
             result = stop_dynamodb_cache(args)

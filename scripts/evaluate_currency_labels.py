@@ -39,7 +39,6 @@ def load_config() -> dict:
 
     config = {
         "dynamodb_table_name": outputs.get("dynamodb_table_name"),
-        "chromadb_bucket": outputs.get("embedding_chromadb_bucket_name"),
         "openrouter_api_key": secrets.get("portfolio:OPENROUTER_API_KEY"),
         "langchain_api_key": secrets.get("portfolio:LANGCHAIN_API_KEY"),
     }
@@ -53,7 +52,9 @@ def load_config() -> dict:
         os.environ["LANGCHAIN_TRACING_V2"] = "true"
         os.environ["LANGCHAIN_PROJECT"] = "currency-evaluator-dev"
 
-    os.environ.setdefault("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    os.environ.setdefault(
+        "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+    )
     os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-oss-120b")
 
     return config

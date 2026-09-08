@@ -1,6 +1,14 @@
-# Prevent git operations
-git commit
-git push
-git add
-# Pulumi stack outputs are not needed in the repo
-pulumi
+# Paths Cursor should not index. Command restrictions live in .cursor/hooks.json.
+.venv/
+.venv-*/
+portfolio/node_modules/
+portfolio/.next/
+portfolio/coverage/
+portfolio/test-results/
+portfolio/playwright-report/
+receipt_ocr_swift/.build/
+.review-loop/
+receipt_data/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/

@@ -45,6 +45,7 @@ from PIL import Image as PILImage
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
+    from receipt_embeddings.protocols import EmbeddingTableHandle
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -84,6 +85,12 @@ DERIVED_RECOMPUTED_TYPES = {
     "RECEIPT_ROW",
     "RECEIPT_SECTION",
     "RECEIPT_SUMMARY",
+    # Native vector items (SPEC §3.2): machine-derived from lines/words.
+    # Cleanup's full-SK-prefix sweep deletes them with the source, and
+    # _dual_write_outputs_native_only writes fresh ones for the outputs
+    # before the commit — codex flip-review P1.
+    "RECEIPT_LINE_EMBEDDING",
+    "RECEIPT_WORD_EMBEDDING",
 }
 
 
@@ -1236,51 +1243,65 @@ def _stage_outputs(
             dynamo_client.add_receipt_place(output["place"])
 
 
-def _embed_outputs(
-    *,
-    outputs: list[dict[str, Any]],
-    dynamo_client: Any,
-    chromadb_bucket: str,
-    wait_for_embeddings: bool,
-) -> list[str]:
-    from receipt_chroma.embedding import (
-        EmbeddingConfig,
-        create_embeddings_and_compaction_run,
+def _dual_write_outputs_native_only(
+    *, outputs: list[dict[str, Any]], dynamo_client: "EmbeddingTableHandle"
+) -> None:
+    """Write output receipts' native DynamoDB embedding items.
+
+    Memory-light replacement for the OOM-prone snapshot-based
+    ``_embed_outputs`` it retired: build vector-less write
+    requests (the engine writer embeds realtime via OpenAI) using the
+    same formatting the ingest path uses. Raises on an incomplete
+    write so the apply fails BEFORE commit deletes the source vectors.
+    """
+    # pylint: disable=import-outside-toplevel
+    from receipt_embeddings import EmbeddingWriter
+    from receipt_embeddings.write_requests import (
+        build_embedding_write_requests,
     )
 
-    run_ids = []
     for output in outputs:
         receipt = output["receipt"]
-        config = EmbeddingConfig(
+        lines = output["lines"]
+        words = [
+            word for word in output["words"] if not word.is_noise
+        ] or output["words"]
+        labels = output["labels"] or []
+        place = output["place"]
+        merchant_name = str(getattr(place, "merchant_name", "") or "")
+        place_id = str(getattr(place, "place_id", "") or "")
+        # Canonical builder (polish-brief item 3): vector-less requests
+        # with embedding_input set, so the engine writer embeds realtime;
+        # blank rows/words are skipped (the writer refuses empty text).
+        requests = build_embedding_write_requests(
             image_id=receipt.image_id,
             receipt_id=receipt.receipt_id,
-            chromadb_bucket=chromadb_bucket,
-            dynamo_client=dynamo_client,
-            receipt_place=output["place"],
-            receipt_word_labels=output["labels"] or None,
+            lines=lines,
+            words=words,
+            word_labels=labels,
+            merchant_name=merchant_name,
+            place_id=place_id,
+            include_embedding_input=True,
+            missing_row="skip",
         )
-        result = create_embeddings_and_compaction_run(
-            receipt_lines=output["lines"],
-            receipt_words=[
-                word for word in output["words"] if not word.is_noise
-            ]
-            or output["words"],
-            config=config,
+        writer = EmbeddingWriter(
+            dynamo_client._client,  # pylint: disable=protected-access
+            dynamo_client.table_name,
         )
-        try:
-            run_ids.append(result.compaction_run.run_id)
-            if (
-                wait_for_embeddings
-                and not result.wait_for_compaction_to_finish(
-                    dynamo_client, max_wait_seconds=300
-                )
-            ):
-                raise RuntimeError(
-                    f"Embedding compaction failed for receipt {receipt.receipt_id}"
-                )
-        finally:
-            result.close()
-    return run_ids
+        report = writer.write(requests)
+        if report.failures:
+            raise RuntimeError(
+                "native output embedding write incomplete for receipt "
+                f"{receipt.receipt_id}: {len(report.failures)} failures "
+                "— aborting before commit so the split is retryable"
+            )
+        logger.info(
+            "Native-only output embeddings for %s: written=%d "
+            "skipped_existing=%d",
+            receipt.receipt_id,
+            report.written,
+            len(report.skipped_existing_keys),
+        )
 
 
 def _delete_uploaded_objects(
@@ -1401,7 +1422,6 @@ def apply_plan(
     s3_client: "S3Client",
     raw_bucket: str,
     site_bucket: str,
-    chromadb_bucket: str,
 ) -> dict[str, Any]:
     """Apply a persisted plan with staging, guarded commit, and cleanup."""
     from receipt_dynamo.data.shared_exceptions import (
@@ -1639,19 +1659,15 @@ def apply_plan(
             site_bucket=site_bucket,
             uploaded_keys=uploaded_keys,
         )
-        run_ids = []
-        # Embeddings default OFF: running them inline OOMs the deployed
-        # Lambda at its memory limit, and the outputs' embeddings self-heal
-        # through the normal pipeline. Opt in explicitly for tests/tools.
-        if event.get("create_embeddings", False):
-            run_ids = _embed_outputs(
-                outputs=outputs,
-                dynamo_client=dynamo_client,
-                chromadb_bucket=chromadb_bucket,
-                wait_for_embeddings=bool(
-                    event.get("wait_for_embeddings", True)
-                ),
-            )
+        # Cleanup deletes the source's embedding rows, so outputs MUST
+        # get native replacements before the commit. This light path
+        # embeds realtime via the engine writer (the retired snapshot
+        # based _embed_outputs OOMed the deployed Lambda) and
+        # raises on an incomplete write so the apply fails BEFORE the
+        # destructive commit (codex flip-review P1/P2).
+        _dual_write_outputs_native_only(
+            outputs=outputs, dynamo_client=dynamo_client
+        )
 
         # Re-verify the source fingerprint immediately before the commit (M2):
         # staging and embedding above widen the window in which an external
@@ -1715,7 +1731,6 @@ def apply_plan(
                 "output_receipt_ids": output_ids,
             }
 
-        result["compaction_run_ids"] = run_ids
         plan["status"] = "APPLIED"
         plan["result"] = result
         try:
@@ -1803,7 +1818,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         table_name = os.environ["DYNAMODB_TABLE_NAME"]
         raw_bucket = os.environ["RAW_BUCKET"]
         site_bucket = os.environ["SITE_BUCKET"]
-        chromadb_bucket = os.environ["CHROMADB_BUCKET"]
 
         from receipt_dynamo import DynamoClient
 
@@ -1871,7 +1885,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 s3_client=s3_client,
                 raw_bucket=raw_bucket,
                 site_bucket=site_bucket,
-                chromadb_bucket=chromadb_bucket,
             )
         except Exception as exc:
             if job_id is not None:

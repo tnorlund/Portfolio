@@ -8,8 +8,6 @@ harmonizer have been removed from the active surface.
 
 - `agentic/` - Agentic validation workflow for cases that need tool-driven
   exploration.
-- `validation/` - Deterministic validation workflow that prefers known ChromaDB
-  matches before falling back to agentic work.
 - `label_evaluator/` - Label quality checks, financial math validation, and
   related receipt health signals.
 - `place_id_finder/` - Finds missing Google Place IDs for receipt place data.

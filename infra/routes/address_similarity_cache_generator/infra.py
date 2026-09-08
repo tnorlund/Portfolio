@@ -5,10 +5,7 @@ from typing import Optional
 
 import pulumi
 import pulumi_aws as aws
-from pulumi import ComponentResource, Input, Output, ResourceOptions
-
-# Import the ChromaDB bucket name from the shared chromadb_buckets module
-from chromadb_buckets import bucket_name as chromadb_bucket_name
+from pulumi import ComponentResource, ResourceOptions
 
 # Import the DynamoDB table name from the dynamo_db module
 from dynamo_db import dynamodb_table
@@ -35,7 +32,6 @@ class AddressSimilarityCacheGenerator(ComponentResource):
         self,
         name: str,
         *,
-        chromadb_bucket_name: Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -45,7 +41,7 @@ class AddressSimilarityCacheGenerator(ComponentResource):
             opts,
         )
 
-        # Create dedicated S3 bucket for API cache (separate from ChromaDB bucket)
+        # Create dedicated S3 bucket for the API cache
         self.cache_bucket = aws.s3.Bucket(
             f"{name}-cache-bucket",
             force_destroy=not is_production,  # Prevent accidental data loss in prod
@@ -96,9 +92,6 @@ class AddressSimilarityCacheGenerator(ComponentResource):
         )
 
         # Create inline policies for DynamoDB and S3 access
-        # Split into separate policies like the compaction lambda does
-        # Convert Input[str] to Output[str] for proper resolution
-        chromadb_bucket_name_output = Output.from_input(chromadb_bucket_name)
 
         # DynamoDB access policy
         self.dynamodb_policy = aws.iam.RolePolicy(
@@ -115,37 +108,11 @@ class AddressSimilarityCacheGenerator(ComponentResource):
                                     "dynamodb:Query",
                                     "dynamodb:GetItem",
                                     "dynamodb:DescribeTable",
+                                    "dynamodb:SearchVectors",
                                 ],
                                 "Resource": [
                                     arn,
                                     f"{arn}/index/*",
-                                ],
-                            },
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # ChromaDB bucket read policy
-        self.chromadb_s3_policy = aws.iam.RolePolicy(
-            f"{name}-chromadb-s3-policy",
-            role=self.lambda_role.id,
-            policy=chromadb_bucket_name_output.apply(
-                lambda bucket: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:ListBucket",
-                                ],
-                                "Resource": [
-                                    f"arn:aws:s3:::{bucket}/*",
-                                    f"arn:aws:s3:::{bucket}",
                                 ],
                             },
                         ],
@@ -202,18 +169,17 @@ class AddressSimilarityCacheGenerator(ComponentResource):
             build_context_path=build_context_path,
             source_paths=[
                 "receipt_dynamo",
-                "receipt_chroma",
+                "receipt_embeddings",
             ],
             lambda_function_name=lambda_function_name,
             lambda_config={
                 "role_arn": self.lambda_role.arn,  # CodeBuildDockerImage expects role_arn
                 "timeout": 300,  # 5 minutes
-                "memory_size": 2048,  # More memory for ChromaDB operations
-                "ephemeral_storage": 10240,  # 10GB for snapshot download
+                "memory_size": 2048,
+                "ephemeral_storage": 10240,
                 "architectures": ["arm64"],
                 "environment": {
                     "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
-                    "CHROMADB_BUCKET": Output.from_input(chromadb_bucket_name),
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
                 },
             },
@@ -273,21 +239,17 @@ class AddressSimilarityCacheGenerator(ComponentResource):
 
 
 def create_address_similarity_cache_generator(
-    chromadb_bucket_name: Input[str],
     opts: Optional[ResourceOptions] = None,
 ) -> AddressSimilarityCacheGenerator:
     """Factory function to create address similarity cache generator."""
     return AddressSimilarityCacheGenerator(
         f"address-similarity-cache-generator-{pulumi.get_stack()}",
-        chromadb_bucket_name=chromadb_bucket_name,
         opts=opts,
     )
 
 
-# Create the component instance using bucket name
-cache_generator = create_address_similarity_cache_generator(
-    chromadb_bucket_name=chromadb_bucket_name,
-)
+# Create the component instance
+cache_generator = create_address_similarity_cache_generator()
 
 # Export for backward compatibility
 address_similarity_cache_generator_lambda = cache_generator.lambda_function

@@ -6,7 +6,7 @@ labels prices (LINE_TOTAL, and UNIT_PRICE in "N @ $X" rows) and product
 descriptions (PRODUCT_NAME) by geometry — recovering split-OCR prices
 ("$3." + "99") and tax-flag suffixes ("15.59T"). It does NOT find columns with a
 model; geometry encodes them directly. Proposals are emitted as PENDING labels so
-the existing Chroma-consensus + LLM validators confirm them downstream.
+the existing similarity-consensus + LLM validators confirm them downstream.
 
 Validated on a 7-receipt held-out set: PRODUCT_NAME F1 0.85, LINE_TOTAL F1 0.82 —
 ahead of a scoped LayoutLM (0.60 / 0.67). See the team memory
@@ -113,7 +113,7 @@ def reclassify_mislabeled_totals(
     line-item totals, so it also reports the receipt's existing ``LINE_TOTAL``
     labels that participate in the sum. Callers must lock those VALID and pull
     them (along with the invalidated SUBTOTAL/TAX) out of the pending set, or the
-    downstream Chroma/LLM validators will "correct" a real line total back to
+    downstream similarity/LLM validators will "correct" a real line total back to
     TAX using the very same coincidental arithmetic that caused the mislabel.
 
     Returns:
@@ -276,7 +276,8 @@ def reclassify_mislabeled_totals(
         )
 
     # The arithmetic is the authority: lock the receipt's existing LINE_TOTAL
-    # labels that participate in the reconciled sum so the Chroma/LLM validators
+    # labels that participate in the reconciled sum so the similarity/LLM
+    # validators
     # can't "correct" a real line total back to TAX via the same coincidental
     # arithmetic that caused the mislabel.
     cand_keys = {k for k, _, _ in candidates}
@@ -667,7 +668,7 @@ def propose_line_item_labels(
     )
     reason = f"Geometry line-item reconstruction (arithmetic {state})."
     # Auto-validate when the line totals provably sum to the receipt total;
-    # otherwise leave PENDING for the Chroma/LLM validators to confirm.
+    # otherwise leave PENDING for the similarity/LLM validators to confirm.
     status = (
         ValidationStatus.VALID.value
         if arith

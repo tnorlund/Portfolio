@@ -12,15 +12,29 @@ _SPEC = importlib.util.spec_from_file_location(
 assert _SPEC and _SPEC.loader
 _MODULE = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(_MODULE)
+_callback_urls = _MODULE._callback_urls
 _token_validity = _MODULE._token_validity
 
 
 class _Config:
-    def __init__(self, values: dict[str, int]) -> None:
+    def __init__(self, values: dict[str, object]) -> None:
         self._values = values
 
     def get_int(self, key: str) -> int | None:
+        value = self._values.get(key)
+        return value if isinstance(value, int) else None
+
+    def get_object(self, key: str) -> object | None:
         return self._values.get(key)
+
+
+def test_callback_defaults_cover_grok_bot_cursor_oauth() -> None:
+    callbacks = _callback_urls(_Config({}))
+
+    assert "https://www.cursor.com/agents/mcp/oauth/callback" in callbacks
+    assert "https://www.cursor.com/bot/mcp/oauth/callback" in callbacks
+    assert "http://localhost:8787/callback" in callbacks
+    assert "cursor://anysphere.cursor-mcp/oauth/callback" in callbacks
 
 
 def test_token_validity_uses_secure_defaults() -> None:

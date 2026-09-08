@@ -88,9 +88,7 @@ pulumi.runtime.set_mocks(
 # program uses (``resegment_receipt_lambda.infrastructure``): the component's
 # type token — and with it every child URN — must not depend on the Python
 # import path.
-_MODULE_PATH = (
-    _INFRA_DIR / "resegment_receipt_lambda" / "infrastructure.py"
-)
+_MODULE_PATH = _INFRA_DIR / "resegment_receipt_lambda" / "infrastructure.py"
 _SPEC = importlib.util.spec_from_file_location(
     "_resegment_infra_under_test", _MODULE_PATH
 )
@@ -112,12 +110,8 @@ def _run_program():
         raw_bucket_name="raw-bucket",
         site_bucket_name="site-bucket",
         image_bucket_name="image-bucket",
-        chromadb_bucket_name="chroma-bucket",
-        chromadb_bucket_arn="arn:aws:s3:::chroma-bucket",
     )
-    return component.urn.apply(
-        lambda urn: _COMPONENT.setdefault("urn", urn)
-    )
+    return component.urn.apply(lambda urn: _COMPONENT.setdefault("urn", urn))
 
 
 # Executes the mocked deployment synchronously and drains all outstanding
@@ -215,9 +209,7 @@ def test_single_generation_of_image_resources() -> None:
 def test_lambda_image_uri_derives_from_repo_resource() -> None:
     """The Lambda must point at the SAME ECR repository resource the
     pipeline's builder pushes to."""
-    repo = _only(
-        "resegment-receipt-img-repo", "aws:ecr/repository:Repository"
-    )
+    repo = _only("resegment-receipt-img-repo", "aws:ecr/repository:Repository")
     function = _only(
         "resegment-receipt-img-function", "aws:lambda/function:Function"
     )

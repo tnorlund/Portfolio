@@ -1,9 +1,10 @@
-"""Tests for the semantic (Chroma kNN) PRODUCT_NAME proposer."""
+"""Tests for the semantic vector-kNN PRODUCT_NAME proposer."""
 
 from types import SimpleNamespace
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
+from receipt_embeddings import ScoredItem
 
 from receipt_upload.line_items import propose_product_names
 
@@ -40,26 +41,30 @@ class _FakeClient:
     def __init__(self, primary="PRODUCT_NAME"):
         self.primary = primary
 
-    def query(self, **kwargs):
-        return {
-            "metadatas": [
-                [
-                    {
-                        "image_id": "other-1",
-                        "valid_labels_array": [self.primary],
-                    },
-                    {
-                        "image_id": "other-2",
-                        "valid_labels_array": [self.primary],
-                    },
-                    {
-                        "image_id": "other-3",
-                        "valid_labels_array": [self.primary],
-                    },
-                ]
-            ],
-            "distances": [[0.2, 0.3, 0.4]],
-        }
+    def search(self, vector, index, top_k, filters=None):
+        assert vector
+        assert index == "word-embeddings"
+        assert top_k == 13
+        assert filters == {"label_status": "validated"}
+        return [
+            ScoredItem(
+                key=f"word-{position}",
+                distance=distance,
+                metadata={
+                    "image_id": f"other-{position}",
+                    "valid_labels_array": [self.primary],
+                },
+            )
+            for position, distance in enumerate((0.2, 0.3, 0.4), 1)
+        ]
+
+    def get_vector(self, _key):
+        return [0.1] * 8
+
+
+class _FailingClient(_FakeClient):
+    def search(self, vector, index, top_k, filters=None):
+        raise RuntimeError("throttled")
 
 
 def _setup():
@@ -77,7 +82,9 @@ def _setup():
 
 def test_proposes_product_name_for_unlabeled_in_band_word():
     words, anchors, embeddings = _setup()
-    out = propose_product_names(words, anchors, _FakeClient(), embeddings)
+    out = propose_product_names(
+        words, anchors, embeddings, vector_client=_FakeClient()
+    )
     keys = {(lab.line_id, lab.word_id): lab for lab in out}
     assert (8, 1) in keys and keys[(8, 1)].label == "PRODUCT_NAME"
     assert keys[(8, 1)].validation_status == ValidationStatus.PENDING.value
@@ -88,15 +95,30 @@ def test_proposes_product_name_for_unlabeled_in_band_word():
 def test_skips_when_knn_majority_is_not_product():
     words, anchors, embeddings = _setup()
     out = propose_product_names(
-        words, anchors, _FakeClient(primary="LINE_TOTAL"), embeddings
+        words,
+        anchors,
+        embeddings,
+        vector_client=_FakeClient(primary="LINE_TOTAL"),
     )
     assert out == []
+
+
+def test_search_throttle_abstains_without_crashing():
+    words, anchors, embeddings = _setup()
+    assert (
+        propose_product_names(
+            words, anchors, embeddings, vector_client=_FailingClient()
+        )
+        == []
+    )
 
 
 def test_does_not_propose_for_already_labeled_words():
     words, anchors, embeddings = _setup()
     anchors = anchors + [_anchor(8, 1, "PRODUCT_NAME")]
-    out = propose_product_names(words, anchors, _FakeClient(), embeddings)
+    out = propose_product_names(
+        words, anchors, embeddings, vector_client=_FakeClient()
+    )
     assert (8, 1) not in {(lab.line_id, lab.word_id) for lab in out}
 
 
@@ -121,7 +143,9 @@ def test_o_label_word_is_still_a_candidate():
     """
     words, anchors, embeddings = _setup()
     anchors = anchors + [_pending(8, 1, "O", ValidationStatus.PENDING.value)]
-    out = propose_product_names(words, anchors, _FakeClient(), embeddings)
+    out = propose_product_names(
+        words, anchors, embeddings, vector_client=_FakeClient()
+    )
     assert keys_has(out, 8, 1)
 
 
@@ -131,7 +155,9 @@ def test_invalid_only_word_is_still_a_candidate():
     anchors = anchors + [
         _pending(8, 1, "PRODUCT_NAME", ValidationStatus.INVALID.value)
     ]
-    out = propose_product_names(words, anchors, _FakeClient(), embeddings)
+    out = propose_product_names(
+        words, anchors, embeddings, vector_client=_FakeClient()
+    )
     assert keys_has(out, 8, 1)
 
 
@@ -164,7 +190,9 @@ def test_field_keywords_are_never_proposed():
         embeddings[(line, 1)] = [0.1] * 8
     words.append(_w(20, 1, "$9.99", 0.72, 0.50))
 
-    out = propose_product_names(words, anchors, _FakeClient(), embeddings)
+    out = propose_product_names(
+        words, anchors, embeddings, vector_client=_FakeClient()
+    )
     assert (
         out == []
     ), f"field keywords were proposed: {[(o.line_id, o.word_id) for o in out]}"
@@ -180,7 +208,9 @@ def test_keyword_substring_is_not_blocked():
         _w(13, 1, "$9.99", 0.72, 0.50),
     ]
     embeddings = {(8, 1): [0.1] * 8}
-    out = propose_product_names(words, anchors, _FakeClient(), embeddings)
+    out = propose_product_names(
+        words, anchors, embeddings, vector_client=_FakeClient()
+    )
     assert keys_has(out, 8, 1)
 
 
