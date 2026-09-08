@@ -100,6 +100,15 @@ previous evidence. Partial or malformed output is not a successful checkpoint.
    for those candidates. Merchant/date/amount or perceptual similarity alone
    cannot establish identity. Multiple photos of one transaction need a
    reviewed `duplicate_of` link, retaining both source photos.
+   A failed date/amount search does not establish absence. Broaden to merchant
+   candidates without those filters, including undated records, and inspect
+   raw MCP words and candidate images. Summary extraction can mistake a return
+   deadline for the purchase date or an item price for the total. Corroborate
+   printed transaction references, products and tender details; inspect the
+   source and existing crop together. Record an existing import even when its
+   summary is wrong, with content QA still pending or failed. Preserve earlier
+   evidence when correcting a ledger link. If broader matching is unfinished,
+   keep the candidate unresolved and block an automatic upload retry.
 6. Reconcile the manifests with the helper below. Report all categories and
    the denominator, including partial enumeration and unresolved assets. A
    missing project hash is unknown evidence, not evidence of a new purchase.

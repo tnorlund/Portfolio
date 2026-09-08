@@ -32,6 +32,11 @@ writing a manifest. A project inventory alone is not a Photos-library scan.
   merchant/date/total, perceptual similarity, and upload timestamps are
   candidate evidence only. Review duplicate purchases against both images
   and corroborating transaction details. Keep both originals.
+  Broaden matching beyond summary dates and amounts: a return deadline may
+  be mislabeled as the purchase date, or an item price as the total. Inspect
+  raw MCP receipt text and candidate images before treating a photo as new.
+  Keep an unfinished match review unresolved; never retry an upload on the
+  strength of a filtered summary search alone.
   Preserve separate export occurrences with identical hashes; byte equality
   does not prove they are one Photos asset or resolve library coverage.
 - An upload record is not a verified receipt. Check the source image, words,
