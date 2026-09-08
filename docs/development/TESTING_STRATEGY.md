@@ -1,3 +1,5 @@
+> **Historical note (Sept 2026):** the ChromaDB legs described in this document were retired by the vector-store teardown (see `docs/chroma-removal/`). Vector similarity now runs against native DynamoDB embedding items via `receipt_embeddings`; the `receipt_chroma` package no longer exists.
+
 """
 Comprehensive Testing Strategy for ChromaDB Compaction System
 

@@ -41,7 +41,7 @@ class AddressSimilarityCacheGenerator(ComponentResource):
             opts,
         )
 
-        # Create dedicated S3 bucket for API cache (separate from ChromaDB bucket)
+        # Create dedicated S3 bucket for the API cache
         self.cache_bucket = aws.s3.Bucket(
             f"{name}-cache-bucket",
             force_destroy=not is_production,  # Prevent accidental data loss in prod
@@ -170,22 +170,16 @@ class AddressSimilarityCacheGenerator(ComponentResource):
             source_paths=[
                 "receipt_dynamo",
                 "receipt_embeddings",
-                "receipt_chroma",
             ],
             lambda_function_name=lambda_function_name,
             lambda_config={
                 "role_arn": self.lambda_role.arn,  # CodeBuildDockerImage expects role_arn
                 "timeout": 300,  # 5 minutes
-                "memory_size": 2048,  # More memory for ChromaDB operations
-                "ephemeral_storage": 10240,  # 10GB for snapshot download
+                "memory_size": 2048,
+                "ephemeral_storage": 10240,
                 "architectures": ["arm64"],
                 "environment": {
                     "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
-                    # Vector backend seam (chroma | dynamodb)
-                    "VECTOR_BACKEND": (
-                        pulumi.Config("portfolio").get("vector-backend")
-                        or "chroma"
-                    ),
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
                 },
             },

@@ -13,11 +13,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# receipt-chroma is a local monorepo package (not on PyPI). Only
-# section_propagate / section_propagate_eval need it; the glyph MCP Lambda
-# image installs the default (numpy + PIL only) package and must stay
-# resolvable without it.
-sections = ["receipt-chroma"]
+# receipt-embeddings is a local monorepo package (not on PyPI). Only
+# section_propagate needs it; the glyph MCP Lambda image installs the
+# default (numpy + PIL only) package and must stay resolvable without it.
+sections = ["receipt-embeddings"]
 
 [tool.setuptools]
 packages = ["glyphstudio"]

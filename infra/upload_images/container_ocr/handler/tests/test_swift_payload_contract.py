@@ -650,7 +650,6 @@ def test_handler_runs_embedding_after_ocr_persistence(monkeypatch):
         "SITE_BUCKET": "site-bucket",
         "OCR_JOB_QUEUE_URL": "https://sqs.test/jobs",
         "OCR_RESULTS_QUEUE_URL": "https://sqs.test/results",
-        "CHROMADB_BUCKET": "chroma-bucket",
     }.items():
         monkeypatch.setenv(key, value)
 

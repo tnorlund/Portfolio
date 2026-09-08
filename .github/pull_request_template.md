@@ -18,7 +18,7 @@
 
 - [ ] receipt_dynamo
 - [ ] receipt_dynamo_stream
-- [ ] receipt_chroma
+- [ ] receipt_embeddings
 - [ ] receipt_upload
 - [ ] receipt_places
 - [ ] receipt_agent

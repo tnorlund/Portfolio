@@ -86,8 +86,8 @@ def test_line_embedding_anchor_fields_round_trip() -> None:
 
 
 def test_line_embedding_anchor_fields_are_sparse_when_absent() -> None:
-    """Empty anchors omit the attributes entirely, mirroring the Chroma
-    metadata writer's presence-only anchor keys."""
+    """Empty anchors omit the attributes entirely (presence-only anchor
+    keys)."""
     embedding = ReceiptLineEmbedding(
         image_id=IMAGE_ID,
         receipt_id=1,

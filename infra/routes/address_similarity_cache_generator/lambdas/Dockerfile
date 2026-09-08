@@ -13,7 +13,6 @@ COPY receipt_embeddings/ /tmp/receipt_embeddings/
 
 # receipt_dynamo: DynamoDB client and constants
 # receipt_embeddings: backend-neutral embedding interfaces
-# (receipt_chroma retired: Chroma teardown)
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir --no-deps /tmp/receipt_embeddings && \
     rm -rf /tmp/receipt_dynamo /tmp/receipt_embeddings

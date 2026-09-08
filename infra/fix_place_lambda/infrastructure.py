@@ -2,7 +2,7 @@
 Pulumi infrastructure for Fix Place Lambda.
 
 This component creates a container-based Lambda that fixes incorrect
-ReceiptPlace records using a LangGraph agent with ChromaDB similarity
+ReceiptPlace records using a LangGraph agent with vector similarity
 search and Google Places API.
 
 The Lambda can be invoked directly with:
@@ -15,7 +15,7 @@ The Lambda can be invoked directly with:
 Architecture:
 - Container Lambda with all receipt_* packages
 - LangGraph agent with receipt context tools + similarity search
-- Chroma Cloud for vector similarity search
+- DynamoDB vector indexes for similarity search
 - Google Places API for place resolution
 - Updates ReceiptPlace in DynamoDB
 """
@@ -53,7 +53,7 @@ class FixPlaceLambda(ComponentResource):
     This Lambda uses a LangGraph agent to:
     1. Receive (image_id, receipt_id, reason)
     2. Examine receipt content (lines, words, labels)
-    3. Search ChromaDB for similar receipts
+    3. Search the vector index for similar receipts
     4. Search Google Places for correct match
     5. Submit place data with confidence scoring
     6. Update ReceiptPlace with corrected data
@@ -167,7 +167,7 @@ class FixPlaceLambda(ComponentResource):
         lambda_config = {
             "role_arn": lambda_role.arn,
             "timeout": 900,  # 15 min - LangGraph agent with tools
-            "memory_size": 3072,  # 3 GB for LLM agent + ChromaDB
+            "memory_size": 3072,  # 3 GB for LLM agent
             "tags": {"environment": stack},
             "environment": {
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
@@ -195,8 +195,6 @@ class FixPlaceLambda(ComponentResource):
                 "FIX_PLACE_AGENT_MAX_ROUNDS": "3",
                 # OpenAI (for embeddings)
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                # Vector search backend seam (chroma | dynamodb)
-                "VECTOR_BACKEND": (config.get("vector-backend") or "chroma"),
                 # LangSmith tracing
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
@@ -213,7 +211,6 @@ class FixPlaceLambda(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_agent",
-                "receipt_chroma",
                 "receipt_dynamo",
                 "receipt_embeddings",
                 "receipt_places",

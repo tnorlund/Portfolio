@@ -7,19 +7,19 @@ name = "portfolio-infra"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-    "pulumi>=3.260.0,<4.0.0",
+    "pulumi>=3.261.0,<4.0.0",
     "pulumi-aws>=7.44.0,<8.0.0",
     "pulumi-command>=1.2.1,<2.0.0",  # Updated to allow 1.x versions
     "pulumi-docker-build>=0.0.22",  # Used for Docker image building
     # Lambda Layer Version Update Tool dependencies
-    "boto3>=1.43.83,<1.44.0",
+    "boto3>=1.43.89,<1.44.0",
     "PyYAML>=6.0.3",
 ]
 
 [project.optional-dependencies]
 dev = [
     "black==26.5.1",
-    "isort==8.0.1",
+    "isort==9.0.1",
     "flake8>=7.3.0",  # Added version specification
     "mypy>=2.3.1",
     "pytest>=9.1.1",  # Added version specification
@@ -57,11 +57,9 @@ strict_equality = true
 # Ignore missing imports for third-party libraries
 [[tool.mypy.overrides]]
 module = [
-    "receipt_chroma.*",
     "receipt_dynamo.*",
     "boto3.*",
     "botocore.*",
-    "chromadb.*",
     "openai.*",
     "pulumi.*",
     "pulumi_aws.*",
@@ -121,7 +119,7 @@ logging-modules = ["logging"]
 
 [tool.pylint.imports]
 # Allow imports at any level for these modules
-allow-any-import-level = ["boto3", "botocore", "chromadb", "openai"]
+allow-any-import-level = ["boto3", "botocore", "openai"]
 
 [tool.pytest.ini_options]
 # Configure pytest to not import packages when collecting tests

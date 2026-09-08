@@ -74,6 +74,24 @@ public final class SotoS3Client: S3ClientProtocol {
 
     public init(s3: S3) { self.s3 = s3 }
 
+    public func headObject(bucket: String, key: String) async throws -> S3ObjectHead? {
+        do {
+            let response = try await s3.headObject(S3.HeadObjectRequest(bucket: bucket, key: key))
+            return S3ObjectHead(eTag: response.eTag ?? "", contentLength: Int(response.contentLength ?? 0))
+        } catch let error as AWSErrorType where error.errorCode == "NoSuchKey" || error.context?.responseCode == .notFound {
+            return nil
+        }
+    }
+
+    public func getObjectIfExists(bucket: String, key: String) async throws -> Data? {
+        do {
+            let response = try await s3.getObject(S3.GetObjectRequest(bucket: bucket, key: key))
+            return response.body?.asData() ?? Data()
+        } catch let error as AWSErrorType where error.errorCode == "NoSuchKey" || error.context?.responseCode == .notFound {
+            return nil
+        }
+    }
+
     public func getObject(bucket: String, key: String) async throws -> Data {
         let req = S3.GetObjectRequest(bucket: bucket, key: key)
         var data = Data()
@@ -497,4 +515,3 @@ public final class SotoDynamoClient: DynamoClientProtocol {
         )
     }
 }
-

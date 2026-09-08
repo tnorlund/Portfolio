@@ -553,7 +553,8 @@ def create_combined_receipt_records(
     # Create ReceiptWord entities
     # IMPORTANT: We assign word IDs sequentially to ALL words (including noise)
     # to maintain proper structure (words belong to lines, letters belong to words).
-    # However, we need to ensure word IDs match between DynamoDB and ChromaDB.
+    # However, we need to ensure word IDs match between DynamoDB and the
+    # embedding index.
     # Since noise words are filtered out during embedding, we assign IDs to all
     # words but only non-noise words will be embedded with those IDs.
     receipt_words = []

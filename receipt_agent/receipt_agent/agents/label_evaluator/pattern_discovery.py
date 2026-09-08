@@ -3,31 +3,24 @@
 This module provides functions to discover line item patterns from receipt data
 using LLM analysis. It can be used both locally for development and in Lambda.
 
-The hybrid approach combines:
+The prompt combines:
 1. Raw receipt structure (lines with y-positions and words)
-2. Chroma-enriched validated label examples from the same merchant
+2. Optional validated label examples from the same merchant
 
 Usage:
     from receipt_agent.agents.label_evaluator.pattern_discovery import (
         build_receipt_structure,
         build_discovery_prompt,
         discover_patterns_with_llm,
-        query_label_examples_from_chroma,
     )
 
     # Fetch receipt data
     receipts_data = build_receipt_structure(dynamo_client, "Sprouts Farmers Market")
 
-    # Optionally get Chroma-validated examples
-    label_examples = query_label_examples_from_chroma(
-        chroma_client, "Sprouts Farmers Market"
-    )
-
-    # Build prompt with both sources
+    # Build prompt
     prompt = build_discovery_prompt(
         "Sprouts Farmers Market",
         receipts_data,
-        label_examples=label_examples,
     )
 
     # Call LLM
@@ -47,8 +40,6 @@ from receipt_agent.prompts.structured_outputs import (
     PatternDiscoveryResponse,
     extract_json_from_response,
 )
-from receipt_agent.utils.chroma_types import extract_query_metadata_rows
-from receipt_agent.utils.label_metadata import parse_labels_from_metadata
 from receipt_agent.utils.structured_output import (
     get_structured_output_settings,
 )
@@ -85,7 +76,7 @@ class DynamoClientProtocol(Protocol):
 
 @dataclass
 class LabelExample:
-    """A validated label example from ChromaDB."""
+    """A validated label example for a merchant."""
 
     word_text: str
     label: str
@@ -99,7 +90,9 @@ class LabelExample:
 class LabelExamples:
     """Collection of validated label examples by label type."""
 
-    examples_by_label: dict[str, list[LabelExample]] = field(default_factory=dict)
+    examples_by_label: dict[str, list[LabelExample]] = field(
+        default_factory=dict
+    )
     merchant_name: str = ""
     total_examples: int = 0
 
@@ -125,9 +118,7 @@ class LabelExamples:
             if examples:
                 example_strs = []
                 for ex in examples:
-                    context = (
-                        f"[{ex.left_neighbor}] {ex.word_text} [{ex.right_neighbor}]"
-                    )
+                    context = f"[{ex.left_neighbor}] {ex.word_text} [{ex.right_neighbor}]"
                     example_strs.append(
                         f'"{ex.word_text}" at x={ex.x_position:.2f} ({context})'
                     )
@@ -212,167 +203,6 @@ def _build_pattern_response_format() -> dict[str, Any]:
     }
 
 
-# =============================================================================
-# ChromaDB Query Functions
-# =============================================================================
-
-
-def query_label_examples_from_chroma(
-    chroma_client: Any,
-    merchant_name: str,
-    embed_fn: Any,
-    labels: list[str] | None = None,
-    max_per_label: int = 10,
-) -> LabelExamples:
-    """Query ChromaDB for validated label examples from a specific merchant.
-
-    Uses semantic search with label names to find examples.
-
-    Args:
-        chroma_client: ChromaDB client (DualChromaClient or similar)
-        merchant_name: Name of the merchant to query
-        embed_fn: Embedding function to generate query embeddings
-        labels: List of label types to query (defaults to LINE_ITEM_LABELS)
-        max_per_label: Maximum examples to fetch per label type
-
-    Returns:
-        LabelExamples containing validated examples by label type
-    """
-    if labels is None:
-        labels = LINE_ITEM_LABELS
-
-    result = LabelExamples(merchant_name=merchant_name)
-
-    try:
-        for label in labels:
-            try:
-                # Search using the label name as query text
-                # This finds words that are semantically similar to the label concept
-                query_embedding = embed_fn([label.lower().replace("_", " ")])
-
-                query_result = chroma_client.query(
-                    collection_name="words",
-                    query_embeddings=query_embedding,
-                    n_results=max_per_label * 3,  # Get extra to filter
-                    where={
-                        "$and": [
-                            {"merchant_name": {"$eq": merchant_name}},
-                            {"label_status": {"$in": ["validated", "auto_suggested"]}},
-                        ]
-                    },
-                    include=["metadatas", "distances"],
-                )
-
-                metadatas = extract_query_metadata_rows(query_result)
-                count = 0
-                for metadata in metadatas:
-                    if count >= max_per_label:
-                        break
-                    valid_labels = parse_labels_from_metadata(
-                        metadata,
-                        array_field="valid_labels_array",
-                    )
-                    if label in valid_labels:
-                        example = LabelExample(
-                            word_text=metadata.get("text", ""),
-                            label=label,
-                            x_position=metadata.get("x", 0.5),
-                            y_position=metadata.get("y", 0.5),
-                            left_neighbor=metadata.get("left", "<EDGE>"),
-                            right_neighbor=metadata.get("right", "<EDGE>"),
-                        )
-                        result.add_example(label, example)
-                        count += 1
-
-            except Exception as e:
-                logger.debug("Error querying label %s: %s", label, e)
-                continue
-
-    except Exception as e:
-        logger.warning("Error querying Chroma for label examples: %s", e)
-
-    logger.info(
-        "Found %d label examples for %s from Chroma",
-        result.total_examples,
-        merchant_name,
-    )
-    return result
-
-
-def query_label_examples_simple(
-    chroma_client: Any,
-    merchant_name: str,
-    embed_fn: Any | None = None,
-    max_total: int = 50,
-) -> LabelExamples:
-    """Query ChromaDB for label examples using a simpler approach.
-
-    Uses semantic search for "receipt line item" to find relevant words,
-    then filters by merchant and groups by label.
-
-    Args:
-        chroma_client: ChromaDB client
-        merchant_name: Name of the merchant to query
-        embed_fn: Embedding function (required for query)
-        max_total: Maximum total examples to fetch
-
-    Returns:
-        LabelExamples containing validated examples by label type
-    """
-    result = LabelExamples(merchant_name=merchant_name)
-
-    if embed_fn is None:
-        logger.warning("embed_fn required for query_label_examples_simple")
-        return result
-
-    try:
-        # Generate embedding for a general query
-        query_embedding = embed_fn(["product price total quantity"])
-
-        # Query for validated words from this merchant
-        query_result = chroma_client.query(
-            collection_name="words",
-            query_embeddings=query_embedding,
-            n_results=max_total,
-            where={
-                "$and": [
-                    {"merchant_name": {"$eq": merchant_name}},
-                    {"label_status": {"$in": ["validated", "auto_suggested"]}},
-                ]
-            },
-            include=["metadatas", "distances"],
-        )
-
-        metadatas = extract_query_metadata_rows(query_result)
-        for metadata in metadatas:
-            valid_labels = parse_labels_from_metadata(
-                metadata,
-                array_field="valid_labels_array",
-            )
-
-            for label in valid_labels:
-                if label in LINE_ITEM_LABELS:
-                    example = LabelExample(
-                        word_text=metadata.get("text", ""),
-                        label=label,
-                        x_position=metadata.get("x", 0.5),
-                        y_position=metadata.get("y", 0.5),
-                        left_neighbor=metadata.get("left", "<EDGE>"),
-                        right_neighbor=metadata.get("right", "<EDGE>"),
-                    )
-                    result.add_example(label, example)
-
-    except Exception as e:
-        logger.warning("Error querying Chroma for label examples: %s", e)
-
-    logger.info(
-        "Found %d label examples for %s from Chroma",
-        result.total_examples,
-        merchant_name,
-    )
-    return result
-
-
 def build_receipt_structure(
     dynamo_client: DynamoClientProtocol,
     merchant_name: str,
@@ -392,11 +222,15 @@ def build_receipt_structure(
     Returns:
         List of receipt structures with lines and word data
     """
-    result = dynamo_client.get_receipt_places_by_merchant(merchant_name, limit=limit)
+    result = dynamo_client.get_receipt_places_by_merchant(
+        merchant_name, limit=limit
+    )
     receipt_places = result[0] if result else []
 
     if not receipt_places:
-        logger.warning("No receipt places found for merchant: %s", merchant_name)
+        logger.warning(
+            "No receipt places found for merchant: %s", merchant_name
+        )
         return []
 
     receipts_data = []
@@ -443,7 +277,9 @@ def build_receipt_structure(
         # Sort lines by y-position (top to bottom)
         sorted_lines = []
         for line_id, line_words in lines.items():
-            avg_y = sum(w.bounding_box["y"] for w in line_words) / len(line_words)
+            avg_y = sum(w.bounding_box["y"] for w in line_words) / len(
+                line_words
+            )
             line_words.sort(key=lambda w: w.bounding_box["x"])
             sorted_lines.append((line_id, avg_y, line_words))
         sorted_lines.sort(key=lambda x: -x[1])  # Highest y (top) first
@@ -488,7 +324,9 @@ def build_receipt_structure(
             # Include some context before and after
             context_lines = 5
             start_idx = max(0, first_item_idx - context_lines)
-            end_idx = min(len(receipt_lines), last_item_idx + context_lines + 1)
+            end_idx = min(
+                len(receipt_lines), last_item_idx + context_lines + 1
+            )
 
             # If the section is too large, prioritize from the start
             if end_idx - start_idx > max_lines:
@@ -530,7 +368,7 @@ def build_discovery_prompt(
     Args:
         merchant_name: Name of the merchant
         receipts_data: List of receipt structures from build_receipt_structure
-        label_examples: Optional Chroma-validated label examples
+        label_examples: Optional validated label examples
 
     Returns:
         Prompt string for the LLM
@@ -542,7 +380,11 @@ def build_discovery_prompt(
         # Include more lines now that we're focused on line items section
         for line in receipt["lines"][:60]:
             words_str = " ".join(
-                (f"{w['text']}[{','.join(w['labels'])}]" if w["labels"] else w["text"])
+                (
+                    f"{w['text']}[{','.join(w['labels'])}]"
+                    if w["labels"]
+                    else w["text"]
+                )
                 for w in line["words"]
             )
             lines.append(f"  y={line['y']:.2f} | {words_str}")
@@ -717,7 +559,9 @@ def _call_llm_direct(
         result = response.json()
 
     # OpenRouter uses OpenAI-compatible response format
-    content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+    content = (
+        result.get("choices", [{}])[0].get("message", {}).get("content", "")
+    )
     return _parse_llm_response(
         content,
         strict_structured_output=strict_structured_output,
@@ -761,7 +605,9 @@ def _call_llm_with_tracing(
             "temperature": 0.0,
         }
         if strict_structured_output:
-            request_payload["response_format"] = _build_pattern_response_format()
+            request_payload["response_format"] = (
+                _build_pattern_response_format()
+            )
 
         with httpx.Client(timeout=120.0) as client:
             response = client.post(
@@ -776,14 +622,22 @@ def _call_llm_with_tracing(
             result = response.json()
 
         # OpenRouter uses OpenAI-compatible response format
-        content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+        content = (
+            result.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        )
 
         # Capture raw output in trace
         llm_trace_ctx.set_outputs(
             {
-                "raw_response": (content[:2000] if len(content) > 2000 else content),
+                "raw_response": (
+                    content[:2000] if len(content) > 2000 else content
+                ),
                 "model": result.get("model"),
-                "finish_reason": result.get("choices", [{}])[0].get("finish_reason"),
+                "finish_reason": result.get("choices", [{}])[0].get(
+                    "finish_reason"
+                ),
             }
         )
 

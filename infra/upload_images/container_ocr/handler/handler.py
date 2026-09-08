@@ -7,8 +7,7 @@ Combines:
 2. Merchant validation and embedding
 
 Updated: 2026-01-14 - Fixed entity serialization: use asdict() and **unpacking instead of to_dict/from_dict
-Updated: 2026-01-15 - Added chroma_label_validation trace for visibility into Phase 2 parallelism
-Updated: 2026-01-18 - Force rebuild with latest receipt_chroma and receipt_upload packages
+Updated: 2026-01-15 - Added similarity_label_validation trace for visibility into Phase 2 parallelism
 """
 
 import json
@@ -226,7 +225,7 @@ def _emit_section_observability(
     """Emit per-receipt row/section/verification metrics via EMF.
 
     Metrics-only: pulls the observability keys the lines pipeline returns
-    (row provenance, deterministic section proposals, Chroma verification
+    (row provenance, deterministic section proposals, vector verification
     outcomes) into one alarmable EMF log line. Never raises and never
     changes pipeline behavior.
     """
@@ -352,11 +351,9 @@ def _process_llm_validation_record(record: Dict[str, Any]) -> Dict[str, Any]:
         validated,
     )
 
-    # NOTE: grok corrections land in DynamoDB (the source of truth); Chroma's
-    # label metadata for these words converges on the next compaction. Pushing
-    # corrections into Chroma immediately via a corrective delta is deferred to
-    # the words-compaction reliability work (#990) — it overwhelms the current
-    # words-compaction subsystem, so it lands stacked on that fix.
+    # NOTE: grok corrections land in DynamoDB (the source of truth); the
+    # native embedding items' label attributes converge via the stream
+    # processor's vector-freshening leg.
 
     # Best-effort cleanup of the staged payload (idempotent if already gone).
     try:

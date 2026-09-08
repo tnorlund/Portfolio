@@ -125,8 +125,10 @@ class _FakeDynamo:
         return list(self.sections)
 
 
+@pytest.mark.parametrize("merchant_name", [None, "Unrelated Merchant"])
 def test_lines_worker_orders_merchant_sections_verification(
     monkeypatch,
+    merchant_name,
 ):
     """Merchant resolution must precede section assignment (sections are
     merchant-conditioned), and assignment must precede verification. The
@@ -180,8 +182,8 @@ def test_lines_worker_orders_merchant_sections_verification(
 
         def resolve(self, **kwargs) -> MerchantResult:
             calls.append("resolve_merchant")
-            assert kwargs.get("lines_client") is None
-            return MerchantResult(merchant_name=None)
+            assert "lines_client" not in kwargs
+            return MerchantResult(merchant_name=merchant_name)
 
     def _fake_assign(dynamo, rows, assign_lines, merchant_name, model=None):
         calls.append("assign_sections")
@@ -193,11 +195,8 @@ def test_lines_worker_orders_merchant_sections_verification(
         assert merchant_name is None  # resolution already happened (no match)
         return [], dict(section_by_line)
 
-    def _fake_verify(
-        chroma, dynamo, rows, row_embeddings, *, vector_client=None
-    ):
+    def _fake_verify(dynamo, rows, row_embeddings, *, vector_client=None):
         calls.append("verify_sections")
-        assert chroma is None
         # The same seam client the resolver got verifies sections.
         assert vector_client is fake_vector_client
         assert len(rows) == len(row_embeddings)
@@ -213,11 +212,13 @@ def test_lines_worker_orders_merchant_sections_verification(
     monkeypatch.setattr(
         verifier_module, "verify_receipt_sections", _fake_verify
     )
-    monkeypatch.setattr(
-        vector_search_module,
-        "vector_search_client",
-        lambda *_a, **_k: fake_vector_client,
-    )
+
+    def _factory(*, dynamodb_client, table_name):
+        assert dynamodb_client is fake_dynamo._client
+        assert table_name == "table"
+        return fake_vector_client
+
+    monkeypatch.setattr(vector_search_module, "vector_search_client", _factory)
 
     row_line_ids_list = [row.line_ids for row in persisted_rows]
     row_embeddings = [[0.1, 0.2] for _ in persisted_rows]
@@ -585,7 +586,7 @@ def test_verifier_annotates_without_changing_type_or_membership():
             (_NEIGHBOR_IMAGE_ID, 2): neighbor_sections,
         }
     )
-    chroma = _FakeLinesQuery(
+    vector = _FakeLinesQuery(
         [
             [_neighbor([5]), _same_receipt_neighbor()],
             [_neighbor([6])],
@@ -593,7 +594,9 @@ def test_verifier_annotates_without_changing_type_or_membership():
         ]
     )
 
-    verified = verify_receipt_sections(chroma, store, rows, row_embeddings)
+    verified = verify_receipt_sections(
+        store, rows, row_embeddings, vector_client=vector
+    )
 
     # Independent predictions exist only where cross-receipt VALID evidence
     # was found (rows 1 and 2).
@@ -647,9 +650,9 @@ def test_verifier_never_demotes_human_valid_sections():
             (_NEIGHBOR_IMAGE_ID, 2): neighbor_sections,
         }
     )
-    chroma = _FakeLinesQuery([[_neighbor([6])]])
+    vector = _FakeLinesQuery([[_neighbor([6])]])
 
-    verify_receipt_sections(chroma, store, rows, row_embeddings)
+    verify_receipt_sections(store, rows, row_embeddings, vector_client=vector)
 
     section = store.by_receipt[(_IMAGE_ID, 1)][0]
     assert section.verification_status == "DISAGREED"
@@ -664,9 +667,9 @@ def test_verifier_ignores_non_model_sections():
         _pending_section("STOREFRONT", 1), model_source="human-qa"
     )
     store = _VerifierStore({(_IMAGE_ID, 1): [human_section]})
-    chroma = _FakeLinesQuery([[_same_receipt_neighbor()]])
+    vector = _FakeLinesQuery([[_same_receipt_neighbor()]])
 
-    verify_receipt_sections(chroma, store, rows, [[1.0, 0.0]])
+    verify_receipt_sections(store, rows, [[1.0, 0.0]], vector_client=vector)
 
     # Sections not produced by the deterministic model are left untouched.
     assert store.updates == []

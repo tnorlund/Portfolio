@@ -16,6 +16,8 @@ public struct Config {
     // LayoutLM model configuration
     public let layoutLMModelS3Bucket: String?
     public let layoutLMModelS3Key: String?
+    public let layoutLMPointerKey: String
+    public let environment: String
     public let layoutLMLocalCachePath: String
 
     public init(
@@ -28,7 +30,9 @@ public struct Config {
         rawBucketName: String,
         layoutLMModelS3Bucket: String? = nil,
         layoutLMModelS3Key: String? = nil,
-        layoutLMLocalCachePath: String = ".models/layoutlm"
+        layoutLMLocalCachePath: String = ".models/layoutlm/local",
+        layoutLMPointerKey: String = "coreml/active.json",
+        environment: String = "local"
     ) {
         self.ocrJobQueueURL = ocrJobQueueURL
         self.ocrResultsQueueURL = ocrResultsQueueURL
@@ -40,6 +44,8 @@ public struct Config {
         self.layoutLMModelS3Bucket = layoutLMModelS3Bucket
         self.layoutLMModelS3Key = layoutLMModelS3Key
         self.layoutLMLocalCachePath = layoutLMLocalCachePath
+        self.layoutLMPointerKey = layoutLMPointerKey
+        self.environment = environment
     }
 }
 
@@ -99,6 +105,7 @@ public extension Config {
         layoutLMModelS3Bucket: String? = nil,
         layoutLMModelS3Key: String? = nil,
         layoutLMLocalCachePath: String? = nil,
+        layoutLMPointerKey: String? = nil,
         pulumi: PulumiLoading = PulumiLoader()
     ) throws -> Config {
         var logger = Logger(label: "receipt.ocr.config")
@@ -139,7 +146,8 @@ public extension Config {
         // LayoutLM config - optional, can also come from Pulumi outputs
         let modelBucket = value("layoutlm_model_s3_bucket", explicit: layoutLMModelS3Bucket, from: outputs)
         let modelKey = value("layoutlm_model_s3_key", explicit: layoutLMModelS3Key, from: outputs)
-        let cachePath = layoutLMLocalCachePath ?? ".models/layoutlm"
+        let cachePath = layoutLMLocalCachePath ?? ".models/layoutlm/\(env ?? "local")"
+        let pointerKey = value("layoutlm_model_pointer_key", explicit: layoutLMPointerKey, from: outputs) ?? "coreml/active.json"
 
         // Log LayoutLM configuration status
         if let bucket = modelBucket, let key = modelKey {
@@ -160,7 +168,9 @@ public extension Config {
             rawBucketName: rawBucketName,
             layoutLMModelS3Bucket: modelBucket,
             layoutLMModelS3Key: modelKey,
-            layoutLMLocalCachePath: cachePath
+            layoutLMLocalCachePath: cachePath,
+            layoutLMPointerKey: pointerKey,
+            environment: env ?? "local"
         )
     }
 }

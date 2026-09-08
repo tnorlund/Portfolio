@@ -1,0 +1,65 @@
+name: Lambda image compatibility
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      needed: ${{ steps.plan.outputs.needed }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import os, pathlib, subprocess
+          changed = subprocess.check_output(["git", "diff", "--name-only", "HEAD^1", "HEAD"], text=True).splitlines()
+          needed = os.environ["EVENT_NAME"] == "workflow_dispatch" or any(
+              pathlib.PurePosixPath(path).name in {"Dockerfile", "pyproject.toml", "setup.py"}
+              or pathlib.PurePosixPath(path).name.startswith("requirements")
+              or path in {".github/workflows/lambda-images.yml", "scripts/lambda_image_import_check.py"}
+              for path in changed
+          )
+          matrix = subprocess.check_output(["python", "scripts/lambda_image_import_check.py", "--matrix"], text=True).strip()
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"needed={str(needed).lower()}\nmatrix={matrix}\n")
+          PY
+
+  build:
+    name: Linux ARM64 (${{ matrix.name }})
+    needs: plan
+    if: needs.plan.outputs.needed == 'true'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build the deployed Dockerfile
+        env:
+          DOCKERFILE: ${{ matrix.dockerfile }}
+        run: docker build --platform linux/arm64 --file "$DOCKERFILE" --tag lambda-import-check .
+      - name: Import installed packages and handler without network access
+        env:
+          IMAGE_NAME: ${{ matrix.name }}
+        run: |
+          docker run --rm --network none \
+            --entrypoint /var/lang/bin/python \
+            --volume "$PWD/scripts/lambda_image_import_check.py:/ci/check.py:ro" \
+            --workdir /var/task \
+            --env PYTHONPATH=/var/task \
+            lambda-import-check /ci/check.py "$IMAGE_NAME"

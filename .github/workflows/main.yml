@@ -23,10 +23,17 @@ jobs:
   # ============================================================================
   # STAGE 1: All tests run in parallel
   # ============================================================================
+  # Self-hosted jobs share a persistent Mac. Every job below has a
+  # `timeout-minutes` (so a hung job releases the runner) and a final
+  # `if: always()` cleanup that removes the venv / node_modules / build output
+  # it created inside the workspace. Host-level caches (~/Library/Caches/pip,
+  # ~/.npm, ~/Library/Caches/ms-playwright) are intentionally kept warm across
+  # jobs; pruning them when disk runs low is an ops task on the runner host.
 
   lambda-syntax:
     name: Lambda Syntax
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
@@ -62,14 +69,20 @@ jobs:
             infra/tests/test_ats_verification_ingest.py \
             infra/tests/test_ats_verification_mcp.py
 
+      - name: Clean up job workspace
+        if: always()
+        run: rm -rf .venv-email-receipt .pytest_cache
+
+  lambda-images:
+    name: Lambda image compatibility
+    uses: ./.github/workflows/lambda-images.yml
+
   python-tests:
     # 3.13 legs keep their historical check names ("Python (<package>)") so
     # branch protection keeps matching them; 3.14 legs get a suffix.
     name: Python (${{ matrix.package }}${{ matrix.python-version != '3.13' && format(', {0}', matrix.python-version) || '' }})
     runs-on: [self-hosted, macOS, ARM64]
-    # 3.14 legs are advisory: a failure is shown on the leg but does not fail
-    # the run or block `deploy`, which `needs` this job as a whole.
-    continue-on-error: ${{ matrix.python-version != '3.13' }}
+    # Both runtimes must pass before deploy.
     strategy:
       fail-fast: false
       matrix:
@@ -78,7 +91,6 @@ jobs:
           - receipt_embeddings
           - receipt_dynamo
           - receipt_dynamo_stream
-          - receipt_chroma
           - receipt_places
           - receipt_langsmith
           - receipt_upload
@@ -126,14 +138,6 @@ jobs:
               pip install numpy "openai>=2.8.1,<3.0.0"
               pip install pytest pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures
               ;;
-            receipt_chroma)
-              pip install -e receipt_dynamo
-              pip install --no-deps -e receipt_dynamo_stream
-              pip install --no-deps -e receipt_embeddings
-              pip install --no-deps -e receipt_chroma
-              pip install boto3 chromadb "openai>=2.8.1,<3.0.0"
-              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto
-              ;;
             receipt_dynamo_stream)
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_dynamo_stream
@@ -157,11 +161,10 @@ jobs:
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_dynamo_stream
               pip install --no-deps -e receipt_embeddings
-              pip install --no-deps -e receipt_chroma
               pip install --no-deps -e receipt_places
               pip install --no-deps -e receipt_agent
               pip install --no-deps -e receipt_upload
-              pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow pillow-avif-plugin \
+              pip install boto3 "openai>=2.8.1,<3.0.0" Pillow pillow-avif-plugin \
                 langsmith langgraph "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
                 pydantic pydantic-settings structlog requests tenacity
               pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto responses
@@ -173,11 +176,10 @@ jobs:
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_dynamo_stream
               pip install --no-deps -e receipt_embeddings
-              pip install --no-deps -e receipt_chroma
               pip install --no-deps -e receipt_places
               pip install --no-deps -e receipt_agent
               pip install --no-deps -e receipt_upload
-              pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow \
+              pip install boto3 "openai>=2.8.1,<3.0.0" Pillow \
                 pillow-avif-plugin langsmith langgraph \
                 "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
                 pydantic pydantic-settings structlog requests tenacity \
@@ -213,8 +215,8 @@ jobs:
 
           # Test
           # --reruns 1 --reruns-delay 2: retry once with a 2s pause to absorb
-          # environmental flakes (moto-S3 timestamp races, ChromaDB lock
-          # contention under pytest-xdist). Real test failures still fail
+          # environmental flakes (moto-S3 timestamp races, lock contention
+          # under pytest-xdist). Real test failures still fail
           # the build after the retry; only transient failures get masked.
           cd ${{ matrix.package }}
           python -m pytest tests -n auto --timeout=120 --tb=short --maxfail=5 \
@@ -230,9 +232,19 @@ jobs:
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
 
+      - name: Clean up job workspace
+        if: always()
+        run: |
+          rm -rf .venv-${{ matrix.package }}
+          rm -rf ${{ matrix.package }}/coverage.xml ${{ matrix.package }}/.pytest_cache
+    # Job-level key; placed after `steps` so it stays clear of the matrix
+    # header, which other branches edit.
+    timeout-minutes: 30
+
   repository-tests:
     name: Python (repository tests)
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -254,11 +266,10 @@ jobs:
           pip install -e receipt_dynamo
           pip install --no-deps -e receipt_embeddings
           pip install --no-deps -e receipt_dynamo_stream
-          pip install --no-deps -e receipt_chroma
           pip install --no-deps -e receipt_places
           pip install --no-deps -e receipt_agent
           pip install --no-deps -e receipt_upload
-          pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow \
+          pip install boto3 "openai>=2.8.1,<3.0.0" Pillow \
             pillow-avif-plugin langsmith langgraph \
             "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
             pydantic pydantic-settings structlog requests tenacity \
@@ -291,9 +302,14 @@ jobs:
             -n auto --timeout=120 --tb=short --maxfail=5 \
             --reruns 1 --reruns-delay 2
 
+      - name: Clean up job workspace
+        if: always()
+        run: rm -rf .venv-repository-tests .pytest_cache
+
   typescript-tests:
     name: TypeScript
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -316,9 +332,14 @@ jobs:
           path: portfolio/coverage
           retention-days: 1
 
+      - name: Clean up job workspace
+        if: always()
+        run: rm -rf portfolio/node_modules portfolio/coverage
+
   browser-tests:
     name: Browser Tests
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -331,23 +352,16 @@ jobs:
         env:
           CI: true
         run: |
-          # Free port 3001 from any prior CI job that crashed without
-          # cleanup. Without this, Playwright's webServer fails to bind
-          # ("localhost:3001 already used") and skips the rest of the
-          # pipeline including Deploy. Self-hosted runners share state
-          # across jobs, so we can't rely on container teardown.
-          PIDS="$(lsof -ti:3001 2>/dev/null || true)"
-          if [ -n "$PIDS" ]; then
-            kill -9 $PIDS 2>/dev/null || true
-          fi
-
-          # Re-free the port on exit so the next job starts clean even
-          # if Playwright crashes mid-run.
-          trap 'PIDS="$(lsof -ti:3001 2>/dev/null || true)"; [ -z "$PIDS" ] || kill -9 $PIDS 2>/dev/null || true' EXIT
-
           npm ci --prefer-offline
           npm run build
+          # Idempotent: playwright-core skips any browser whose
+          # INSTALLATION_COMPLETE marker already exists under
+          # ~/Library/Caches/ms-playwright, so this only downloads after a
+          # Playwright version bump changes the pinned browser revisions.
           npx playwright install chromium firefox webkit
+          # Concurrent runners on one Mac must not share a fixed port or
+          # kill each other's servers. Playwright owns server teardown.
+          export PLAYWRIGHT_PORT="$(node -e 'const server = require("node:net").createServer(); server.listen(0, "127.0.0.1", () => { console.log(server.address().port); server.close(); });')"
           npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
 
       - name: Upload test results
@@ -357,6 +371,12 @@ jobs:
           name: playwright-report
           path: portfolio/playwright-report/
           retention-days: 7
+
+      - name: Clean up job workspace
+        if: always()
+        run: |
+          rm -rf portfolio/node_modules portfolio/.next portfolio/out
+          rm -rf portfolio/playwright-report portfolio/test-results
 
   # ============================================================================
   # STAGE 2: Deploy (only after ALL tests pass, main branch only)
@@ -372,6 +392,7 @@ jobs:
       cancel-in-progress: false
     needs:
       - lambda-syntax
+      - lambda-images
       - python-tests
       - repository-tests
       - typescript-tests
