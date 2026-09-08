@@ -224,6 +224,18 @@ jobs:
             -m "not end_to_end and not slow and not performance and not unused_in_production" \
             --cov --cov-report=xml
 
+      - name: Test Glyph Studio on the selected runtime
+        if: matrix.package == 'receipt_agent'
+        run: |
+          # The glyph Lambda ships this package too. Reuse the agent job's
+          # local dependency stack for its optional section/renderer tests.
+          source .venv-receipt_agent/bin/activate
+          # Existing offline degradation/metric tests use scipy; the deployed
+          # glyph MCP image retains its numpy + Pillow dependency contract.
+          pip install -e tools/glyph-studio/py scipy
+          python -m pytest tools/glyph-studio/py/tests -n auto \
+            --timeout=120 --tb=short --maxfail=5
+
       - name: Upload coverage
         uses: actions/upload-artifact@v7
         with:

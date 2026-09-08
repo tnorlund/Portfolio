@@ -189,6 +189,9 @@ def build_needed(root: Path, event: str, before: str = "") -> bool:
     return any(
         Path(path).name in {"Dockerfile", "pyproject.toml", "setup.py"}
         or Path(path).name.startswith("requirements")
+        # Deployment hashes handler/package sources and baked glyph assets,
+        # not just manifests. Keep this conservative across all twelve images.
+        or path.startswith(("infra/", "receipt_", "tools/glyph-studio/"))
         or path
         in {
             ".github/workflows/lambda-images.yml",

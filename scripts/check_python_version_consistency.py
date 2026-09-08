@@ -10,8 +10,9 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 PYTHON_VERSION = "3.13"
 PYTHON_TARGET = "py313"
-# Package/tooling baseline stays 3.13; deployed containers also test 3.14.
-DOCUMENT_PYTHON_VERSIONS = (PYTHON_VERSION, "3.14")
+# This guide explicitly distinguishes the secondary container runtime from
+# the package/tooling baseline. General setup guides must still say 3.13.
+SECONDARY_RUNTIME_DOCUMENTS = {Path("AGENTS.md")}
 
 SCAN_ROOTS = (
     ".github",
@@ -31,9 +32,9 @@ SCAN_NAMES = {
 }
 DOCUMENT_SUFFIXES = {".adoc", ".markdown", ".md", ".mdx", ".rst"}
 
-# Documentation outside these locations is maintained operational guidance and
-# may describe the baseline or the tested secondary container runtime. These directories contain frozen
-# handoffs, review evidence, or explicitly archived material whose version
+# Documentation outside these locations is maintained operational guidance.
+# These directories contain frozen handoffs, review evidence, or explicitly
+# archived material whose version
 # references describe the repository at an earlier point in time.
 HISTORICAL_DOCUMENT_ROOTS = (
     Path(".review-loop"),
@@ -77,9 +78,11 @@ OLD_VERSION_DECLARATION = re.compile(
     re.IGNORECASE,
 )
 NON_BASELINE_DOCUMENT_VERSION_TOKEN = re.compile(
-    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?"
-    + r"(?:2\.\d+|3\.(?!(?:13|14)\b)\d+)\b",
+    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?" + r"(?:2\.\d+|3\.(?!13\b)\d+)\b",
     re.IGNORECASE,
+)
+SECONDARY_DOCUMENT_VERSION_TOKEN = re.compile(
+    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?3\.14\b", re.IGNORECASE
 )
 PYTHON_CLASSIFIER = re.compile(r"^Programming Language :: Python :: (3\.\d+)$")
 
@@ -138,6 +141,8 @@ def _check_runtime_files() -> list[str]:
         if relative in LEGACY_RESOURCE_FILES:
             continue
         text = path.read_text(encoding="utf-8")
+        if relative in SECONDARY_RUNTIME_DOCUMENTS:
+            text = SECONDARY_DOCUMENT_VERSION_TOKEN.sub("", text)
         patterns = [OLD_VERSION_TOKEN, OLD_VERSION_DECLARATION]
         if _is_document(path):
             patterns.append(NON_BASELINE_DOCUMENT_VERSION_TOKEN)
