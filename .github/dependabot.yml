@@ -40,6 +40,12 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 6
+    groups:
+      python-formatters:
+        group-by: dependency-name
+        patterns:
+          - "black"
+          - "isort"
     labels:
       - "dependencies"
     commit-message:
