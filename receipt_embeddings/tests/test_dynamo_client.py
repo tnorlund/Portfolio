@@ -13,7 +13,6 @@ from receipt_dynamo.entities import (
     ReceiptWordEmbedding,
 )
 
-from receipt_embeddings import ChromaVectorSearchClient
 from receipt_embeddings.dynamo_client import (
     _LINE_JOIN_ATTRIBUTES,
     _WORD_LABEL_JOIN_ATTRIBUTES,
@@ -220,26 +219,6 @@ def _word_entity(label_status: str = "validated") -> ReceiptWordEmbedding:
     )
 
 
-class _ChromaWordClient:
-    def query(self, **_kwargs):
-        return {
-            "ids": [[_word_entity().canonical_key]],
-            "metadatas": [
-                [
-                    {
-                        "image_id": IMAGE_ID,
-                        "receipt_id": 1,
-                        "line_id": 2,
-                        "word_id": 3,
-                        "label_status": "validated",
-                        "valid_labels_array": ["PRODUCT_NAME"],
-                    }
-                ]
-            ],
-            "distances": [[0.25]],
-        }
-
-
 @pytest.mark.unit
 def test_line_search_fetch_joins_unprojected_resolver_metadata() -> None:
     """SearchVectors -> BatchGetItem join surfaces the anchor fields the
@@ -342,7 +321,7 @@ def test_fetch_join_retries_unprocessed_keys_bounded() -> None:
 
 
 @pytest.mark.unit
-def test_word_search_fetch_joins_chroma_label_metadata_contract() -> None:
+def test_word_search_fetch_joins_label_metadata_contract() -> None:
     """The index filter projects aggregate status, while the fetch join
     supplies the exact label arrays that semantic consumers vote on."""
     boto_client = _client()
@@ -396,12 +375,7 @@ def test_word_search_fetch_joins_chroma_label_metadata_contract() -> None:
         ("PRODUCT_NAME", "VALID", "is a product"),
         ("TAX", "INVALID", "not a tax amount"),
     ]
-    chroma = ChromaVectorSearchClient(_ChromaWordClient()).search(
-        _vector(),
-        "word-embeddings",
-        5,
-        {"label_status": "validated"},
-    )[0]
+    # The word-neighbor metadata contract semantic consumers vote on.
     contract_keys = {
         "image_id",
         "receipt_id",
@@ -411,7 +385,12 @@ def test_word_search_fetch_joins_chroma_label_metadata_contract() -> None:
         "valid_labels_array",
     }
     assert {key: results[0].metadata[key] for key in contract_keys} == {
-        key: chroma.metadata[key] for key in contract_keys
+        "image_id": IMAGE_ID,
+        "receipt_id": 1,
+        "line_id": 2,
+        "word_id": 3,
+        "label_status": "validated",
+        "valid_labels_array": ["PRODUCT_NAME"],
     }
 
 

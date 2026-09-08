@@ -105,7 +105,7 @@ jobs:
           if [ "$ALLOW_MAJOR" = "true" ]; then
             args+=(--allow-major)
           fi
-          python .codex/skills/dependabot-maintainer/scripts/dependabot_maintenance_ci.py \
+          python .agents/skills/dependabot-maintainer/scripts/dependabot_maintenance_ci.py \
             "${args[@]}" | tee report.txt
 
       - name: Upload report

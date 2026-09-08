@@ -27,18 +27,9 @@ StreamEntity: TypeAlias = (
 )
 
 
-class ChromaDBCollection(str, Enum):
-    """ChromaDB collection types for receipt embeddings."""
-
-    LINES = "lines"
-    WORDS = "words"
-
-
 class TargetQueue(str, Enum):
     """Target queues for stream message routing."""
 
-    LINES = "lines"
-    WORDS = "words"
     RECEIPT_SUMMARY = "receipt_summary"
     LINE_ITEMS = "line_items"
 
@@ -91,19 +82,18 @@ class StreamRecordContext:
 
 @dataclass(frozen=True)
 class StreamMessage:
-    """Enhanced stream message with collection targeting."""
+    """Stream message with target-queue routing."""
 
     entity_type: str
     entity_data: Mapping[str, object]
     changes: Mapping[str, FieldChange]
     event_name: str
-    collections: tuple[ChromaDBCollection | TargetQueue, ...]
+    collections: tuple[TargetQueue, ...]
     context: StreamRecordContext
     record_snapshot: Optional[DynamoDBItem] = None
 
 
 __all__ = [
-    "ChromaDBCollection",
     "FieldChange",
     "LambdaResponse",
     "ParsedStreamRecord",

@@ -29,9 +29,6 @@ def _load_secrets_from_envvars(**_kwargs):
     secrets = {}
     for env_key, secret_key in (
         ("OPENAI_API_KEY", "portfolio:OPENAI_API_KEY"),
-        ("CHROMA_CLOUD_API_KEY", "portfolio:CHROMA_CLOUD_API_KEY"),
-        ("CHROMA_CLOUD_TENANT", "portfolio:CHROMA_CLOUD_TENANT"),
-        ("CHROMA_CLOUD_DATABASE", "portfolio:CHROMA_CLOUD_DATABASE"),
         ("OPENROUTER_API_KEY", "portfolio:OPENROUTER_API_KEY"),
         ("LANGCHAIN_API_KEY", "portfolio:LANGCHAIN_API_KEY"),
         ("GOOGLE_PLACES_API_KEY", "portfolio:GOOGLE_PLACES_API_KEY"),
@@ -39,8 +36,6 @@ def _load_secrets_from_envvars(**_kwargs):
         val = os.environ.get(env_key)
         if val:
             secrets[secret_key] = val
-    # Chroma Cloud enabled flag (always true in Lambda)
-    secrets["portfolio:chroma_cloud_enabled"] = "true"
     return secrets
 
 

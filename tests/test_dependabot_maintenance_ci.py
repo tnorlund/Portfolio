@@ -16,7 +16,7 @@ import pytest
 
 SKILL_SCRIPTS = (
     Path(__file__).resolve().parents[1]
-    / ".codex/skills/dependabot-maintainer/scripts"
+    / ".agents/skills/dependabot-maintainer/scripts"
 )
 sys.path.insert(0, str(SKILL_SCRIPTS))
 import dependabot_maintainer as maintainer  # noqa: E402

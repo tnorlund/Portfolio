@@ -2,10 +2,10 @@
 
 The QA agent's three semantic line searches (search_receipts semantic,
 semantic_search, search_product_lines semantic) retrieve through the
-shared ``VectorSearchClient`` seam behind ``VECTOR_BACKEND``. The QA
-agent must never hard-fail: an unavailable or throwing backend degrades
-to empty results with a logged reason. Text/label modes keep their
-direct Chroma behavior (their rewrite is explicitly out of this card).
+shared ``VectorSearchClient`` seam. The QA agent must never hard-fail:
+an unavailable or throwing backend degrades to empty results with a
+logged reason. Text/label modes have no DynamoDB implementation and
+answer with a structured "unavailable" result.
 """
 
 from types import SimpleNamespace
@@ -13,14 +13,14 @@ from typing import Any, Optional
 from unittest.mock import MagicMock
 
 import pytest
-from receipt_agent.agents.question_answering.tools.search import (
-    create_qa_tools,
-)
-
 from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
 from receipt_embeddings.service_limits import LINE_INDEX, MAX_SEARCH_RESULTS
 from receipt_embeddings.testing import FakeVectorIndex
 from receipt_embeddings.vector_client import VectorItem
+
+from receipt_agent.agents.question_answering.tools.search import (
+    create_qa_tools,
+)
 
 
 class _RecordingClient:
@@ -50,12 +50,9 @@ def _embed_fn(texts: list[str]) -> list[list[float]]:
     return [[1.0, 0.0] for _ in texts]
 
 
-def _tools_by_name(
-    vector_client: Any = None, chroma_client: Any = None
-) -> dict[str, Any]:
+def _tools_by_name(vector_client: Any = None) -> dict[str, Any]:
     tools, _ = create_qa_tools(
         dynamo_client=MagicMock(),
-        chroma_client=chroma_client,
         embed_fn=_embed_fn,
         vector_client=vector_client,
     )
@@ -147,8 +144,7 @@ def test_product_lines_semantic_post_filters_non_item_sections() -> None:
     texts = {item["text"] for item in result["items"]}
     assert "ORGANIC COFFEE 12.99" in texts
     assert "FRENCH ROAST 8.49" in texts
-    # TOTAL_LINE is one of the non-item sections Chroma excluded with
-    # $nin inside the ANN query; the port excludes it after retrieval.
+    # TOTAL_LINE is a non-item section; it is excluded after retrieval.
     assert "TOTAL 21.48" not in texts
 
 
@@ -186,9 +182,14 @@ def test_semantic_depth_is_trimmed_to_search_vectors_cap(
 
 
 def test_unbuildable_backend_degrades_to_empty_results(monkeypatch) -> None:
-    monkeypatch.delenv("VECTOR_BACKEND", raising=False)
-    # object() has no .query, so the default Chroma adapter refuses it.
-    tools = _tools_by_name(chroma_client=object())
+    import receipt_agent.agents.question_answering.tools.search as search_mod
+
+    def _boom(**kwargs):
+        del kwargs
+        raise RuntimeError("no table configured")
+
+    monkeypatch.setattr(search_mod, "vector_search_client", _boom)
+    tools = _tools_by_name()
 
     result = tools["search_receipts"].invoke(
         {"query": "coffee", "search_type": "semantic"}
@@ -213,27 +214,34 @@ def test_search_error_degrades_to_empty_results() -> None:
         assert "error" not in result
 
 
-def test_text_mode_keeps_direct_chroma_and_skips_the_seam() -> None:
-    collection = MagicMock()
-    collection.get.return_value = {
-        "ids": ["id-1"],
-        "metadatas": [
-            {"image_id": "img-1", "receipt_id": 1, "text": "COFFEE 3.99"}
-        ],
-    }
-    chroma_client = MagicMock()
-    chroma_client.get_collection.return_value = collection
+@pytest.mark.parametrize("search_type", ["text", "label", "label_lines"])
+def test_retired_modes_answer_unavailable_and_skip_the_seam(
+    search_type: str,
+) -> None:
     seam = _RecordingClient()
-    tools = _tools_by_name(vector_client=seam, chroma_client=chroma_client)
+    tools = _tools_by_name(vector_client=seam)
 
     result = tools["search_receipts"].invoke(
-        {"query": "coffee", "search_type": "text", "auto_fetch": 0}
+        {"query": "coffee", "search_type": search_type, "auto_fetch": 0}
     )
 
-    assert "error" not in result
-    assert result["total_matches"] == 1
+    assert result["search_type"] == search_type
+    assert result["results"] == []
+    assert "unavailable" in result["error"]
     assert seam.calls == []
-    chroma_client.get_collection.assert_called_once_with("lines")
+
+
+def test_product_lines_text_mode_answers_unavailable() -> None:
+    seam = _RecordingClient()
+    tools = _tools_by_name(vector_client=seam)
+
+    result = tools["search_product_lines"].invoke(
+        {"query": "coffee", "search_type": "text"}
+    )
+
+    assert result["search_type"] == "text"
+    assert "unavailable" in result["error"]
+    assert seam.calls == []
 
 
 def test_dynamo_backend_threads_session_table(monkeypatch) -> None:
@@ -243,8 +251,7 @@ def test_dynamo_backend_threads_session_table(monkeypatch) -> None:
 
     captured: dict[str, Any] = {}
 
-    def _capture(chroma_client, **kwargs):
-        del chroma_client
+    def _capture(**kwargs):
         captured.update(kwargs)
         return _RecordingClient()
 
@@ -254,9 +261,7 @@ def test_dynamo_backend_threads_session_table(monkeypatch) -> None:
     dynamo.table_name = "ReceiptsTable-session"
     dynamo._client = sentinel_boto
 
-    tools, _ = create_qa_tools(
-        dynamo_client=dynamo, chroma_client=None, embed_fn=_embed_fn
-    )
+    tools, _ = create_qa_tools(dynamo_client=dynamo, embed_fn=_embed_fn)
     {tool.name: tool for tool in tools}["semantic_search"].invoke(
         {"query": "q"}
     )
@@ -280,7 +285,7 @@ class _FakeDynamoBackend(DynamoVectorSearchClient):
 
 
 def test_has_price_label_is_unknown_under_dynamo_backend() -> None:
-    """E3 review P2-5: Dynamo line metadata never carries the Chroma
+    """E3 review P2-5: Dynamo line metadata never carries a
     label_LINE_TOTAL flag, so reporting False would be wrong evidence —
     the flag must read "unknown" until hydrated."""
     neighbor = SimpleNamespace(
@@ -302,11 +307,14 @@ def test_has_price_label_is_unknown_under_dynamo_backend() -> None:
     assert result["items"][0]["has_price_label"] == "unknown"
 
 
-def test_has_price_label_keeps_chroma_semantics_off_dynamo() -> None:
+def test_has_price_label_is_unknown_for_any_backend() -> None:
     tools = _tools_by_name(vector_client=_seeded_index())
 
     result = tools["search_product_lines"].invoke(
         {"query": "milk", "search_type": "semantic"}
     )
 
-    assert all(item["has_price_label"] is False for item in result["items"])
+    assert result["items"]
+    assert all(
+        item["has_price_label"] == "unknown" for item in result["items"]
+    )

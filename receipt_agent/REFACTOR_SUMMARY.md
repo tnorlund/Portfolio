@@ -25,7 +25,7 @@ receipt_agent/
 
 - Deprecated `graph/*_workflow.py` shims were removed in an earlier cleanup.
 - Legacy label harmonizer and label suggestion agents were retired in favor of
-  the current label evaluator and LayoutLM/ChromaDB flows.
+  the current label evaluator and LayoutLM flows.
 - The bulk metadata harmonizer Step Function, harmonizer agent package, CoVe
   text-consistency subagent, and LangSmith harmonizer schemas are retired.
 
@@ -36,7 +36,7 @@ targeted correction tools:
 
 - `place_id_finder` fills missing Google Place IDs.
 - fix-place workflows correct existing `ReceiptPlace` records with receipt text,
-  Google Places, and ChromaDB context.
+  Google Places, and vector-similarity context.
 - `label_evaluator` validates label quality, within-receipt consistency, and
   financial math.
 - MCP tools and scheduled maintenance agents apply explicit corrections outside

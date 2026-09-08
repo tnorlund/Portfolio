@@ -1,8 +1,8 @@
-"""Field change detection for ChromaDB-relevant fields."""
+"""Field change detection for update-relevant fields."""
 
 from receipt_dynamo_stream.change_detection.detector import (
-    CHROMADB_RELEVANT_FIELDS,
-    get_chromadb_relevant_changes,
+    UPDATE_RELEVANT_FIELDS,
+    get_update_relevant_changes,
 )
 
-__all__ = ["CHROMADB_RELEVANT_FIELDS", "get_chromadb_relevant_changes"]
+__all__ = ["UPDATE_RELEVANT_FIELDS", "get_update_relevant_changes"]

@@ -155,7 +155,7 @@ def _parse_validation_traces(
         name = trace.get("name", "")
         outputs = trace.get("outputs") or {}
 
-        if name == "label_validation_chroma":
+        if name in ("label_validation_chroma", "label_validation_similarity"):
             chroma_traces.append(outputs)
         elif name == "label_validation_llm":
             llm_traces.append(outputs)

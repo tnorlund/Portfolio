@@ -26,7 +26,6 @@ sys.path.insert(0, str(REPOSITORY_ROOT))
 for package_root in (
     REPOSITORY_ROOT / "receipt_embeddings",
     REPOSITORY_ROOT / "receipt_dynamo",
-    REPOSITORY_ROOT / "receipt_chroma",
 ):
     sys.path.insert(0, str(package_root))
 
@@ -49,10 +48,6 @@ from receipt_embeddings.protocols import (  # noqa: E402
     DynamoBatchClient,
     WriteReportLike,
 )
-from receipt_embeddings.quotas import (  # noqa: E402
-    MAX_GET_LIMIT,
-    ensure_get_ids_within_quota,
-)
 from receipt_embeddings.service_limits import (  # noqa: E402
     EMBEDDING_DIMENSIONS,
     LINE_INDEX,
@@ -61,10 +56,6 @@ from receipt_embeddings.service_limits import (  # noqa: E402
 )
 from receipt_embeddings.write_requests import (  # noqa: E402
     build_embedding_write_requests,
-)
-from scripts.similarity_harness.capture_golden import (  # noqa: E402
-    CHROMA_ENVIRONMENT,
-    DEV_DATABASE,
 )
 from scripts.similarity_harness.common import validate_fixture  # noqa: E402
 
@@ -159,93 +150,11 @@ def fixture_vectors(fixture: Mapping[str, Any]) -> dict[str, list[float]]:
     return result
 
 
-class ChromaVectorSource:
-    """Reuse vectors already stored in Chroma Cloud dev (OpenAI-free).
-
-    Cherry-picked from the ``bakeoff/C/claude`` entry's vector-source
-    abstraction (scripts/embedding_backfill/backfill_embeddings.py).
-    Chroma document ids equal the canonical item keys, so lookup is a
-    batched read-only ``get`` per collection. Reused vectors preserve
-    identity with what the receipts embedded at ingest — OpenAI
-    embeddings are not bit-stable across calls, so reuse is also the
-    higher-fidelity path.
-    """
-
-    def __init__(self, chroma_client: Any = None) -> None:
-        if chroma_client is None:
-            from receipt_chroma import ChromaClient
-
-            chroma_client = ChromaClient(
-                mode="read",
-                cloud_api_key=os.environ["CHROMA_CLOUD_API_KEY"],
-                cloud_tenant=os.environ["CHROMA_CLOUD_TENANT"],
-                cloud_database=os.environ["CHROMA_CLOUD_DATABASE"],
-            )
-        self._chroma = chroma_client
-
-    def close(self) -> None:
-        self._chroma.close()
-
-    def vectors_for(self, keys: Sequence[str]) -> dict[str, list[float]]:
-        by_collection: dict[str, list[str]] = {"lines": [], "words": []}
-        for key in keys:
-            collection = "words" if "#WORD#" in key else "lines"
-            by_collection[collection].append(key)
-        vectors: dict[str, list[float]] = {}
-        for collection, ids in by_collection.items():
-            for start in range(0, len(ids), MAX_GET_LIMIT):
-                batch = ids[start : start + MAX_GET_LIMIT]
-                ensure_get_ids_within_quota(batch)
-                result = self._chroma.get(
-                    collection_name=collection,
-                    ids=batch,
-                    include=["embeddings"],
-                )
-                found_ids = list(result.get("ids") or [])
-                embeddings = result.get("embeddings")
-                if embeddings is None:
-                    continue
-                for key, embedding in zip(found_ids, embeddings):
-                    vectors[str(key)] = [float(value) for value in embedding]
-        return vectors
-
-
-def _chroma_env_ready() -> bool:
-    return all(os.environ.get(name) for name in CHROMA_ENVIRONMENT)
-
-
 def resolve_vector_source(choice: str) -> str:
     """Resolve ``auto`` to a concrete source name (no clients built)."""
     if choice == "auto":
-        return "chroma" if _chroma_env_ready() else "openai"
+        return "openai"
     return choice
-
-
-def build_chroma_source(
-    allow_database: str | None = None,
-) -> ChromaVectorSource:
-    """Validate credentials + dev-database guard, then open the client.
-
-    ``allow_database`` must EXACTLY repeat the configured
-    ``CHROMA_CLOUD_DATABASE`` to read from a non-dev database (the prod
-    corpus promotion reads prod Chroma). The source is read-only either
-    way — the guard exists so credentials pasted into the wrong shell
-    can't silently source vectors from the wrong environment.
-    """
-    missing = [name for name in CHROMA_ENVIRONMENT if not os.environ.get(name)]
-    if missing:
-        raise SystemExit("vector source 'chroma' needs " + ", ".join(missing))
-    # Compare the RAW value the client will actually use — a padded
-    # 'receipt_prod ' must not pass an opt-in of 'receipt_prod'
-    # (codex review P2).
-    database = os.environ["CHROMA_CLOUD_DATABASE"]
-    if database != DEV_DATABASE and allow_database != database:
-        raise SystemExit(
-            f"refusing to touch Chroma database {database!r}; only "
-            f"{DEV_DATABASE!r} is allowed unless --allow-chroma-database "
-            "exactly repeats the database name"
-        )
-    return ChromaVectorSource()
 
 
 def apply_stored_vectors(
@@ -256,7 +165,7 @@ def apply_stored_vectors(
 ) -> tuple[list[EmbeddingWriteRequest], list[dict[str, str]]]:
     """Fill uncovered requests from stored vectors; skip-report the rest.
 
-    Used by the OpenAI-free sources (``chroma``, ``fixture``): a request
+    Used by the OpenAI-free ``fixture`` source: a request
     whose vector cannot be sourced is dropped with a per-item skip
     reason instead of falling through to realtime embedding.
     """
@@ -700,14 +609,6 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--allow-chroma-database",
-        help=(
-            "explicit opt-in for a non-dev Chroma vector source: must "
-            "EXACTLY repeat the CHROMA_CLOUD_DATABASE value (reads are "
-            "the only Chroma operation either way)"
-        ),
-    )
-    parser.add_argument(
         "--allow-table",
         help=(
             "explicit opt-in for a non-dev table: must EXACTLY repeat "
@@ -719,13 +620,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--vector-source",
-        choices=("auto", "chroma", "openai", "fixture"),
+        choices=("auto", "openai", "fixture"),
         default="auto",
         help=(
-            "where uncovered vectors come from: 'chroma' reuses stored "
-            "Chroma Cloud dev vectors (OpenAI-free), 'openai' re-embeds "
+            "where uncovered vectors come from: 'openai' re-embeds "
             "realtime, 'fixture' uses only the fixture corpus (offline), "
-            "'auto' picks chroma when CHROMA_CLOUD_* is set, else openai"
+            "'auto' is 'openai'"
         ),
     )
     return parser
@@ -769,7 +669,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(repair_report, indent=2, sort_keys=True))
         return int(repair_report["exit_code"])
     # A non-dev promotion must not reuse fixture vectors: the canonical
-    # fixture is captured from dev Chroma, and twin receipts share keys
+    # fixture was captured from dev, and twin receipts share keys
     # across stacks, so fixture seeding could silently write dev vectors
     # into the target while reporting the opted-in source (codex review
     # P1). The opted-in source is authoritative for manifest-only runs.
@@ -811,27 +711,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     vector_skips: list[dict[str, str]] = []
-    close_source = lambda: None  # noqa: E731 - trivial closer
-    if vector_source == "chroma":
-        source = build_chroma_source(allow_database=args.allow_chroma_database)
-        close_source = source.close
-        try:
-            stored = source.vectors_for(
-                [
-                    request.canonical_key
-                    for request in requests
-                    if request.vector is None
-                ]
-            )
-            requests, vector_skips = apply_stored_vectors(
-                requests, stored, missing_reason="missing_stored_vector"
-            )
-        except SystemExit:
-            raise
-        except Exception:  # noqa: BLE001 - cleanup then re-raise
-            close_source()
-            raise
-    elif vector_source == "fixture":
+    if vector_source == "fixture":
         requests, vector_skips = apply_stored_vectors(
             requests, {}, missing_reason="not_in_fixture_corpus"
         )
@@ -841,19 +721,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit(
             "vector source 'openai' needs OPENAI_API_KEY for "
             f"{sum(r.vector is None for r in requests)} uncovered "
-            "vectors; set CHROMA_CLOUD_* and --vector-source chroma "
-            "for an OpenAI-free run"
+            "vectors; use --vector-source fixture for an OpenAI-free run"
         )
     report["vector_skips"] = vector_skips
     report["vector_skip_reasons"] = dict(
         Counter(skip["reason"] for skip in vector_skips)
     )
 
-    try:
-        writer = EmbeddingWriter(dynamo._client, args.table_name)
-        write_report = writer.write(requests)
-    finally:
-        close_source()
+    writer = EmbeddingWriter(dynamo._client, args.table_name)
+    write_report = writer.write(requests)
     report["write_report"] = write_report.as_dict()
     report["item_failure_reasons"] = dict(
         Counter(failure.stage for failure in write_report.failures)

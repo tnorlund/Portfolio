@@ -2,7 +2,7 @@ Shared tools package
 ====================
 
 Scope:
-- Shared connectors only: `chroma.py`, `dynamo.py`, `places.py`, and `registry.py`.
+- Shared connectors only: `dynamo.py`, `places.py`, and `registry.py`.
 - Agent-specific tools now live under `agents/<agent>/tools`.
 
 Out of scope:

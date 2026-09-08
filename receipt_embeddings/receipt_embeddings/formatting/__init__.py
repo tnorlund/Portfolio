@@ -12,7 +12,6 @@ from receipt_embeddings.formatting.line_format import (
     get_primary_line_id,
     get_row_embedding_inputs,
     group_lines_into_visual_rows,
-    parse_prev_next_from_formatted,
 )
 from receipt_embeddings.formatting.receipt_rows import (
     GROUPING_VERSION,
@@ -39,7 +38,6 @@ __all__ = [
     "get_primary_line_id",
     # Line formatting (legacy)
     "format_line_context_embedding_input",
-    "parse_prev_next_from_formatted",
     # Persisted rows and price-column pairing
     "GROUPING_VERSION",
     "WordLike",

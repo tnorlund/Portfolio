@@ -12,7 +12,7 @@ This component creates:
    - Step 6: Start EMR Serverless job for visualization cache generation
 
 Unlike Label Evaluator (which has 6 evaluator scanners), Label Validation has
-a two-tier structure: ChromaDB consensus (Tier 1) and LLM fallback (Tier 2).
+a two-tier structure: similarity consensus (Tier 1) and LLM fallback (Tier 2).
 """
 
 import json

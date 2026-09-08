@@ -7,7 +7,7 @@ workflow.
 
 import logging
 import os
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 from langchain_core.messages import (
     AIMessage,
@@ -37,7 +37,7 @@ from receipt_agent.utils.llm_factory import (
 
 # Helper function for building line IDs (matches agentic.py)
 def _build_line_id(image_id: str, receipt_id: int, line_id: int) -> str:
-    """Build ChromaDB document ID for a line."""
+    """Build the embedding record ID for a line."""
     return f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
 
 
@@ -145,16 +145,6 @@ Find complete place data for this receipt:
 - `get_my_words`: See labeled words (MERCHANT_NAME, PHONE, ADDRESS, etc.)
 - `get_receipt_text`: View formatted receipt text (receipt order, grouped rows)
 
-### Similarity Search Tools (find matching receipts)
-- `find_similar_to_my_line`: Use one of YOUR line embeddings to find similar
-  lines elsewhere
-- `find_similar_to_my_word`: Use one of YOUR word embeddings to find similar
-  words elsewhere
-- `search_lines`: Search by arbitrary text (address, phone, merchant name,
-  etc.)
-- `search_words`: Search for specific labeled words (MERCHANT_NAME, ADDRESS,
-  PHONE)
-
 ### Aggregation Tools (understand consensus)
 - `get_merchant_consensus`: Get canonical data for a merchant based on all
   receipts
@@ -205,10 +195,10 @@ Find complete place data for this receipt:
    - Finally try merchant name text search
    - Use Google Places data to fill in missing fields
 
-5. **Verify with similar receipts** (optional):
-   - Use similarity search to find other receipts from the same merchant
-   - Use get_merchant_consensus to verify your findings
-   - Similar receipts can help fill in missing fields
+5. **Verify with other receipts** (optional):
+   - Use get_merchant_consensus to verify your findings against other
+     receipts from the same merchant
+   - Use get_place_id_info to confirm a candidate place_id is already in use
 
 6. **Handle address-like merchant names** (CRITICAL):
    - **NEVER accept an address as a merchant name**
@@ -238,7 +228,7 @@ For each field, use this priority:
 1. **Receipt content** (labels, lines) - Most reliable, comes from the receipt
    itself
 2. **Google Places** - Official source, use for validation and missing fields
-3. **Similar receipts** - Verification only, may be wrong
+3. **Other receipts** - Verification only, may be wrong
 
 ## What Gets Updated
 
@@ -402,25 +392,16 @@ def create_place_submission_tool(state_holder: dict):
 
 def create_receipt_place_finder_graph(
     dynamo_client: Any,
-    chroma_client: Any,
-    embed_fn: Callable[[list[str]], list[list[float]]],
     places_api: Optional[Any] = None,
     settings: Optional[Settings] = None,
-    chromadb_bucket: Optional[str] = None,
 ) -> tuple[Any, dict]:
     """
     Create the receipt place finder workflow.
 
     Args:
         dynamo_client: DynamoDB client
-        chroma_client: ChromaDB client (may be None, will be
-            lazy-loaded if bucket provided)
-        embed_fn: Function to generate embeddings (may be None, will be
-            lazy-loaded if bucket provided)
         places_api: Google Places API client
         settings: Optional settings
-        chromadb_bucket: Optional S3 bucket name for lazy loading ChromaDB
-            collections
 
     Returns:
         (compiled_graph, state_holder) - The graph and state dict
@@ -428,13 +409,10 @@ def create_receipt_place_finder_graph(
     if settings is None:
         settings = get_settings()
 
-    # Create base agentic tools (pass chromadb_bucket for lazy loading)
+    # Create base agentic tools
     tools, state_holder = create_agentic_tools(
         dynamo_client=dynamo_client,
-        chroma_client=chroma_client,
-        embed_fn=embed_fn,
         places_api=places_api,
-        chromadb_bucket=chromadb_bucket,
     )
 
     # Add place submission tool

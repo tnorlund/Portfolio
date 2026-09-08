@@ -11,9 +11,6 @@ Usage:
 
     # Just build and print the prompt (no LLM call)
     python scripts/test_pattern_discovery.py "Sprouts Farmers Market" --prompt-only
-
-    # Use Chroma for validated label examples (hybrid approach)
-    python scripts/test_pattern_discovery.py "Sprouts Farmers Market" --use-chroma
 """
 
 import argparse
@@ -45,7 +42,6 @@ def load_config(env: str = "dev"):
         "openrouter_api_key": secrets.get("portfolio:OPENROUTER_API_KEY"),
         "langchain_api_key": secrets.get("portfolio:LANGCHAIN_API_KEY"),
         "openai_api_key": secrets.get("portfolio:OPENAI_API_KEY"),
-        "chromadb_bucket": outputs.get("embedding_chromadb_bucket_name"),
     }
 
     # Set environment variables for the pattern discovery module
@@ -59,19 +55,12 @@ def load_config(env: str = "dev"):
         os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config["openai_api_key"]
 
     # Default OpenRouter settings
-    os.environ.setdefault("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+    os.environ.setdefault(
+        "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
+    )
     os.environ.setdefault("OPENROUTER_MODEL", "openai/gpt-oss-120b")
 
     return config
-
-
-def load_chroma_client(chromadb_bucket: str):
-    """Load ChromaDB client and embed function from S3 snapshot."""
-    from receipt_agent.utils.chroma_helpers import load_dual_chroma_from_s3
-
-    logger.info("Loading ChromaDB from s3://%s", chromadb_bucket)
-    chroma_client, embed_fn = load_dual_chroma_from_s3(chromadb_bucket)
-    return chroma_client, embed_fn
 
 
 def main():
@@ -86,11 +75,6 @@ def main():
         "--prompt-only",
         action="store_true",
         help="Only build and print the prompt, don't call LLM",
-    )
-    parser.add_argument(
-        "--use-chroma",
-        action="store_true",
-        help="Use ChromaDB for validated label examples (hybrid approach)",
     )
     parser.add_argument(
         "--limit",
@@ -121,8 +105,8 @@ def main():
         logger.error("OPENROUTER_API_KEY not found in Pulumi secrets")
         sys.exit(1)
 
-    # Import directly to avoid chromadb import chain issues with Python 3.14
-    # We import the module file directly instead of going through __init__.py
+    # Import the module file directly instead of going through the package
+    # __init__ so the script stays runnable without the full agent stack.
     import importlib.util
 
     pattern_discovery_path = os.path.join(
@@ -140,55 +124,12 @@ def main():
     build_discovery_prompt = pattern_discovery.build_discovery_prompt
     build_receipt_structure = pattern_discovery.build_receipt_structure
     discover_patterns_with_llm = pattern_discovery.discover_patterns_with_llm
-    query_label_examples_simple = pattern_discovery.query_label_examples_simple
 
     # Import DynamoClient (this should work fine)
     from receipt_dynamo import DynamoClient
 
     # Initialize DynamoDB client
     dynamo_client = DynamoClient(table_name=config["dynamodb_table_name"])
-
-    # Optionally load ChromaDB for label examples
-    label_examples = None
-    if args.use_chroma:
-        if not config["chromadb_bucket"]:
-            logger.error("ChromaDB bucket not found in Pulumi outputs")
-            sys.exit(1)
-        if not config["openai_api_key"]:
-            logger.error(
-                "OpenAI API key not found in Pulumi secrets (needed for Chroma)"
-            )
-            sys.exit(1)
-
-        try:
-            chroma_client, embed_fn = load_chroma_client(
-                config["chromadb_bucket"]
-            )
-            logger.info(
-                f"Querying Chroma for label examples from: {args.merchant_name}"
-            )
-            label_examples = query_label_examples_simple(
-                chroma_client,
-                args.merchant_name,
-                embed_fn=embed_fn,
-                max_total=50,
-            )
-            if label_examples.total_examples > 0:
-                logger.info(
-                    f"Found {label_examples.total_examples} label examples from Chroma"
-                )
-                print("\n" + "=" * 80)
-                print("CHROMA LABEL EXAMPLES:")
-                print("=" * 80)
-                print(label_examples.format_for_prompt())
-                print("=" * 80 + "\n")
-            else:
-                logger.warning(
-                    "No label examples found in Chroma for this merchant"
-                )
-        except Exception as e:
-            logger.warning("Failed to load Chroma: %s", e)
-            logger.info("Continuing without Chroma examples...")
 
     # Build receipt structure with smart line selection
     logger.info("Building receipt structure for: %s", args.merchant_name)
@@ -215,13 +156,8 @@ def main():
             receipt.get("total_lines", "unknown"),
         )
 
-    # Build prompt with optional Chroma examples
     logger.info("Building discovery prompt...")
-    prompt = build_discovery_prompt(
-        args.merchant_name,
-        receipts_data,
-        label_examples=label_examples,
-    )
+    prompt = build_discovery_prompt(args.merchant_name, receipts_data)
 
     print("\n" + "=" * 80)
     print("PROMPT:")

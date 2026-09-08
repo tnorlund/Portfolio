@@ -1,4 +1,4 @@
-"""Native DynamoDB embedding writers (post-Chroma-teardown).
+"""Native DynamoDB embedding writers.
 
 ``write_precomputed_embeddings`` persists vectors the ingest embedding
 step already computed (zero extra OpenAI calls) as ``*_EMBEDDING`` items
@@ -26,7 +26,7 @@ from receipt_embeddings.formatting import LineLike
 from receipt_embeddings.formatting.word_format import (
     WordLike as ContextWordLike,
 )
-from receipt_embeddings.label_status import WordLabelLike, word_label_statuses
+from receipt_embeddings.label_status import WordLabelLike
 from receipt_embeddings.protocols import (
     DynamoEmbeddingClient,
     DynamoQueryWriteClient,
@@ -38,12 +38,6 @@ from receipt_embeddings.write_requests import build_embedding_write_requests
 from receipt_embeddings.writer import EmbeddingWriteRequest
 
 logger = logging.getLogger(__name__)
-
-# Canonical terminal-verdict rule (any VALID or INVALID -> "validated",
-# else PENDING -> "pending", else "none"); kept under the historical
-# private name for existing importers/tests. INVALID-only words must stay
-# in the validated population (E3 review P1-2; codex flip P2; #1513).
-_word_label_statuses = word_label_statuses
 
 
 def build_ingest_embedding_requests(
@@ -102,7 +96,7 @@ def write_precomputed_embeddings(
 ) -> Dict[str, object]:
     """Never-raising native write of a receipt's precomputed embeddings.
 
-    THE ingest persistence step post-Chroma-teardown: every vector is
+    THE ingest persistence step: every vector is
     supplied up front (reusing what the ingest embedding step already
     computed — zero extra OpenAI calls), so the engine writer never calls
     OpenAI. Returns a small report dict; callers decide fatality from its
@@ -201,7 +195,7 @@ def write_native_embeddings(
     sweep_existing: bool = False,
     openai_client: object = None,
 ) -> Dict[str, object]:
-    """Chroma-free native embedding write for a whole receipt.
+    """Native embedding write for a whole receipt.
 
     The post-teardown replacement for the vectors that
     ``create_embeddings_and_compaction_run`` used to produce: builds

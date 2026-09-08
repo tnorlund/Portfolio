@@ -21,20 +21,18 @@ from .timeout_handler import (
 from .timeout_handler import (
     with_timeout_protection as with_compaction_timeout_protection,
 )
-from .tracing import (
-    trace_chromadb_operation,
-)
+from .tracing import trace_stream_operation
 
 
 # Create aliases for function name compatibility
 def trace_function(operation_name=None, collection=None):
-    """Alias for trace_chromadb_operation."""
-    return trace_chromadb_operation(operation_name or "compaction")
+    """Alias for trace_stream_operation."""
+    return trace_stream_operation(operation_name or "stream")
 
 
 def trace_compaction_operation(operation_name=None):
-    """Alias for trace_chromadb_operation."""
-    return trace_chromadb_operation(operation_name or "compaction")
+    """Alias for trace_stream_operation."""
+    return trace_stream_operation(operation_name or "stream")
 
 
 __all__ = [
@@ -50,7 +48,7 @@ __all__ = [
     "stop_compaction_lambda_monitoring",
     "trace_function",
     "trace_compaction_operation",
-    "trace_chromadb_operation",
+    "trace_stream_operation",
     "metrics",
     "emf_metrics",
     "MetricsAccumulator",

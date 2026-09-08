@@ -72,21 +72,15 @@ def _receipt_subtree_items(
 ) -> List[dict]:
     """Every raw DynamoDB item owned by one receipt.
 
-    Most children share ``PK = IMAGE#{image_id}`` with an SK
-    ``RECEIPT#{rid}#...``, but the rid is sometimes ZERO-PADDED
-    (``RECEIPT#00001``) and sometimes NOT (``ReceiptChatGPTValidation`` uses
-    ``RECEIPT#1#...``), so we scan the broad ``RECEIPT#`` prefix and
-    hard-filter on the rid token (padded OR unpadded) — this both catches the
-    unpadded records and prevents sibling bleed. Some receipt-scoped records
-    also live in a DIFFERENT partition (``ReceiptField`` is ``PK=FIELD#...``);
-    those are found via GSI1 (``GSI1PK=IMAGE#{id}``,
-    ``GSI1SK=RECEIPT#{rid:05d}#FIELD#...``).
+    Children share ``PK = IMAGE#{image_id}`` with an SK ``RECEIPT#{rid}#...``.
+    Live entities zero-pad the rid (``RECEIPT#00001``) but legacy rows used
+    an unpadded rid (``RECEIPT#1#...``), so we scan the broad ``RECEIPT#``
+    prefix and hard-filter on the rid token (padded OR unpadded) — this both
+    catches the legacy records and prevents sibling bleed.
     """
     pk = f"IMAGE#{image_id}"
     padded, unpadded = f"{receipt_id:05d}", str(receipt_id)
     out: List[dict] = []
-    # main table: all receipt-scoped items under IMAGE# (padded or unpadded
-    # rid)
     for it in paginate(
         dynamo,
         TableName=dynamo.table_name,
@@ -101,27 +95,6 @@ def _receipt_subtree_items(
             and parts[1] in (padded, unpadded)
         ):
             out.append(it)
-    # FIELD# partition: ReceiptField records, located via GSI1 (keys
-    # projected).
-    try:
-        out.extend(
-            paginate(
-                dynamo,
-                TableName=dynamo.table_name,
-                IndexName="GSI1",
-                KeyConditionExpression=("#pk = :pk AND begins_with(#sk, :sk)"),
-                ExpressionAttributeNames={
-                    "#pk": "GSI1PK",
-                    "#sk": "GSI1SK",
-                },
-                ExpressionAttributeValues={
-                    ":pk": {"S": pk},
-                    ":sk": {"S": f"RECEIPT#{padded}#FIELD#"},
-                },
-            )
-        )
-    except AWS_ERRORS:
-        pass  # no GSI1 / no field records
     return out
 
 
