@@ -6,6 +6,8 @@ the native write THE persistence step, and the standalone batched writer
 (``write_native_embeddings``) used by the correction flows.
 """
 
+from concurrent.futures import Future
+from contextlib import ExitStack
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -216,10 +218,9 @@ class TestWritePrecomputedEmbeddings:
 
 @pytest.mark.unit
 class TestProcessorWiring:
-    """The native write is THE persistence step: it runs on Phase 1's
-    vectors and its report decides the receipt's success."""
+    """A successful run needs durable vectors and healthy enrichment."""
 
-    def _run_impl(self, native_report):
+    def _run_impl(self, native_report, worker_results=None):
         from receipt_upload.merchant_resolution import (
             embedding_processor as ep,
         )
@@ -247,7 +248,32 @@ class TestProcessorWiring:
                 "write_precomputed_embeddings",
                 return_value=native_report,
             ) as native_mock,
+            ExitStack() as stack,
         ):
+            if worker_results is not None:
+                # Completed real futures exercise result handling without
+                # network calls or starting subprocesses.
+                futures = []
+                for outcome in worker_results:
+                    future = Future()
+                    if isinstance(outcome, Exception):
+                        future.set_exception(outcome)
+                    else:
+                        future.set_result(outcome)
+                    futures.append(future)
+                executor = MagicMock()
+                executor.__enter__.return_value = executor
+                executor.submit.side_effect = futures
+                stack.enter_context(
+                    patch.object(
+                        ep,
+                        "_get_phase2_executor_class",
+                        return_value=lambda **kwargs: executor,
+                    )
+                )
+                stack.enter_context(
+                    patch("dataclasses.asdict", return_value={})
+                )
             client = MagicMock()
             client.table_name = "test-table"
             client.list_receipt_word_labels_for_receipt.return_value = (
@@ -260,8 +286,8 @@ class TestProcessorWiring:
             processor = ep.MerchantResolvingEmbeddingProcessor(
                 table_name="test-table"
             )
-            # SimpleNamespace entities make Phase 2's dataclass
-            # serialization blow up — both pipeline legs fail wholesale.
+            # Without worker_results, SimpleNamespace entities exercise a
+            # failure before either pipeline can be submitted.
             result = processor._process_embeddings_impl(
                 image_id=IMAGE_ID,
                 receipt_id=1,
@@ -270,25 +296,50 @@ class TestProcessorWiring:
             )
         return result, native_mock, row_embeddings, word_embeddings_list
 
-    def test_native_write_decides_success_even_when_pipelines_fail(
+    def test_serialization_failure_is_not_hidden_by_native_write(
         self,
     ) -> None:
         native_report = {"requests": 2, "written": 2, "failed": 0}
         result, native_mock, rows, words_v = self._run_impl(native_report)
 
-        # Phase-2 pipelines failed (SimpleNamespace serialization), but
-        # the corpus write succeeded — the receipt is searchable, so the
-        # run succeeds.
-        assert result["success"] is True
+        assert result["success"] is False
+        assert "processing" in result["pipeline_errors"]
         native_mock.assert_called_once()
         call_kwargs = native_mock.call_args.kwargs
         assert call_kwargs["row_embeddings"] is rows
         assert call_kwargs["word_embeddings_list"] is words_v
         assert result["native_embeddings"] is native_report
 
+    @pytest.mark.parametrize(
+        "worker_results,failed_stage",
+        [
+            ([RuntimeError("lines unavailable"), {"success": True}], "lines"),
+            ([{"success": True}, RuntimeError("words unavailable")], "words"),
+            ([{"success": False}, {"success": True}], "lines"),
+            ([{"success": True}, {"success": False}], "words"),
+        ],
+    )
+    def test_worker_failure_fails_run(self, worker_results, failed_stage):
+        report = {"requests": 2, "written": 2, "failed": 0}
+        result, _, _, _ = self._run_impl(report, worker_results)
+        assert result["success"] is False
+        assert set(result["pipeline_errors"]) == {failed_stage}
+        assert result["native_embeddings"] is report
+
+    def test_healthy_workers_without_merchant_still_succeed(self):
+        report = {"requests": 2, "written": 2, "failed": 0}
+        result, _, _, _ = self._run_impl(
+            report, [{"success": True}, {"success": True}]
+        )
+        assert result["success"] is True
+        assert result["pipeline_errors"] == {}
+        assert result["merchant_found"] is False
+
     def test_incomplete_native_write_fails_the_receipt(self) -> None:
         native_report = {"requests": 2, "written": 1, "failed": 1}
-        result, _mock, _r, _w = self._run_impl(native_report)
+        result, _mock, _r, _w = self._run_impl(
+            native_report, [{"success": True}, {"success": True}]
+        )
         assert result["success"] is False
         assert result["native_embeddings"] is native_report
 

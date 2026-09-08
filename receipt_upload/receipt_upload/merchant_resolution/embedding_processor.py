@@ -427,7 +427,6 @@ def _run_lines_pipeline_worker(
         # One vector-search backend for the whole worker, bound to the SAME
         # table as the rest of the session (never the from_env fallback).
         vector_client = vector_search_client(
-            None,
             dynamodb_client=dynamo._client,  # pylint: disable=protected-access
             table_name=table_name,
         )
@@ -484,7 +483,7 @@ def _run_lines_pipeline_worker(
         if validated_merchant_name and not merchant_name_matches_receipt(
             validated_merchant_name, lines
         ):
-            logging.getLogger(__name__).warning(
+            logger.warning(
                 "Write-time validation: merchant_name %r rejected "
                 "— no token overlap with receipt OCR text for %s#%d",
                 validated_merchant_name,
@@ -562,7 +561,7 @@ def _run_lines_pipeline_worker(
         # Verification is independent evidence; an unavailable neighbor
         # index must not discard the deterministic section proposal.
         except Exception as error:
-            logging.getLogger(__name__).exception(
+            logger.exception(
                 "Section KNN verification failed for %s#%d: %s",
                 image_id,
                 receipt_id,
@@ -687,7 +686,6 @@ def _run_words_pipeline_worker(
         # Run label validation
         dynamo = DynamoClient(table_name)
         vector_client = vector_search_client(
-            None,
             dynamodb_client=dynamo._client,  # pylint: disable=protected-access
             table_name=table_name,
         )
@@ -1237,6 +1235,7 @@ class MerchantResolvingEmbeddingProcessor:
         merchant_result = MerchantResult()
         validation_stats: Dict[str, Any] = {}
         lines_stats: Dict[str, Any] = {}
+        pipeline_errors: Dict[str, str] = {}
 
         try:
             # =================================================================
@@ -1401,10 +1400,16 @@ class MerchantResolvingEmbeddingProcessor:
                             ),
                             similarity_matches=similarity_matches,
                         )
+                    else:
+                        pipeline_errors["lines"] = str(
+                            lines_result.get("error")
+                            or "Lines pipeline did not succeed"
+                        )
                 except Exception as e:
                     _log(f"WARNING: Lines pipeline failed: {e}")
                     logger.exception("Lines pipeline error")
                     merchant_result = MerchantResult()
+                    pipeline_errors["lines"] = str(e)
 
                 async_llm_payload = None
                 try:
@@ -1420,10 +1425,16 @@ class MerchantResolvingEmbeddingProcessor:
                                 "async_llm_payload",
                             )
                         }
+                    else:
+                        pipeline_errors["words"] = str(
+                            words_result.get("error")
+                            or "Words pipeline did not succeed"
+                        )
                 except Exception as e:
                     _log(f"WARNING: Words pipeline failed: {e}")
                     logger.exception("Words pipeline error")
                     validation_stats = {}
+                    pipeline_errors["words"] = str(e)
 
             _log("Phase 2 complete: parallel pipelines finished")
 
@@ -1532,12 +1543,14 @@ class MerchantResolvingEmbeddingProcessor:
         except Exception as e:
             _log(f"WARNING: Processing failed: {e}")
             logger.exception("Processing failed")
+            pipeline_errors["processing"] = str(e)
 
         return {
-            # A receipt is only fully processed once its native embedding
-            # items are durable; without them it is invisible to
-            # SearchVectors and nothing downstream will heal it.
-            "success": native_write_ok,
+            # Durable vectors alone do not certify merchant/label processing.
+            # Surface synchronous failures to the handler's failure metrics;
+            # deferred label validation still completes independently.
+            "success": native_write_ok and not pipeline_errors,
+            "pipeline_errors": pipeline_errors,
             "native_embeddings": native_report,
             "run_id": run_id,
             "lines_count": len(lines),
