@@ -32,7 +32,7 @@ SCAN_NAMES = {
 DOCUMENT_SUFFIXES = {".adoc", ".markdown", ".md", ".mdx", ".rst"}
 
 # Documentation outside these locations is maintained operational guidance and
-# must agree with the active runtime baseline. These directories contain frozen
+# may describe the baseline or the tested secondary container runtime. These directories contain frozen
 # handoffs, review evidence, or explicitly archived material whose version
 # references describe the repository at an earlier point in time.
 HISTORICAL_DOCUMENT_ROOTS = (
@@ -250,7 +250,9 @@ def main() -> int:
         for error in errors:
             print(f"- {error}")
         return 1
-    print(f"All active Python targets use Python {PYTHON_VERSION}.")
+    print(
+        f"Python {PYTHON_VERSION} baseline and container-runtime declarations are consistent."
+    )
     return 0
 
 
