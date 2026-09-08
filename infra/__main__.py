@@ -662,6 +662,10 @@ merge_receipt_lambda = create_merge_receipt_lambda(
     raw_bucket_name=raw_bucket.bucket,
     site_bucket_name=site_bucket.bucket,
     image_bucket_name=upload_images.image_bucket.bucket,
+    summary_queue_url=receipt_update_queues.summary_queue_url,
+    summary_queue_arn=receipt_update_queues.summary_queue_arn,
+    line_item_queue_url=receipt_update_queues.line_item_queue_url,
+    line_item_queue_arn=receipt_update_queues.line_item_queue_arn,
 )
 pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
 pulumi.export(

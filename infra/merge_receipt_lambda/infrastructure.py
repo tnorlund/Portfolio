@@ -2,8 +2,8 @@
 Pulumi infrastructure for Merge Receipt Lambda.
 
 This component creates a container-based Lambda that merges multiple receipt
-fragments into a single receipt with proper warping, re-runs embeddings,
-waits for compaction to complete, then deletes the originals.
+fragments into a single receipt with proper warping, writes native embeddings,
+then removes source receipts, child rows, and assets and queues derived rows.
 
 The Lambda can be invoked directly with:
 {
@@ -14,7 +14,7 @@ The Lambda can be invoked directly with:
 
 Architecture:
 - Container Lambda with all receipt_* packages
-- Uses enhanced compactor for cleanup of deleted receipts
+- Cleans up source receipts and requests derived rows via the updater queues
 """
 
 import json
@@ -48,8 +48,9 @@ class MergeReceiptLambda(ComponentResource):
     5. Uploads warped image to S3 (raw + CDN variants)
     6. Creates new Receipt/Line/Word/Letter entities in warped space
     7. Migrates ReceiptWordLabels and ReceiptPlace
-    8. Creates embeddings and waits for compaction
-    9. Deletes original receipts (compactor cleans up children)
+    8. Writes native DynamoDB embeddings
+    9. Deletes original receipts, child rows, and assets
+    10. Queues summary and line-item recomputation
 
     Exports:
     - lambda_function: The Lambda function resource
@@ -65,6 +66,10 @@ class MergeReceiptLambda(ComponentResource):
         raw_bucket_name: pulumi.Input[str],
         site_bucket_name: pulumi.Input[str],
         image_bucket_name: pulumi.Input[str],
+        summary_queue_url: pulumi.Input[str],
+        summary_queue_arn: pulumi.Input[str],
+        line_item_queue_url: pulumi.Input[str],
+        line_item_queue_arn: pulumi.Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
@@ -187,6 +192,34 @@ class MergeReceiptLambda(ComponentResource):
                                     f"arn:aws:s3:::{args[2]}",
                                     f"arn:aws:s3:::{args[2]}/*",
                                 ],
+                            },
+                            {
+                                "Effect": "Allow",
+                                "Action": "s3:DeleteObject",
+                                "Resource": [
+                                    f"arn:aws:s3:::{args[0]}/*",
+                                    f"arn:aws:s3:::{args[1]}/*",
+                                ],
+                            },
+                        ],
+                    }
+                )
+            ),
+            opts=ResourceOptions(parent=lambda_role),
+        )
+
+        sqs_policy = RolePolicy(
+            f"{name}-lambda-recompute-policy",
+            role=lambda_role.id,
+            policy=Output.all(summary_queue_arn, line_item_queue_arn).apply(
+                lambda arns: json.dumps(
+                    {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": "sqs:SendMessage",
+                                "Resource": arns,
                             }
                         ],
                     }
@@ -209,6 +242,8 @@ class MergeReceiptLambda(ComponentResource):
                 "RAW_BUCKET": raw_bucket_name,
                 "SITE_BUCKET": site_bucket_name,
                 "OPENAI_API_KEY": openai_api_key,
+                "SUMMARY_QUEUE_URL": summary_queue_url,
+                "LINE_ITEM_QUEUE_URL": line_item_queue_url,
             },
         }
 
@@ -228,7 +263,12 @@ class MergeReceiptLambda(ComponentResource):
             platform="linux/arm64",
             opts=ResourceOptions(
                 parent=self,
-                depends_on=[lambda_role, dynamodb_policy, s3_policy],
+                depends_on=[
+                    lambda_role,
+                    dynamodb_policy,
+                    s3_policy,
+                    sqs_policy,
+                ],
             ),
         )
 
@@ -251,6 +291,10 @@ def create_merge_receipt_lambda(
     raw_bucket_name: pulumi.Input[str],
     site_bucket_name: pulumi.Input[str],
     image_bucket_name: pulumi.Input[str],
+    summary_queue_url: pulumi.Input[str],
+    summary_queue_arn: pulumi.Input[str],
+    line_item_queue_url: pulumi.Input[str],
+    line_item_queue_arn: pulumi.Input[str],
 ) -> MergeReceiptLambda:
     """
     Factory function to create the Merge Receipt Lambda.
@@ -261,6 +305,10 @@ def create_merge_receipt_lambda(
         raw_bucket_name: Name of the raw images S3 bucket
         site_bucket_name: Name of the CDN site S3 bucket
         image_bucket_name: Name of the upload-images bucket (original photos)
+        summary_queue_url: Summary updater queue URL
+        summary_queue_arn: Summary updater queue ARN
+        line_item_queue_url: Line-item updater queue URL
+        line_item_queue_arn: Line-item updater queue ARN
 
     Returns:
         MergeReceiptLambda component with lambda_arn output
@@ -272,4 +320,8 @@ def create_merge_receipt_lambda(
         raw_bucket_name=raw_bucket_name,
         site_bucket_name=site_bucket_name,
         image_bucket_name=image_bucket_name,
+        summary_queue_url=summary_queue_url,
+        summary_queue_arn=summary_queue_arn,
+        line_item_queue_url=line_item_queue_url,
+        line_item_queue_arn=line_item_queue_arn,
     )

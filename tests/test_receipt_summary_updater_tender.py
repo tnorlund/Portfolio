@@ -48,6 +48,14 @@ class FakeClient:
     """Minimal DynamoClient stand-in for update_receipt_summary."""
 
     def __init__(self, existing_summary=None, receipt_exists=True):
+        self.table_name = "test-table"
+        self._client = SimpleNamespace(
+            get_item=lambda **kwargs: (
+                {"Item": {"PK": {"S": IMAGE_ID}}}
+                if self.receipt_exists
+                else {}
+            )
+        )
         self.existing_summary = existing_summary
         self.receipt_exists = receipt_exists
         self.upserted = []
@@ -67,6 +75,9 @@ class FakeClient:
         # fallback). Default to none so these tender tests exercise the
         # fallback path unchanged.
         self.line_items = []
+
+    def receipt_exists_consistent(self, image_id, receipt_id):
+        return self.receipt_exists
 
     def get_receipt(self, image_id, receipt_id):
         if not self.receipt_exists:
