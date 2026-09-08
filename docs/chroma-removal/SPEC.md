@@ -503,6 +503,16 @@ change. Editorial rules:
    `chromadb_init_ms` → stage-named fields, `avg_chroma_rate` →
    `avg_similarity_rate` — coordinated generator+frontend change per figure.
 
+### 5b. Measure ZIP packaging candidates after teardown
+
+Evaluate each proposed function payload and its attached layers on the
+intended Lambda Linux runtime and architecture. The combined uncompressed
+artifact size must be **strictly below 200 MiB**, and handler/import tests
+must pass before a package-type replacement is proposed. Dockerfile text
+and historical platform estimates are not acceptance evidence. See
+[ZIP_LAMBDA_FOLLOWUP.md](ZIP_LAMBDA_FOLLOWUP.md) and
+`scripts/lambda_zip_budget.py` for the artifact check and conversion sequence.
+
 ## 6. Landmines (each verified, with evidence in the inventories)
 
 A. **Import-time Pulumi breaks**: `chromadb_buckets.py` import side effect
