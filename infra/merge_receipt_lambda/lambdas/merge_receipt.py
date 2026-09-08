@@ -36,8 +36,6 @@ import io
 import json
 import logging
 import os
-import time
-from dataclasses import fields
 from typing import TYPE_CHECKING, Any
 
 import boto3
@@ -89,12 +87,12 @@ def _delete_native_embedding_items(
 def _collect_receipt_assets(receipt: Any) -> set[tuple[str, str]]:
     """Snapshot explicit raw/CDN references, never infer keys from a prefix."""
     assets = set()
-    if receipt.raw_s3_bucket and receipt.raw_s3_key:
+    if getattr(receipt, "raw_s3_bucket", None) and receipt.raw_s3_key:
         assets.add((receipt.raw_s3_bucket, receipt.raw_s3_key))
-    if receipt.cdn_s3_bucket:
-        for field in fields(receipt):
-            if field.name.startswith("cdn_") and field.name.endswith("s3_key"):
-                key = getattr(receipt, field.name)
+    if getattr(receipt, "cdn_s3_bucket", None):
+        for name in vars(receipt):
+            if name.startswith("cdn_") and name.endswith("s3_key"):
+                key = getattr(receipt, name)
                 if key:
                     assets.add((receipt.cdn_s3_bucket, key))
     return assets
@@ -103,54 +101,8 @@ def _collect_receipt_assets(receipt: Any) -> set[tuple[str, str]]:
 def _purge_receipt_children(
     client: Any, image_id: str, receipt_id: int
 ) -> int:
-    """Purge all child types after successful parent deletion.
-
-    The trailing delimiter protects neighboring IDs, including IDs wider
-    than five digits. Read the base table consistently so summaries written
-    before parent deletion are visible. The summary processor's post-write
-    parent check removes summaries written AFTER this sweep by an in-flight
-    worker; repeated sweeps or deleting the parent last cannot close that race.
-    """
-    dynamo = client._client  # pylint: disable=protected-access
-    deleted = 0
-    pages = dynamo.get_paginator("query").paginate(
-        TableName=client.table_name,
-        KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
-        ExpressionAttributeValues={
-            ":pk": {"S": f"IMAGE#{image_id}"},
-            ":prefix": {"S": f"RECEIPT#{receipt_id:05d}#"},
-        },
-        ProjectionExpression="PK, SK",
-        ConsistentRead=True,
-    )
-    for page in pages:
-        items = page.get("Items", [])
-        for start in range(0, len(items), 25):
-            pending = [
-                {"DeleteRequest": {"Key": item}}
-                for item in items[start : start + 25]
-            ]
-            # Bound retries so throttling cannot consume the Lambda timeout
-            # and prevent the other best-effort steps from running.
-            for attempt in range(5):
-                response = dynamo.batch_write_item(
-                    RequestItems={client.table_name: pending}
-                )
-                remaining = response.get("UnprocessedItems", {}).get(
-                    client.table_name, []
-                )
-                deleted += len(pending) - len(remaining)
-                pending = remaining
-                if not pending:
-                    break
-                if attempt < 4:
-                    time.sleep(0.1 * 2**attempt)
-            if pending:
-                raise RuntimeError(
-                    f"Child purge exhausted retries for {image_id}"
-                    f"#{receipt_id}: {len(pending)} unprocessed deletes"
-                )
-    return deleted
+    """The data layer owns the consistent, bounded canonical/legacy sweep."""
+    return client.purge_receipt_children(image_id, receipt_id)
 
 
 def _delete_receipt_assets(
@@ -255,7 +207,10 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             create_receipt_letters_from_combined,
             create_warped_receipt_image,
             get_best_receipt_place,
+            migrate_receipt_barcodes,
+            migrate_receipt_sections,
             migrate_receipt_word_labels,
+            receipt_barcodes_in_image_space,
             upsert_receipt_place,
         )
         from receipt_upload.utils import (
@@ -330,8 +285,28 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # Step 3: Calculate new bounding rectangle
         # ============================================================
         logger.info("Calculating min-area bounding rectangle...")
+        image_barcodes = receipt_barcodes_in_image_space(
+            client, image_id, receipt_ids, image_width, image_height
+        )
+        # Barcodes may lie outside every text box. Include them in the crop
+        # so migrating their coordinates also preserves the visible symbol.
+        barcode_bounds = [
+            {
+                name: {
+                    "x": getattr(barcode, name)["x"] * image_width,
+                    "y": getattr(barcode, name)["y"] * image_height,
+                }
+                for name in (
+                    "top_left",
+                    "top_right",
+                    "bottom_left",
+                    "bottom_right",
+                )
+            }
+            for barcode in image_barcodes
+        ]
         rect_info = calculate_min_area_rect(
-            combined_words, image_width, image_height
+            combined_words + barcode_bounds, image_width, image_height
         )
         bounds = rect_info["bounds"]
         src_corners = rect_info["src_corners"]
@@ -392,6 +367,22 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         receipt_words = records["receipt_words"]
         line_id_map = records["line_id_map"]
         word_id_map = records["word_id_map"]
+        sections = migrate_receipt_sections(
+            client,
+            image_id,
+            receipt_ids,
+            new_receipt_id,
+            records["section_line_id_map"],
+        )
+        barcodes = migrate_receipt_barcodes(
+            image_barcodes,
+            new_receipt_id,
+            image_width,
+            image_height,
+            src_corners,
+            warped_width,
+            warped_height,
+        )
 
         logger.info(
             "Created: 1 receipt, %d lines, %d words",
@@ -474,6 +465,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "letters_merged": len(receipt_letters),
             "labels_merged": len(new_labels),
             "lines_created": len(receipt_lines),
+            "sections_migrated": len(sections),
+            "barcodes_migrated": len(barcodes),
             "warped_dimensions": f"{warped_width}x{warped_height}",
             "place": receipt_place.merchant_name if receipt_place else None,
         }
@@ -539,6 +532,11 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         if new_labels:
             client.add_receipt_word_labels(new_labels)
             logger.info("  Added %d labels", len(new_labels))
+
+        if sections:
+            client.add_receipt_sections(sections)
+        if barcodes:
+            client.add_receipt_barcodes(barcodes)
 
         if receipt_place:
             # Idempotent: retries after partial write must not abort before
@@ -652,7 +650,23 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                     logger.exception(
                         "Failed to purge children for %s#%s", image_id, rid
                     )
-                _delete_receipt_assets(s3_client, assets)
+                try:
+                    # A native receipt can share all its objects with Image.
+                    # Also retain keys referenced by a surviving receipt,
+                    # including a source whose parent deletion failed.
+                    owners = [
+                        client.get_image(image_id),
+                        *client.get_receipts_from_image_consistent(image_id),
+                    ]
+                    protected = set().union(
+                        *(_collect_receipt_assets(owner) for owner in owners)
+                    )
+                    _delete_receipt_assets(s3_client, assets - protected)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    # Unknown ownership must retain objects, never delete them.
+                    logger.exception(
+                        "Retaining assets: ownership check failed"
+                    )
             else:
                 logger.error(
                     "  Failed to delete receipt %d: %s",

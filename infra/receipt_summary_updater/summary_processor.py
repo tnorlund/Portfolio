@@ -155,14 +155,11 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     # through the current pipeline never get LINE_TOTAL labels, so the
     # label rule reported 0 for receipts that hold real line items.
     #
-    # Ordering caveat: a summary write is what triggers the line-item
+    # A summary write is what triggers the line-item
     # updater (RECEIPT_SUMMARY -> LINE_ITEMS queue), so on a receipt's
-    # FIRST summary write there are no rows yet and the count still falls
-    # back to labels. It becomes correct on the next recompute (any label
-    # or place change). A stream back-edge from RECEIPT_LINE_ITEM to this
-    # queue is deliberately NOT added: the line-item updater
-    # delete-then-inserts every row on each run, so that edge would be an
-    # unbounded recompute loop.
+    # FIRST summary write there may be no rows yet. The item worker
+    # finalizes only item_count after its rewrite, preserving this summary's
+    # timestamp so that finalization does not trigger another extraction.
     try:
         line_item_count = len(
             dynamo_client.get_receipt_line_items_from_receipt(
@@ -198,18 +195,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     # before deletion; this consistent POST-write read handles writes after
     # deletion, even when the sweep already finished. Errors propagate for
     # SQS retry, whose initial guard also removes an orphan summary.
-    parent = (
-        dynamo_client._client.get_item(  # pylint: disable=protected-access
-            TableName=dynamo_client.table_name,
-            Key={
-                "PK": {"S": f"IMAGE#{image_id}"},
-                "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
-            },
-            ConsistentRead=True,
-            ProjectionExpression="PK",
-        )
-    )
-    if "Item" not in parent:
+    if not dynamo_client.receipt_exists_consistent(image_id, receipt_id):
         try:
             dynamo_client.delete_receipt_summary(record)
         except EntityNotFoundError:

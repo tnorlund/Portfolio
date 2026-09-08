@@ -9,6 +9,8 @@ This module provides CRUD operations for managing ReceiptSummaryRecord
 records in DynamoDB.
 """
 
+from botocore.exceptions import ClientError
+
 from receipt_dynamo.data.base_operations import (
     DeleteTypeDef,
     FlattenedStandardMixin,
@@ -67,6 +69,51 @@ class _ReceiptSummary(FlattenedStandardMixin):
     list_receipt_summaries(limit, last_evaluated_key):
         Lists all summary records via TYPE GSI with pagination.
     """
+
+    @handle_dynamodb_errors("update_receipt_summary_item_count")
+    def update_receipt_summary_item_count(
+        self, image_id: str, receipt_id: int, item_count: int
+    ) -> bool:
+        """Finalize an existing summary without triggering extraction again.
+
+        The stream routes summary timestamp changes to the item worker.
+        Changing only item_count preserves that timestamp and all financial,
+        tender and offline bank fields. A missing summary is left missing;
+        its later initial write will trigger extraction and this finalizer.
+        The caller must perform its post-write parent guard afterward.
+        """
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
+        if (
+            not isinstance(item_count, int)
+            or isinstance(item_count, bool)
+            or item_count < 0
+        ):
+            raise EntityValidationError(
+                "item_count must be a non-negative int"
+            )
+        try:
+            self._client.update_item(
+                TableName=self.table_name,
+                Key={
+                    "PK": {"S": f"IMAGE#{image_id}"},
+                    "SK": {"S": f"RECEIPT#{receipt_id:05d}#SUMMARY"},
+                },
+                UpdateExpression="SET item_count = :count",
+                ConditionExpression=(
+                    "attribute_exists(PK) AND "
+                    "(attribute_not_exists(item_count) OR item_count <> :count)"
+                ),
+                ExpressionAttributeValues={":count": {"N": str(item_count)}},
+            )
+        except ClientError as exc:
+            if (
+                exc.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                return False
+            raise
+        return True
 
     @handle_dynamodb_errors("add_receipt_summary")
     def add_receipt_summary(self, summary: ReceiptSummaryRecord) -> None:

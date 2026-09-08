@@ -76,6 +76,9 @@ class FakeClient:
         # fallback path unchanged.
         self.line_items = []
 
+    def receipt_exists_consistent(self, image_id, receipt_id):
+        return self.receipt_exists
+
     def get_receipt(self, image_id, receipt_id):
         if not self.receipt_exists:
             raise EntityNotFoundError("no receipt")

@@ -4,7 +4,8 @@ import ast
 import importlib.util
 import io
 import json
-from dataclasses import fields
+from dataclasses import fields, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -13,14 +14,28 @@ from unittest.mock import Mock
 # Keep package grouping stable across CI's editable package environments.
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 from moto import mock_aws
 from PIL import Image as PILImage
 import receipt_dynamo
 import receipt_upload.combine as combine
 import receipt_upload.utils as upload_utils
 from receipt_agent.lifecycle import receipt_manager
-from receipt_dynamo import DynamoClient, Receipt
+from receipt_dynamo import (
+    DynamoClient,
+    Image,
+    Receipt,
+    ReceiptLine,
+    ReceiptWord,
+)
+from receipt_dynamo.entities.receipt_barcode import ReceiptBarcode
+from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+from receipt_dynamo.entities.receipt_section import ReceiptSection
+from receipt_dynamo.entities.receipt_summary_record import ReceiptSummaryRecord
+from receipt_dynamo_stream.message_builder import build_messages_from_records
+from infra.receipt_line_item_updater import line_item_processor
 from receipt_dynamo.entities.entity_mixins import CDNFieldsMixin
+from receipt_dynamo.data.shared_exceptions import DynamoDBThroughputError
 from receipt_upload.merchant_resolution import dynamo_embedding_write
 from infra.receipt_summary_updater import summary_processor
 
@@ -73,7 +88,7 @@ def receipt(rid):
 def db():
     dynamo = boto3.client("dynamodb")
     # GSI3 is used by get_receipts_from_image. Geometry reads are stubbed.
-    attrs = ["PK", "SK", "GSI3PK", "GSI3SK"]
+    attrs = ["PK", "SK", "GSI3PK", "GSI3SK", "GSI4PK", "GSI4SK"]
     dynamo.create_table(
         TableName="merge-test",
         KeySchema=[
@@ -86,13 +101,14 @@ def db():
         BillingMode="PAY_PER_REQUEST",
         GlobalSecondaryIndexes=[
             {
-                "IndexName": "GSI3",
+                "IndexName": index,
                 "KeySchema": [
-                    {"AttributeName": "GSI3PK", "KeyType": "HASH"},
-                    {"AttributeName": "GSI3SK", "KeyType": "RANGE"},
+                    {"AttributeName": f"{index}PK", "KeyType": "HASH"},
+                    {"AttributeName": f"{index}SK", "KeyType": "RANGE"},
                 ],
                 "Projection": {"ProjectionType": "ALL"},
             }
+            for index in ("GSI3", "GSI4")
         ],
     )
     return DynamoClient("merge-test")
@@ -240,6 +256,7 @@ def merge_env(db, monkeypatch):
             receipt_lines=[],
             receipt_words=[],
             line_id_map={},
+            section_line_id_map={},
             word_id_map={},
         ),
     )
@@ -283,8 +300,10 @@ def test_merge_collects_before_deletion_and_cleans_after(
 
     def capture(source):
         assert env.native.call_count == 1
-        assert env.db.get_receipt(IMAGE_ID, source.receipt_id)
-        observed.append(("collect", source.receipt_id))
+        rid = getattr(source, "receipt_id", None)
+        if rid in EVENT["receipt_ids"] and ("delete", rid) not in observed:
+            assert env.db.get_receipt(IMAGE_ID, rid)
+            observed.append(("collect", rid))
         return collect(source)
 
     def delete_parent(client, image_id, rid):
@@ -299,8 +318,7 @@ def test_merge_collects_before_deletion_and_cleans_after(
     delete_assets = merge._delete_receipt_assets
 
     def delete_assets_after_parent(s3_client, assets):
-        rid = observed[-1][1]
-        assert observed[-1] == ("delete", rid)
+        rid = [rid for action, rid in observed if action == "delete"][-1]
         assert "Item" not in env.db._client.get_item(
             TableName=env.db.table_name, Key=receipt(rid).key
         )
@@ -315,12 +333,11 @@ def test_merge_collects_before_deletion_and_cleans_after(
     assert result["status"] == "success"
     assert result["deleted_receipts"] == [2, 1]
     assert result["new_receipt_id"] == 4
-    assert observed == [
-        ("collect", 2),
-        ("delete", 2),
-        ("collect", 1),
-        ("delete", 1),
-    ]
+    assert [rid for action, rid in observed if action == "delete"] == [2, 1]
+    for rid in (1, 2):
+        assert observed.index(("collect", rid)) < observed.index(
+            ("delete", rid)
+        )
     assert not any(
         k.startswith(("RECEIPT#00001", "RECEIPT#00002")) for k in keys(env.db)
     )
@@ -528,7 +545,9 @@ def test_purge_retries_unprocessed_items_and_bounds_failures(db, monkeypatch):
         return real_write(**kwargs)
 
     monkeypatch.setattr(db._client, "batch_write_item", once_unprocessed)
-    monkeypatch.setattr(merge.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(
+        "receipt_dynamo.data._receipt.time.sleep", lambda seconds: None
+    )
     assert merge._purge_receipt_children(db, IMAGE_ID, 1) == 1
     assert len(requests) == 2
     put_child(db, 1, "SUMMARY")
@@ -538,7 +557,7 @@ def test_purge_retries_unprocessed_items_and_bounds_failures(db, monkeypatch):
         }
     )
     monkeypatch.setattr(db._client, "batch_write_item", blocked)
-    with pytest.raises(RuntimeError, match="exhausted retries"):
+    with pytest.raises(DynamoDBThroughputError, match="exhausted retries"):
         merge._purge_receipt_children(db, IMAGE_ID, 1)
     assert blocked.call_count == 5
 
@@ -580,3 +599,390 @@ def test_merge_iam_scopes_asset_deletes_and_queue_sends():
     assert json.loads(policies["sqs_policy"](arns))["Statement"] == [
         {"Effect": "Allow", "Action": "sqs:SendMessage", "Resource": arns}
     ]
+
+
+def geometry(x, y, width, height):
+    return {
+        "bounding_box": {"x": x, "y": y, "width": width, "height": height},
+        "top_left": {"x": x, "y": y + height},
+        "top_right": {"x": x + width, "y": y + height},
+        "bottom_left": {"x": x, "y": y},
+        "bottom_right": {"x": x + width, "y": y},
+        "angle_degrees": 0.0,
+        "angle_radians": 0.0,
+        "confidence": 1.0,
+    }
+
+
+@pytest.fixture
+def lifecycle_env(db, monkeypatch):
+    """Real geometry and Dynamo entities; only external embeddings/CDN encoding stubbed."""
+    monkeypatch.setenv("DYNAMODB_TABLE_NAME", db.table_name)
+    monkeypatch.setenv("RAW_BUCKET", "merge-raw")
+    monkeypatch.setenv("SITE_BUCKET", "merge-site")
+    monkeypatch.delenv("TRIGGER_REOCR_FUNCTION_NAME", raising=False)
+    monkeypatch.delenv("OCR_JOB_QUEUE_URL", raising=False)
+    s3 = boto3.client("s3")
+    for bucket in ("merge-raw", "merge-site"):
+        s3.create_bucket(Bucket=bucket)
+    png = io.BytesIO()
+    PILImage.new("RGB", (600, 1200), "white").save(png, format="PNG")
+    sources = {
+        rid: replace(receipt(rid), width=600, height=1200) for rid in (1, 2, 3)
+    }
+    # One CDN object on source 2 is also owned by a surviving receipt.
+    sources[3].cdn_avif_s3_key = sources[2].cdn_avif_s3_key
+    for source in sources.values():
+        db.add_receipt(source)
+        for bucket, key in merge._collect_receipt_assets(source):
+            s3.put_object(Bucket=bucket, Key=key, Body=png.getvalue())
+    # Native receipt 1 and its Image share raw and every CDN object.
+    image = Image(
+        image_id=IMAGE_ID,
+        width=600,
+        height=1200,
+        timestamp_added="2026-09-08T00:00:00+00:00",
+        raw_s3_bucket=sources[1].raw_s3_bucket,
+        raw_s3_key=sources[1].raw_s3_key,
+        cdn_s3_bucket=sources[1].cdn_s3_bucket,
+        receipt_count=3,
+        **{name: getattr(sources[1], name) for name in CDN_KEYS},
+    )
+    db.add_image(image)
+    for rid, name, price, y in (
+        (1, "MILK", "3.00", 0.8),
+        (2, "BREAD", "4.00", 0.6),
+    ):
+        db.add_receipt_line(
+            ReceiptLine(
+                image_id=IMAGE_ID,
+                receipt_id=rid,
+                line_id=1,
+                text=f"{name} {price}",
+                **geometry(0.2, y, 0.65, 0.02),
+            )
+        )
+        for wid, text, x, width in (
+            (1, name, 0.2, 0.2),
+            (2, price, 0.72, 0.13),
+        ):
+            db.add_receipt_word(
+                ReceiptWord(
+                    image_id=IMAGE_ID,
+                    receipt_id=rid,
+                    line_id=1,
+                    word_id=wid,
+                    text=text,
+                    **geometry(x, y, width, 0.02),
+                )
+            )
+        db.add_receipt_section(
+            ReceiptSection(
+                image_id=IMAGE_ID,
+                receipt_id=rid,
+                section_type="ITEMS",
+                line_ids=[1],
+                row_ids=[1],
+                created_at=datetime.now(timezone.utc),
+                validation_status="VALID",
+                model_source="swift-worker-v1",
+            )
+        )
+        db.add_receipt_barcode(
+            ReceiptBarcode(
+                image_id=IMAGE_ID,
+                receipt_id=rid,
+                barcode_id=0,
+                symbology="QR",
+                text=f"offline-barcode-{rid}",
+                **geometry(0.1, rid * 0.1, 0.8, 0.05),
+            )
+        )
+        # Legacy children must disappear without matching receipt 10.
+        db._client.put_item(
+            TableName=db.table_name,
+            Item={
+                "PK": {"S": f"IMAGE#{IMAGE_ID}"},
+                "SK": {"S": f"RECEIPT#{rid}#LEGACY_CHILD"},
+            },
+        )
+    sqs = boto3.client("sqs")
+    queues = {}
+    for env in ("SUMMARY_QUEUE_URL", "LINE_ITEM_QUEUE_URL"):
+        queues[env] = sqs.create_queue(QueueName=env)["QueueUrl"]
+        monkeypatch.setenv(env, queues[env])
+    monkeypatch.setattr(receipt_dynamo, "DynamoClient", lambda table_name: db)
+    monkeypatch.setattr(summary_processor, "dynamo_client", db)
+    monkeypatch.setattr(line_item_processor, "dynamo_client", db)
+    native = Mock(return_value={"written": 6, "failed": 0})
+    monkeypatch.setattr(
+        dynamo_embedding_write, "write_native_embeddings", native
+    )
+    monkeypatch.setattr(
+        upload_utils, "upload_all_cdn_formats", lambda *args, **kwargs: {}
+    )
+    return SimpleNamespace(
+        db=db,
+        s3=s3,
+        sqs=sqs,
+        queues=queues,
+        image=image,
+        sources=sources,
+        native=native,
+    )
+
+
+def summary_stream(old, new):
+    return build_messages_from_records(
+        [
+            {
+                "eventName": "MODIFY" if old else "INSERT",
+                "eventID": "offline-summary-event",
+                "awsRegion": "us-east-1",
+                "dynamodb": {
+                    "Keys": new.key,
+                    "NewImage": new.to_item(),
+                    **({"OldImage": old.to_item()} if old else {}),
+                },
+            }
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "ordering", ["summary-first", "items-first", "late-summary"]
+)
+def test_real_merge_preserves_metadata_assets_and_final_item_count(
+    lifecycle_env, ordering
+):
+    env = lifecycle_env
+    result = merge.handler(EVENT, None)
+    assert result["status"] == "success", result
+    assert result["sections_migrated"] == 1
+    assert result["barcodes_migrated"] == 2
+    assert result["new_receipt_id"] == 4
+    for rid in (1, 2):
+        assert not env.db.receipt_exists_consistent(IMAGE_ID, rid)
+        assert not any(
+            k.startswith((f"RECEIPT#{rid:05d}#", f"RECEIPT#{rid}#"))
+            for k in keys(env.db)
+        )
+    sections = env.db.get_receipt_sections_from_receipt(IMAGE_ID, 4)
+    assert sections[0].section_type == "ITEMS"
+    assert sections[0].line_ids == [1, 2]
+    assert sections[0].row_ids is None
+    assert sections[0].validation_status == "PENDING"
+    barcodes = env.db.list_receipt_barcodes_from_receipt_consistent(
+        IMAGE_ID, 4
+    )
+    assert {b.text for b in barcodes} == {
+        "offline-barcode-1",
+        "offline-barcode-2",
+    }
+    assert {b.barcode_id for b in barcodes} == {0, 1}
+    for barcode in barcodes:
+        for corner in (
+            barcode.top_left,
+            barcode.top_right,
+            barcode.bottom_left,
+            barcode.bottom_right,
+        ):
+            assert -1e-8 <= corner["x"] <= 1 + 1e-8
+            assert -1e-8 <= corner["y"] <= 1 + 1e-8
+    for owner in (env.image, env.sources[3]):
+        for bucket, key in merge._collect_receipt_assets(owner):
+            env.s3.head_object(Bucket=bucket, Key=key)
+    assert env.db.get_image(IMAGE_ID).receipt_count == 2
+    with pytest.raises(ClientError, match="404"):
+        env.s3.head_object(Bucket="merge-raw", Key=env.sources[2].raw_s3_key)
+    for queue in env.queues:
+        assert len(queue_messages(env, queue)) == 1
+
+    if ordering == "items-first":
+        assert (
+            line_item_processor.update_receipt_line_items(IMAGE_ID, 4)["items"]
+            == 2
+        )
+    summary_processor.update_receipt_summary(IMAGE_ID, 4)
+    before = env.db.get_receipt_summary(IMAGE_ID, 4)
+    assert (
+        line_item_processor.update_receipt_line_items(IMAGE_ID, 4)["items"]
+        == 2
+    )
+    after = env.db.get_receipt_summary(IMAGE_ID, 4)
+    assert after.item_count == 2
+    assert after.timestamp_computed == before.timestamp_computed
+    assert summary_stream(before, after) == []  # No extraction loop.
+    if ordering == "late-summary":
+        stale = ReceiptSummaryRecord.from_summary(before.summary)
+        env.db.upsert_receipt_summary(stale)
+        assert len(summary_stream(after, stale)) == 1
+        line_item_processor.update_receipt_line_items(IMAGE_ID, 4)
+        assert env.db.get_receipt_summary(IMAGE_ID, 4).item_count == 2
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        "add_receipt_sections",
+        "add_receipt_barcodes",
+        "list_receipt_barcodes_from_receipt_consistent",
+    ],
+)
+def test_metadata_failure_retains_sources(lifecycle_env, monkeypatch, method):
+    env = lifecycle_env
+    monkeypatch.setattr(
+        env.db, method, Mock(side_effect=RuntimeError("metadata unavailable"))
+    )
+    result = merge.handler(EVENT, None)
+    assert result["status"] == "error"
+    for rid in (1, 2):
+        assert env.db.receipt_exists_consistent(IMAGE_ID, rid)
+        for bucket, key in merge._collect_receipt_assets(env.sources[rid]):
+            env.s3.head_object(Bucket=bucket, Key=key)
+    env.native.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "ordering", ["before-write", "after-write", "partial-write-error"]
+)
+def test_late_item_writer_cannot_resurrect_deleted_children(
+    lifecycle_env, monkeypatch, ordering
+):
+    env = lifecycle_env
+    write = env.db.add_receipt_line_items
+
+    def race(items):
+        if ordering == "after-write":
+            write(items)
+        env.db.delete_receipt(env.db.get_receipt(IMAGE_ID, 1))
+        env.db.purge_receipt_children(IMAGE_ID, 1)
+        if ordering != "after-write":
+            write(items)
+        if ordering == "partial-write-error":
+            raise RuntimeError("interrupted batch")
+
+    monkeypatch.setattr(env.db, "add_receipt_line_items", race)
+    if ordering == "partial-write-error":
+        with pytest.raises(RuntimeError, match="interrupted batch"):
+            line_item_processor.update_receipt_line_items(IMAGE_ID, 1)
+    else:
+        assert (
+            line_item_processor.update_receipt_line_items(IMAGE_ID, 1)[
+                "reason"
+            ]
+            == "parent receipt deleted"
+        )
+    assert not any(
+        k.startswith(("RECEIPT#00001#", "RECEIPT#1#")) for k in keys(env.db)
+    )
+    assert (
+        line_item_processor.update_receipt_line_items(IMAGE_ID, 1)["reason"]
+        == "parent receipt deleted"
+    )
+
+
+def test_deduplicated_words_keep_section_line_aliases(lifecycle_env):
+    env = lifecycle_env
+    # Every word of source 2 duplicates source 1. Only source 2 has a zone.
+    source_words = env.db.list_receipt_words_from_receipt(IMAGE_ID, 1)
+    for word in source_words:
+        env.db.update_receipt_word(replace(word, receipt_id=2))
+    zone = env.db.get_receipt_sections_from_receipt(IMAGE_ID, 1)[0]
+    env.db.delete_receipt_section(
+        zone.receipt_id, zone.image_id, zone.section_type
+    )
+    result = merge.handler(EVENT, None)
+    assert result["status"] == "success", result
+    assert result["words_merged"] == 2
+    zones = env.db.get_receipt_sections_from_receipt(IMAGE_ID, 4)
+    assert len(zones) == 1
+    assert zones[0].line_ids == [1]
+    assert (
+        line_item_processor.update_receipt_line_items(IMAGE_ID, 4)["items"]
+        == 1
+    )
+
+
+def test_unknown_asset_ownership_retains_source_objects(
+    lifecycle_env, monkeypatch
+):
+    env = lifecycle_env
+    monkeypatch.setattr(
+        env.db,
+        "get_receipts_from_image_consistent",
+        Mock(side_effect=RuntimeError("ownership unavailable")),
+    )
+    result = merge.handler(EVENT, None)
+    assert result["status"] == "success", result
+    for source in env.sources.values():
+        for bucket, key in merge._collect_receipt_assets(source):
+            env.s3.head_object(Bucket=bucket, Key=key)
+
+
+@pytest.mark.parametrize("with_label", [False, True])
+def test_empty_extraction_refreshes_count_and_preserves_label_fallback(
+    lifecycle_env, with_label
+):
+    env = lifecycle_env
+    summary_processor.update_receipt_summary(IMAGE_ID, 1)
+    env.db.update_receipt_summary_item_count(IMAGE_ID, 1, 9)
+    env.db.delete_receipt_section(1, IMAGE_ID, "ITEMS")
+    if with_label:
+        env.db.add_receipt_word_label(
+            ReceiptWordLabel(
+                image_id=IMAGE_ID,
+                receipt_id=1,
+                line_id=1,
+                word_id=2,
+                label="LINE_TOTAL",
+                reasoning="Offline fixture",
+                validation_status="VALID",
+                timestamp_added=datetime.now(timezone.utc),
+            )
+        )
+    assert (
+        line_item_processor.update_receipt_line_items(IMAGE_ID, 1)["items"]
+        == 0
+    )
+    assert env.db.get_receipt_summary(IMAGE_ID, 1).item_count == int(
+        with_label
+    )
+
+
+def test_rotated_barcode_maps_to_image_and_back(lifecycle_env):
+    env = lifecycle_env
+    source = replace(
+        env.sources[1],
+        width=400,
+        height=600,
+        top_left={"x": 0.8, "y": 0.9},
+        top_right={"x": 0.8, "y": 0.1},
+        bottom_right={"x": 0.2, "y": 0.1},
+        bottom_left={"x": 0.2, "y": 0.9},
+    )
+    env.db.update_receipt(source)
+    original = env.db.get_receipt_barcode(IMAGE_ID, 1, 0)
+    transformed = combine.receipt_barcodes_in_image_space(
+        env.db, IMAGE_ID, [1], 600, 1200
+    )[0]
+    for name in ("top_left", "top_right", "bottom_left", "bottom_right"):
+        point = getattr(original, name)
+        u = point["x"] * 400 / 399
+        v = (1 - point["y"]) * 600 / 599
+        assert getattr(transformed, name) == pytest.approx(
+            {"x": 0.8 - 0.6 * v, "y": 0.9 - 0.8 * u}
+        )
+    crop = [(480, 120), (480, 1080), (120, 1080), (120, 120)]
+    restored = combine.migrate_receipt_barcodes(
+        [transformed], 4, 600, 1200, crop, 400, 600
+    )[0]
+    for name in ("top_left", "top_right", "bottom_left", "bottom_right"):
+        assert getattr(restored, name) == pytest.approx(
+            getattr(original, name)
+        )
+    assert restored.text == original.text
+    assert restored.symbology == original.symbology
+    assert restored.confidence == original.confidence
+    assert restored.angle_degrees == pytest.approx(0, abs=1e-8)
+    assert env.db.get_receipt_barcode(IMAGE_ID, 1, 0) == original
