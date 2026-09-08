@@ -37,12 +37,7 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install packages
 pip install -e receipt_dynamo
-pip install -e receipt_label
 pip install -e receipt_upload
-
-# Run tests
-pip install -e "receipt_label[test]"
-pytest receipt_label/tests/ -v
 ```
 
 ### Infrastructure Deployment
@@ -64,10 +59,6 @@ pulumi up
 ├── receipt_dynamo/    # DynamoDB data access layer
 │   ├── entities/      # Data models
 │   └── tests/         # Unit and integration tests
-│
-├── receipt_label/     # ML-based receipt analysis
-│   ├── models/        # ML models and processors
-│   └── pattern_detection/  # Text pattern recognition
 │
 ├── receipt_upload/    # OCR and image processing
 │   ├── ocr.py        # Text extraction
@@ -92,7 +83,7 @@ pulumi up
 
 **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS  
 **Backend**: Python 3.13, API Gateway, AWS Lambda
-**Database**: DynamoDB, S3, ChromaDB  
+**Database**: DynamoDB (including native vector indexes), S3  
 **Infrastructure**: AWS (CloudFront, Lambda, API Gateway, Step Functions), Pulumi  
 **ML/AI**: Ollama, Hugging Face, Custom OCR pipelines  
 **OCR Processing**: Swift, Apple Vision Framework, SQS queues
@@ -106,7 +97,7 @@ An intelligent document processing pipeline that extracts structured data from r
 - **Automated Text Extraction**: Swift-based OCR using Apple's Vision framework
 - **Intelligent Field Detection**: Ollama-powered extraction of merchant, total, date, items
 - **Merchant Validation**: Automated merchant name normalization and validation
-- **Vector Search**: ChromaDB integration for semantic similarity search
+- **Vector Search**: DynamoDB-native embedding indexes for semantic similarity search
 - **RESTful API**: Complete API for receipt management and querying
 
 ### Swift OCR Processing
@@ -147,13 +138,6 @@ make format  # Runs black and isort
 ### Testing
 
 ```bash
-# Install test dependencies
-pip install -e "receipt_label[test]"
-
-# Run Python tests
-pytest receipt_label/tests/ -v
-pytest receipt_label/tests/ -m "not integration"
-
 # Run tests for specific package
 ./scripts/test_runner.sh receipt_dynamo
 
@@ -203,7 +187,6 @@ Infrastructure is managed with Pulumi (Python). Key components:
 - **S3** - Object storage
 - **CloudFront** - CDN distribution
 - **SQS** - Message queues
-- **EFS** - Shared file system for ChromaDB
 
 ### Infrastructure Commands
 
@@ -241,7 +224,6 @@ All `receipt_*` packages use editable installs:
 
 ```bash
 pip install -e receipt_dynamo
-pip install -e receipt_label
 pip install -e receipt_upload
 ```
 
@@ -249,9 +231,6 @@ pip install -e receipt_upload
 
 ### receipt_dynamo
 DynamoDB data access layer. Provides entities and client for interacting with receipt data.
-
-### receipt_label
-ML-based receipt analysis and labeling. Uses Ollama and Hugging Face for intelligent field extraction.
 
 ### receipt_upload
 OCR and image processing. Handles text extraction and spatial analysis.

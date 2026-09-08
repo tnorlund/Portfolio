@@ -698,9 +698,8 @@ class _Receipt(FlattenedStandardMixin):
         This method queries the database for receipt-related items using GSI2
         (where GSI2PK = 'RECEIPT') and returns a page of receipt bundles.
 
-        Note: With the addition of new entities using the same GSI2PK pattern
-        (ReceiptLineItemAnalysis, ReceiptLabelAnalysis), this method now uses
-        a filter expression to only retrieve the specific types needed.
+        Note: Other entities share the same GSI2PK pattern, so this method
+        uses a filter expression to only retrieve the specific types needed.
 
         Args:
             limit: The maximum number of receipt bundles to return.

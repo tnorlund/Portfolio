@@ -4,8 +4,6 @@ import json
 import logging
 import os
 import random
-import shutil
-import tempfile
 from datetime import datetime, timezone
 
 import boto3
@@ -15,17 +13,12 @@ from receipt_embeddings.keys import (
     line_canonical_key,
 )
 
-# receipt_chroma is imported lazily inside the chroma-backend branches
-# only: on the dynamodb backend this Lambda must import (and run)
-# without the package or the CHROMADB_BUCKET env (Chroma teardown).
-
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Environment variables
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
-CHROMADB_BUCKET = os.environ.get("CHROMADB_BUCKET", "")
-S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET", CHROMADB_BUCKET)
+S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET", "")
 CACHE_KEY = "address-similarity-cache/latest.json"
 
 # Initialize clients
@@ -177,25 +170,18 @@ def calculate_bounding_box_for_lines(lines):
     }
 
 
-# Vector backend seam: "dynamodb" serves the seed embedding and the
-# neighbor search from the receipt table's RECEIPT_LINE_EMBEDDING items
-# and its line-embeddings vector index instead of a Chroma snapshot.
-VECTOR_BACKEND = os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
-
-
 class _DynamoLinesClient:
-    """Duck-typed stand-in for ChromaClient's lines-collection reads.
+    """Line-embedding reads against the receipt table.
 
     ``get`` returns the stored ``line_vector`` for an exact id;
     ``query`` runs SearchVectors on the line-embeddings index.
-    Distances are converted to Chroma's default squared-L2 scale
+    Distances are reported on the historical squared-L2 scale
     (2 x cosine distance for unit-norm vectors) so cached
-    ``similarity_distance`` values keep their historical meaning —
-    frontend data continuity depends on that scale (polish-brief
-    Invariants).
+    ``similarity_distance`` values keep their meaning — frontend data
+    continuity depends on that scale (polish-brief Invariants).
 
     Deliberately raw-boto3 rather than ``DynamoVectorSearchClient``:
-    this handler predates the seam, its callers speak the Chroma
+    this handler predates the seam, its callers speak the legacy
     get/query result shape, and the historical distance scale differs
     from the seam's cosine contract — wrapping the seam would need a
     second conversion layer for zero behavior gain (polish-brief
@@ -253,7 +239,7 @@ class _DynamoLinesClient:
             image_id = pk.split("#", 1)[1]
             receipt_id = int(parts[1])
             metadatas.append({"image_id": image_id, "receipt_id": receipt_id})
-            # Chroma's default metric is squared-L2; for unit-norm
+            # Historical metric is squared-L2; for unit-norm
             # embeddings that equals 2 x cosine distance.
             distances.append(2.0 * float(score))
             documents.append(None)
@@ -278,86 +264,10 @@ def handler(_event, _context):
     """
     logger.info("Starting address similarity cache generation")
 
-    # Create temporary directory for ChromaDB snapshot
-    temp_dir = tempfile.mkdtemp()
-    chroma_client = None
-
     try:
         # Initialize clients
         dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
-
-        # Download ChromaDB snapshot from S3 (skipped on the dynamodb
-        # backend, which reads embedding items from the receipt table)
-        if VECTOR_BACKEND == "dynamodb":
-            download_result = {"status": "downloaded"}
-        else:
-            # pylint: disable-next=import-outside-toplevel
-            from receipt_chroma.s3 import download_snapshot_atomic
-
-            logger.info(
-                "Downloading ChromaDB snapshot from S3: %s/lines",
-                CHROMADB_BUCKET,
-            )
-            download_result = download_snapshot_atomic(
-                bucket=CHROMADB_BUCKET,
-                collection="lines",
-                local_path=temp_dir,
-                verify_integrity=True,
-            )
-
-        if download_result.get("status") != "downloaded":
-            logger.error("Failed to download snapshot: %s", download_result)
-            return {
-                "statusCode": 500,
-                "body": json.dumps(
-                    {"error": "Failed to download ChromaDB snapshot"}
-                ),
-            }
-
-        logger.info(
-            "ChromaDB snapshot downloaded: version_id=%s, local_path=%s",
-            download_result.get("version_id"),
-            temp_dir,
-        )
-
-        # Initialize the vector client: DynamoDB seam, or ChromaDB in
-        # read mode from the downloaded snapshot
-        if VECTOR_BACKEND == "dynamodb":
-            chroma_client = _DynamoLinesClient(DYNAMODB_TABLE_NAME)
-        else:
-            # pylint: disable-next=import-outside-toplevel
-            from receipt_chroma import ChromaClient
-
-            chroma_client = ChromaClient(
-                persist_directory=temp_dir,
-                mode="read",
-            )
-
-        # Verify that the "lines" collection exists in the downloaded snapshot
-        logger.info("Checking if 'lines' collection exists in snapshot")
-        available_collections = chroma_client.list_collections()
-        if "lines" not in available_collections:
-            logger.error(
-                "Collection 'lines' not found in snapshot. "
-                "Available collections: %s",
-                available_collections,
-            )
-            return {
-                "statusCode": 500,
-                "body": json.dumps(
-                    {
-                        "error": (
-                            "Collection 'lines' not found in ChromaDB "
-                            "snapshot. "
-                            f"Available collections: {available_collections}"
-                        )
-                    }
-                ),
-            }
-        logger.info(
-            "Collection 'lines' found. Total collections: %d",
-            len(available_collections),
-        )
+        lines_client = _DynamoLinesClient(DYNAMODB_TABLE_NAME)
 
         # Step 1: Get random word with address label
         # Note: The label is "ADDRESS_LINE" per
@@ -495,7 +405,7 @@ def handler(_event, _context):
             len(original_receipt_labels),
         )
 
-        # Step 3: Construct line ID and get embedding from ChromaDB
+        # Step 3: Construct line ID and get its stored embedding
         # Line ID format:
         # IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}
         line_id = line_canonical_key(
@@ -506,8 +416,8 @@ def handler(_event, _context):
 
         logger.info("Fetching embedding for line ID: %s", line_id)
 
-        # Get the line's embedding from ChromaDB
-        line_data = chroma_client.get(
+        # Get the line's embedding from the receipt table
+        line_data = lines_client.get(
             collection_name="lines",
             ids=[line_id],
             include=["embeddings", "metadatas", "documents"],
@@ -515,7 +425,7 @@ def handler(_event, _context):
 
         # Log what we got back for debugging
         logger.info(
-            "ChromaDB get returned: ids=%s, embeddings_type=%s",
+            "Embedding get returned: ids=%s, embeddings_type=%s",
             line_data.get("ids", []),
             type(line_data.get("embeddings")),
         )
@@ -524,14 +434,16 @@ def handler(_event, _context):
         ids = line_data.get("ids", [])
         if not ids or line_id not in ids:
             logger.error(
-                "Line ID not found in ChromaDB: %s. Available IDs: %s",
+                "Line ID not found in embedding index: %s. Available IDs: %s",
                 line_id,
                 ids[:10] if ids else "none",
             )
             return {
                 "statusCode": 500,
                 "body": json.dumps(
-                    {"error": f"Line ID not found in ChromaDB: {line_id}"}
+                    {
+                        "error": f"Line ID not found in embedding index: {line_id}"
+                    }
                 ),
             }
 
@@ -539,7 +451,7 @@ def handler(_event, _context):
         # NumPy arrays don't support direct truthiness checks
         embeddings_raw = line_data.get("embeddings", [])
         # Convert to list if it's a NumPy array or other array-like object
-        # ChromaDB may return embeddings as NumPy arrays or lists
+        # Embeddings may arrive as NumPy arrays or lists
         if embeddings_raw is None:
             embeddings = []
         elif hasattr(embeddings_raw, "__len__") and not isinstance(
@@ -573,26 +485,21 @@ def handler(_event, _context):
             or embeddings[0] is None
             or (hasattr(embeddings[0], "size") and embeddings[0].size == 0)
         ):
-            logger.error(
-                "Line embedding not found in ChromaDB for ID: %s", line_id
-            )
+            logger.error("Line embedding not found for ID: %s", line_id)
             return {
                 "statusCode": 500,
-                "body": json.dumps(
-                    {"error": "Line embedding not found in ChromaDB"}
-                ),
+                "body": json.dumps({"error": "Line embedding not found"}),
             }
 
         query_embedding = embeddings[0]
         logger.info(
-            "Retrieved embedding from ChromaDB (dimension: %d)",
+            "Retrieved line embedding (dimension: %d)",
             len(query_embedding),
         )
 
-        # Step 4: Query ChromaDB for similar lines using the
-        # retrieved embedding
-        logger.info("Querying ChromaDB for similar lines")
-        similar_results = chroma_client.query(
+        # Step 4: Query the line-embeddings index for similar lines
+        logger.info("Querying line-embeddings index for similar lines")
+        similar_results = lines_client.query(
             collection_name="lines",
             query_embeddings=[query_embedding],
             n_results=8,
@@ -817,23 +724,3 @@ def handler(_event, _context):
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
         }
-    finally:
-        # Close ChromaDB client if initialized
-        if chroma_client is not None:
-            try:
-                chroma_client.close()
-                logger.info("Closed ChromaDB client")
-            except Exception:  # pylint: disable=broad-exception-caught
-                # CONTRACTUAL best-effort teardown in finally.
-                logger.warning("Failed to close ChromaDB client")
-
-        # Cleanup temporary directory
-        try:
-            shutil.rmtree(temp_dir)
-            logger.info("Cleaned up temporary directory: %s", temp_dir)
-        # pylint: disable-next=broad-exception-caught
-        except Exception as cleanup_error:
-            # CONTRACTUAL best-effort teardown in finally.
-            logger.warning(
-                "Failed to cleanup temp directory: %s", cleanup_error
-            )

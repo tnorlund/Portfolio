@@ -123,7 +123,7 @@ class MetadataUpdateResult(TypedDict, total=False):
 class LabelUpdateResult(TypedDict, total=False):
     """Result of a label update operation."""
 
-    chromadb_id: str
+    vector_id: str
     error: Optional[str]
     success: bool
 

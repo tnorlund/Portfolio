@@ -13,7 +13,7 @@ if _container_ocr not in sys.path:
 
 @pytest.fixture(autouse=True)
 def _stub_native_embedding_write(monkeypatch):
-    """Chroma teardown: re-OCR ALWAYS rewrites the receipt's native
+    """Re-OCR ALWAYS rewrites the receipt's native
     DynamoDB embeddings (batched OpenAI embed + engine writer + sweep).
     Stub it so these unit tests stay offline; failure-path tests can
     re-patch it per test."""

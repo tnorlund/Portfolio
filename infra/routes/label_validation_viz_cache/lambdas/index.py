@@ -110,7 +110,9 @@ def _calculate_aggregate_stats(
             "avg_confidence": 0.0,
         }
 
-    # Calculate ChromaDB validation rate (% of words validated by ChromaDB vs LLM)
+    # Calculate similarity-tier validation rate (% of words validated by
+    # similarity consensus vs LLM). The cache key stays "chroma" for the
+    # frontend contract.
     total_words = 0
     chroma_words = 0
     total_valid = 0

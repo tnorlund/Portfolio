@@ -14,7 +14,6 @@ from pydantic import BaseModel, Field
 
 # Re-export from state.models for backward compatibility
 from receipt_agent.state.models import (
-    ChromaSearchResult,
     EvidenceType,
     MerchantCandidate,
     ReceiptContext,
@@ -26,7 +25,6 @@ from receipt_agent.state.models import (
 )
 
 __all__ = [
-    "ChromaSearchResult",
     "EvidenceType",
     "MerchantCandidate",
     "ReceiptContext",

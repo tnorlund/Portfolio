@@ -49,7 +49,7 @@ def mock_aws_services():
 
 @pytest.fixture(autouse=True)
 def _stub_native_embeddings(monkeypatch):
-    """Chroma teardown: apply_plan ALWAYS writes native embeddings for the
+    """apply_plan ALWAYS writes native embeddings for the
     outputs (realtime OpenAI embeds via the engine writer). Stub it so
     these moto tests stay offline; the dedicated test asserts it runs."""
     monkeypatch.setattr(
@@ -131,7 +131,6 @@ def test_handler_does_not_expose_test_only_apply_controls(monkeypatch):
     monkeypatch.setenv("DYNAMODB_TABLE_NAME", "table")
     monkeypatch.setenv("RAW_BUCKET", "raw")
     monkeypatch.setenv("SITE_BUCKET", "site")
-    monkeypatch.setenv("CHROMADB_BUCKET", "chroma")
     monkeypatch.setattr(
         receipt_dynamo, "DynamoClient", lambda table_name: object()
     )
@@ -219,10 +218,9 @@ def test_plan_and_apply_split_is_idempotent_and_preserves_labels():
     raw_bucket = "resegment-raw"
     site_bucket = "resegment-site"
     image_bucket = "resegment-images"
-    chromadb_bucket = "resegment-chroma"
     _create_table(table_name)
     s3_client = boto3.client("s3", region_name="us-east-1")
-    for bucket in (raw_bucket, site_bucket, image_bucket, chromadb_bucket):
+    for bucket in (raw_bucket, site_bucket, image_bucket):
         s3_client.create_bucket(Bucket=bucket)
 
     image_id = str(uuid4())
@@ -368,10 +366,9 @@ def test_photo_v2_plan_visualizes_revises_and_blocks_layered_apply():
     raw_bucket = "resegment-v2-raw"
     site_bucket = "resegment-v2-site"
     image_bucket = "resegment-v2-images"
-    chromadb_bucket = "resegment-v2-chroma"
     _create_table(table_name)
     s3_client = boto3.client("s3", region_name="us-east-1")
-    for bucket in (raw_bucket, site_bucket, image_bucket, chromadb_bucket):
+    for bucket in (raw_bucket, site_bucket, image_bucket):
         s3_client.create_bucket(Bucket=bucket)
 
     image_id = str(uuid4())
@@ -632,12 +629,7 @@ def _seed_two_line_receipt(table_name, raw_bucket, image_bucket):
     """Create the table, buckets, image, and a two-line source receipt."""
     _create_table(table_name)
     s3_client = boto3.client("s3", region_name="us-east-1")
-    for bucket in (
-        raw_bucket,
-        "resegment-site",
-        image_bucket,
-        "resegment-chroma",
-    ):
+    for bucket in (raw_bucket, "resegment-site", image_bucket):
         s3_client.create_bucket(Bucket=bucket)
 
     image_id = str(uuid4())
@@ -1264,7 +1256,7 @@ def test_apply_defaults_to_no_inline_embeddings(monkeypatch):
         raw_bucket=raw_bucket,
     )
 
-    # Chroma teardown: the native embedding write is mandatory before the
+    # The native embedding write is mandatory before the
     # destructive commit — assert it RUNS (the autouse stub records calls).
     native_calls = []
     monkeypatch.setattr(
@@ -1282,7 +1274,6 @@ def test_apply_defaults_to_no_inline_embeddings(monkeypatch):
     )
 
     assert result["status"] == "APPLIED"
-    assert result["compaction_run_ids"] == []
     assert result["output_receipt_ids"] == [2, 3]
     assert len(native_calls) == 1
     assert [
@@ -1370,7 +1361,6 @@ def _set_handler_env(monkeypatch, table_name):
     monkeypatch.setenv("DYNAMODB_TABLE_NAME", table_name)
     monkeypatch.setenv("RAW_BUCKET", "resegment-raw")
     monkeypatch.setenv("SITE_BUCKET", "resegment-site")
-    monkeypatch.setenv("CHROMADB_BUCKET", "resegment-chroma")
 
 
 @mock_aws
@@ -1505,7 +1495,6 @@ def test_handler_routes_async_apply_to_dispatcher(monkeypatch):
     monkeypatch.setenv("DYNAMODB_TABLE_NAME", "table")
     monkeypatch.setenv("RAW_BUCKET", "raw")
     monkeypatch.setenv("SITE_BUCKET", "site")
-    monkeypatch.setenv("CHROMADB_BUCKET", "chroma")
     monkeypatch.setattr(
         receipt_dynamo, "DynamoClient", lambda table_name: object()
     )

@@ -163,6 +163,10 @@ public final class OCRWorker {
     private let dynamo: DynamoClientProtocol
     // Hold factory to manage AWSClient lifecycle when using Soto-backed clients
     private let sotoFactory: SotoAWSFactory?
+    // Entity types the loaded LayoutLM bundle can emit, read from its own
+    // config.json. Passed to the label writer so a merged-head model
+    // (AMOUNT, ADDRESS) is not filtered down to the unmerged core list.
+    private let modelEntityTypes: Set<String>
 
     public init(
         config: Config,
@@ -170,7 +174,8 @@ public final class OCRWorker {
         sqs: SQSClientProtocol,
         s3: S3ClientProtocol,
         dynamo: DynamoClientProtocol,
-        sotoFactory: SotoAWSFactory? = nil
+        sotoFactory: SotoAWSFactory? = nil,
+        modelEntityTypes: Set<String> = []
     ) {
         self.config = config
         self.ocr = ocr
@@ -178,6 +183,7 @@ public final class OCRWorker {
         self.s3 = s3
         self.dynamo = dynamo
         self.sotoFactory = sotoFactory
+        self.modelEntityTypes = modelEntityTypes
         var logger = Logger(label: "receipt.ocr.worker")
         logger.logLevel = .from(string: config.logLevel)
         self.logger = logger
@@ -193,18 +199,41 @@ public final class OCRWorker {
 
         // Download LayoutLM model if configured
         var layoutLMBundlePath: URL? = nil
+        var modelEntityTypes: Set<String> = []
         #if os(macOS)
         if let bucket = config.layoutLMModelS3Bucket,
            let key = config.layoutLMModelS3Key,
            !bucket.isEmpty, !key.isEmpty {
-            modelLogger.info("layoutlm_download_start bucket=\(bucket) key=\(key)")
             let downloader = ModelDownloader(s3: s3Client, logger: modelLogger)
-            layoutLMBundlePath = try await downloader.ensureModelDownloaded(
-                bucket: bucket,
-                key: key,
-                localCachePath: config.layoutLMLocalCachePath
-            )
-            modelLogger.info("layoutlm_download_complete path=\(layoutLMBundlePath?.path ?? "nil")")
+            do {
+                layoutLMBundlePath = try await downloader.ensureModelDownloaded(
+                    bucket: bucket,
+                    key: key,
+                    localCachePath: config.layoutLMLocalCachePath,
+                    pointerKey: config.layoutLMPointerKey,
+                    env: config.environment
+                )
+            } catch ModelDownloaderError.noActiveModel(let env) {
+                modelLogger.warning("layoutlm_no_active_model env=\(env)")
+            } catch let error as ModelDownloaderError {
+                // A malformed pointer, an identity mismatch, or a failed
+                // extraction must not take Vision OCR down with it. Fail
+                // loudly for the model, keep draining the queue without it —
+                // the same degraded mode as a missing pointer.
+                modelLogger.error(
+                    "layoutlm_model_unavailable env=\(config.environment) reason=\(error.errorDescription ?? String(describing: error))"
+                )
+            }
+            if let bundle = layoutLMBundlePath {
+                do {
+                    let cfg = try LayoutLMConfig.load(from: bundle.appendingPathComponent("config.json"))
+                    modelEntityTypes = Set(cfg.entityTypes)
+                    modelLogger.info("layoutlm_entity_types count=\(modelEntityTypes.count) types=\(modelEntityTypes.sorted().joined(separator: ","))")
+                } catch {
+                    // Fall back to the core list; the writer only ever widens from it.
+                    modelLogger.warning("layoutlm_entity_types_unavailable error=\(error)")
+                }
+            }
         } else {
             // Log why LayoutLM is disabled
             let bucketStatus = config.layoutLMModelS3Bucket.map { $0.isEmpty ? "empty" : "set" } ?? "nil"
@@ -227,7 +256,8 @@ public final class OCRWorker {
             sqs: SotoSQSClient(sqs: factory.makeSQS()),
             s3: s3Client,
             dynamo: SotoDynamoClient(dynamo: factory.makeDynamo(), tableName: config.dynamoTableName),
-            sotoFactory: factory
+            sotoFactory: factory,
+            modelEntityTypes: modelEntityTypes
         )
         return worker
     }
@@ -754,7 +784,8 @@ public final class OCRWorker {
                         let labels = ReceiptWordLabel.fromLinePredictions(
                             predictions: linePredictions,
                             imageId: imageId,
-                            receiptId: receiptId
+                            receiptId: receiptId,
+                            modelLabels: self.modelEntityTypes
                         )
 
                         guard !labels.isEmpty else { return }

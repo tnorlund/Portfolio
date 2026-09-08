@@ -1,7 +1,7 @@
 """Question-answering agent for receipt data.
 
 This agent answers questions about receipts using:
-- ChromaDB for semantic search over receipt lines/words
+- DynamoDB vector indexes for semantic search over receipt lines
 - DynamoDB for receipt details and prices
 - LangGraph for orchestration
 - OpenRouter for LLM inference

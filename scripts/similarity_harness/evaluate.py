@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.13
-"""Score a vector-search backend against the captured Chroma reference."""
+"""Score a vector-search backend against the captured golden reference."""
 
 from __future__ import annotations
 
@@ -32,6 +32,12 @@ if _cached is not None and getattr(_cached, "__file__", None) is None:
     ]:
         del sys.modules[_name]
 
+from receipt_embeddings import (  # noqa: E402
+    FilterValue,
+    ScoredItem,
+    VectorSearchClient,
+)
+from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
 from scripts.similarity_harness.common import DEFAULT_RECALL_K  # noqa: E402
 from scripts.similarity_harness.common import (
     MERCHANT_FAMILY,
@@ -46,13 +52,6 @@ from scripts.similarity_harness.common import (
     round_vector,
     scored_item_from_dict,
 )
-
-from receipt_embeddings import (  # noqa: E402
-    FilterValue,
-    ScoredItem,
-    VectorSearchClient,
-)
-from receipt_embeddings.testing import FakeVectorIndex  # noqa: E402
 
 DEFAULT_FIXTURE = (
     REPOSITORY_ROOT / "tests" / "fixtures" / "similarity" / "golden.json"
@@ -78,11 +77,11 @@ def _query_signature(
     )
 
 
-class CapturedChromaReplay:
-    """Replay captured Chroma answers through ``VectorSearchClient``.
+class CapturedGoldenReplay:
+    """Replay captured golden answers through ``VectorSearchClient``.
 
-    This is the offline ``--backend chroma`` self-parity sanity check. It
-    validates fixture wiring without reopening Chroma Cloud and keeps
+    This is the offline ``--backend golden`` self-parity sanity check. It
+    validates fixture wiring without any live vector store and keeps
     evaluation pure given one fixture.
     """
 
@@ -124,7 +123,7 @@ class CapturedChromaReplay:
             query = self._queries[signature]
         except KeyError as exc:
             raise KeyError(
-                "query was not captured in the Chroma fixture"
+                "query was not captured in the golden fixture"
             ) from exc
         observation = query["expected"].get("observation", {})
         self.last_latency_ms = float(observation.get("latency_ms", 0.0))
@@ -189,8 +188,8 @@ def build_backend(
     *,
     factory_path: str | None = None,
 ) -> VectorSearchClient:
-    if name == "chroma":
-        return CapturedChromaReplay(fixture)
+    if name == "golden":
+        return CapturedGoldenReplay(fixture)
     if name == "fake":
         return FakeVectorIndex(corpus_items(fixture))
     if name == "dynamo":
@@ -518,14 +517,33 @@ def evaluate_fixture(
     }
 
 
+def failed_gates(scorecard: Mapping[str, Any]) -> list[str]:
+    """Names of gates that evaluated to False (None means not applicable)."""
+    gates = scorecard.get("gates", {})
+    return sorted(name for name, passed in gates.items() if passed is False)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--backend", required=True, choices=("fake", "dynamo", "chroma")
+        "--backend", required=True, choices=("fake", "dynamo", "golden")
     )
     parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
     parser.add_argument("--out", type=Path, default=Path("scorecard.json"))
     parser.add_argument("--recall-k", type=int, default=DEFAULT_RECALL_K)
+    parser.add_argument(
+        "--fail-on-gate",
+        action="store_true",
+        help="exit 1 when any gate in the scorecard is False "
+        "(default: write the scorecard and exit 0 regardless)",
+    )
+    parser.add_argument(
+        "--require-canonical",
+        action="store_true",
+        help="refuse fixtures whose source.canonical is not true "
+        "(the committed golden.json is an offline bootstrap, not the "
+        "live-captured canonical set; see CANONICAL_POINTER.md)",
+    )
     parser.add_argument(
         "--backend-factory",
         help="Dynamo client factory using module:callable syntax",
@@ -543,6 +561,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not 1 <= args.recall_k <= 100:
         raise SystemExit("--recall-k must be between 1 and 100")
     fixture = load_fixture(args.fixture)
+    if args.require_canonical and not fixture["source"].get("canonical"):
+        raise SystemExit(
+            f"fixture {args.fixture} is not canonical "
+            "(source.canonical is not true); fetch the blessed set per "
+            "tests/fixtures/similarity/CANONICAL_POINTER.md or drop "
+            "--require-canonical"
+        )
     if args.backend == "dynamo":
         table_name = os.environ.setdefault("DYNAMODB_TABLE_NAME", DEV_TABLE)
         if table_name != DEV_TABLE:
@@ -568,6 +593,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(canonical_json_bytes(scorecard))
     print(json.dumps(scorecard["metrics"], indent=2, sort_keys=True))
+    failing = failed_gates(scorecard)
+    if failing:
+        print(
+            "FAILED GATES: " + ", ".join(failing),
+            file=sys.stderr,
+        )
+        if args.fail_on_gate:
+            return 1
     return 0
 
 

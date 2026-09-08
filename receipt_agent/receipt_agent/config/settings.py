@@ -65,13 +65,6 @@ class Settings(BaseSettings):
     )
 
     # ==========================================================================
-    # ChromaDB Configuration
-    # ==========================================================================
-    chroma_persist_directory: Optional[str] = Field(
-        default=None,
-        description="Local ChromaDB persistence directory",
-    )
-    # ==========================================================================
     # DynamoDB Configuration
     # ==========================================================================
     dynamo_table_name: str = Field(

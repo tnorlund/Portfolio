@@ -3,10 +3,9 @@
 ``VectorSearchClient`` lives in ``vector_client.py`` (the retrieval
 surface) and the entity ducks the request builder reads live in
 ``formatting`` (``LineLike``/``WordLike``). This module names the
-*other* ducks the migration surfaces pass around: low-level DynamoDB
-clients, the incumbent Chroma query/get wrapper, the
-``DynamoClient``-shaped table handle the write paths hold, the
-section duck used to denormalize ``section_type``, and the
+*other* ducks the embedding surfaces pass around: low-level DynamoDB
+clients, the ``DynamoClient``-shaped table handle the write paths hold,
+the section duck used to denormalize ``section_type``, and the
 writer/report seam the write paths inject in tests.
 
 Boto3 request/response payloads stay ``Any``-valued on purpose — their
@@ -79,17 +78,6 @@ class DynamoVectorLowLevelClient(Protocol):
         """Fetch-join neighbor metadata."""
 
 
-@runtime_checkable
-class ChromaQueryClient(Protocol):
-    """Incumbent ChromaClient query/get surface used by the adapter."""
-
-    def query(self, **kwargs: Any) -> Mapping[str, Any]:
-        """Nearest-neighbor query against a named collection."""
-
-    def get(self, **kwargs: Any) -> Mapping[str, Any]:
-        """Exact-id lookup, typically with embeddings included."""
-
-
 class EmbeddingTableHandle(Protocol):
     """``DynamoClient``-shaped handle the native write paths hold."""
 
@@ -130,7 +118,6 @@ class EmbeddingWriterLike(Protocol):
 
 
 __all__ = [
-    "ChromaQueryClient",
     "DynamoBatchClient",
     "DynamoEmbeddingClient",
     "DynamoItem",

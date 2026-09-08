@@ -13,7 +13,6 @@ from receipt_dynamo_stream.exceptions import (
     QueueServiceError,
 )
 from receipt_dynamo_stream.models import (
-    ChromaDBCollection,
     FieldChange,
     StreamMessage,
     StreamRecordContext,
@@ -29,22 +28,11 @@ from .conftest import MockMetrics
 
 
 @pytest.fixture
-def env_words_queue(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Set WORDS_QUEUE_URL environment variable."""
-    monkeypatch.setenv("WORDS_QUEUE_URL", "https://queue.amazonaws.com/words")
-
-
-@pytest.fixture
-def env_lines_queue(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Set LINES_QUEUE_URL environment variable."""
-    monkeypatch.setenv("LINES_QUEUE_URL", "https://queue.amazonaws.com/lines")
-
-
-@pytest.fixture
-def env_both_queues(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Set both LINES_QUEUE_URL and WORDS_QUEUE_URL environment variables."""
-    monkeypatch.setenv("LINES_QUEUE_URL", "https://queue.amazonaws.com/lines")
-    monkeypatch.setenv("WORDS_QUEUE_URL", "https://queue.amazonaws.com/words")
+def env_line_item_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Set LINE_ITEM_QUEUE_URL environment variable."""
+    monkeypatch.setenv(
+        "LINE_ITEM_QUEUE_URL", "https://queue.amazonaws.com/line-items"
+    )
 
 
 @pytest.fixture
@@ -57,9 +45,10 @@ def env_summary_queue(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def env_all_queues(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Set all queue URLs including summary queue."""
-    monkeypatch.setenv("LINES_QUEUE_URL", "https://queue.amazonaws.com/lines")
-    monkeypatch.setenv("WORDS_QUEUE_URL", "https://queue.amazonaws.com/words")
+    """Set both surviving queue URLs."""
+    monkeypatch.setenv(
+        "LINE_ITEM_QUEUE_URL", "https://queue.amazonaws.com/line-items"
+    )
     monkeypatch.setenv(
         "RECEIPT_SUMMARY_QUEUE_URL", "https://queue.amazonaws.com/summary"
     )
@@ -73,9 +62,9 @@ def env_test_queue(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _create_test_message(
     entity_type: str = "RECEIPT_PLACE",
-    collections: tuple[ChromaDBCollection, ...] = (
-        ChromaDBCollection.LINES,
-        ChromaDBCollection.WORDS,
+    collections: tuple[TargetQueue, ...] = (
+        TargetQueue.RECEIPT_SUMMARY,
+        TargetQueue.LINE_ITEMS,
     ),
     **kwargs: Any,
 ) -> StreamMessage:
@@ -148,7 +137,7 @@ def test_message_to_dict_none_optional_fields() -> None:
         entity_data={},
         changes={},
         event_name="TEST",
-        collections=(ChromaDBCollection.LINES,),
+        collections=(TargetQueue.RECEIPT_SUMMARY,),
         context=StreamRecordContext(
             timestamp=None,
             record_id=None,
@@ -174,15 +163,15 @@ def test_publish_messages_empty_list(mock_boto_client: Mock) -> None:
 
 
 @patch("receipt_dynamo_stream.sqs_publisher.boto3.client")
-def test_publish_messages_single_collection(
-    mock_boto_client: Mock, env_words_queue: None
+def test_publish_messages_single_queue(
+    mock_boto_client: Mock, env_line_item_queue: None
 ) -> None:
-    """Test message targeting single collection."""
+    """Test message targeting a single queue."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
     mock_boto_client.return_value = mock_sqs
 
-    msg = _create_test_message(collections=(ChromaDBCollection.WORDS,))
+    msg = _create_test_message(collections=(TargetQueue.LINE_ITEMS,))
     sent = publish_messages([msg])
 
     assert sent == 1
@@ -190,44 +179,21 @@ def test_publish_messages_single_collection(
 
 
 @patch("receipt_dynamo_stream.sqs_publisher.boto3.client")
-def test_publish_messages_both_collections(
-    mock_boto_client: Mock, env_both_queues: None
+def test_publish_messages_both_queues(
+    mock_boto_client: Mock, env_all_queues: None
 ) -> None:
-    """Test message targeting both collections."""
+    """Test message targeting both surviving queues."""
     mock_sqs = Mock()
     mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
     mock_boto_client.return_value = mock_sqs
 
     msg = _create_test_message(
-        collections=(ChromaDBCollection.LINES, ChromaDBCollection.WORDS)
+        collections=(TargetQueue.RECEIPT_SUMMARY, TargetQueue.LINE_ITEMS)
     )
     sent = publish_messages([msg])
 
     assert sent == 2
     assert mock_sqs.send_message_batch.call_count == 2
-
-
-@patch("receipt_dynamo_stream.sqs_publisher.boto3.client")
-def test_publish_messages_with_summary_queue(
-    mock_boto_client: Mock, env_all_queues: None
-) -> None:
-    """Test message targeting collections and summary queue."""
-    mock_sqs = Mock()
-    mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
-    mock_boto_client.return_value = mock_sqs
-
-    msg = _create_test_message(
-        collections=(
-            ChromaDBCollection.LINES,
-            ChromaDBCollection.WORDS,
-            TargetQueue.RECEIPT_SUMMARY,
-        )
-    )
-    sent = publish_messages([msg])
-
-    # Should send to lines, words, and summary queues
-    assert sent == 3
-    assert mock_sqs.send_message_batch.call_count == 3
 
 
 @patch("receipt_dynamo_stream.sqs_publisher.boto3.client")
@@ -286,48 +252,18 @@ def test_send_batch_to_queue_missing_queue_url() -> None:
             mock_sqs,
             [],
             "TEST_QUEUE_URL",
-            ChromaDBCollection.LINES,
+            TargetQueue.RECEIPT_SUMMARY,
         )
 
     assert type(caught.value) is QueueConfigurationError
     assert str(caught.value) == (
-        "Queue URL for 'lines' is not configured; set TEST_QUEUE_URL"
+        "Queue URL for 'receipt_summary' is not configured; "
+        "set TEST_QUEUE_URL"
     )
     assert caught.value.environment_variable == "TEST_QUEUE_URL"
-    assert caught.value.queue_name == "lines"
+    assert caught.value.queue_name == "receipt_summary"
     assert caught.value.__cause__ is None
     mock_sqs.send_message_batch.assert_not_called()
-
-
-def test_send_batch_to_queue_compaction_run_no_message_group_id(
-    env_test_queue: None,
-) -> None:
-    """Test that Standard queues don't use MessageGroupId."""
-    mock_sqs = Mock()
-    mock_sqs.send_message_batch.return_value = {"Successful": [{"Id": "0"}]}
-
-    msg = _create_test_message(
-        entity_type="COMPACTION_RUN",
-        entity_data={
-            "run_id": "run-123",
-            "image_id": "img-456",
-            "receipt_id": 1,
-        },
-    )
-    msg_dict = _message_to_dict(msg)
-
-    sent = send_batch_to_queue(
-        mock_sqs,
-        [(msg_dict, ChromaDBCollection.LINES)],
-        "TEST_QUEUE_URL",
-        ChromaDBCollection.LINES,
-    )
-
-    assert sent == 1
-    call_args = mock_sqs.send_message_batch.call_args
-    entries = call_args[1]["Entries"]
-    # Standard queues don't use MessageGroupId - Lambda handles ordering
-    assert "MessageGroupId" not in entries[0]
 
 
 def test_send_batch_to_queue_receipt_place_no_message_group_id(
@@ -345,9 +281,9 @@ def test_send_batch_to_queue_receipt_place_no_message_group_id(
 
     sent = send_batch_to_queue(
         mock_sqs,
-        [(msg_dict, ChromaDBCollection.WORDS)],
+        [(msg_dict, TargetQueue.LINE_ITEMS)],
         "TEST_QUEUE_URL",
-        ChromaDBCollection.WORDS,
+        TargetQueue.LINE_ITEMS,
     )
 
     assert sent == 1
@@ -372,9 +308,9 @@ def test_send_batch_to_queue_unknown_entity_type_no_message_group_id(
 
     sent = send_batch_to_queue(
         mock_sqs,
-        [(msg_dict, ChromaDBCollection.LINES)],
+        [(msg_dict, TargetQueue.RECEIPT_SUMMARY)],
         "TEST_QUEUE_URL",
-        ChromaDBCollection.LINES,
+        TargetQueue.RECEIPT_SUMMARY,
     )
 
     assert sent == 1
@@ -399,9 +335,9 @@ def test_send_batch_to_queue_missing_entity_data_no_message_group_id(
 
     sent = send_batch_to_queue(
         mock_sqs,
-        [(msg_dict, ChromaDBCollection.LINES)],
+        [(msg_dict, TargetQueue.RECEIPT_SUMMARY)],
         "TEST_QUEUE_URL",
-        ChromaDBCollection.LINES,
+        TargetQueue.RECEIPT_SUMMARY,
     )
 
     assert sent == 1
@@ -428,13 +364,13 @@ def test_send_batch_to_queue_batching(
             entity_data={"image_id": f"img-{i}", "receipt_id": i}
         )
         msg_dict = _message_to_dict(msg)
-        messages.append((msg_dict, ChromaDBCollection.LINES))
+        messages.append((msg_dict, TargetQueue.RECEIPT_SUMMARY))
 
     sent = send_batch_to_queue(
         mock_sqs,
         messages,
         "TEST_QUEUE_URL",
-        ChromaDBCollection.LINES,
+        TargetQueue.RECEIPT_SUMMARY,
     )
 
     # Should make 3 calls (10 + 10 + 5)
@@ -456,9 +392,9 @@ def test_send_batch_to_queue_with_metrics(
 
     sent = send_batch_to_queue(
         mock_sqs,
-        [(msg_dict, ChromaDBCollection.LINES)],
+        [(msg_dict, TargetQueue.RECEIPT_SUMMARY)],
         "TEST_QUEUE_URL",
-        ChromaDBCollection.LINES,
+        TargetQueue.RECEIPT_SUMMARY,
         metrics,
     )
 
@@ -485,15 +421,15 @@ def test_send_batch_to_queue_failure_with_metrics(
     with pytest.raises(QueueServiceError) as caught:
         send_batch_to_queue(
             mock_sqs,
-            [(msg_dict, ChromaDBCollection.LINES)],
+            [(msg_dict, TargetQueue.RECEIPT_SUMMARY)],
             "TEST_QUEUE_URL",
-            ChromaDBCollection.LINES,
+            TargetQueue.RECEIPT_SUMMARY,
             metrics,
         )
 
     assert type(caught.value) is QueueServiceError
     assert str(caught.value) == (
-        "Failed to send batch of 1 message(s) to 'lines' queue"
+        "Failed to send batch of 1 message(s) to 'receipt_summary' queue"
     )
     assert isinstance(caught.value.__cause__, ClientError)
     metric_names = [m[0] for m in metrics.counts]
@@ -515,13 +451,15 @@ def test_send_batch_to_queue_surfaces_partial_failure(
     with pytest.raises(QueueBatchFailureError) as caught:
         send_batch_to_queue(
             mock_sqs,
-            [(msg_dict, ChromaDBCollection.LINES)],
+            [(msg_dict, TargetQueue.RECEIPT_SUMMARY)],
             "TEST_QUEUE_URL",
-            ChromaDBCollection.LINES,
+            TargetQueue.RECEIPT_SUMMARY,
         )
 
     assert type(caught.value) is QueueBatchFailureError
-    assert str(caught.value) == "SQS rejected 1 message(s) for 'lines' queue"
+    assert str(caught.value) == (
+        "SQS rejected 1 message(s) for 'receipt_summary' queue"
+    )
     assert caught.value.failed_entries == failed
     assert caught.value.__cause__ is None
 
@@ -538,9 +476,9 @@ def test_send_batch_to_queue_message_attributes(
 
     send_batch_to_queue(
         mock_sqs,
-        [(msg_dict, ChromaDBCollection.WORDS)],
+        [(msg_dict, TargetQueue.LINE_ITEMS)],
         "TEST_QUEUE_URL",
-        ChromaDBCollection.WORDS,
+        TargetQueue.LINE_ITEMS,
     )
 
     call_args = mock_sqs.send_message_batch.call_args
@@ -550,4 +488,4 @@ def test_send_batch_to_queue_message_attributes(
     assert attrs["source"]["StringValue"] == "dynamodb_stream"
     assert attrs["entity_type"]["StringValue"] == "RECEIPT_PLACE"
     assert attrs["event_name"]["StringValue"] == "MODIFY"
-    assert attrs["collection"]["StringValue"] == "words"
+    assert attrs["collection"]["StringValue"] == "line_items"
