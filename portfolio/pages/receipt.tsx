@@ -20,6 +20,7 @@ import {
   LabelValidationTimeline,
   LabelWordCloud,
   LayoutLMInferenceVisualization,
+  LineItemDecoderVisualization,
   PageCurlLetter,
   PrecisionRecallDartboard,
   QAAgentFlow,
@@ -537,6 +538,33 @@ M1LK 2%           1    $4.4g`}</code>
       <FigureBoundary name="aws-flow" intrinsicSize="240px">
         <ClientOnly>
           <AWSFlowDiagram />
+        </ClientOnly>
+      </FigureBoundary>
+
+      <h2>Reading Line Items from Layout</h2>
+
+      <p>
+        OCR gives me words and positions. It does not tell me that
+        &quot;ORGANIC BANANAS&quot; and &quot;$1.69&quot; are the same purchase.
+        Inside the ITEMS section, the decoder groups words by layout,
+        rejects non-product rows, and pairs names with prices.
+      </p>
+
+      <p>
+        Printed quantities are accepted only when their arithmetic works:
+        6 × $0.49 must equal $2.94. The walkthrough replays the current decoder
+        on saved examples, with layout overlays to show where it is looking.
+        Comparing the result with the printed subtotal checks whether the
+        extracted amounts reconcile.
+      </p>
+
+      <FigureBoundary
+        name="line-item-decoder"
+        intrinsicSize="640px"
+        fallback={<LayoutLMLoadingFallback />}
+      >
+        <ClientOnly fallback={<LayoutLMLoadingFallback />}>
+          <LineItemDecoderVisualization />
         </ClientOnly>
       </FigureBoundary>
 
