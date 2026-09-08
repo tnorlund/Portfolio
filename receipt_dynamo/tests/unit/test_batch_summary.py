@@ -202,6 +202,36 @@ def test_batch_summary_invalid_dynamodb_format():
         item_to_batch_summary(item)
 
 
+@pytest.mark.unit
+@pytest.mark.parametrize("method", ["gsi1_key", "to_item"])
+def test_post_init_enums_use_queryable_index_keys(
+    example_batch_summary, method
+):
+    """Later enum assignment must preserve the public GSI query contract."""
+    example_batch_summary.status = BatchStatus.IN_PROGRESS
+    example_batch_summary.batch_type = BatchType.WORD_EMBEDDING
+
+    item = getattr(example_batch_summary, method)()
+
+    assert item["GSI1PK"] == {"S": "STATUS#IN_PROGRESS"}
+    assert item["GSI1SK"] == {"S": "BATCH_TYPE#WORD_EMBEDDING#BATCH_ID#abc123"}
+    if method == "to_item":
+        assert type(item["status"]["S"]) is str
+        assert type(item["batch_type"]["S"]) is str
+        assert item_to_batch_summary(item) == example_batch_summary
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("field", ["status", "batch_type"])
+def test_invalid_post_init_enum_assignment_is_rejected(
+    example_batch_summary, field
+):
+    """Invalid state changes must fail before a DynamoDB write."""
+    setattr(example_batch_summary, field, "NOT_A_VALID_ENUM")
+    with pytest.raises(ValueError):
+        example_batch_summary.to_item()
+
+
 # === EQUALITY, HASHING, STR, ITER ===
 
 

@@ -82,10 +82,12 @@ class BatchSummary:
         }
 
     def gsi1_key(self) -> dict[str, Any]:
+        status = normalize_enum(self.status, BatchStatus)
+        batch_type = normalize_enum(self.batch_type, BatchType)
         return {
-            "GSI1PK": {"S": f"STATUS#{self.status}"},
+            "GSI1PK": {"S": f"STATUS#{status}"},
             "GSI1SK": {
-                "S": f"BATCH_TYPE#{self.batch_type}#BATCH_ID#{self.batch_id}"
+                "S": f"BATCH_TYPE#{batch_type}#BATCH_ID#{self.batch_id}"
             },
         }
 
@@ -96,6 +98,10 @@ class BatchSummary:
         return self.submitted_at
 
     def to_item(self) -> dict[str, Any]:
+        # Mutable entities may receive enum members after construction.
+        # Serialize their values so status queries still find the batch.
+        self.status = normalize_enum(self.status, BatchStatus)
+        self.batch_type = normalize_enum(self.batch_type, BatchType)
         return {
             **self.key,
             **self.gsi1_key(),
