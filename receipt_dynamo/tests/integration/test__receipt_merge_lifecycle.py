@@ -46,11 +46,14 @@ def test_lifecycle_error_mapping(
     error_type: type[Exception],
 ) -> None:
     client = DynamoClient(dynamodb_table)
-    with patch.object(
-        client._client,
-        api,
-        side_effect=ClientError({"Error": {"Code": code}}, api),
-    ), pytest.raises(error_type):
+    with (
+        patch.object(
+            client._client,
+            api,
+            side_effect=ClientError({"Error": {"Code": code}}, api),
+        ),
+        pytest.raises(error_type),
+    ):
         getattr(client, method)(*args)
 
 
