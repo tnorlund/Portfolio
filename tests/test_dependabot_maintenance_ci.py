@@ -8,12 +8,19 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
-import dependabot_maintainer as maintainer
-import dependabot_maintenance_ci as ci
 import pytest
+
+SKILL_SCRIPTS = (
+    Path(__file__).resolve().parents[1]
+    / ".codex/skills/dependabot-maintainer/scripts"
+)
+sys.path.insert(0, str(SKILL_SCRIPTS))
+import dependabot_maintainer as maintainer  # noqa: E402
+import dependabot_maintenance_ci as ci  # noqa: E402
 
 REPO = "tnorlund/Portfolio"
 ROOT = Path("/repo")
@@ -84,6 +91,9 @@ class FakeGH:
         self.diffs = diffs
         self.commands: list[list[str]] = []
         self.merge_error: int | None = None
+        self.main_sha = "initial-main"
+        self.bad_release = False
+        self.events: list[str] = []
         self.on_view: dict[int, list[dict[str, Any]]] = {}
 
     @property
@@ -134,6 +144,40 @@ class FakeGH:
             return subprocess.CompletedProcess(
                 cmd, 0, stdout=self.diffs[int(cmd[3])], stderr=""
             )
+        elif cmd[:2] == ["gh", "api"] and cmd[2].endswith("/commits/main"):
+            payload = {"sha": self.main_sha}
+        elif cmd[:2] == ["gh", "api"] and "/actions/runs?" in cmd[2]:
+            sha = cmd[2].split("head_sha=")[1].split("&")[0]
+            payload = {
+                "workflow_runs": [
+                    {
+                        "id": 123,
+                        "path": ".github/workflows/main.yml",
+                        "event": "push",
+                        "head_branch": "main",
+                        "head_sha": sha,
+                        "status": "completed",
+                        "conclusion": "success",
+                        "html_url": "https://example.test/run",
+                    }
+                ]
+            }
+        elif cmd[:2] == ["gh", "api"] and "/jobs?" in cmd[2]:
+            self.events.append("release:" + self.main_sha)
+            payload = {
+                "jobs": [
+                    {
+                        "name": name,
+                        "conclusion": (
+                            "failure"
+                            if self.bad_release
+                            and self.main_sha != "initial-main"
+                            else "success"
+                        ),
+                    }
+                    for name in ("Deploy", "Smoke Tests")
+                ]
+            }
         elif cmd[:2] == ["gh", "api"] and "/commits/" in cmd[2]:
             payload = {
                 "author": {"login": "dependabot[bot]"},
@@ -146,6 +190,8 @@ class FakeGH:
         elif cmd[:3] == ["gh", "pr", "merge"]:
             if self.merge_error is not None:
                 raise subprocess.CalledProcessError(self.merge_error, cmd)
+            self.main_sha = f"merge{int(cmd[3]):035d}"
+            self.events.append("merge:" + cmd[3])
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         elif cmd[:3] == ["gh", "pr", "comment"]:
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -192,6 +238,13 @@ def gh_fixture(monkeypatch: pytest.MonkeyPatch) -> FakeGH:
     }
     fake = FakeGH(prs, diffs)
     monkeypatch.setattr(maintainer, "run", fake)
+    monkeypatch.setattr(
+        ci,
+        "verify_candidate",
+        lambda root, repo, number, **kwargs: fake.events.append(
+            f"verify:{number}"
+        ),
+    )
     return fake
 
 
@@ -364,3 +417,144 @@ def test_main_writes_summary_file(
     assert "# Dependabot maintenance (merge, dry-run)" in text
     assert "[#1551]" in text
     assert "### manual (3)" in text
+
+
+def add_second_ready(gh):
+    gh.prs[1560] = make_pr(
+        1560, "chore(deps): patch", files=["tools/package.json"]
+    )
+    gh.diffs[1560] = READY_DIFF.replace("portfolio/", "tools/")
+
+
+def test_next_merge_waits_for_previous_deployment(gh):
+    add_second_ready(gh)
+    outcome = run_ci(gh)
+    assert outcome.exit_code == 0
+    first_merge = gh.events.index("merge:1551")
+    first_release = gh.events.index(f"release:merge{1551:035d}", first_merge)
+    second_merge = gh.events.index("merge:1560")
+    assert (
+        gh.events.index("verify:1551")
+        < first_merge
+        < first_release
+        < second_merge
+    )
+    assert all(result.release_run == 123 for result in outcome.merged)
+
+
+def test_bad_deployment_stops_and_preserves_landed_merge(gh):
+    add_second_ready(gh)
+    gh.bad_release = True
+    outcome = run_ci(gh)
+    assert outcome.exit_code == 1
+    assert [result.number for result in outcome.merged] == [1551]
+    assert outcome.merged[0].release_run is None
+    assert outcome.not_attempted == [1560]
+    assert outcome.rebase_requested == []
+    assert "merge:1560" not in gh.events
+
+
+def test_verification_failure_stops_without_merging(gh, monkeypatch):
+    def failed(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, ["verify"])
+
+    monkeypatch.setattr(ci, "verify_candidate", failed)
+    outcome = run_ci(gh)
+    assert outcome.exit_code == 1
+    assert gh.writes == []
+
+
+def test_head_changed_after_verification_is_not_merged(gh, monkeypatch):
+    def changed(*args, **kwargs):
+        gh.prs[1551] = {**gh.prs[1551], "headRefOid": "b" * 40}
+
+    monkeypatch.setattr(ci, "verify_candidate", changed)
+    outcome = run_ci(gh)
+    assert "head or checks changed" in outcome.failure
+    assert gh.writes == []
+
+
+def test_main_changed_during_verification_is_not_merged(gh, monkeypatch):
+    monkeypatch.setattr(
+        ci,
+        "verify_candidate",
+        lambda *args, **kwargs: setattr(gh, "main_sha", "another-release"),
+    )
+    outcome = run_ci(gh)
+    assert "Main advanced" in outcome.failure
+    assert gh.writes == []
+
+
+def test_merge_limit_leaves_rest_open(gh):
+    add_second_ready(gh)
+    outcome = run_ci(gh, max_merges=1)
+    assert outcome.exit_code == 0
+    assert [result.number for result in outcome.merged] == [1551]
+    assert outcome.not_attempted == [1560]
+
+
+@pytest.mark.parametrize(
+    "jobs",
+    [
+        [],
+        [{"name": "Deploy", "conclusion": "success"}],
+        [
+            {"name": "Deploy", "conclusion": "skipped"},
+            {"name": "Smoke Tests", "conclusion": "success"},
+        ],
+    ],
+)
+def test_release_requires_both_successful_jobs(gh, monkeypatch, jobs):
+    original = maintainer.run_json
+
+    def read(cmd, **kwargs):
+        if "/jobs?" in cmd[2]:
+            return {"jobs": jobs}
+        return original(cmd, **kwargs)
+
+    monkeypatch.setattr(maintainer, "run_json", read)
+    with pytest.raises(RuntimeError, match="lacks successful"):
+        ci.wait_for_main_release(ROOT, REPO, "initial-main")
+
+
+def test_release_ignores_wrong_sha_branch_and_workflow(gh, monkeypatch):
+    ticks = iter([0, 0, 100])
+    monkeypatch.setattr(ci.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(ci.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(
+        maintainer,
+        "run_json",
+        lambda *args, **kwargs: {
+            "workflow_runs": [
+                {
+                    "id": 123,
+                    "path": ".github/workflows/other.yml",
+                    "event": "pull_request",
+                    "head_branch": "feature",
+                    "head_sha": "wrong",
+                    "status": "completed",
+                    "conclusion": "success",
+                }
+            ]
+        },
+    )
+    with pytest.raises(TimeoutError, match="did not complete"):
+        ci.wait_for_main_release(ROOT, REPO, "initial-main", timeout=30)
+
+
+def test_verifier_receives_only_read_token(monkeypatch):
+    monkeypatch.setenv("GH_TOKEN", "test-write-token")
+    monkeypatch.setenv("GITHUB_TOKEN", "test-also-write")
+    monkeypatch.setenv("VERIFICATION_GH_TOKEN", "test-read-token")
+    captured = {}
+
+    def run(cmd, **kwargs):
+        captured.update(kwargs)
+        assert cmd[-2:] == ["verify", "1551"]
+
+    monkeypatch.setattr(subprocess, "run", run)
+    ci.verify_candidate(ROOT, REPO, 1551, allow_major=False)
+    assert captured["env"]["GH_TOKEN"] == "test-read-token"
+    assert "GITHUB_TOKEN" not in captured["env"]
+    assert "VERIFICATION_GH_TOKEN" not in captured["env"]
+    assert "test-write-token" not in captured["env"].values()

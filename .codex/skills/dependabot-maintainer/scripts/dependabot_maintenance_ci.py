@@ -4,8 +4,8 @@
 This is the orchestration layer used by
 ``.github/workflows/dependabot-maintenance.yml``. It reuses the guardrails in
 ``dependabot_maintainer.py`` (``classify`` and friends) instead of parsing the
-human-readable report, and it never runs the local ``verify`` path: the PR's
-own CI already covers dependency installation.
+human-readable report, and verifies the guarded head in an isolated worktree before merging.
+Each merge waits for its main Deploy and Smoke Tests before continuing.
 
 Modes:
 
@@ -33,7 +33,9 @@ import dependabot_maintainer as maintainer
 
 MODES = ("report", "merge")
 STATUS_ORDER = ("ready", "wait", "manual")
-MERGE_BODY = "Merged by Dependabot Maintainer after guardrails and CI passed."
+MERGE_BODY = (
+    "Merged after provenance guards, local verification, and PR CI passed."
+)
 REBASE_COMMENT = "@dependabot rebase"
 UNKNOWN_MERGEABILITY_MARKERS = ("UNKNOWN", "/None", "None/")
 
@@ -57,6 +59,7 @@ class MergeResult:
     head: str
     merge_sha: str | None
     dry_run: bool
+    release_run: int | None = None
 
 
 @dataclass
@@ -236,6 +239,99 @@ def merge_commit_sha(root: Path, repo: str, number: int) -> str | None:
     return merge_commit.get("oid")
 
 
+def current_main_sha(root: Path, repo: str) -> str:
+    return maintainer.run_json(
+        ["gh", "api", f"repos/{repo}/commits/main"], cwd=root
+    )["sha"]
+
+
+def wait_for_main_release(
+    root: Path,
+    repo: str,
+    sha: str,
+    *,
+    timeout: float = 1800,
+    poll_delay: float = 15,
+) -> int:
+    """Require successful deployment and smoke jobs for this exact main SHA."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        runs = maintainer.run_json(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/actions/runs?head_sha={sha}&per_page=100",
+            ],
+            cwd=root,
+        )["workflow_runs"]
+        matches = [
+            run
+            for run in runs
+            if run.get("path") == ".github/workflows/main.yml"
+            and run.get("event") == "push"
+            and run.get("head_branch") == "main"
+            and run.get("head_sha") == sha
+        ]
+        if matches:
+            run = max(
+                matches,
+                key=lambda item: (item["id"], item.get("run_attempt", 1)),
+            )
+            if run["status"] == "completed":
+                jobs = maintainer.run_json(
+                    [
+                        "gh",
+                        "api",
+                        f"repos/{repo}/actions/runs/{run['id']}/jobs?per_page=100",
+                    ],
+                    cwd=root,
+                )["jobs"]
+                gates = {
+                    job["name"]: job.get("conclusion")
+                    for job in jobs
+                    if job["name"] in {"Deploy", "Smoke Tests"}
+                }
+                if run.get("conclusion") != "success" or gates != {
+                    "Deploy": "success",
+                    "Smoke Tests": "success",
+                }:
+                    raise RuntimeError(
+                        f"Main release {sha} failed or lacks successful Deploy/Smoke Tests: {run['html_url']}"
+                    )
+                return run["id"]
+        time.sleep(poll_delay)
+    raise TimeoutError(
+        f"Main release {sha} did not complete within {timeout:g} seconds"
+    )
+
+
+def verify_candidate(
+    root: Path, repo: str, number: int, *, allow_major: bool
+) -> None:
+    """Run the shared verifier without forwarding the maintenance write token."""
+    command = [
+        sys.executable,
+        str(Path(maintainer.__file__).resolve()),
+        "--repo",
+        repo,
+        "verify",
+        str(number),
+    ]
+    if allow_major:
+        command.append("--allow-major")
+    env = dict(os.environ)
+    read_token = env.pop("VERIFICATION_GH_TOKEN", None)
+    for key in ("GH_TOKEN", "GITHUB_TOKEN", "DEPENDABOT_MAINTAINER_TOKEN"):
+        env.pop(key, None)
+    if read_token:
+        env["GH_TOKEN"] = read_token
+    elif env.get("GITHUB_ACTIONS") == "true":
+        raise RuntimeError(
+            "Verification requires its separate read-only GitHub token"
+        )
+    subprocess.run(command, cwd=root, env=env, check=True, timeout=1200)
+
+
 def run_merge_phase(
     root: Path,
     repo: str,
@@ -243,50 +339,81 @@ def run_merge_phase(
     *,
     retries: int,
     retry_delay: float,
+    max_merges: int,
 ) -> None:
     candidates = select_ready(outcome.records)
     for index, candidate in enumerate(candidates):
-        number = candidate.number
-        pr, record = guard_before_merge(
-            root,
-            repo,
-            number,
-            allow_major=outcome.allow_major,
-            retries=retries,
-            retry_delay=retry_delay,
-        )
-        if record.status != "ready":
-            print(
-                f"PR #{number}: guard now reports {record.status}; skipping",
-                file=sys.stderr,
+        if len(outcome.merged) >= max_merges:
+            outcome.not_attempted.extend(
+                item.number for item in candidates[index:]
             )
-            outcome.skipped.append(record)
-            continue
-
+            break
+        number = candidate.number
         try:
+            pr, record = guard_before_merge(
+                root,
+                repo,
+                number,
+                allow_major=outcome.allow_major,
+                retries=retries,
+                retry_delay=retry_delay,
+            )
+            if record.status != "ready":
+                outcome.skipped.append(record)
+                continue
+            if not outcome.dry_run:
+                main_sha = current_main_sha(root, repo)
+                wait_for_main_release(root, repo, main_sha)
+                verified_head = record.head
+                verify_candidate(
+                    root, repo, number, allow_major=outcome.allow_major
+                )
+                pr, record = guard_before_merge(
+                    root,
+                    repo,
+                    number,
+                    allow_major=outcome.allow_major,
+                    retries=retries,
+                    retry_delay=retry_delay,
+                )
+                if record.status != "ready" or record.head != verified_head:
+                    raise RuntimeError(
+                        "PR head or checks changed after local verification"
+                    )
+                if current_main_sha(root, repo) != main_sha:
+                    raise RuntimeError(
+                        "Main advanced during verification; re-run against its release"
+                    )
             merge_pr(root, repo, pr, dry_run=outcome.dry_run)
-        except subprocess.CalledProcessError as exc:
+            merge_sha = (
+                None
+                if outcome.dry_run
+                else merge_commit_sha(root, repo, number)
+            )
+            result = MergeResult(
+                number=number,
+                head=record.head,
+                merge_sha=merge_sha,
+                dry_run=outcome.dry_run,
+            )
+            outcome.merged.append(result)
+            if not outcome.dry_run:
+                if not merge_sha:
+                    raise RuntimeError(
+                        "Merge returned no commit SHA; release is unverified"
+                    )
+                result.release_run = wait_for_main_release(
+                    root, repo, merge_sha
+                )
+        except (subprocess.SubprocessError, RuntimeError, OSError) as exc:
             outcome.failure = (
-                f"gh pr merge failed for PR #{number} "
-                f"(exit {exc.returncode}); stopped before further merges"
+                f"PR #{number}: {exc}; stopped before further merges"
             )
             outcome.not_attempted.extend(
                 item.number for item in candidates[index + 1 :]
             )
             print(outcome.failure, file=sys.stderr)
             return
-
-        merge_sha = None
-        if not outcome.dry_run:
-            merge_sha = merge_commit_sha(root, repo, number)
-        outcome.merged.append(
-            MergeResult(
-                number=number,
-                head=record.head,
-                merge_sha=merge_sha,
-                dry_run=outcome.dry_run,
-            )
-        )
 
 
 def request_rebase(
@@ -359,13 +486,17 @@ def _merge_sections(
 
     merged_rows: list[str] = []
     if outcome.merged:
-        merged_rows = ["| PR | Head | Merge commit |", "| --- | --- | --- |"]
+        merged_rows = [
+            "| PR | Head | Merge commit | Deploy and smoke |",
+            "| --- | --- | --- | --- |",
+        ]
         for result in outcome.merged:
             record = by_number[result.number]
             merge_sha = result.merge_sha or "(dry run)"
             merged_rows.append(
                 f"| {_pr_link(record)} {record.title} "
-                f"| `{result.head[:12]}` | `{merge_sha}` |"
+                f"| `{result.head[:12]}` | `{merge_sha}` | "
+                f"{result.release_run or ('dry run' if result.dry_run else 'unverified')} |"
             )
     lines.extend(
         _section("Would merge" if outcome.dry_run else "Merged", merged_rows)
@@ -383,7 +514,7 @@ def _merge_sections(
     if outcome.not_attempted:
         lines.extend(
             _section(
-                "Not attempted (stopped after failure)",
+                "Not attempted (run limit or failure)",
                 [f"- {_label(by_number, n)}" for n in outcome.not_attempted],
             )
         )
@@ -474,7 +605,10 @@ def run_maintenance(
     limit: int,
     retries: int,
     retry_delay: float,
+    max_merges: int = 3,
 ) -> Outcome:
+    if not 1 <= max_merges <= 3:
+        raise ValueError("max_merges must be between 1 and 3")
     outcome = Outcome(mode=mode, dry_run=dry_run, allow_major=allow_major)
     outcome.records = collect_records(
         root, repo, limit=limit, allow_major=allow_major
@@ -488,6 +622,7 @@ def run_maintenance(
             outcome,
             retries=retries,
             retry_delay=retry_delay,
+            max_merges=max_merges,
         )
         if outcome.failure is None:
             run_rebase_phase(root, repo, outcome, limit=limit)
@@ -505,6 +640,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print intended merges and rebase requests without writing",
     )
     parser.add_argument("--limit", type=int, default=50)
+    parser.add_argument(
+        "--max-merges", type=int, choices=range(1, 4), default=3
+    )
     parser.add_argument(
         "--guard-retries",
         type=int,
@@ -538,6 +676,7 @@ def main(argv: list[str] | None = None) -> int:
         limit=args.limit,
         retries=args.guard_retries,
         retry_delay=args.guard_retry_delay,
+        max_merges=args.max_merges,
     )
     write_summary(format_summary(outcome), args.summary_file)
     return outcome.exit_code

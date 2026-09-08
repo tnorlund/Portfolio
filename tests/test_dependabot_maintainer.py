@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -206,3 +207,41 @@ def test_verify_reports_python_resolution_failure_cleanly(
         "Refusing to verify PR #42: Python 3.13 or newer is required"
         in capsys.readouterr().err
     )
+
+
+def test_coderabbit_is_advisory_but_ci_is_required():
+    rabbit = {
+        "__typename": "StatusContext",
+        "context": "CodeRabbit",
+        "state": "PENDING",
+    }
+    green = {
+        "__typename": "CheckRun",
+        "name": "Tests",
+        "status": "COMPLETED",
+        "conclusion": "SUCCESS",
+    }
+    assert maintainer.checks_green({"statusCheckRollup": [rabbit, green]})[0]
+    assert not maintainer.checks_green({"statusCheckRollup": [rabbit]})[0]
+    assert not maintainer.checks_green(
+        {"statusCheckRollup": [rabbit, {**green, "conclusion": "FAILURE"}]}
+    )[0]
+
+
+def test_npm_verification_covers_standard_script_aliases(
+    tmp_path, monkeypatch
+):
+    package = tmp_path / "tool"
+    package.mkdir()
+    (package / "package.json").write_text(
+        json.dumps({"scripts": {"typecheck": "tsc", "test": "vitest run"}})
+    )
+    commands = []
+    monkeypatch.setattr(
+        maintainer, "run", lambda cmd, **kwargs: commands.append(cmd)
+    )
+    maintainer.verify_npm_dir(tmp_path, Path("tool"))
+    assert commands[-2:] == [
+        ["npm", "run", "typecheck"],
+        ["npm", "run", "test"],
+    ]
