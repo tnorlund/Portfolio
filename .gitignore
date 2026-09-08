@@ -133,6 +133,9 @@ env.bak/
 venv.bak/
 .env
 
+# Generated synthesis artifacts
+synthesis_loop/.out/
+
 # Spyder project settings
 .spyderproject
 .spyproject

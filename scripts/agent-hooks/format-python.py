@@ -29,7 +29,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SKIP_PARTS = {"portfolio", "node_modules", ".git", "docs", "__pycache__"}
-PATCH_FILE_RE = re.compile(r"^\*\*\* (?:Update|Add) File: (.+)$", re.M)
+PATCH_FILE_RE = re.compile(
+    r"^\*\*\* (?:(?:Update|Add) File|Move to): (.+)$", re.M
+)
 
 
 def _formatter(name: str) -> str | None:
@@ -83,6 +85,8 @@ def main() -> int:
         payload = json.loads(raw) if raw.strip() else {}
     except json.JSONDecodeError:
         return 0
+    if not isinstance(payload, dict):
+        return 0
     cwd = Path(payload.get("cwd") or REPO_ROOT)
     files = []
     for candidate in _candidate_paths(payload):
@@ -95,20 +99,20 @@ def main() -> int:
     black = _formatter("black")
     isort = _formatter("isort")
     targets = [str(p) for p in files]
+    commands = []
     if black:
-        subprocess.run(
-            [black, "-q", "--line-length=79", *targets],
-            capture_output=True,
-            timeout=60,
-            check=False,
-        )
+        commands.append([black, "-q", "--line-length=79", *targets])
     if isort:
-        subprocess.run(
-            [isort, "-q", "--profile=black", "--line-length=79", *targets],
-            capture_output=True,
-            timeout=60,
-            check=False,
+        commands.append(
+            [isort, "-q", "--profile=black", "--line-length=79", *targets]
         )
+    for command in commands:
+        try:
+            subprocess.run(
+                command, capture_output=True, timeout=60, check=False
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue  # Formatting is best-effort and must not fail a tool call.
     return 0
 
 

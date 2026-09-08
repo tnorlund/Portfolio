@@ -14,7 +14,7 @@ Deltas to the root `AGENTS.md`.
   `OperationError`, `DynamoDBThroughputError`, `DynamoDBServerError`,
   `DynamoDBError`). Never leak `botocore.ClientError` or raise bare
   `ValueError` from accessors.
-- Tests: `pytest receipt_dynamo/tests -m unit` for fast checks;
+- Tests: `pytest receipt_dynamo/tests/unit` for fast checks;
   `-m integration` runs the moto-backed suite (`dynamodb_table` fixture);
   `-m end_to_end` needs AWS and is skipped by agents. Entities not used by
   `infra/` are marked `unused_in_production`. Test conventions and the

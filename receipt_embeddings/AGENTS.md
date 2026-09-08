@@ -12,7 +12,7 @@ Deltas to the root `AGENTS.md`. Prod runs `VECTOR_BACKEND=dynamodb`.
   extras items, never speculatively.
 - Verify commands must work from a fresh checkout; if a step needs
   `PYTHONPATH` or an extra install, write it in the PR, not in your head.
-- Tests: `pytest receipt_embeddings/tests -m unit` is offline.
+- Tests: `pytest receipt_embeddings/tests -m "not vector_integration and not performance"` is offline.
   `vector_integration` hits a live backend and `performance` is opt-in
   (`RECEIPT_EMBEDDINGS_PERF=1`); agents run neither. CI installs
   `receipt_dynamo` editable first because this package depends on it.

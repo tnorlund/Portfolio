@@ -183,8 +183,9 @@ Cursor, Claude Code, Codex, and Grok all read [`AGENTS.md`](AGENTS.md) (root
 and per-package); `CLAUDE.md` files only contain `@AGENTS.md`, so edit
 `AGENTS.md`, never `CLAUDE.md`. On-demand procedures live in
 `.agents/skills/*/SKILL.md` (symlinked from `.claude/skills/` for Claude Code),
-and `scripts/agent-hooks/guard-shell.py` enforces the Pulumi/git hard rules via
-`.cursor/hooks.json` and `.claude/settings.json`.
+and `scripts/agent-hooks/guard-shell.py` checks common direct Pulumi/git/AWS
+commands via the Cursor, Claude, and Codex hook configurations. See the
+[supported payloads and limits](docs/agent-hooks.md); hooks are not a sandbox.
 
 ## 📚 Documentation
 

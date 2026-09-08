@@ -32,8 +32,9 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
   `receipt_logo`. Run `pip install -e "<package>[test]"` before working on those.
 - Node 22 with `portfolio/node_modules` installed via `npm ci`. Run every npm
   command from `portfolio/`, never from the repo root.
-- No AWS credentials by default. Unit tests use `moto` and pass offline; skip
-  anything marked integration/e2e or that reaches real AWS or Pulumi.
+- Do not assume credentials or AWS access. Unit tests and `receipt_dynamo`'s
+  moto integration tests run offline; skip tests that reach live AWS/Pulumi
+  unless that environment and operation are authorized.
 
 ## Checks
 
@@ -49,8 +50,8 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
   `receipt_agent` on changed `.py` files only; every other package is linted whole.
 - The CI matrix runs only for PRs targeting `main`. A PR based on another PR
   branch gets no matrix, so run the package checks locally before marking it ready.
-- Browser Tests failing on `localhost:3001 already used` is a runner flake; rerun
-  the job, do not change code for it.
+- Browser tests select an isolated loopback port via `PLAYWRIGHT_PORT` in CI.
+  Investigate port conflicts using that run's logs; never kill host-wide listeners.
 
 ## Conventions
 
@@ -65,13 +66,13 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 - Imports at the top of the module; no inline imports.
 - Commit messages: `feat:`, `fix:`, `chore:`, `docs:` prefix with a short imperative
   subject (see `git log`). One logical change per commit.
-- Timestamps that cross Swift ↔ Python must serialise with `+00:00`, never `Z`
-  (`datetime.fromisoformat` rejects `Z`).
+- Timestamps that cross Swift ↔ Python use the project's `+00:00` convention.
+  Python 3.13 accepts `Z`; do not describe that convention as a parser limitation.
 
 ## Hard rules
 
 - Never commit directly to `main`; work on feature branches. Never force-push.
-- Agents mark PRs ready for review; the owner merges. In a PR stack, parents are
+- Agents may merge when the user explicitly authorizes it. In a PR stack, parents are
   merged with a merge commit and only the leaf is squashed (squashing a parent
   orphans every child).
 - `scripts/*dev_to_prod*`, `scripts/promote_*`, `scripts/activate_merchant_truth.py`,
@@ -85,8 +86,12 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 - Never write to the prod table `ReceiptsTable-d7ff76a`. Dev evals read
   `ReceiptsTable-dc5be22` only.
 - Don't commit screenshots, logs, `dev.*` scratch scripts, or debug instrumentation.
-- Hooks in `.cursor/hooks.json` and `.claude/settings.json` enforce the Pulumi
-  and git rules above; do not work around them.
+- Hooks in `.cursor/hooks.json`, `.claude/settings.json`, and `.codex/hooks.json`
+  catch common risky direct CLI forms. They are not a shell interpreter or a
+  security boundary and do not inspect arbitrary code, aliases, or script bodies.
+  Codex normalizes shell calls to `Bash`/`tool_input.command` for these hooks;
+  project hooks require the host's hook support and trust review. See
+  [the hook contract](docs/agent-hooks.md). Do not work around a configured denial.
 
 ## Code Review Rules
 

@@ -55,8 +55,8 @@ RECEIPT_UPLOAD_LOCAL_STACK = (
     "receipt_upload",
 )
 RECEIPT_UPLOAD_EXTERNAL_DEPS = (
-    "boto3",
-    "chromadb",
+    "boto3>=1.43.64,<1.44.0",
+    "numpy>=1.26.0,<3.0.0",
     "openai>=2.8.1,<3.0.0",
     "Pillow",
     "pillow-avif-plugin",

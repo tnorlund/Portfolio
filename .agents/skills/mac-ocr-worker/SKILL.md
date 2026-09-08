@@ -65,8 +65,10 @@ $BIN --process-local-image ~/test-receipt.png \
 
 ## Model location
 
-- S3: `s3://<bucket>/coreml/LayoutLM.mlpackage/`
-- Local cache: `~/.models/layoutlm/` (or `--layoutlm-cache-path`)
+- S3: the versioned archive selected by `coreml/active.json`; the legacy
+  bundle key is `coreml/layoutlm-coreml-bundle.zip`.
+- Local cache: `.models/layoutlm/<env>/` relative to the worker's working
+  directory (or the explicit `--layoutlm-cache-path`). Verify the process cwd.
 
 Bundle contents: `LayoutLM.mlpackage/`, `vocab.txt`, `config.json`, `label_map.json`.
 
