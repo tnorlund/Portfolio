@@ -272,6 +272,29 @@ upload_images = UploadImages(
     summary_queue_arn=receipt_update_queues.summary_queue_arn,
 )
 
+# Section verification failures are caught per receipt so ingestion can
+# continue. Alarm on that degraded path using the same table dimension
+# emitted by the upload handler.
+upload_section_verification_alarm = aws.cloudwatch.MetricAlarm(
+    "upload-section-verification-error",
+    alarm_description=(
+        "Receipt section vector verification failed; inspect upload logs "
+        "before treating newly ingested sections as verified."
+    ),
+    metric_name="UploadLambdaSectionVerificationError",
+    namespace="EmbeddingWorkflow",
+    dimensions={"TableName": dynamodb_table.name},
+    statistic="Sum",
+    period=300,
+    evaluation_periods=1,
+    threshold=0,
+    comparison_operator="GreaterThanThreshold",
+    alarm_actions=[notification_system.critical_error_topic_arn],
+    ok_actions=[notification_system.critical_error_topic_arn],
+    treat_missing_data="notBreaching",
+    tags={"environment": stack},
+)
+
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
 pulumi.export("ocr_results_queue_url", upload_images.ocr_results_queue.url)
 pulumi.export(

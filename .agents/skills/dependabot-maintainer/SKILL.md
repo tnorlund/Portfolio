@@ -59,6 +59,12 @@ Use this skill to turn Dependabot PR handling into a repeatable workflow. Prefer
 - Do not batch unrelated PRs into one local commit. Dependabot PRs should remain individually mergeable and auditable.
 - Keep local work in scratch worktrees so unfinished user work in the main checkout is untouched.
 
-## Scheduled Automation
+## Scheduled Automation (GitHub Actions)
 
-For recurring Codex runs, read `references/scheduled-task.md` and use its prompt. Scheduled runs should use a new worktree, run the report first, and leave a summary when anything is blocked.
+`.github/workflows/dependabot-maintenance.yml` reports every Thursday at 13:40 UTC and supports a manual `report` or `merge` run. Merge dispatch explicitly authorizes normal production releases. Scheduled merges authorize the normal production release and require the owner to set the opt-in repository variable `DEPENDABOT_AUTOMERGE=true`; batch runs never allow major versions. Adding this workflow does not enable that variable or provision a token.
+
+Merge mode requires `DEPENDABOT_MAINTAINER_TOKEN`. It checks the current main release, runs the local verifier in an isolated worktree with a separate read-only token, and rechecks the verified head and PR checks immediately before merging. Each merge must have successful `Deploy` and `Smoke Tests` jobs on its exact main commit before another merge. Missing, failed, skipped, or timed-out release gates stop the run. CodeRabbit is advisory; actual CI remains required.
+
+The run handles at most three merges, stops on the first verification/merge/release failure, and requests rebases only after a successful merge phase. Report and dry-run modes perform no writes or dependency installs. npm verification recognizes both `type-check`/`typecheck` and `test:ci`/`test`; packages lacking usable checks need manual verification.
+
+Read `references/scheduled-task.md` for token permissions, output, and the optional Codex routine.

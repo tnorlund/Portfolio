@@ -1,4 +1,4 @@
-FROM public.ecr.aws/lambda/python:3.13 AS dependencies
+FROM public.ecr.aws/lambda/python:3.14 AS dependencies
 ENV HNSWLIB_NO_NATIVE=1
 
 COPY receipt_dynamo/ /tmp/receipt_dynamo/

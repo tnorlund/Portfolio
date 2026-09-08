@@ -45,7 +45,13 @@ JSON_LOCK_FILE_NAMES = {
     "Pipfile.lock",
 }
 GITHUB_VERIFIED_COMMITTERS = {"web-flow"}
-NPM_VERIFICATION_SCRIPTS = {"lint", "type-check", "test:ci"}
+NPM_VERIFICATION_SCRIPTS = {
+    "lint",
+    "type-check",
+    "typecheck",
+    "test:ci",
+    "test",
+}
 RECEIPT_UPLOAD_LOCAL_STACK = (
     "receipt_dynamo",
     "receipt_dynamo_stream",
@@ -208,11 +214,27 @@ def is_dependency_file(path: str) -> bool:
 
 
 def checks_green(pr: dict[str, Any]) -> tuple[bool, list[str]]:
-    checks = pr.get("statusCheckRollup") or []
+    checks = [
+        check
+        for check in (pr.get("statusCheckRollup") or [])
+        if (check.get("name") or check.get("context") or "").casefold()
+        != "coderabbit"
+    ]
     if not checks:
         return False, ["missing checks"]
 
     blockers: list[str] = []
+    if not any(
+        check.get("__typename") == "CheckRun"
+        and check.get("status") == "COMPLETED"
+        and check.get("conclusion") == "SUCCESS"
+        and (
+            check.get("workflowName") == "CI/CD Pipeline"
+            or check.get("name") == "CI/CD Pipeline"
+        )
+        for check in checks
+    ):
+        blockers.append("no successful CI/CD Pipeline check")
     for check in checks:
         name = (
             check.get("name")
@@ -626,6 +648,9 @@ def base_guard_reasons(root: Path, repo: str, pr: dict[str, Any]) -> list[str]:
     if pr.get("state") != "OPEN":
         reasons.append(f"PR state is {pr.get('state')!r}, not OPEN")
 
+    if pr.get("baseRefName") != "main":
+        reasons.append("PR must target main")
+
     if pr.get("isDraft"):
         reasons.append("PR is draft")
 
@@ -915,8 +940,20 @@ def verify_npm_dir(worktree: Path, rel_dir: Path) -> None:
     package_dir = worktree / rel_dir
     run(["npm", "ci", "--ignore-scripts", "--prefer-offline"], cwd=package_dir)
     scripts = npm_scripts(package_dir / "package.json")
-    for script in ("lint", "type-check", "test:ci"):
-        if script in scripts:
+    selected = [
+        next((script for script in aliases if script in scripts), None)
+        for aliases in (
+            ("lint",),
+            ("type-check", "typecheck"),
+            ("test:ci", "test"),
+        )
+    ]
+    if not any(selected):
+        raise RuntimeError(
+            f"{rel_dir}: no supported validation script; manual verification required"
+        )
+    for script in selected:
+        if script is not None:
             run(["npm", "run", script], cwd=package_dir)
 
 
