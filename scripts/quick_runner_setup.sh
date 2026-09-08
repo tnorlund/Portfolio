@@ -86,11 +86,12 @@ done
 
 echo -e "${BLUE}=== Start All Runners (after configuration) ===${NC}"
 echo ""
-echo "Option A (recommended): LaunchAgents via svc.sh (survive logout/reboot, restart on crash):"
+echo "Option A (recommended): LaunchAgents via svc.sh (independent of the terminal, restart on crash):"
 for i in {1..4}; do
     echo "cd ${RUNNER_BASE}/actions-runner$([ $i -eq 1 ] && echo "" || echo "-$i") && ./svc.sh install && ./svc.sh start"
 done
 echo "# Check status: ./svc.sh status in each runner directory"
+echo "# LaunchAgents stop at logout and start again at login, including after a reboot."
 
 echo ""
 echo "Option B: Manual foreground (4 terminal windows):"
