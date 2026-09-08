@@ -67,3 +67,17 @@ def test_invalid_artifacts_cannot_pass(tmp_path, kind):
 def test_default_budget_keeps_fifty_mib_of_headroom():
     assert budget.PROJECT_BUDGET_BYTES == 200 * 1024 * 1024
     assert budget.AWS_LIMIT_BYTES == 250 * 1024 * 1024
+
+
+def test_readable_directory_does_not_hide_corrupt_member(tmp_path):
+    path = tmp_path / "corrupt.zip"
+    payload = b"intact metadata is not enough"
+    with ZipFile(path, "w") as output:
+        output.writestr("handler.py", payload)
+    content = path.read_bytes()
+    path.write_bytes(content.replace(payload, b"X" + payload[1:], 1))
+    with ZipFile(path) as damaged:
+        assert damaged.infolist()[0].file_size == len(payload)
+    with pytest.raises(SystemExit) as error:
+        budget.main([str(path)])
+    assert error.value.code == 2

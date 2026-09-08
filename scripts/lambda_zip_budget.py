@@ -7,6 +7,7 @@ It does not prove Linux ABI compatibility, handler behavior, or deployment.
 
 import argparse
 import json
+import zlib
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
@@ -27,6 +28,9 @@ def measure_archives(paths: list[Path]) -> dict:
             ]
             if not entries:
                 raise ValueError(f"Archive contains no files: {path}")
+            corrupt = archive.testzip()
+            if corrupt is not None:
+                raise BadZipFile(f"Corrupt member in {path}: {corrupt}")
             artifacts.append(
                 {
                     "path": str(path),
@@ -59,7 +63,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = measure_archives(args.archives)
-    except (BadZipFile, OSError, ValueError) as error:
+    except (
+        BadZipFile,
+        OSError,
+        ValueError,
+        RuntimeError,
+        zlib.error,
+    ) as error:
         parser.error(str(error))
     print(json.dumps(report, indent=2))
     return 0 if report["within_project_budget"] else 1
