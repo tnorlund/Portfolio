@@ -23,7 +23,13 @@ def handler(event, _):
         # Check for an optional 'limit'
         limit = query_params.get("limit")
         if limit is not None:
-            limit = int(limit)
+            try:
+                limit = int(limit)
+            except (TypeError, ValueError):
+                return {
+                    "statusCode": 400,
+                    "body": "limit must be a positive integer",
+                }
             if limit <= 0:
                 return {
                     "statusCode": 400,

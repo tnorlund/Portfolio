@@ -6,6 +6,7 @@ import os
 from dynamo_db import dynamodb_table
 from infra.components.route_lambda import (
     API_DYNAMO_ASSET_PATH,
+    API_DYNAMO_ERRORS_PATH,
     ManagedPolicyDefinition,
     RouteLambdaDefinition,
     create_route_lambda,
@@ -55,7 +56,10 @@ resources = create_route_lambda(
         memory_size=1024,
         timeout=120,
         enable_dev_profiling=True,
-        extra_code_assets={"_api_dynamo.py": API_DYNAMO_ASSET_PATH},
+        extra_code_assets={
+            "_api_dynamo.py": API_DYNAMO_ASSET_PATH,
+            "_api_dynamo_errors.py": API_DYNAMO_ERRORS_PATH,
+        },
     )
 )
 

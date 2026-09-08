@@ -20,7 +20,16 @@ PROFILER_ASSET_PATH = os.path.join(
     os.path.dirname(__file__), "lambda_profiler.py"
 )
 API_DYNAMO_ASSET_PATH = os.path.join(
-    os.path.dirname(__file__), "api_dynamo.py"
+    os.path.dirname(__file__),
+    "..",
+    "..",
+    "receipt_dynamo",
+    "receipt_dynamo",
+    "api_read.py",
+)
+
+API_DYNAMO_ERRORS_PATH = os.path.join(
+    os.path.dirname(API_DYNAMO_ASSET_PATH), "data", "shared_exceptions.py"
 )
 
 LAMBDA_ASSUME_ROLE_POLICY = json.dumps(

@@ -1,12 +1,31 @@
 """Small DynamoDB query client for latency-sensitive read-only API routes.
 
-This module intentionally avoids importing ``receipt_dynamo``. The general
-client composes every entity accessor and validates the table with
-``DescribeTable`` on construction; these routes need only two indexed queries
-and stable JSON conversion.
+This data-layer module is packaged directly as ``_api_dynamo.py`` in the two
+route archives. It avoids the general client's entity imports and DescribeTable
+call while keeping every DynamoDB operation owned by receipt_dynamo. It must
+remain importable without the package initializer or sibling dependencies.
 """
 
+from typing import Any, Callable
+
+from botocore.exceptions import ClientError
 from botocore.session import Session
+
+# Both files are shipped verbatim in the route archive, with no package init.
+if __package__:
+    from .data import shared_exceptions as errors
+else:
+    import _api_dynamo_errors as errors
+
+Item = dict[str, Any]
+_ERROR_TYPES = {
+    "ValidationException": errors.EntityValidationError,
+    "ResourceNotFoundException": errors.OperationError,
+    "ProvisionedThroughputExceededException": errors.DynamoDBThroughputError,
+    "ThrottlingException": errors.DynamoDBThroughputError,
+    "InternalServerError": errors.DynamoDBServerError,
+    "ServiceUnavailable": errors.DynamoDBServerError,
+}
 
 CDN_FIELDS = (
     "sha256",
@@ -28,24 +47,24 @@ CDN_FIELDS = (
 _clients = {}
 
 
-def _string(item, field, default=None):
+def _string(item: Item, field: str, default: str | None = None) -> str | None:
     return item.get(field, {}).get("S", default)
 
 
-def _integer(item, field):
+def _integer(item: Item, field: str) -> int | None:
     value = item.get(field, {}).get("N")
     return int(value) if value is not None else None
 
 
-def _point(item, field):
+def _point(item: Item, field: str) -> dict[str, float]:
     return {key: float(value["N"]) for key, value in item[field]["M"].items()}
 
 
-def _cdn_fields(item):
+def _cdn_fields(item: Item) -> dict[str, str | None]:
     return {field: _string(item, field) for field in CDN_FIELDS}
 
 
-def image_to_api(item):
+def image_to_api(item: Item) -> Item:
     """Convert one raw DynamoDB image item to the public API shape."""
     return {
         **_cdn_fields(item),
@@ -60,7 +79,7 @@ def image_to_api(item):
     }
 
 
-def receipt_to_api(item):
+def receipt_to_api(item: Item) -> Item:
     """Convert one raw DynamoDB receipt item to the public API shape."""
     return {
         **_cdn_fields(item),
@@ -81,13 +100,25 @@ def receipt_to_api(item):
 class ApiDynamoClient:
     """Read-only client exposing only the API routes' indexed queries."""
 
-    def __init__(self, table_name, dynamodb_client=None):
+    def __init__(self, table_name: str, dynamodb_client: Any = None) -> None:
         self.table_name = table_name
         self._client = dynamodb_client or Session().create_client(
             "dynamodb", region_name="us-east-1"
         )
 
-    def _query(self, parameters, converter, limit, last_evaluated_key):
+    def _query(
+        self,
+        parameters: Item,
+        converter: Callable[[Item], Item],
+        limit: int | None,
+        last_evaluated_key: Item | None,
+    ) -> tuple[list[Item], Item | None]:
+        if limit is not None and (
+            not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0
+        ):
+            raise errors.EntityValidationError(
+                "limit must be a positive integer"
+            )
         results = []
         current_key = last_evaluated_key
         while True:
@@ -100,7 +131,13 @@ class ApiDynamoClient:
             if limit is not None:
                 request["Limit"] = limit - len(results)
 
-            response = self._client.query(**request)
+            try:
+                response = self._client.query(**request)
+            except ClientError as exc:
+                error_type = _ERROR_TYPES.get(
+                    exc.response["Error"]["Code"], errors.DynamoDBError
+                )
+                raise error_type("API DynamoDB query failed") from exc
             results.extend(
                 converter(item) for item in response.get("Items", [])
             )
@@ -112,10 +149,15 @@ class ApiDynamoClient:
             current_key = next_key
 
     def list_images_by_type(
-        self, image_type, limit=None, last_evaluated_key=None
-    ):
+        self,
+        image_type: str,
+        limit: int | None = None,
+        last_evaluated_key: Item | None = None,
+    ) -> tuple[list[Item], Item | None]:
         if image_type not in {"PHOTO", "SCAN"}:
-            raise ValueError("image_type must be PHOTO or SCAN")
+            raise errors.EntityValidationError(
+                "image_type must be PHOTO or SCAN"
+            )
         return self._query(
             {
                 "IndexName": "GSI3",
@@ -131,7 +173,11 @@ class ApiDynamoClient:
             last_evaluated_key,
         )
 
-    def list_receipts(self, limit=None, last_evaluated_key=None):
+    def list_receipts(
+        self,
+        limit: int | None = None,
+        last_evaluated_key: Item | None = None,
+    ) -> tuple[list[Item], Item | None]:
         return self._query(
             {
                 "IndexName": "GSITYPE",
@@ -145,7 +191,7 @@ class ApiDynamoClient:
         )
 
 
-def get_api_dynamo_client(table_name):
+def get_api_dynamo_client(table_name: str) -> ApiDynamoClient:
     """Return one reusable client per table in the Lambda environment."""
     client = _clients.get(table_name)
     if client is None:

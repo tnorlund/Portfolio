@@ -69,11 +69,16 @@ jobs:
         run: |
           "$PYTHON_BIN" -m venv .venv-email-receipt
           source .venv-email-receipt/bin/activate
-          python -m pip install --quiet boto3 pytest
+          python -m pip install --quiet boto3 pytest "pulumi>=3.261.0,<4" "pulumi-aws>=7.44.0,<8"
           python -m pytest -q \
             infra/tests/test_email_receipt_inbox_handler.py \
             infra/tests/test_ats_verification_ingest.py \
             infra/tests/test_ats_verification_mcp.py
+          python -m pytest -q --import-mode=importlib \
+            infra/components/test_lambda_profiler.py \
+            infra/components/test_route_lambda.py \
+            infra/routes/images/handler/test_handler.py \
+            infra/routes/receipts/handler/test_handler.py
 
       - name: Clean up job workspace
         if: always()
@@ -428,13 +433,13 @@ jobs:
 
       - name: Install infrastructure and profiling tools
         run: |
-          pip install -e infra
+          pip install -e infra -e receipt_dynamo
           pip install boto3 flameprof pytest tuna
 
       - name: Test profiling instrumentation
         run: |
-          python -m pytest -q \
-            infra/components/test_api_dynamo.py \
+          python -m pytest -q --import-mode=importlib \
+            receipt_dynamo/tests/unit/test_api_read.py \
             infra/components/test_lambda_profiler.py \
             infra/components/test_route_lambda.py \
             infra/routes/images/handler/test_handler.py \
@@ -448,8 +453,9 @@ jobs:
           ENABLE_DEV_LAMBDA_PROFILING: "1"
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
-          pulumi stack select tnorlund/portfolio/dev
-          pulumi up --yes
+          test "$(aws sts get-caller-identity --query Account --output text)" = "681647709217"
+          pulumi preview --stack tnorlund/portfolio/dev --non-interactive
+          pulumi up --stack tnorlund/portfolio/dev --yes --non-interactive
 
       - name: Capture handler and import profiles
         run: |
@@ -472,13 +478,14 @@ jobs:
           done
 
       - name: Disable dev profiling
-        if: always() && steps.profiled-dev-deploy.outcome == 'success'
+        if: always() && contains(fromJSON('["success", "failure"]'), steps.profiled-dev-deploy.outcome)
         working-directory: infra
         env:
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
         run: |
-          pulumi stack select tnorlund/portfolio/dev
-          pulumi up --yes
+          test "$(aws sts get-caller-identity --query Account --output text)" = "681647709217"
+          pulumi preview --stack tnorlund/portfolio/dev --non-interactive
+          pulumi up --stack tnorlund/portfolio/dev --yes --non-interactive
 
       - name: Upload dev API profiles
         uses: actions/upload-artifact@v7
