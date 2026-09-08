@@ -61,7 +61,7 @@ Use this skill to turn Dependabot PR handling into a repeatable workflow. Prefer
 
 ## Scheduled Automation (GitHub Actions)
 
-`.github/workflows/dependabot-maintenance.yml` reports every Thursday at 13:40 UTC and supports a manual `report` or `merge` run. Scheduled merges require the existing opt-in repository variable `DEPENDABOT_AUTOMERGE=true`; scheduled runs never allow major versions. Adding this workflow does not enable that variable or provision a token.
+`.github/workflows/dependabot-maintenance.yml` reports every Thursday at 13:40 UTC and supports a manual `report` or `merge` run. Merge dispatch explicitly authorizes normal production releases. Scheduled merges authorize the normal production release and require the owner to set the opt-in repository variable `DEPENDABOT_AUTOMERGE=true`; batch runs never allow major versions. Adding this workflow does not enable that variable or provision a token.
 
 Merge mode requires `DEPENDABOT_MAINTAINER_TOKEN`. It checks the current main release, runs the local verifier in an isolated worktree with a separate read-only token, and rechecks the verified head and PR checks immediately before merging. Each merge must have successful `Deploy` and `Smoke Tests` jobs on its exact main commit before another merge. Missing, failed, skipped, or timed-out release gates stop the run. CodeRabbit is advisory; actual CI remains required.
 

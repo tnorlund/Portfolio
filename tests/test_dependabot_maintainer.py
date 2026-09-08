@@ -218,6 +218,7 @@ def test_coderabbit_is_advisory_but_ci_is_required():
     green = {
         "__typename": "CheckRun",
         "name": "Tests",
+        "workflowName": "CI/CD Pipeline",
         "status": "COMPLETED",
         "conclusion": "SUCCESS",
     }
@@ -245,3 +246,44 @@ def test_npm_verification_covers_standard_script_aliases(
         ["npm", "run", "typecheck"],
         ["npm", "run", "test"],
     ]
+
+
+@pytest.mark.parametrize("conclusion", ["SKIPPED", "NEUTRAL"])
+def test_checks_need_a_successful_project_job(conclusion):
+    checks = [
+        {
+            "__typename": "CheckRun",
+            "name": "Tests",
+            "workflowName": "CI/CD Pipeline",
+            "status": "COMPLETED",
+            "conclusion": conclusion,
+        },
+        {
+            "__typename": "CheckRun",
+            "name": "GitGuardian",
+            "status": "COMPLETED",
+            "conclusion": "SUCCESS",
+        },
+        {
+            "__typename": "StatusContext",
+            "context": "CodeRabbit",
+            "state": "PENDING",
+        },
+    ]
+    assert not maintainer.checks_green({"statusCheckRollup": checks})[0]
+
+
+@pytest.mark.parametrize("alias", ["test", "typecheck"])
+def test_new_script_aliases_are_guarded(alias):
+    patch = f"""diff --git a/tool/package.json b/tool/package.json
+--- a/tool/package.json
++++ b/tool/package.json
+@@ -1,5 +1,5 @@
+ {{
+   "scripts": {{
+-    "{alias}": "original-check"
++    "{alias}": "changed-check"
+   }}
+ }}
+"""
+    assert maintainer.npm_script_change_reasons(patch)

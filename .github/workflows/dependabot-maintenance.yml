@@ -16,16 +16,12 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "report (read-only) or merge"
+        description: "report (read-only) or merge (authorizes normal production releases)"
         type: choice
         options:
           - report
           - merge
         default: report
-      allow_major:
-        description: "Allow merging major-version updates (merge mode)"
-        type: boolean
-        default: false
 
 # GITHUB_TOKEN stays read-only: merge mode authenticates gh with
 # DEPENDABOT_MAINTAINER_TOKEN instead (see header).
@@ -51,16 +47,13 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           INPUT_MODE: ${{ inputs.mode }}
-          INPUT_ALLOW_MAJOR: ${{ inputs.allow_major }}
           AUTOMERGE_VAR: ${{ vars.DEPENDABOT_AUTOMERGE }}
           HAS_MAINTAINER_TOKEN: ${{ secrets.DEPENDABOT_MAINTAINER_TOKEN != '' }}
         run: |
           set -euo pipefail
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             mode="${INPUT_MODE:-report}"
-            allow_major="${INPUT_ALLOW_MAJOR:-false}"
           else
-            allow_major="false"
             if [ "$AUTOMERGE_VAR" = "true" ]; then
               mode="merge"
             else
@@ -75,8 +68,7 @@ jobs:
           fi
 
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
-          echo "allow_major=$allow_major" >> "$GITHUB_OUTPUT"
-          echo "Resolved mode=$mode allow_major=$allow_major (event=$EVENT_NAME)"
+          echo "Resolved mode=$mode (event=$EVENT_NAME)"
 
       - uses: actions/checkout@v7
         with:
@@ -93,7 +85,6 @@ jobs:
       - name: Run Dependabot maintenance
         env:
           MODE: ${{ steps.config.outputs.mode }}
-          ALLOW_MAJOR: ${{ steps.config.outputs.allow_major }}
           REPO: ${{ github.repository }}
           # Merge mode uses the PAT so the resulting push to main triggers
           # the CI/CD Pipeline and Dependabot honors rebase comments.
@@ -102,9 +93,6 @@ jobs:
         run: |
           set -euo pipefail
           args=(--repo "$REPO" --mode "$MODE" --limit 50 --max-merges 3)
-          if [ "$ALLOW_MAJOR" = "true" ]; then
-            args+=(--allow-major)
-          fi
           python .agents/skills/dependabot-maintainer/scripts/dependabot_maintenance_ci.py \
             "${args[@]}" | tee report.txt
 

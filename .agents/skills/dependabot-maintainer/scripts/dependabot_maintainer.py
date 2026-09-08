@@ -45,7 +45,13 @@ JSON_LOCK_FILE_NAMES = {
     "Pipfile.lock",
 }
 GITHUB_VERIFIED_COMMITTERS = {"web-flow"}
-NPM_VERIFICATION_SCRIPTS = {"lint", "type-check", "test:ci"}
+NPM_VERIFICATION_SCRIPTS = {
+    "lint",
+    "type-check",
+    "typecheck",
+    "test:ci",
+    "test",
+}
 RECEIPT_UPLOAD_LOCAL_STACK = (
     "receipt_dynamo",
     "receipt_dynamo_stream",
@@ -218,6 +224,17 @@ def checks_green(pr: dict[str, Any]) -> tuple[bool, list[str]]:
         return False, ["missing checks"]
 
     blockers: list[str] = []
+    if not any(
+        check.get("__typename") == "CheckRun"
+        and check.get("status") == "COMPLETED"
+        and check.get("conclusion") == "SUCCESS"
+        and (
+            check.get("workflowName") == "CI/CD Pipeline"
+            or check.get("name") == "CI/CD Pipeline"
+        )
+        for check in checks
+    ):
+        blockers.append("no successful CI/CD Pipeline check")
     for check in checks:
         name = (
             check.get("name")
@@ -630,6 +647,9 @@ def base_guard_reasons(root: Path, repo: str, pr: dict[str, Any]) -> list[str]:
 
     if pr.get("state") != "OPEN":
         reasons.append(f"PR state is {pr.get('state')!r}, not OPEN")
+
+    if pr.get("baseRefName") != "main":
+        reasons.append("PR must target main")
 
     if pr.get("isDraft"):
         reasons.append("PR is draft")

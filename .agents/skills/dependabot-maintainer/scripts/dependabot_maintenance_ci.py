@@ -358,6 +358,10 @@ def run_merge_phase(
                 retries=retries,
                 retry_delay=retry_delay,
             )
+            outcome.records = [
+                record if item.number == number else item
+                for item in outcome.records
+            ]
             if record.status != "ready":
                 outcome.skipped.append(record)
                 continue
@@ -376,6 +380,10 @@ def run_merge_phase(
                     retries=retries,
                     retry_delay=retry_delay,
                 )
+                outcome.records = [
+                    record if item.number == number else item
+                    for item in outcome.records
+                ]
                 if record.status != "ready" or record.head != verified_head:
                     raise RuntimeError(
                         "PR head or checks changed after local verification"
@@ -591,8 +599,7 @@ def write_summary(text: str, summary_file: str | None) -> None:
     if summary_file:
         with open(summary_file, "a", encoding="utf-8") as handle:
             handle.write(text)
-    else:
-        print(text)
+    print(text)
 
 
 def run_maintenance(
@@ -607,6 +614,10 @@ def run_maintenance(
     retry_delay: float,
     max_merges: int = 3,
 ) -> Outcome:
+    if allow_major:
+        raise ValueError(
+            "Major updates require an individually reviewed PR command"
+        )
     if not 1 <= max_merges <= 3:
         raise ValueError("max_merges must be between 1 and 3")
     outcome = Outcome(mode=mode, dry_run=dry_run, allow_major=allow_major)
@@ -633,7 +644,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", help="GitHub repo in owner/name form")
     parser.add_argument("--mode", choices=MODES, default="report")
-    parser.add_argument("--allow-major", action="store_true")
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -671,7 +681,7 @@ def main(argv: list[str] | None = None) -> int:
         root,
         repo,
         mode=args.mode,
-        allow_major=args.allow_major,
+        allow_major=False,
         dry_run=args.dry_run,
         limit=args.limit,
         retries=args.guard_retries,

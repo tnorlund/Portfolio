@@ -558,3 +558,41 @@ def test_verifier_receives_only_read_token(monkeypatch):
     assert "GITHUB_TOKEN" not in captured["env"]
     assert "VERIFICATION_GH_TOKEN" not in captured["env"]
     assert "test-write-token" not in captured["env"].values()
+
+
+def test_non_main_pr_cannot_enter_merge_queue(gh):
+    gh.prs[1551]["baseRefName"] = "release"
+    outcome = run_ci(gh)
+    record = next(item for item in outcome.records if item.number == 1551)
+    assert record.status == "manual"
+    assert "PR must target main" in record.reasons
+    assert all(cmd[2] != "merge" for cmd in gh.writes)
+
+
+def test_skipped_candidate_summary_uses_latest_status(gh):
+    stale = {
+        **gh.prs[1551],
+        "mergeable": "CONFLICTING",
+        "mergeStateStatus": "DIRTY",
+    }
+    gh.on_view[1551] = [gh.prs[1551], stale]
+    outcome = run_ci(gh)
+    assert (
+        next(item for item in outcome.records if item.number == 1551).status
+        != "ready"
+    )
+    assert "### ready" not in ci.format_summary(outcome)
+
+
+def test_batch_major_override_is_rejected(gh):
+    with pytest.raises(ValueError, match="individually reviewed"):
+        run_ci(gh, allow_major=True)
+    assert gh.writes == []
+
+
+def test_final_summary_goes_to_stdout_and_step_summary(tmp_path, capsys):
+    summary = tmp_path / "summary.md"
+    final = "Merged #1; release 123 passed; #2 was not attempted.\n"
+    ci.write_summary(final, str(summary))
+    assert summary.read_text() == final
+    assert final in capsys.readouterr().out
