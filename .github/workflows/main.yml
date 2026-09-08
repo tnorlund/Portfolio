@@ -331,20 +331,6 @@ jobs:
         env:
           CI: true
         run: |
-          # Free port 3001 from any prior CI job that crashed without
-          # cleanup. Without this, Playwright's webServer fails to bind
-          # ("localhost:3001 already used") and skips the rest of the
-          # pipeline including Deploy. Self-hosted runners share state
-          # across jobs, so we can't rely on container teardown.
-          PIDS="$(lsof -ti:3001 2>/dev/null || true)"
-          if [ -n "$PIDS" ]; then
-            kill -9 $PIDS 2>/dev/null || true
-          fi
-
-          # Re-free the port on exit so the next job starts clean even
-          # if Playwright crashes mid-run.
-          trap 'PIDS="$(lsof -ti:3001 2>/dev/null || true)"; [ -z "$PIDS" ] || kill -9 $PIDS 2>/dev/null || true' EXIT
-
           npm ci --prefer-offline
           npm run build
           # Idempotent: playwright-core skips any browser whose
@@ -352,6 +338,9 @@ jobs:
           # ~/Library/Caches/ms-playwright, so this only downloads after a
           # Playwright version bump changes the pinned browser revisions.
           npx playwright install chromium firefox webkit
+          # Concurrent runners on one Mac must not share a fixed port or
+          # kill each other's servers. Playwright owns server teardown.
+          export PLAYWRIGHT_PORT="$(node -e 'const server = require("node:net").createServer(); server.listen(0, "127.0.0.1", () => { console.log(server.address().port); server.close(); });')"
           npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
 
       - name: Upload test results
