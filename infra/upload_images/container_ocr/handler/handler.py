@@ -230,6 +230,21 @@ def _emit_section_observability(
     changes pipeline behavior.
     """
     try:
+        if embedding_result.get("verification_error"):
+            # Keep this alarm metric scoped to the receipt table so dev
+            # failures cannot trigger the production alarm. Existing
+            # section metrics retain their original dimension set.
+            emf_metrics.log_metrics(
+                {"UploadLambdaSectionVerificationError": 1.0},
+                dimensions={"TableName": os.environ["DYNAMODB_TABLE_NAME"]},
+                properties={
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "verification_error": embedding_result[
+                        "verification_error"
+                    ],
+                },
+            )
         metric_map = {
             "UploadLambdaReceiptRows": embedding_result.get("row_count"),
             "UploadLambdaSectionsProposed": embedding_result.get(
