@@ -17,64 +17,96 @@ concurrency:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
+  PYTHON_VERSION: "3.13"
 
 jobs:
   # ============================================================================
   # STAGE 1: All tests run in parallel
   # ============================================================================
+  # Self-hosted jobs share a persistent Mac. Every job below has a
+  # `timeout-minutes` (so a hung job releases the runner) and a final
+  # `if: always()` cleanup that removes the venv / node_modules / build output
+  # it created inside the workspace. Host-level caches (~/Library/Caches/pip,
+  # ~/.npm, ~/Library/Caches/ms-playwright) are intentionally kept warm across
+  # jobs; pruning them when disk runs low is an ops task on the runner host.
 
   lambda-syntax:
     name: Lambda Syntax
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
           clean: true
 
+      - name: Resolve Python
+        run: |
+          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "$PYTHON_VERSION")"
+          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
+          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
+          "$PYTHON_BIN" --version
+
       - name: Compile all Lambda handler sources
         run: |
-          PYTHON=$(command -v python3.12 || command -v python3)
-          if [ -z "$PYTHON" ]; then
-            echo "::error::No python3.12 or python3 found on PATH"
-            exit 1
-          fi
           # Compile every .py file under infra/ — catches SyntaxError before
           # docker build copies broken code into a Lambda image. Specifically
           # guards against `keyword argument repeated`-class regressions like
           # the one that crashed unified_evaluator after #861's rebase.
           find infra -name '*.py' -not -path '*/node_modules/*' -not -path '*/.venv*/*' -print0 \
-            | xargs -0 "$PYTHON" -m py_compile
+            | xargs -0 "$PYTHON_BIN" -m py_compile
 
-      - name: Test inbound email sender authentication
+      - name: Verify Python version declarations
         run: |
-          PYTHON=$(command -v python3.12 || command -v python3)
-          "$PYTHON" -m venv .venv-email-receipt
+          "$PYTHON_BIN" scripts/check_python_version_consistency.py
+
+      - name: Test inbound email trust boundaries
+        run: |
+          "$PYTHON_BIN" -m venv .venv-email-receipt
           source .venv-email-receipt/bin/activate
           python -m pip install --quiet boto3 pytest
-          python -m pytest -q infra/tests/test_email_receipt_inbox_handler.py
+          python -m pytest -q \
+            infra/tests/test_email_receipt_inbox_handler.py \
+            infra/tests/test_ats_verification_ingest.py \
+            infra/tests/test_ats_verification_mcp.py
 
-      - name: Test compaction lock configuration
-        run: |
-          # Stubs its Lambda-only imports, so the venv above (pytest only) is
-          # enough. Guards the lock heartbeat wiring and delta-failure
-          # propagation that caused the 07-12 compaction outage.
-          source .venv-email-receipt/bin/activate
-          python -m pytest -q infra/tests/test_compaction_lock_config.py
+      - name: Clean up job workspace
+        if: always()
+        run: rm -rf .venv-email-receipt .pytest_cache
+
+  lambda-images:
+    name: Lambda image compatibility
+    uses: ./.github/workflows/lambda-images.yml
 
   python-tests:
-    name: Python (${{ matrix.package }})
+    # 3.13 legs keep their historical check names ("Python (<package>)") so
+    # branch protection keeps matching them; 3.14 legs get a suffix.
+    name: Python (${{ matrix.package }}${{ matrix.python-version != '3.13' && format(', {0}', matrix.python-version) || '' }})
     runs-on: [self-hosted, macOS, ARM64]
+    # Both runtimes must pass before deploy.
     strategy:
       fail-fast: false
       matrix:
+        python-version: ["3.13"]
         package:
+          - receipt_embeddings
           - receipt_dynamo
           - receipt_dynamo_stream
-          - receipt_chroma
           - receipt_places
           - receipt_langsmith
           - receipt_upload
           - receipt_agent
+        # The container Lambdas run public.ecr.aws/lambda/python:3.14, so the
+        # packages those images ship are also exercised on 3.14. Everything
+        # else stays 3.13-only: receipt_layoutlm's image is pinned to 3.13
+        # (torch has no cp314 wheels) and the remaining packages are not
+        # shipped in a 3.14 image.
+        include:
+          - { python-version: "3.14", package: receipt_dynamo }
+          - { python-version: "3.14", package: receipt_dynamo_stream }
+          - { python-version: "3.14", package: receipt_embeddings }
+          - { python-version: "3.14", package: receipt_places }
+          - { python-version: "3.14", package: receipt_upload }
+          - { python-version: "3.14", package: receipt_agent }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -83,33 +115,28 @@ jobs:
 
       - name: Setup Python
         run: |
-          # Detect Python 3.12+ (framework install or Homebrew)
-          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
-            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
-          elif [ -f "/opt/homebrew/bin/python3.12" ]; then
-            echo "/opt/homebrew/bin" >> $GITHUB_PATH
-          fi
+          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "${{ matrix.python-version }}")"
+          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
+          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
+          "$PYTHON_BIN" --version
 
       - name: Install and test
         run: |
-          # Create fresh virtual environment (prefer python3.12 over system python3)
-          PYTHON=$(command -v python3.12 || command -v python3)
-          if [ -z "$PYTHON" ]; then
-            echo "::error::No python3.12 or python3 found on PATH"
-            exit 1
-          fi
-          "$PYTHON" -m venv .venv-${{ matrix.package }}
+          # Never fall back to the system interpreter: packages and Lambda use
+          # the same Python minor as CI.
+          "$PYTHON_BIN" -m venv .venv-${{ matrix.package }}
           source .venv-${{ matrix.package }}/bin/activate
           pip install --upgrade pip wheel
 
           # Install based on package dependencies
           case "${{ matrix.package }}" in
-            receipt_chroma)
+            receipt_embeddings)
+              # Local receipt-dynamo dep is unpublished: install it editable
+              # first so the [test]/[lint] resolves never reach for PyPI.
               pip install -e receipt_dynamo
-              pip install --no-deps -e receipt_dynamo_stream
-              pip install --no-deps -e receipt_chroma
-              pip install boto3 chromadb "openai>=2.8.1,<3.0.0"
-              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto
+              pip install --no-deps -e receipt_embeddings
+              pip install numpy "openai>=2.8.1,<3.0.0"
+              pip install pytest pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures
               ;;
             receipt_dynamo_stream)
               pip install -e receipt_dynamo
@@ -133,11 +160,11 @@ jobs:
               # reaches for the (unpublished) sibling packages on PyPI.
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_dynamo_stream
-              pip install --no-deps -e receipt_chroma
+              pip install --no-deps -e receipt_embeddings
               pip install --no-deps -e receipt_places
               pip install --no-deps -e receipt_agent
               pip install --no-deps -e receipt_upload
-              pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow pillow-avif-plugin \
+              pip install boto3 "openai>=2.8.1,<3.0.0" Pillow pillow-avif-plugin \
                 langsmith langgraph "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
                 pydantic pydantic-settings structlog requests tenacity
               pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto responses
@@ -148,11 +175,11 @@ jobs:
               # editable so this job always exercises the checked-out code.
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_dynamo_stream
-              pip install --no-deps -e receipt_chroma
+              pip install --no-deps -e receipt_embeddings
               pip install --no-deps -e receipt_places
               pip install --no-deps -e receipt_agent
               pip install --no-deps -e receipt_upload
-              pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow \
+              pip install boto3 "openai>=2.8.1,<3.0.0" Pillow \
                 pillow-avif-plugin langsmith langgraph \
                 "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
                 pydantic pydantic-settings structlog requests tenacity \
@@ -188,8 +215,8 @@ jobs:
 
           # Test
           # --reruns 1 --reruns-delay 2: retry once with a 2s pause to absorb
-          # environmental flakes (moto-S3 timestamp races, ChromaDB lock
-          # contention under pytest-xdist). Real test failures still fail
+          # environmental flakes (moto-S3 timestamp races, lock contention
+          # under pytest-xdist). Real test failures still fail
           # the build after the retry; only transient failures get masked.
           cd ${{ matrix.package }}
           python -m pytest tests -n auto --timeout=120 --tb=short --maxfail=5 \
@@ -197,16 +224,39 @@ jobs:
             -m "not end_to_end and not slow and not performance and not unused_in_production" \
             --cov --cov-report=xml
 
+      - name: Test Glyph Studio on the selected runtime
+        if: matrix.package == 'receipt_agent'
+        run: |
+          # The glyph Lambda ships this package too. Reuse the agent job's
+          # local dependency stack for its optional section/renderer tests.
+          source .venv-receipt_agent/bin/activate
+          # Existing offline degradation/metric tests use scipy; the deployed
+          # glyph MCP image retains its numpy + Pillow dependency contract.
+          pip install -e tools/glyph-studio/py scipy
+          python -m pytest tools/glyph-studio/py/tests -n auto \
+            --timeout=120 --tb=short --maxfail=5
+
       - name: Upload coverage
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-${{ matrix.package }}
+          # Artifact names must be unique per run; only the 3.14 legs are suffixed.
+          name: coverage-${{ matrix.package }}${{ matrix.python-version != '3.13' && format('-py{0}', matrix.python-version) || '' }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
+
+      - name: Clean up job workspace
+        if: always()
+        run: |
+          rm -rf .venv-${{ matrix.package }}
+          rm -rf ${{ matrix.package }}/coverage.xml ${{ matrix.package }}/.pytest_cache
+    # Job-level key; placed after `steps` so it stays clear of the matrix
+    # header, which other branches edit.
+    timeout-minutes: 30
 
   repository-tests:
     name: Python (repository tests)
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
@@ -215,29 +265,23 @@ jobs:
 
       - name: Setup Python
         run: |
-          if [ -f "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3" ]; then
-            echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> $GITHUB_PATH
-          elif [ -f "/opt/homebrew/bin/python3.12" ]; then
-            echo "/opt/homebrew/bin" >> $GITHUB_PATH
-          fi
+          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "$PYTHON_VERSION")"
+          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
+          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
+          "$PYTHON_BIN" --version
 
       - name: Install editable local stack
         run: |
-          PYTHON=$(command -v python3.12 || command -v python3)
-          if [ -z "$PYTHON" ]; then
-            echo "::error::No python3.12 or python3 found on PATH"
-            exit 1
-          fi
-          "$PYTHON" -m venv .venv-repository-tests
+          "$PYTHON_BIN" -m venv .venv-repository-tests
           source .venv-repository-tests/bin/activate
           pip install --upgrade pip wheel
           pip install -e receipt_dynamo
+          pip install --no-deps -e receipt_embeddings
           pip install --no-deps -e receipt_dynamo_stream
-          pip install --no-deps -e receipt_chroma
           pip install --no-deps -e receipt_places
           pip install --no-deps -e receipt_agent
           pip install --no-deps -e receipt_upload
-          pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow \
+          pip install boto3 "openai>=2.8.1,<3.0.0" Pillow \
             pillow-avif-plugin langsmith langgraph \
             "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
             pydantic pydantic-settings structlog requests tenacity \
@@ -270,9 +314,14 @@ jobs:
             -n auto --timeout=120 --tb=short --maxfail=5 \
             --reruns 1 --reruns-delay 2
 
+      - name: Clean up job workspace
+        if: always()
+        run: rm -rf .venv-repository-tests .pytest_cache
+
   typescript-tests:
     name: TypeScript
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -295,9 +344,14 @@ jobs:
           path: portfolio/coverage
           retention-days: 1
 
+      - name: Clean up job workspace
+        if: always()
+        run: rm -rf portfolio/node_modules portfolio/coverage
+
   browser-tests:
     name: Browser Tests
     runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -310,23 +364,16 @@ jobs:
         env:
           CI: true
         run: |
-          # Free port 3001 from any prior CI job that crashed without
-          # cleanup. Without this, Playwright's webServer fails to bind
-          # ("localhost:3001 already used") and skips the rest of the
-          # pipeline including Deploy. Self-hosted runners share state
-          # across jobs, so we can't rely on container teardown.
-          PIDS="$(lsof -ti:3001 2>/dev/null || true)"
-          if [ -n "$PIDS" ]; then
-            kill -9 $PIDS 2>/dev/null || true
-          fi
-
-          # Re-free the port on exit so the next job starts clean even
-          # if Playwright crashes mid-run.
-          trap 'PIDS="$(lsof -ti:3001 2>/dev/null || true)"; [ -z "$PIDS" ] || kill -9 $PIDS 2>/dev/null || true' EXIT
-
           npm ci --prefer-offline
           npm run build
+          # Idempotent: playwright-core skips any browser whose
+          # INSTALLATION_COMPLETE marker already exists under
+          # ~/Library/Caches/ms-playwright, so this only downloads after a
+          # Playwright version bump changes the pinned browser revisions.
           npx playwright install chromium firefox webkit
+          # Concurrent runners on one Mac must not share a fixed port or
+          # kill each other's servers. Playwright owns server teardown.
+          export PLAYWRIGHT_PORT="$(node -e 'const server = require("node:net").createServer(); server.listen(0, "127.0.0.1", () => { console.log(server.address().port); server.close(); });')"
           npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
 
       - name: Upload test results
@@ -336,6 +383,12 @@ jobs:
           name: playwright-report
           path: portfolio/playwright-report/
           retention-days: 7
+
+      - name: Clean up job workspace
+        if: always()
+        run: |
+          rm -rf portfolio/node_modules portfolio/.next portfolio/out
+          rm -rf portfolio/playwright-report portfolio/test-results
 
   # ============================================================================
   # STAGE 2: Deploy (only after ALL tests pass, main branch only)
@@ -351,6 +404,7 @@ jobs:
       cancel-in-progress: false
     needs:
       - lambda-syntax
+      - lambda-images
       - python-tests
       - repository-tests
       - typescript-tests
@@ -363,7 +417,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - uses: actions/setup-node@v7
         with:
@@ -452,7 +506,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Run backend E2E tests
         run: |
@@ -463,35 +517,3 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
-
-  # ============================================================================
-  # Docs (runs on main, doesn't block anything)
-  # ============================================================================
-
-  docs:
-    name: Generate Docs
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: "portfolio/package-lock.json"
-
-      - name: Generate and commit docs
-        working-directory: portfolio
-        run: |
-          npm ci --prefer-offline
-          npm run docs
-
-      - uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "docs: update TypeDoc documentation [skip ci]"
-          file_pattern: "portfolio/docs/**"

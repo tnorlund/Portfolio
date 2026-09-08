@@ -26,7 +26,8 @@
           9,
           11
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Rockenwagner French Loaf $4.99 F"
       },
       {
         "item_index": 1,
@@ -40,11 +41,19 @@
           8,
           10
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Clorox Disinfecting Bleac... $8.99 T"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -95,6 +104,20 @@
     "line_items": [
       {
         "item_index": 0,
+        "name": "",
+        "price": 5.79,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "low",
+        "line_ids": [
+          48
+        ],
+        "reconciliation_status": "no-baseline",
+        "raw_text": "5.79"
+      },
+      {
+        "item_index": 1,
         "name": "i: IFS 3 LB.",
         "price": 7.49,
         "quantity": null,
@@ -103,23 +126,21 @@
         "name_quality": "ok",
         "line_ids": [
           45,
-          47,
-          48
+          47
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "i: IFS 3 LB. 7.49"
       },
       {
-        "item_index": 1,
-        "name": "E 1391546 29827 AHI BAGEL TUNA CH",
+        "item_index": 2,
+        "name": "1391546 BAGEL CH",
         "price": 7.99,
         "quantity": null,
         "unit_price": null,
         "is_discount": false,
         "name_quality": "ok",
         "line_ids": [
-          35,
           37,
-          38,
           39,
           40,
           41,
@@ -127,11 +148,28 @@
           43,
           44
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1391546 BAGEL CH 7.99"
       },
       {
-        "item_index": 2,
-        "name": "1113319 15' S COLICORNIA MONDELUKE",
+        "item_index": 3,
+        "name": "E 29827 AHI TUNA",
+        "price": 38.4,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          35,
+          37,
+          38
+        ],
+        "reconciliation_status": "no-baseline",
+        "raw_text": "E 29827 AHI TUNA 38.40"
+      },
+      {
+        "item_index": 4,
+        "name": "1113319 S MONDELUKE",
         "price": 1.89,
         "quantity": null,
         "unit_price": null,
@@ -139,15 +177,46 @@
         "name_quality": "ok",
         "line_ids": [
           33,
-          34,
           35,
           36
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1113319 S MONDELUKE 1.89"
       },
       {
-        "item_index": 3,
-        "name": "003 137 003 STRAWBERRIES SEAWEED SALJ",
+        "item_index": 5,
+        "name": "15' COLICORNIA",
+        "price": 9.49,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          33,
+          34
+        ],
+        "reconciliation_status": "no-baseline",
+        "raw_text": "15' COLICORNIA 9.49"
+      },
+      {
+        "item_index": 6,
+        "name": "003 003 STRAWBERRIES",
+        "price": 6.99,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          29,
+          31,
+          32
+        ],
+        "reconciliation_status": "no-baseline",
+        "raw_text": "003 003 STRAWBERRIES 6.99"
+      },
+      {
+        "item_index": 7,
+        "name": "137 SEAWEED SALJ",
         "price": 1.99,
         "quantity": null,
         "unit_price": null,
@@ -156,15 +225,30 @@
         "line_ids": [
           26,
           29,
-          30,
-          31,
-          32
+          30
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "137 SEAWEED SALJ 1.99"
       },
       {
-        "item_index": 4,
-        "name": "or 57554 '917 BLUEBERRI! S&P PISTACH",
+        "item_index": 8,
+        "name": "or '917 S&P PISTACH",
+        "price": 17.49,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          24,
+          26,
+          28
+        ],
+        "reconciliation_status": "no-baseline",
+        "raw_text": "or '917 S&P PISTACH 17.49"
+      },
+      {
+        "item_index": 9,
+        "name": "57554 BLUEBERRI!",
         "price": 5.79,
         "quantity": null,
         "unit_price": null,
@@ -173,15 +257,30 @@
         "line_ids": [
           22,
           24,
-          25,
-          26,
-          28
+          25
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "57554 BLUEBERRI! 5.79"
       },
       {
-        "item_index": 5,
-        "name": "709616 25595 COCKTAIL BUFALA MOZZ TOM",
+        "item_index": 10,
+        "name": "709616 BUFALA MOZZ",
+        "price": 14.69,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          20,
+          22,
+          23
+        ],
+        "reconciliation_status": "no-baseline",
+        "raw_text": "709616 BUFALA MOZZ 14.69"
+      },
+      {
+        "item_index": 11,
+        "name": "25595 COCKTAIL TOM",
         "price": 6.99,
         "quantity": null,
         "unit_price": null,
@@ -190,16 +289,31 @@
         "line_ids": [
           18,
           20,
-          21,
-          22,
-          23
+          21
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "25595 COCKTAIL TOM 6.99"
       },
       {
-        "item_index": 6,
-        "name": "1055663 1131563 CHICKN HNY RSTD SALAD MIX",
+        "item_index": 12,
+        "name": "1131563 CHICKN SALAD",
         "price": 8.49,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          16,
+          18,
+          19
+        ],
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1131563 CHICKN SALAD 8.49"
+      },
+      {
+        "item_index": 13,
+        "name": "1055663 HNY RSTD MIX",
+        "price": 15.49,
         "quantity": null,
         "unit_price": null,
         "is_discount": false,
@@ -207,15 +321,14 @@
         "line_ids": [
           14,
           16,
-          17,
-          18,
-          19
+          17
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1055663 HNY RSTD MIX 15.49"
       },
       {
-        "item_index": 7,
-        "name": "10'8249 ORG HORIZON ATAULFO",
+        "item_index": 14,
+        "name": "10'8249 ORG ATAULFO",
         "price": 6.99,
         "quantity": null,
         "unit_price": null,
@@ -223,15 +336,37 @@
         "name_quality": "ok",
         "line_ids": [
           12,
-          13,
           14,
           15
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "10'8249 ORG ATAULFO 6.99"
+      },
+      {
+        "item_index": 15,
+        "name": "HORIZON",
+        "price": 12.99,
+        "quantity": null,
+        "unit_price": null,
+        "is_discount": false,
+        "name_quality": "ok",
+        "line_ids": [
+          12,
+          13
+        ],
+        "reconciliation_status": "no-baseline",
+        "raw_text": "HORIZON 12.99"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -261,11 +396,19 @@
           11,
           15
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "E 33977 BEEF FLANK 46.28"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -300,11 +443,19 @@
           37,
           40
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "BUTTER CHARDONNAY 17.99 T"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -334,7 +485,8 @@
         "line_ids": [
           19
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "6.80"
       },
       {
         "item_index": 1,
@@ -348,7 +500,8 @@
           10,
           18
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 Reg Chocolate Shk 3.05"
       },
       {
         "item_index": 2,
@@ -362,11 +515,19 @@
           7,
           17
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 Hamburger 3.75"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -397,7 +558,8 @@
           13,
           21
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 Animal Fry 4.75"
       },
       {
         "item_index": 1,
@@ -412,11 +574,19 @@
           12,
           20
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "5 Meat Patty 9.75"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -464,7 +634,8 @@
           23,
           33
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 Ponzu Sauce 1.00"
       },
       {
         "item_index": 1,
@@ -479,7 +650,8 @@
           22,
           32
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 Steamed White Rice 3.00"
       },
       {
         "item_index": 2,
@@ -494,7 +666,8 @@
           21,
           31
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 Albacore Sushi 10.00"
       },
       {
         "item_index": 3,
@@ -509,7 +682,8 @@
           20,
           30
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 Japanese Scallop Sushi 12.00"
       },
       {
         "item_index": 4,
@@ -524,7 +698,8 @@
           19,
           29
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 Mango Sticky Rice 14.00"
       },
       {
         "item_index": 5,
@@ -539,7 +714,8 @@
           17,
           28
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 Crispy Pork Belly Basil 20.00"
       },
       {
         "item_index": 6,
@@ -554,11 +730,19 @@
           14,
           27
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 Large Bottled Beer 13.00"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -588,7 +772,8 @@
           8,
           12
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "OLIPOP SPRKL TONIC 1.99 F"
       },
       {
         "item_index": 1,
@@ -602,11 +787,19 @@
           7,
           11
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "OL IPOP GRAPE 2.49 F"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -641,11 +834,19 @@
           14,
           15
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORG A2/A2 6% FAT MLK 7.99"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -677,7 +878,8 @@
           19,
           20
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "SOUR CREAM 2.79"
       },
       {
         "item_index": 1,
@@ -691,7 +893,8 @@
           15,
           17
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "BROCCOLI FLORETS 3.49"
       },
       {
         "item_index": 2,
@@ -705,11 +908,19 @@
           14,
           16
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1LB BAG BABY CARROT 1.29"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -743,7 +954,8 @@
           22,
           23
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "LARGE ALFRESCO EGGS 10.99"
       },
       {
         "item_index": 1,
@@ -757,7 +969,8 @@
           17,
           20
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORGANIC GREEN ONIONS 1.29"
       },
       {
         "item_index": 2,
@@ -771,7 +984,8 @@
           16,
           19
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORG GINGER ROOT 7.99"
       },
       {
         "item_index": 3,
@@ -785,11 +999,19 @@
           15,
           18
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORG 3 CNT GARLIC 2.99"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -840,7 +1062,8 @@
           18,
           27
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "GUAVA NECTAR JUICE ORG 3 $3.99"
       },
       {
         "item_index": 1,
@@ -854,7 +1077,8 @@
           17,
           26
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "MANGO NECTAR JUICE ORG 6 $5.49"
       },
       {
         "item_index": 2,
@@ -868,7 +1092,8 @@
           16,
           25
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "MULTI-FLORAL AND CLOVER $3.99"
       },
       {
         "item_index": 3,
@@ -882,7 +1107,8 @@
           15,
           24
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "SUPER SPINACH SALAD $4.49"
       },
       {
         "item_index": 4,
@@ -893,9 +1119,11 @@
         "is_discount": false,
         "name_quality": "low",
         "line_ids": [
+          14,
           23
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "$8.98"
       },
       {
         "item_index": 5,
@@ -909,7 +1137,8 @@
           12,
           22
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "SALAD CHICKEN APPLE WALD $5.99"
       },
       {
         "item_index": 6,
@@ -921,9 +1150,11 @@
         "name_quality": "ok",
         "line_ids": [
           10,
+          11,
           21
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "EGG BITES UNEXPECTED CHE $7.58"
       },
       {
         "item_index": 7,
@@ -937,7 +1168,8 @@
           9,
           20
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "MILK QUART WHOLE $1.79"
       },
       {
         "item_index": 8,
@@ -951,11 +1183,19 @@
           8,
           19
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "HALF & HALF PINT $1.99"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -1017,7 +1257,8 @@
           13,
           32
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "203600096 GG WATER NF P $3.59"
       },
       {
         "item_index": 1,
@@ -1033,7 +1274,8 @@
           30,
           31
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "210100025 GG BACON NF $6 1.79"
       },
       {
         "item_index": 2,
@@ -1048,7 +1290,8 @@
           26,
           28
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "211350249 CUT FRUIT NF $5.99"
       },
       {
         "item_index": 3,
@@ -1064,7 +1307,8 @@
           25,
           27
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "266080008 BERRIES NF $5 1.89"
       },
       {
         "item_index": 4,
@@ -1079,7 +1323,8 @@
           22,
           23
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "266080007 BERRIES NF $6.99"
       },
       {
         "item_index": 5,
@@ -1094,7 +1339,8 @@
           20,
           21
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "266085239 BERRIES NF $5.69"
       },
       {
         "item_index": 6,
@@ -1109,11 +1355,19 @@
           18,
           19
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "266087500 BERRIES NF $6.79"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -1138,6 +1392,13 @@
     "line_items": [],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -1219,7 +1480,8 @@
           73,
           74
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pro Xtra Preferred Pricing -0.64"
       },
       {
         "item_index": 1,
@@ -1235,7 +1497,8 @@
           70,
           71
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "764666103221 15/8CRDWSC5# <A> 25.98"
       },
       {
         "item_index": 2,
@@ -1250,7 +1513,8 @@
           66,
           67
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "764666105225 15/8FNDWSC1# <A* 5.97"
       },
       {
         "item_index": 3,
@@ -1266,7 +1530,8 @@
           63,
           64
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pro Xtra Preferred Pricing -1.27"
       },
       {
         "item_index": 4,
@@ -1281,7 +1546,8 @@
           59,
           60
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "039645112625 20#WATERSTOP <A> 25.45"
       },
       {
         "item_index": 5,
@@ -1298,7 +1564,8 @@
           56,
           57
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pro Xtra Preferred Pricing -0.12"
       },
       {
         "item_index": 6,
@@ -1314,7 +1581,8 @@
           51,
           52
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "2@7.97 15.94"
       },
       {
         "item_index": 7,
@@ -1328,7 +1596,8 @@
           45,
           46
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "3@16.98 50.94"
       },
       {
         "item_index": 8,
@@ -1342,7 +1611,8 @@
           40,
           41
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "820909095569 CAULK GUN =A> 19.98"
       },
       {
         "item_index": 9,
@@ -1356,7 +1626,8 @@
           37,
           38
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "037083014143 TITEBOND3 16 <A> 9.98"
       },
       {
         "item_index": 10,
@@ -1371,7 +1642,8 @@
           35,
           36
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "208.78 17.56"
       },
       {
         "item_index": 11,
@@ -1387,7 +1659,8 @@
           32,
           33
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "2@15.51 31.02"
       },
       {
         "item_index": 12,
@@ -1402,7 +1675,8 @@
           26,
           27
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "307.62 22.86"
       },
       {
         "item_index": 13,
@@ -1418,7 +1692,8 @@
           23,
           24
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "3@15.28 45.84"
       },
       {
         "item_index": 14,
@@ -1434,7 +1709,8 @@
           19,
           20
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "751361004144 10'-25GA STD <A= 14.98"
       },
       {
         "item_index": 15,
@@ -1448,7 +1724,8 @@
           14,
           15
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "000516315018 JT COMPOUND <A> 12.52"
       },
       {
         "item_index": 16,
@@ -1463,11 +1740,19 @@
           12,
           13
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "2014.61 29.22"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -1563,7 +1848,8 @@
           71,
           86
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pro Xtra Preferred Pricing -0.60"
       },
       {
         "item_index": 1,
@@ -1576,7 +1862,8 @@
         "line_ids": [
           68
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "MAX REFUND VALUE $7.34/2"
       },
       {
         "item_index": 2,
@@ -1591,7 +1878,8 @@
           67,
           69
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "203.86 7.72"
       },
       {
         "item_index": 3,
@@ -1605,7 +1893,8 @@
           64,
           65
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "MAX REFUND VALUE $4.00/2"
       },
       {
         "item_index": 4,
@@ -1620,7 +1909,8 @@
           62,
           63
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "202.11 4.22"
       },
       {
         "item_index": 5,
@@ -1637,7 +1927,8 @@
           59,
           60
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pro Xtra Preferred Pricing -0.53"
       },
       {
         "item_index": 6,
@@ -1652,7 +1943,8 @@
           54,
           55
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "045242517824 5/8X8MX4 <A= 17.77"
       },
       {
         "item_index": 7,
@@ -1667,7 +1959,8 @@
           51,
           52
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pro Xtra Preferred Pricing -0.90"
       },
       {
         "item_index": 8,
@@ -1680,7 +1973,8 @@
         "line_ids": [
           48
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "MAX REFUND VALUE $44.01/3"
       },
       {
         "item_index": 9,
@@ -1696,7 +1990,8 @@
           47,
           49
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "3@14.97 44.91"
       },
       {
         "item_index": 10,
@@ -1713,7 +2008,8 @@
           43,
           44
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pro Xtra Preferred Pricing -0.82"
       },
       {
         "item_index": 11,
@@ -1728,7 +2024,8 @@
           38,
           39
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "811664023362 FINGERJOINT \u00abA> 10.97"
       },
       {
         "item_index": 12,
@@ -1741,7 +2038,8 @@
         "line_ids": [
           36
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "MAX REFUND VALUE $29.30/5"
       },
       {
         "item_index": 13,
@@ -1757,7 +2055,8 @@
           34,
           35
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "505.98 29.90"
       },
       {
         "item_index": 14,
@@ -1773,7 +2072,8 @@
           30,
           31
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "000516311010 LT COMPOUND <A> 14.61"
       },
       {
         "item_index": 15,
@@ -1788,7 +2088,8 @@
           26,
           27
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "034481193463 ADJUSTABOX3 <A\u00bb 13.40"
       },
       {
         "item_index": 16,
@@ -1804,7 +2105,8 @@
           23,
           24
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "000516221654 20 FAST SET <A> 15.51"
       },
       {
         "item_index": 17,
@@ -1818,7 +2120,8 @@
           19,
           20
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "5@0.05 0.25N"
       },
       {
         "item_index": 18,
@@ -1833,7 +2136,8 @@
           15,
           17
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "0000-999-735 CA LBR FEE <A,U\u00bb 0.10N"
       },
       {
         "item_index": 19,
@@ -1847,7 +2151,8 @@
           11,
           12
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "0000-999-735 CA_LBR FEE \u00abA, U= 0.38N"
       },
       {
         "item_index": 20,
@@ -1862,11 +2167,19 @@
           9,
           10
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "813952015882 MELAMINE \u2264A> 38.97"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -2016,7 +2329,8 @@
           122,
           124
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pricing -0.26"
       },
       {
         "item_index": 1,
@@ -2032,7 +2346,8 @@
           117,
           118
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pro Xtra Preferred Pricing -0.54"
       },
       {
         "item_index": 2,
@@ -2048,7 +2363,8 @@
           113,
           114
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "077089375060 6X3/4 IN MIN =A= 6.37"
       },
       {
         "item_index": 3,
@@ -2063,7 +2379,8 @@
           109,
           110
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "077089143669 6X3/8 6 PK <A- 11.54"
       },
       {
         "item_index": 4,
@@ -2079,7 +2396,8 @@
           106,
           107
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "DW Backwall BOGO -199.00"
       },
       {
         "item_index": 5,
@@ -2095,7 +2413,8 @@
           102,
           103
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "885911677202 20-VOLT MAX <A> 199.00"
       },
       {
         "item_index": 6,
@@ -2110,7 +2429,8 @@
           98,
           99
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "885911881135 20-VOLT MAX <A,S\u00bb 299.00"
       },
       {
         "item_index": 7,
@@ -2124,7 +2444,8 @@
           95,
           96
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pro Xtra Preferred Pricing -1.96"
       },
       {
         "item_index": 8,
@@ -2139,7 +2460,8 @@
           92,
           94
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "2@10.97 21.94"
       },
       {
         "item_index": 9,
@@ -2153,7 +2475,8 @@
           89,
           90
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "MAX REFUND VALUE $72.32/8"
       },
       {
         "item_index": 10,
@@ -2168,7 +2491,8 @@
           87,
           88
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "8@9.23 73.84"
       },
       {
         "item_index": 11,
@@ -2185,7 +2509,8 @@
           84,
           85
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pro Xtra Preferred Pricing -7.89"
       },
       {
         "item_index": 12,
@@ -2201,7 +2526,8 @@
           79,
           80
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "052063061313 9 IN. DOWN S <A* 44.97"
       },
       {
         "item_index": 13,
@@ -2216,7 +2542,8 @@
           75,
           76
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "052063059891 DOWNSPT ADPT <A> 4.74"
       },
       {
         "item_index": 14,
@@ -2229,7 +2556,8 @@
         "line_ids": [
           73
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "MAX REFUND VALUE $10.22/2"
       },
       {
         "item_index": 15,
@@ -2243,7 +2571,8 @@
           71,
           72
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "205.27 10.54"
       },
       {
         "item_index": 16,
@@ -2256,7 +2585,8 @@
         "line_ids": [
           68
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "MAX REFUND VALUE $27.60/6"
       },
       {
         "item_index": 17,
@@ -2272,7 +2602,8 @@
           66,
           67
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "6@4.74 28.44"
       },
       {
         "item_index": 18,
@@ -2288,7 +2619,8 @@
           60,
           63
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "052063402482 CHL COUPLG <A> 5.47"
       },
       {
         "item_index": 19,
@@ -2305,7 +2637,8 @@
           55,
           56
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Pro Xtra Preferred Pricing -0.27"
       },
       {
         "item_index": 20,
@@ -2323,7 +2656,8 @@
           50,
           51
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "887480310610 MACH SCR <A> 1.38"
       },
       {
         "item_index": 21,
@@ -2339,7 +2673,8 @@
           44,
           45
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "811108037139 ASSORTED (YE <A> 14.48"
       },
       {
         "item_index": 22,
@@ -2354,7 +2689,8 @@
           40,
           41
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "304.48 13.44"
       },
       {
         "item_index": 23,
@@ -2370,7 +2706,8 @@
           37,
           38
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "047034115737 5 GA STR <A> 4.27"
       },
       {
         "item_index": 24,
@@ -2384,7 +2721,8 @@
           33,
           34
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "NLP Savings $0.50"
       },
       {
         "item_index": 25,
@@ -2399,7 +2737,8 @@
           31,
           32
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "084305355546 HOMER BUCKET <A> 3.98"
       },
       {
         "item_index": 26,
@@ -2413,7 +2752,8 @@
           28,
           29
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "NLP Savings $0.00"
       },
       {
         "item_index": 27,
@@ -2428,7 +2768,8 @@
           22,
           24
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "NLP Savings $0.00"
       },
       {
         "item_index": 28,
@@ -2442,7 +2783,8 @@
           20,
           23
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "200.10 0.20N"
       },
       {
         "item_index": 29,
@@ -2458,7 +2800,8 @@
           17,
           18
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "200.98 1.96"
       },
       {
         "item_index": 30,
@@ -2475,11 +2818,19 @@
           13,
           14
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "885911724890 20-VOLT MAX =A , Sa 299.00"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -2526,7 +2877,8 @@
           20,
           24
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 Uitimate Egg $12.75"
       },
       {
         "item_index": 1,
@@ -2542,11 +2894,19 @@
           17,
           23
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1 ABC Burger[Beel! $13.25"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -2590,7 +2950,8 @@
         "line_ids": [
           24
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "$4.49"
       },
       {
         "item_index": 1,
@@ -2604,7 +2965,8 @@
           13,
           23
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "SPICY SPUDS $4.49"
       },
       {
         "item_index": 2,
@@ -2618,7 +2980,8 @@
           12,
           22
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "R-ARUGULA LEMON BASIL CO $3,99"
       },
       {
         "item_index": 3,
@@ -2632,7 +2995,8 @@
           11,
           21
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "BEANS GREEN ORGANIC 1LB $3.29"
       },
       {
         "item_index": 4,
@@ -2646,7 +3010,8 @@
           10,
           20
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "CHICKEN GYOZA $3.99"
       },
       {
         "item_index": 5,
@@ -2660,11 +3025,19 @@
           9,
           19
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "CHICKEN GYOZA $3.99"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -2708,7 +3081,8 @@
           13,
           16
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "12 Wings 18.49"
       },
       {
         "item_index": 1,
@@ -2722,11 +3096,19 @@
           11,
           15
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Water (2 80.00) 0.00"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -2752,11 +3134,19 @@
         "line_ids": [
           12
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "79936653722 AMAZON 50.00"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -2788,11 +3178,19 @@
           14,
           16
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "1258700020 GLAD CLING WRAP 5.99 6.99 T"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -2846,7 +3244,8 @@
           27,
           28
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "6164 1 6.98 6.98"
       },
       {
         "item_index": 1,
@@ -2862,7 +3261,8 @@
           25,
           26
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "6164 1 6.98 6.98"
       },
       {
         "item_index": 2,
@@ -2877,11 +3277,19 @@
           19,
           20
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "6164 6.98 6.98"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -2953,7 +3361,8 @@
           46,
           58
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "6164 1 6.98 6.98"
       },
       {
         "item_index": 1,
@@ -2969,7 +3378,8 @@
           45,
           57
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "6164 6.98 6.98"
       },
       {
         "item_index": 2,
@@ -2986,7 +3396,8 @@
           44,
           56
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "6163 1 6.98 6.98"
       },
       {
         "item_index": 3,
@@ -3003,7 +3414,8 @@
           43,
           55
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "6163 1 6.98 6.98"
       },
       {
         "item_index": 4,
@@ -3020,7 +3432,8 @@
           42,
           54
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "7224 1 3.97 3.97"
       },
       {
         "item_index": 5,
@@ -3037,7 +3450,8 @@
           41,
           53
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "7224 1 3.97 3.97"
       },
       {
         "item_index": 6,
@@ -3053,7 +3467,8 @@
           40,
           52
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "8105 1 7.98 7.98"
       },
       {
         "item_index": 7,
@@ -3071,11 +3486,19 @@
           38,
           51
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "8108 1 18.98 18.98"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -3132,7 +3555,8 @@
           28,
           37
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "8129 14.98 14.98"
       },
       {
         "item_index": 1,
@@ -3148,7 +3572,8 @@
           27,
           36
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "8129 1 14.98 14.98"
       },
       {
         "item_index": 2,
@@ -3164,7 +3589,8 @@
           25,
           35
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "6255 1 44.98 44.98"
       },
       {
         "item_index": 3,
@@ -3183,11 +3609,19 @@
           33,
           34
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "6255 1 44.98 44.98"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -3228,11 +3662,19 @@
           6,
           7
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "HOT BAR $10.55 T"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -3242,6 +3684,13 @@
     "line_items": [],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -3325,7 +3774,8 @@
           75,
           99
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORGANIC SOUR CREAM 3.29 F"
       },
       {
         "item_index": 1,
@@ -3340,7 +3790,8 @@
           74,
           98
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORG LRG GRADE A EGGS 11.99 F"
       },
       {
         "item_index": 2,
@@ -3355,7 +3806,8 @@
           73,
           97
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORG A2/A2 6% FAT MLK 7.99 F"
       },
       {
         "item_index": 3,
@@ -3370,7 +3822,8 @@
           72,
           96
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "KOREAN BBQ SAUCE 6.99 F"
       },
       {
         "item_index": 4,
@@ -3382,9 +3835,12 @@
         "name_quality": "ok",
         "line_ids": [
           52,
+          53,
+          54,
           71
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "*CRV FS 05 0.10"
       },
       {
         "item_index": 5,
@@ -3396,10 +3852,12 @@
         "name_quality": "ok",
         "line_ids": [
           50,
+          51,
           70,
           95
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "100% COCONUT H20 WIT 4.00 F"
       },
       {
         "item_index": 6,
@@ -3414,7 +3872,8 @@
           69,
           94
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "WHITE ONIONS 1.59 F"
       },
       {
         "item_index": 7,
@@ -3426,10 +3885,12 @@
         "name_quality": "ok",
         "line_ids": [
           44,
+          45,
           68,
           93
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "RED BELL PEPPERS 3.00 F"
       },
       {
         "item_index": 8,
@@ -3444,7 +3905,8 @@
           67,
           92
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORGANIC GREEN ONIONS 1.29 F"
       },
       {
         "item_index": 9,
@@ -3459,7 +3921,8 @@
           66,
           91
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORG SLICED CRIMINI 6.98 F"
       },
       {
         "item_index": 10,
@@ -3474,7 +3937,8 @@
           65,
           90
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORG GINGER ROOT 7.99 F"
       },
       {
         "item_index": 11,
@@ -3489,7 +3953,8 @@
           64,
           89
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORG 2 LB CARROTS 2.79 F"
       },
       {
         "item_index": 12,
@@ -3501,14 +3966,23 @@
         "name_quality": "ok",
         "line_ids": [
           37,
+          38,
           63,
           88
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "JALAPENO PEPPERS 1.00 F"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -3565,7 +4039,8 @@
           45,
           57
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "BRIOCHE BURGER BUNS 6.99"
       },
       {
         "item_index": 1,
@@ -3579,7 +4054,8 @@
           43,
           56
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "RAW MILK 6.99"
       },
       {
         "item_index": 2,
@@ -3593,7 +4069,8 @@
           41,
           55
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "SWEET CHILI SAUCE 3.99"
       },
       {
         "item_index": 3,
@@ -3607,7 +4084,8 @@
           39,
           54
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "SEEDLESS LEMONS BAG 4.99"
       },
       {
         "item_index": 4,
@@ -3619,9 +4097,11 @@
         "name_quality": "ok",
         "line_ids": [
           37,
+          38,
           53
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "ORGANIC GREEN ONIONS 1.50"
       },
       {
         "item_index": 5,
@@ -3635,7 +4115,8 @@
           36,
           52
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "ORG GINGER ROOT 7.99"
       },
       {
         "item_index": 6,
@@ -3649,11 +4130,19 @@
           35,
           51
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "CRISPY ONIONS 2.49"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "match",
+    "reconciliation": {
+      "status": "match",
+      "item_sum": 34.94,
+      "baseline": 34.94,
+      "baseline_source": "grand_total_minus_tax",
+      "baseline_figures_agreeing": 1
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -3716,7 +4205,8 @@
           21,
           37
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "LEMON EACH $0.98"
       },
       {
         "item_index": 1,
@@ -3728,9 +4218,11 @@
         "name_quality": "ok",
         "line_ids": [
           19,
+          20,
           36
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "A-AVOCADO HASS LARGE EAC $7.16"
       },
       {
         "item_index": 2,
@@ -3742,9 +4234,11 @@
         "name_quality": "ok",
         "line_ids": [
           17,
+          18,
           35
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "POTATO SWEET EACH $1.98"
       },
       {
         "item_index": 3,
@@ -3758,7 +4252,8 @@
           16,
           34
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "TUNA SOLID WHITE ALBACOR $1.99"
       },
       {
         "item_index": 4,
@@ -3770,9 +4265,11 @@
         "name_quality": "ok",
         "line_ids": [
           14,
+          15,
           33
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "TUNA SOLID WHITE ALBACOR $3.98"
       },
       {
         "item_index": 5,
@@ -3786,7 +4283,8 @@
           13,
           32
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "SALSA AUTENTICA $2.29"
       },
       {
         "item_index": 6,
@@ -3800,7 +4298,8 @@
           12,
           31
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "SALMON FILLET SKIN ON $6.69"
       },
       {
         "item_index": 7,
@@ -3814,7 +4313,8 @@
           11,
           30
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "SALMON FILLET SKIN ON $9.39"
       },
       {
         "item_index": 8,
@@ -3829,7 +4329,8 @@
           10,
           29
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "MANGO NECTAR JUICE ORG 6 $5.49"
       },
       {
         "item_index": 9,
@@ -3843,11 +4344,19 @@
           8,
           28
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "ORG KOSHER DILL PICKLE S $3.99"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "match",
+    "reconciliation": {
+      "status": "match",
+      "item_sum": 43.94,
+      "baseline": 43.94,
+      "baseline_source": "grand_total_minus_tax",
+      "baseline_figures_agreeing": 1
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -3912,7 +4421,8 @@
           30,
           32
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Blueberries, 1 Pint now $2.39 F"
       },
       {
         "item_index": 1,
@@ -3928,7 +4438,8 @@
           29,
           31
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "365 Everyday Value, Orgar.. now $2.09 F"
       },
       {
         "item_index": 2,
@@ -3943,7 +4454,8 @@
           18,
           28
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Amazon Fresh Brand, Stopl. now $3.78"
       },
       {
         "item_index": 3,
@@ -3959,7 +4471,8 @@
           15,
           27
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Amazon Fresh, Greek Nonfa.. not $1.89"
       },
       {
         "item_index": 4,
@@ -3975,11 +4488,19 @@
           10,
           26
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Amazon Fresh, Small Curd nOW 950.93 F"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -4035,7 +4556,8 @@
           55,
           73
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ROLLED OATS 7.00 F"
       },
       {
         "item_index": 1,
@@ -4049,7 +4571,8 @@
           43,
           54
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "SPROUTS LRG EGGS 3.99"
       },
       {
         "item_index": 2,
@@ -4063,7 +4586,8 @@
           42,
           53
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORG A2/A2 6% FAT MLK 7.99"
       },
       {
         "item_index": 3,
@@ -4077,7 +4601,8 @@
           41,
           52
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "HEAVY WHIPPING CREAM 4.29"
       },
       {
         "item_index": 4,
@@ -4092,7 +4617,8 @@
           51,
           72
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "PENNE RIGATE PASTA 3.99 F"
       },
       {
         "item_index": 5,
@@ -4106,7 +4632,8 @@
           37,
           49
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "BOGO 50% OFF GROC -2.00"
       },
       {
         "item_index": 6,
@@ -4121,7 +4648,8 @@
           48,
           70
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "PENNE RIGATE PAST 3.99 F"
       },
       {
         "item_index": 7,
@@ -4136,11 +4664,19 @@
           47,
           69
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORGANIC SHALLOTS 3.49 F"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -4204,24 +4740,31 @@
         "name_quality": "ok",
         "line_ids": [
           63,
+          64,
+          65,
           71,
-          72
+          72,
+          73
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "SHALLOTS 0.84 F"
       },
       {
         "item_index": 1,
         "name": "GARLIC-BULK",
         "price": 2.24,
-        "quantity": null,
-        "unit_price": null,
+        "quantity": 0.28,
+        "unit_price": 7.99,
         "is_discount": false,
         "name_quality": "ok",
         "line_ids": [
           60,
-          69
+          61,
+          69,
+          70
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "GARLIC-BULK 2.24 F"
       },
       {
         "item_index": 2,
@@ -4233,10 +4776,12 @@
         "name_quality": "ok",
         "line_ids": [
           57,
+          58,
           67,
           68
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ITAL PARSLEY ORG 2.00 F"
       },
       {
         "item_index": 3,
@@ -4248,9 +4793,11 @@
         "name_quality": "ok",
         "line_ids": [
           54,
+          55,
           66
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "POTATO-RUSSET 9.74 F"
       },
       {
         "item_index": 4,
@@ -4264,7 +4811,8 @@
           48,
           51
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "BAG SALE PAPER EA 0.10"
       },
       {
         "item_index": 5,
@@ -4279,7 +4827,8 @@
           49,
           50
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "GELSON'S EGGS 4.99 F"
       },
       {
         "item_index": 6,
@@ -4293,7 +4842,8 @@
           39,
           42
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "CRUSHED TOMATOES 5.99 F"
       },
       {
         "item_index": 7,
@@ -4305,14 +4855,23 @@
         "name_quality": "ok",
         "line_ids": [
           36,
+          37,
           40,
           41
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "PENNE RIGATE #41 3.50 F"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -4340,11 +4899,19 @@
           14,
           15
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "RAW WHOLE MILK 17.99"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -4374,11 +4941,19 @@
           35,
           36
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "ORG FF GRASSFED MILK 8.49"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -4414,11 +4989,19 @@
           12,
           13
         ],
-        "reconciliation_status": "no-baseline"
+        "reconciliation_status": "no-baseline",
+        "raw_text": "Large Popcorn 1 12.99"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "no-baseline",
+    "reconciliation": {
+      "status": "no-baseline",
+      "item_sum": null,
+      "baseline": null,
+      "baseline_source": null,
+      "baseline_figures_agreeing": null
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -4462,7 +5045,8 @@
           13,
           24
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "LEMON EACH $2.94"
       },
       {
         "item_index": 1,
@@ -4476,7 +5060,8 @@
           12,
           23
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "VILLA ITALIA ITAL BLOOD $3.79"
       },
       {
         "item_index": 2,
@@ -4490,7 +5075,8 @@
           11,
           22
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "SALMON FILLET SKIN OFF C $10.85"
       },
       {
         "item_index": 3,
@@ -4504,7 +5090,8 @@
           10,
           21
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "SALMON FILLET SKIN OFF $9.74"
       },
       {
         "item_index": 4,
@@ -4518,11 +5105,19 @@
           9,
           20
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "PORK AL PASTOR DICED $10.19"
       }
     ],
     "printed_subtotal": null,
     "reconciliation_status": "match",
+    "reconciliation": {
+      "status": "match",
+      "item_sum": 37.51,
+      "baseline": 37.51,
+      "baseline_source": "grand_total_minus_tax",
+      "baseline_figures_agreeing": 1
+    },
     "should_reocr_items_zone": false
   },
   {
@@ -4629,7 +5224,8 @@
           11,
           13
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "Pea Protein $0.00"
       },
       {
         "item_index": 1,
@@ -4643,11 +5239,19 @@
           10,
           12
         ],
-        "reconciliation_status": "match"
+        "reconciliation_status": "match",
+        "raw_text": "1 Peanut Paradise $8.99"
       }
     ],
     "printed_subtotal": 8.99,
     "reconciliation_status": "match",
+    "reconciliation": {
+      "status": "match",
+      "item_sum": 8.99,
+      "baseline": 8.99,
+      "baseline_source": "subtotal",
+      "baseline_figures_agreeing": 1
+    },
     "should_reocr_items_zone": false
   }
 ]

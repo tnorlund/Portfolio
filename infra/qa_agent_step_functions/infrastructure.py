@@ -39,9 +39,6 @@ config = Config("portfolio")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
-chroma_cloud_api_key = config.require_secret("CHROMA_CLOUD_API_KEY")
-chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
-chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 
 # Model is a stack config so per-stack experiments (e.g. a pricier model on
 # one stack) live in IaC instead of hand-edited Lambda env that the next
@@ -164,6 +161,7 @@ class QAAgentStepFunction(ComponentResource):
                                     "dynamodb:GetItem",
                                     "dynamodb:Query",
                                     "dynamodb:BatchGetItem",
+                                    "dynamodb:SearchVectors",
                                 ],
                                 "Resource": [arn, f"{arn}/index/*"],
                             }
@@ -174,7 +172,7 @@ class QAAgentStepFunction(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # S3 permissions (batch bucket only — ChromaDB is via Chroma Cloud)
+        # S3 permissions (batch bucket only)
         aws.iam.RolePolicy(
             f"{name}-lambda-s3-policy",
             role=lambda_role.id,
@@ -252,7 +250,7 @@ class QAAgentStepFunction(ComponentResource):
         # ============================================================
         self.query_metadata_lambda = aws.lambda_.Function(
             f"{name}-query-receipt-metadata",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=lambda_role.arn,
             code=AssetArchive(
@@ -302,9 +300,6 @@ class QAAgentStepFunction(ComponentResource):
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_PROJECT": "qa-agent-marquee",
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
-                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
-                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 "BATCH_BUCKET": self.batch_bucket.id,
             },
         }
@@ -316,7 +311,7 @@ class QAAgentStepFunction(ComponentResource):
             source_paths=[
                 "receipt_agent",
                 "receipt_dynamo",
-                "receipt_chroma",
+                "receipt_embeddings",
                 "receipt_places",
             ],
             lambda_function_name=f"{name}-run-question",

@@ -38,7 +38,7 @@ available:
 pip install -e .
 ```
 
-Python 3.8+ is required. The key dependencies (see `pyproject.toml`) are
+Python 3.13+ is required. The key dependencies (see `pyproject.toml`) are
 `Pillow`, `pillow-avif-plugin` and `boto3` for AWS integration.
 
 ## Quickstart

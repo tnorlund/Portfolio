@@ -142,7 +142,7 @@ Example error response:
 ## Deployment
 
 The Lambda function is deployed with:
-- Runtime: Python 3.12
+- Runtime: Python 3.13
 - Architecture: ARM64
 - Memory: 1024 MB
 - Timeout: 30 seconds

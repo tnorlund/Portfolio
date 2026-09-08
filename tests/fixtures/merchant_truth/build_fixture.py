@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3.13
 """Regenerate the committed merchant-truth fixture bundle (CI/offline).
 
 The fixture is the ONLY way a render resolves merchant truth without the dev
@@ -11,7 +11,7 @@ mode BY DESIGN and marked loudly by the renderer.
 Deterministic: re-running produces byte-identical JSON. Run from the repo
 root:
 
-    python3.12 scripts/fixtures/merchant_truth/build_fixture.py
+    python3.13 scripts/fixtures/merchant_truth/build_fixture.py
 """
 
 from __future__ import annotations

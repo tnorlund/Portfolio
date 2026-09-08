@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3.13
 """Regenerate the committed corpus-gate eval-input bundles (offline).
 
 Each bundle is the vendored, AWS-free stand-in for one receipt that
@@ -15,7 +15,7 @@ line falls in its intended band.
 
 Deterministic: re-running writes byte-identical JSON. Run from the repo root:
 
-    python3.12 tests/fixtures/corpus_gate/build_corpus_inputs.py
+    python3.13 tests/fixtures/corpus_gate/build_corpus_inputs.py
 """
 
 from __future__ import annotations

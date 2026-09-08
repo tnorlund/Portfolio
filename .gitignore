@@ -133,6 +133,9 @@ env.bak/
 venv.bak/
 .env
 
+# Generated synthesis artifacts
+synthesis_loop/.out/
+
 # Spyder project settings
 .spyderproject
 .spyproject
@@ -233,7 +236,7 @@ receipt_label/receipt_data_*/
 receipt_label/test_results/
 .venv_test/
 .venv_test_chromadb/
-.venv-test-py312/
+.venv-test-py313/
 venv_chromadb/
 # Local ChromaDB databases
 chroma_words_local_words_specific/
@@ -258,6 +261,10 @@ backups/
 
 # Claude Code worktrees are local scratch checkouts
 .claude/worktrees/
+# Personal agent-instruction overlays (Codex / Claude Code); never shared
+AGENTS.override.md
+AGENTS.local.md
+CLAUDE.local.md
 
 # Archived review-loop runs keep their small timing/verification logs, which
 # the blanket *.log rule above would otherwise drop.

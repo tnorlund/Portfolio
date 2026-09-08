@@ -129,7 +129,7 @@ aws.iam.RolePolicyAttachment(
 # Create the Lambda function
 image_details_cache_generator_lambda = aws.lambda_.Function(
     f"{ROUTE_NAME}_lambda",
-    runtime="python3.12",
+    runtime="python3.13",
     architectures=["arm64"],
     role=lambda_role.arn,
     code=AssetArchive(

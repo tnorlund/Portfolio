@@ -39,9 +39,6 @@ openai_api_key = config.require_secret("OPENAI_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
-chroma_cloud_api_key = config.require_secret("CHROMA_CLOUD_API_KEY")
-chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
-chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 
 
 class McpServerLambda(ComponentResource):
@@ -144,6 +141,7 @@ class McpServerLambda(ComponentResource):
                                     "dynamodb:Query",
                                     "dynamodb:BatchGetItem",
                                     "dynamodb:BatchWriteItem",
+                                    "dynamodb:SearchVectors",
                                 ],
                                 "Resource": [
                                     arn,
@@ -157,7 +155,7 @@ class McpServerLambda(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # S3 access policy — scoped to receipt/chroma buckets in this account
+        # S3 access policy — scoped to receipt buckets in this account
         RolePolicy(
             f"{name}-lambda-s3-policy",
             role=lambda_role.id,
@@ -177,8 +175,6 @@ class McpServerLambda(ComponentResource):
                                 "arn:aws:s3:::upload-images-*/*",
                                 "arn:aws:s3:::raw-image-bucket-*",
                                 "arn:aws:s3:::raw-image-bucket-*/*",
-                                "arn:aws:s3:::chromadb-*",
-                                "arn:aws:s3:::chromadb-*/*",
                                 "arn:aws:s3:::sitebucket-*",
                                 "arn:aws:s3:::sitebucket-*/*",
                             ],
@@ -237,7 +233,7 @@ class McpServerLambda(ComponentResource):
         lambda_config = {
             "role_arn": lambda_role.arn,
             "timeout": 900,  # 15 min - MCP sessions can be long-lived
-            "memory_size": 3072,  # 3 GB for MCP server + ChromaDB
+            "memory_size": 3072,  # 3 GB for MCP server
             "tags": {"environment": stack},
             "environment": {
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
@@ -247,10 +243,6 @@ class McpServerLambda(ComponentResource):
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 # OpenRouter (for LLM calls)
                 "OPENROUTER_API_KEY": openrouter_api_key,
-                # Chroma Cloud
-                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
-                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
-                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 # Google Places API
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 # LangSmith tracing
@@ -269,8 +261,8 @@ class McpServerLambda(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_agent",
-                "receipt_chroma",
                 "receipt_dynamo",
+                "receipt_embeddings",
                 "receipt_places",
                 "receipt_upload",
             ],

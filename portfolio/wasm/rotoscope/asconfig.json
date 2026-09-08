@@ -1,0 +1,19 @@
+{
+  "entries": ["./assembly/index.ts"],
+  "targets": {
+    "release": {
+      "outFile": "../../public/wasm/rotoscope_v1.wasm",
+      "optimizeLevel": 3,
+      "shrinkLevel": 1,
+      "converge": false,
+      "noAssert": true,
+      "sourceMap": false
+    }
+  },
+  "options": {
+    "bindings": false,
+    "exportRuntime": false,
+    "runtime": "stub",
+    "exportStart": false
+  }
+}

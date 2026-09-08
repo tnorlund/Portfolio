@@ -74,6 +74,24 @@ public final class SotoS3Client: S3ClientProtocol {
 
     public init(s3: S3) { self.s3 = s3 }
 
+    public func headObject(bucket: String, key: String) async throws -> S3ObjectHead? {
+        do {
+            let response = try await s3.headObject(S3.HeadObjectRequest(bucket: bucket, key: key))
+            return S3ObjectHead(eTag: response.eTag ?? "", contentLength: Int(response.contentLength ?? 0))
+        } catch let error as AWSErrorType where error.errorCode == "NoSuchKey" || error.context?.responseCode == .notFound {
+            return nil
+        }
+    }
+
+    public func getObjectIfExists(bucket: String, key: String) async throws -> Data? {
+        do {
+            let response = try await s3.getObject(S3.GetObjectRequest(bucket: bucket, key: key))
+            return response.body?.asData() ?? Data()
+        } catch let error as AWSErrorType where error.errorCode == "NoSuchKey" || error.context?.responseCode == .notFound {
+            return nil
+        }
+    }
+
     public func getObject(bucket: String, key: String) async throws -> Data {
         let req = S3.GetObjectRequest(bucket: bucket, key: key)
         var data = Data()
@@ -180,21 +198,173 @@ public final class SotoDynamoClient: DynamoClientProtocol {
     }
 
     public func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws {
-        guard !labels.isEmpty else { return }
+        try await batchPutItems(
+            labels.map {
+                Self.convertToAttributeValues($0.toDynamoItemDict())
+            }
+        )
+    }
+
+    public func addReceiptSections(
+        imageId: String, receiptId: Int,
+        sections: [ReceiptSectionPayload], createdAt: Date
+    ) async throws {
+        try await batchPutItems(
+            sections.map {
+                ReceiptStructureItems.sectionItem(
+                    imageId: imageId, receiptId: receiptId,
+                    section: $0, createdAt: createdAt
+                )
+            }
+        )
+    }
+
+    public func addReceiptLineItems(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?
+    ) async throws {
+        try await batchPutItems(
+            items.map {
+                ReceiptStructureItems.lineItemItem(
+                    imageId: imageId, receiptId: receiptId,
+                    item: $0, extractedAt: extractedAt,
+                    baselineFiguresAgreeing: baselineFiguresAgreeing
+                )
+            }
+        )
+    }
+
+    public func replaceReceiptLineItems(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?, merchantName: String?
+    ) async throws {
+        let newItems = items.map {
+            ReceiptStructureItems.lineItemItem(
+                imageId: imageId, receiptId: receiptId,
+                item: $0, extractedAt: extractedAt,
+                baselineFiguresAgreeing: baselineFiguresAgreeing,
+                merchantName: merchantName
+            )
+        }
+        let existingKeys = try await receiptLineItemKeys(
+            imageId: imageId, receiptId: receiptId
+        )
+        try await batchPutItems(newItems)
+
+        // Delete AFTER the put so a failure between the two leaves the
+        // old rows in place rather than an empty item set.
+        let written = Set(newItems.compactMap { Self.sortKey($0) })
+        let stale = existingKeys.filter { key in
+            guard let sk = Self.sortKey(key) else { return false }
+            return !written.contains(sk)
+        }
+        try await batchWrite(
+            stale.map { DynamoDB.WriteRequest(deleteRequest: .init(key: $0)) }
+        )
+    }
+
+    /// Every stored `LINE_ITEM` key for the receipt, keys only.
+    private func receiptLineItemKeys(
+        imageId: String, receiptId: Int
+    ) async throws -> [[String: DynamoDB.AttributeValue]] {
+        var keys: [[String: DynamoDB.AttributeValue]] = []
+        var startKey: [String: DynamoDB.AttributeValue]?
+        repeat {
+            let req = DynamoDB.QueryInput(
+                exclusiveStartKey: startKey,
+                expressionAttributeValues: [
+                    ":pk": .s("IMAGE#\(imageId)"),
+                    ":sk": .s(
+                        String(
+                            format: "RECEIPT#%05d#LINE_ITEM#", receiptId
+                        )
+                    ),
+                ],
+                keyConditionExpression:
+                    "PK = :pk AND begins_with(SK, :sk)",
+                projectionExpression: "PK, SK",
+                tableName: tableName
+            )
+            let resp = try await dynamo.query(req)
+            keys.append(contentsOf: resp.items ?? [])
+            let last = resp.lastEvaluatedKey
+            startKey = (last?.isEmpty ?? true) ? nil : last
+        } while startKey != nil
+        return keys
+    }
+
+    private static func sortKey(
+        _ item: [String: DynamoDB.AttributeValue]
+    ) -> String? {
+        if case .s(let sk)? = item["SK"] { return sk }
+        return nil
+    }
+
+    @discardableResult
+    public func addReceiptLineItemsIfWorkerOwned(
+        imageId: String, receiptId: Int,
+        items: [ReceiptLineItemPayload], extractedAt: Date,
+        baselineFiguresAgreeing: Int?
+    ) async throws -> Int {
+        // One PutItem per row: DynamoDB batch writes cannot carry a
+        // condition expression, and the condition is the whole point here.
+        // The row is ours to write only if nothing is there yet or the
+        // worker stamped what is (see the protocol's ownership rule).
+        var skipped = 0
+        for payload in items {
+            let item = ReceiptStructureItems.lineItemItem(
+                imageId: imageId, receiptId: receiptId,
+                item: payload, extractedAt: extractedAt,
+                baselineFiguresAgreeing: baselineFiguresAgreeing
+            )
+            let req = DynamoDB.PutItemInput(
+                conditionExpression:
+                    "attribute_not_exists(PK) OR begins_with(extractor_version, :worker)",
+                expressionAttributeValues: [
+                    ":worker": .s(swiftWorkerExtractorVersionPrefix)
+                ],
+                item: item,
+                tableName: tableName
+            )
+            do {
+                _ = try await dynamo.putItem(req)
+            } catch let error as AWSErrorType
+                where error.errorCode
+                    == DynamoDBErrorType.conditionalCheckFailedException.errorCode
+            {
+                // Cloud-owned row: leave it exactly as the pipeline left it.
+                skipped += 1
+            }
+        }
+        return skipped
+    }
+
+    /// Batch-put with chunking, unprocessed-item retry and backoff —
+    /// shared by labels, sections and line items.
+    private func batchPutItems(
+        _ items: [[String: DynamoDB.AttributeValue]]
+    ) async throws {
+        try await batchWrite(
+            items.map { DynamoDB.WriteRequest(putRequest: .init(item: $0)) }
+        )
+    }
+
+    /// Chunked BatchWriteItem (puts, deletes, or both) with
+    /// unprocessed-item retry and backoff.
+    private func batchWrite(
+        _ requests: [DynamoDB.WriteRequest]
+    ) async throws {
+        guard !requests.isEmpty else { return }
 
         // Process in chunks of 25 (DynamoDB batch write limit)
         let chunkSize = 25
-        var remaining = labels[...]
+        var remaining = requests[...]
 
         while !remaining.isEmpty {
-            let chunk = remaining.prefix(chunkSize)
+            var writeRequests = Array(remaining.prefix(chunkSize))
             remaining = remaining.dropFirst(chunkSize)
-
-            var writeRequests = chunk.map { label -> DynamoDB.WriteRequest in
-                let dict = label.toDynamoItemDict()
-                let item = Self.convertToAttributeValues(dict)
-                return DynamoDB.WriteRequest(putRequest: .init(item: item))
-            }
 
             // Retry with exponential backoff until all items are processed
             let maxRetries = 8
@@ -289,6 +459,21 @@ public final class SotoDynamoClient: DynamoClientProtocol {
                 throw DynamoMapError.invalid(key)
             }
         }
+        // Mirrors OCRJob.fromItem's optionalSummary: absent, NULL, or a
+        // non-map value all mean "no carried summary"; missing figures
+        // inside the map stay nil rather than collapsing to zero.
+        func getOptionalSummary(_ key: String) -> LineItemSummary? {
+            guard case .m(let map)? = attrs[key] else { return nil }
+            func figure(_ field: String) -> Double? {
+                guard case .n(let n)? = map[field] else { return nil }
+                return Double(n)
+            }
+            return LineItemSummary(
+                subtotal: figure("subtotal"),
+                tax: figure("tax"),
+                grandTotal: figure("grand_total")
+            )
+        }
         let pk = try getS("PK")
         let sk = try getS("SK")
         guard let imageId = pk.split(separator: "#").last.map(String.init) else { throw DynamoMapError.invalid("PK") }
@@ -320,8 +505,13 @@ public final class SotoDynamoClient: DynamoClientProtocol {
             // omitting the fields here silently downgraded every strategy
             // to plain while the fromItem-based tests stayed green.
             reocrStrategy: getOptionalS("reocr_strategy").flatMap(ReOCRStrategy.init(rawValue:)) ?? .plain,
-            reocrMechanism: getOptionalS("reocr_mechanism")
+            reocrMechanism: getOptionalS("reocr_mechanism"),
+            // Same trap as the strategy fields above: a LINE_ITEM_REFINE
+            // job decoded without its summary silently re-grades against
+            // the worker's own scanned figures instead of the printed
+            // ones the trigger carried, which is the entire pass.
+            refineSummary: getOptionalSummary("refine_summary"),
+            refineMerchantName: getOptionalS("refine_merchant_name")
         )
     }
 }
-

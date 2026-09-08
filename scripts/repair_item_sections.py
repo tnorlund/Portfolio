@@ -30,8 +30,8 @@ Safety:
          match/near.
 
 Usage:
-    python3.12 scripts/repair_item_sections.py --classes B,C [--apply]
-    python3.12 scripts/repair_item_sections.py --classes A --allow-create \
+    python3.13 scripts/repair_item_sections.py --classes B,C [--apply]
+    python3.13 scripts/repair_item_sections.py --classes A --allow-create \
         --allowlist reviewed_class_a.txt --apply
 """
 

@@ -118,6 +118,17 @@ class _ReceiptBarcode(FlattenedStandardMixin):
             )
         )
 
+    @handle_dynamodb_errors("list_receipt_barcodes_from_receipt_consistent")
+    def list_receipt_barcodes_from_receipt_consistent(
+        self, image_id: str, receipt_id: int
+    ) -> list[ReceiptBarcode]:
+        """Read every barcode before a destructive receipt transformation."""
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
+        return self._list_receipt_barcodes_from_receipt_consistent(
+            image_id, receipt_id
+        )
+
     def _list_receipt_barcodes_from_receipt_consistent(
         self, image_id: str, receipt_id: int
     ) -> list[ReceiptBarcode]:

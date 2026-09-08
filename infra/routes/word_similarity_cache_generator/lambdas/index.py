@@ -1,17 +1,16 @@
 """Lambda handler for generating word similarity cache.
 
-Searches ChromaDB lines collection for dairy milk products, fetches
-receipt details with prices using parallel DynamoDB queries, and
-generates a summary table for visualization with receipt images.
+Scans the receipt table's RECEIPT_LINE_EMBEDDING rows for dairy milk
+products, fetches receipt details with prices using parallel DynamoDB
+queries, and generates a summary table for visualization with receipt
+images.
 """
 
 import json
 import logging
 import os
 import re
-import shutil
 import statistics
-import tempfile
 import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -21,27 +20,18 @@ from pathlib import Path
 from typing import Optional
 
 import boto3
-from receipt_chroma import ChromaClient
-from receipt_chroma.compaction import CloudConfig
-from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo import DynamoClient
+from receipt_embeddings.keys import line_canonical_key
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Environment variables
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
-CHROMADB_BUCKET = os.environ["CHROMADB_BUCKET"]
-S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET", CHROMADB_BUCKET)
+S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET", "")
 CACHE_KEY = "word-similarity-cache/milk.json"
 TARGET_WORD = "MILK"
 LOCAL_CACHE_OUTPUT = os.environ.get("LOCAL_CACHE_OUTPUT")
-LOCAL_CHROMADB_PATH = os.environ.get("LOCAL_CHROMADB_PATH")
-
-# Chroma Cloud configuration (optional - falls back to S3 if not set)
-CHROMA_CLOUD_ENABLED = (
-    os.environ.get("CHROMA_CLOUD_ENABLED", "false").lower() == "true"
-)
 
 # Exclusion terms for dairy milk filtering
 DAIRY_EXCLUDE_TERMS = ["CHOCOLATE", "CHOC", "COCONUT", "ALMOND", "OAT", "DAT"]
@@ -69,7 +59,8 @@ def normalize_merchant(name: str) -> str:
     return _MERCHANT_DISPLAY_OVERRIDES.get(key, " ".join((name or "").split()))
 
 
-# Pattern to match price-like tokens (used to extract product name from row text)
+# Pattern to match price-like tokens (used to extract the product
+# name from row text)
 def find_milk_line(
     lines,
     target_word: str = "MILK",
@@ -115,7 +106,7 @@ def find_milk_line(
 
 
 def parse_row_line_ids(metadata: dict) -> list[int]:
-    """Return the visual row's DynamoDB line IDs from Chroma metadata."""
+    """Return the visual row's DynamoDB line IDs from row metadata."""
     raw_line_ids = metadata.get("row_line_ids")
     if isinstance(raw_line_ids, str):
         try:
@@ -138,7 +129,7 @@ def parse_row_line_ids(metadata: dict) -> list[int]:
             line_ids.append(parsed)
 
     if not line_ids:
-        raise ValueError("Chroma row is missing a valid line_id")
+        raise ValueError("Embedding row is missing a valid line_id")
     return line_ids
 
 
@@ -236,10 +227,7 @@ s3_client = boto3.client("s3")
 class TimingStats:
     """Track timing for each step of the pipeline."""
 
-    s3_download: float = 0.0  # Only used when not using Chroma Cloud
-    cloud_connect: float = 0.0  # Only used when using Chroma Cloud
-    chromadb_init: float = 0.0
-    chromadb_fetch_all: float = 0.0
+    line_fetch_all: float = 0.0
     filter_lines: float = 0.0
     dynamo_fetch_total: float = 0.0
     dynamo_fetch_details: list = field(default_factory=list)
@@ -247,24 +235,16 @@ class TimingStats:
     visual_line_assembly: list = field(default_factory=list)
     total: float = 0.0
     parallel_workers: int = 0
-    use_chroma_cloud: bool = False
 
     def to_dict(self) -> dict:
         """Convert to dict for JSON serialization."""
         result = {
-            "chromadb_init_ms": round(self.chromadb_init * 1000, 1),
-            "chromadb_fetch_all_ms": round(self.chromadb_fetch_all * 1000, 1),
+            "line_fetch_all_ms": round(self.line_fetch_all * 1000, 1),
             "filter_lines_ms": round(self.filter_lines * 1000, 1),
             "dynamo_fetch_total_ms": round(self.dynamo_fetch_total * 1000, 1),
             "total_ms": round(self.total * 1000, 1),
             "parallel_workers": self.parallel_workers,
-            "use_chroma_cloud": self.use_chroma_cloud,
         }
-        # Include S3 download time only if used (non-cloud mode)
-        if not self.use_chroma_cloud:
-            result["s3_download_ms"] = round(self.s3_download * 1000, 1)
-        else:
-            result["cloud_connect_ms"] = round(self.cloud_connect * 1000, 1)
 
         # Add DynamoDB breakdown if available
         if self.dynamo_fetch_details:
@@ -493,6 +473,7 @@ def find_price_on_visual_line(target_line_id, words, labels):
         valid.sort(key=lambda lbl: str(lbl.timestamp_added), reverse=True)
         return valid[0]
 
+    # pylint: disable-next=invalid-name
     Y_FALLBACK_TOLERANCE = 0.025  # ~2x typical tolerance
     for word in words:
         cy = word.calculate_centroid()[1]
@@ -631,151 +612,91 @@ def line_to_dict(line):
     }
 
 
-def _fetch_lines_from_cloud(timing: TimingStats) -> list:
-    """Fetch milk lines from Chroma Cloud with server-side filtering."""
-    cloud_config = CloudConfig.from_env()
-    if not cloud_config:
-        raise ValueError("Chroma Cloud config not available")
+def _fetch_lines_from_dynamo(timing: TimingStats, dynamo_client) -> dict:
+    """Fetch milk line rows from DynamoDB RECEIPT_LINE_EMBEDDING items.
 
-    timing.use_chroma_cloud = True
+    One GSITYPE query (projection skips the 1536-dim vectors). The match
+    is case-insensitive on purpose so rows like "Milk Shake" reach the
+    in-memory dairy filter below. Returns ``{ids, metadatas}``.
+    """
     step_start = time.time()
-
-    # Connect to Chroma Cloud
-    chroma_client = ChromaClient(
-        cloud_api_key=cloud_config.api_key,
-        cloud_tenant=cloud_config.tenant,
-        cloud_database=cloud_config.database,
-        mode="read",
-        metadata_only=True,
-    )
-    timing.cloud_connect = time.time() - step_start
-    logger.info("Connected to Chroma Cloud (%.2fs)", timing.cloud_connect)
-
-    with chroma_client:
-        # Get the lines collection
-        step_start = time.time()
-        lines_collection = chroma_client.get_collection("lines")
-        timing.chromadb_init = time.time() - step_start
-
-        # Server-side filter for lines containing TARGET_WORD
-        step_start = time.time()
-        milk_lines = lines_collection.get(
-            where_document={"$contains": TARGET_WORD},
-            include=["metadatas"],
-        )
-        timing.chromadb_fetch_all = time.time() - step_start
-        logger.info(
-            "Fetched %d lines containing '%s' from Chroma Cloud (%.2fs)",
-            len(milk_lines["ids"]),
-            TARGET_WORD,
-            timing.chromadb_fetch_all,
-        )
-
-    return milk_lines
-
-
-def _fetch_lines_from_s3(timing: TimingStats, temp_dir: str) -> list:
-    """Fetch lines from S3 snapshot (fallback mode)."""
-    timing.use_chroma_cloud = False
-
-    # Step 1: Download ChromaDB lines snapshot
-    logger.info("Downloading ChromaDB lines snapshot from %s", CHROMADB_BUCKET)
-    step_start = time.time()
-    download_result = download_snapshot_atomic(
-        bucket=CHROMADB_BUCKET,
-        collection="lines",
-        local_path=temp_dir,
-        verify_integrity=True,
-    )
-    timing.s3_download = time.time() - step_start
-
-    if download_result.get("status") != "downloaded":
-        raise ValueError(f"Failed to download snapshot: {download_result}")
-
-    logger.info("Snapshot downloaded successfully (%.2fs)", timing.s3_download)
-
-    return _fetch_lines_from_local(timing, temp_dir)
-
-
-def _fetch_lines_from_local(timing: TimingStats, chroma_path: str) -> list:
-    """Fetch target rows from an existing local ChromaDB snapshot."""
-    timing.use_chroma_cloud = False
-
-    step_start = time.time()
-    client = ChromaClient(
-        persist_directory=chroma_path,
-        mode="read",
-        metadata_only=True,
-    )
-    try:
-        lines_collection = client.get_collection("lines")
-        timing.chromadb_init = time.time() - step_start
-
-        step_start = time.time()
-        all_lines = lines_collection.get(
-            where_document={"$contains": TARGET_WORD},
-            include=["metadatas"],
-        )
-        timing.chromadb_fetch_all = time.time() - step_start
-        logger.info(
-            "Fetched %d lines containing '%s' from local ChromaDB (%.2fs)",
-            len(all_lines["ids"]),
-            TARGET_WORD,
-            timing.chromadb_fetch_all,
-        )
-    finally:
-        try:
-            client.close()
-        except Exception:  # pylint: disable=broad-exception-caught
-            logger.warning(
-                "Failed to close read-only ChromaDB snapshot",
-                exc_info=True,
+    client = dynamo_client._client  # pylint: disable=protected-access
+    rows = []
+    kwargs = {
+        "TableName": DYNAMODB_TABLE_NAME,
+        "IndexName": "GSITYPE",
+        "KeyConditionExpression": "#t = :t",
+        "ExpressionAttributeNames": {"#t": "TYPE", "#x": "text"},
+        "ExpressionAttributeValues": {":t": {"S": "RECEIPT_LINE_EMBEDDING"}},
+        "ProjectionExpression": ("PK, SK, #x, merchant_name, row_line_ids"),
+    }
+    while True:
+        response = client.query(**kwargs)
+        for item in response.get("Items", []):
+            text = item.get("text", {}).get("S", "")
+            if TARGET_WORD not in text.upper():
+                continue
+            pk = item["PK"]["S"]  # IMAGE#<uuid>
+            sk = item["SK"]["S"]  # RECEIPT#NNNNN#LINE#NNNNN#EMBEDDING
+            parts = sk.split("#")
+            if len(parts) < 4 or not sk.endswith("#EMBEDDING"):
+                continue
+            image_id = pk.split("#", 1)[1]
+            receipt_id = int(parts[1])
+            line_id = int(parts[3])
+            row_line_ids = [
+                int(value["N"])
+                for value in item.get("row_line_ids", {}).get("L", [])
+            ] or [line_id]
+            rows.append(
+                (
+                    line_canonical_key(image_id, receipt_id, line_id),
+                    {
+                        "text": text,
+                        "image_id": image_id,
+                        "receipt_id": receipt_id,
+                        "line_id": line_id,
+                        "row_line_ids": row_line_ids,
+                        "merchant_name": item.get("merchant_name", {}).get(
+                            "S", ""
+                        ),
+                    },
+                )
             )
-
-    return all_lines
+        last_key = response.get("LastEvaluatedKey")
+        if not last_key:
+            break
+        kwargs["ExclusiveStartKey"] = last_key
+    rows.sort(key=lambda pair: pair[0])
+    timing.line_fetch_all = time.time() - step_start
+    logger.info(
+        "Fetched %d '%s' line rows from DynamoDB (%.2fs)",
+        len(rows),
+        TARGET_WORD,
+        timing.line_fetch_all,
+    )
+    return {
+        "ids": [key for key, _ in rows],
+        "metadatas": [meta for _, meta in rows],
+    }
 
 
 def handler(_event, _context):
     """Handle EventBridge scheduled event to generate word similarity cache."""
-    logger.info(
-        "Starting milk product cache generation v2 (Chroma Cloud: %s)",
-        CHROMA_CLOUD_ENABLED,
-    )
+    logger.info("Starting milk product cache generation v2")
 
     timing = TimingStats()
     total_start = time.time()
-    temp_dir = tempfile.mkdtemp()
 
     try:
-        # Use larger connection pool to match parallel workers (50) + headroom for retries
+        # Use a larger connection pool to match parallel workers (50)
+        # plus headroom for retries
         dynamo_client = DynamoClient(
             DYNAMODB_TABLE_NAME, max_pool_connections=100
         )
 
-        # Step 1: Fetch lines (local snapshot, Cloud, or S3)
-        if LOCAL_CHROMADB_PATH:
-            local_chroma_path = (
-                Path(LOCAL_CHROMADB_PATH).expanduser().resolve()
-            )
-            if (local_chroma_path / "chroma.sqlite3").is_file():
-                all_lines = _fetch_lines_from_local(
-                    timing, str(local_chroma_path)
-                )
-            else:
-                local_chroma_path.mkdir(parents=True, exist_ok=True)
-                all_lines = _fetch_lines_from_s3(
-                    timing, str(local_chroma_path)
-                )
-        elif CHROMA_CLOUD_ENABLED:
-            try:
-                all_lines = _fetch_lines_from_cloud(timing)
-            except Exception as e:
-                logger.warning(
-                    "Chroma Cloud failed, falling back to S3: %s", e
-                )
-                all_lines = _fetch_lines_from_s3(timing, temp_dir)
-        else:
-            all_lines = _fetch_lines_from_s3(timing, temp_dir)
+        # Step 1: Fetch the candidate line rows from DynamoDB
+        all_lines = _fetch_lines_from_dynamo(timing, dynamo_client)
 
         # Step 2: Filter for dairy milk (in-memory)
         # Note: After PR #672, `text` is the combined visual row text
@@ -842,10 +763,10 @@ def handler(_event, _context):
             (
                 image_id,
                 receipt_id,
-                chromadb_line_id,
+                row_line_id,
                 row_text,
                 row_line_ids,
-                chroma_merchant_name,
+                row_merchant_name,
             ) = work_item
             timings = {"details": 0, "visual_line": 0, "items": 0}
             try:
@@ -874,12 +795,13 @@ def handler(_event, _context):
                 if milk_line:
                     product_text, milk_line_id = milk_line
                 else:
-                    # Fallback to row text and ChromaDB line_id if not found
+                    # Fallback to row text and the row's line_id if not found
                     product_text = row_text
-                    milk_line_id = chromadb_line_id
+                    milk_line_id = row_line_id
 
                 t0 = time.time()
-                # Use the actual milk line_id for price lookup (not ChromaDB's primary line)
+                # Use the actual milk line_id for the price lookup
+                # (not the row's primary line)
                 line_total, unit_price = find_price_on_visual_line(
                     milk_line_id, details.words, details.labels
                 )
@@ -892,12 +814,12 @@ def handler(_event, _context):
                 merchant = normalize_merchant(
                     details.place.merchant_name
                     if details.place
-                    else chroma_merchant_name or "Unknown"
+                    else row_merchant_name or "Unknown"
                 )
                 price = line_total or unit_price
                 if not price:
                     # Some receipts (e.g. Target) print the price at the end
-                    # of the visual row. Use Chroma's combined row text because
+                    # of the visual row. Use the combined row text because
                     # the focused DynamoDB response may hold the product and
                     # price in non-contiguous ReceiptLine entities.
                     m = re.search(r"\s+\$?(\d{1,3}\.\d{2})\s*$", row_text)
@@ -927,7 +849,9 @@ def handler(_event, _context):
                     "bbox": bbox,
                     "_timings": timings,
                 }
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                # CONTRACTUAL isolate-and-continue: one bad receipt must
+                # not abort the parallel cache build.
                 logger.warning("Error processing %s: %s", image_id, e)
                 return None
 
@@ -1026,16 +950,17 @@ def handler(_event, _context):
             """Convert dollar amount to approximate words."""
             if amount < 100:
                 return f"{int(amount)} dollars"
-            elif amount < 1000:
+            if amount < 1000:
                 hundreds = int(amount // 100) * 100
                 return f"{hundreds} dollars"
-            else:
-                thousands = int(amount // 1000)
-                return f"{thousands} thousand dollars"
+            thousands = int(amount // 1000)
+            return f"{thousands} thousand dollars"
 
         commentary = (
-            f"${grand_total:.2f}. That's... significantly more than I expected. "
-            f'I knew I liked milk, but I didn\'t think I "{dollars_to_words(grand_total)} a year" liked milk.'
+            f"${grand_total:.2f}. That's... significantly more than "
+            "I expected. "
+            "I knew I liked milk, but I didn't think I "
+            f'"{dollars_to_words(grand_total)} a year" liked milk.'
         )
 
         response_data = {
@@ -1070,7 +995,8 @@ def handler(_event, _context):
             )
 
         logger.info(
-            "Cache generation complete: %d receipts, %d summary rows (total %.2fs)",
+            "Cache generation complete: %d receipts, %d summary rows "
+            "(total %.2fs)",
             len(results),
             len(summary_table),
             timing.total,
@@ -1087,19 +1013,14 @@ def handler(_event, _context):
             ),
         }
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # CONTRACTUAL Lambda error contract: a structured 500 (the
+        # previous cache stays live), never an unhandled exception.
         logger.error("Error generating cache: %s", e, exc_info=True)
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
         }
-
-    finally:
-        try:
-            shutil.rmtree(temp_dir)
-            logger.info("Cleaned up temp directory")
-        except Exception as e:
-            logger.warning("Failed to cleanup: %s", e)
 
 
 if __name__ == "__main__":

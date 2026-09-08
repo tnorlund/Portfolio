@@ -242,7 +242,6 @@ async def _run_question(
     answer_question_fn,
     create_qa_graph_fn,
     dynamo_client,
-    chroma_client,
     embed_fn,
     question_text: str,
     question_index: int,
@@ -251,7 +250,6 @@ async def _run_question(
     async with semaphore:
         graph, state_holder = create_qa_graph_fn(
             dynamo_client=dynamo_client,
-            chroma_client=chroma_client,
             embed_fn=embed_fn,
         )
 
@@ -313,7 +311,6 @@ async def _run_all(
         create_qa_graph,
     )
     from receipt_agent.clients.factory import (
-        create_chroma_client,
         create_dynamo_client,
         create_embed_fn,
     )
@@ -323,7 +320,6 @@ async def _run_all(
 
     table_name = os.environ.get("DYNAMODB_TABLE_NAME", "")
     dynamo_client = create_dynamo_client(table_name=table_name)
-    chroma_client = create_chroma_client(mode="read")
     embed_fn = create_embed_fn()
 
     semaphore = asyncio.Semaphore(CONCURRENCY)
@@ -334,7 +330,6 @@ async def _run_all(
             answer_question,
             create_qa_graph,
             dynamo_client,
-            chroma_client,
             embed_fn,
             question_text,
             i,

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3.13
 """Render synthetic receipt candidates (and their real base) to PNGs for QA.
 
 Reads a bundle produced by ``verify_synthetic_replay.py local-pipeline`` plus the
@@ -8,7 +8,7 @@ font-render renderer. This is the visual-QA artifact for milestone 2 of the
 ``feat/receipt-font-render`` charter — it consumes data only and touches no gate.
 
 Usage:
-    python3.12 scripts/render_synthetic_receipts.py \
+    python3.13 scripts/render_synthetic_receipts.py \
         --bundle .tmp/bundle.json \
         --receipt-dir .tmp/vons_export \
         --out-dir .tmp/render \

@@ -2,7 +2,7 @@
 Pulumi infrastructure for Fix Place Lambda.
 
 This component creates a container-based Lambda that fixes incorrect
-ReceiptPlace records using a LangGraph agent with ChromaDB similarity
+ReceiptPlace records using a LangGraph agent with vector similarity
 search and Google Places API.
 
 The Lambda can be invoked directly with:
@@ -15,7 +15,7 @@ The Lambda can be invoked directly with:
 Architecture:
 - Container Lambda with all receipt_* packages
 - LangGraph agent with receipt context tools + similarity search
-- Chroma Cloud for vector similarity search
+- DynamoDB vector indexes for similarity search
 - Google Places API for place resolution
 - Updates ReceiptPlace in DynamoDB
 """
@@ -44,9 +44,6 @@ openai_api_key = config.require_secret("OPENAI_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
-chroma_cloud_api_key = config.require_secret("CHROMA_CLOUD_API_KEY")
-chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
-chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 
 
 class FixPlaceLambda(ComponentResource):
@@ -56,7 +53,7 @@ class FixPlaceLambda(ComponentResource):
     This Lambda uses a LangGraph agent to:
     1. Receive (image_id, receipt_id, reason)
     2. Examine receipt content (lines, words, labels)
-    3. Search ChromaDB for similar receipts
+    3. Search the vector index for similar receipts
     4. Search Google Places for correct match
     5. Submit place data with confidence scoring
     6. Update ReceiptPlace with corrected data
@@ -103,7 +100,8 @@ class FixPlaceLambda(ComponentResource):
             f"{name}-lambda-basic-exec",
             role=lambda_role.name,
             policy_arn=(
-                "arn:aws:iam::aws:policy/service-role/" "AWSLambdaBasicExecutionRole"
+                "arn:aws:iam::aws:policy/service-role/"
+                "AWSLambdaBasicExecutionRole"
             ),
             opts=ResourceOptions(parent=lambda_role),
         )
@@ -169,7 +167,7 @@ class FixPlaceLambda(ComponentResource):
         lambda_config = {
             "role_arn": lambda_role.arn,
             "timeout": 900,  # 15 min - LangGraph agent with tools
-            "memory_size": 3072,  # 3 GB for LLM agent + ChromaDB
+            "memory_size": 3072,  # 3 GB for LLM agent
             "tags": {"environment": stack},
             "environment": {
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
@@ -187,7 +185,8 @@ class FixPlaceLambda(ComponentResource):
                     or ("tiered" if stack == "dev" else "agent")
                 ),
                 "FIX_PLACE_TIER2_MODEL": (
-                    config.get("fix_place_tier2_model") or "openai/gpt-oss-120b"
+                    config.get("fix_place_tier2_model")
+                    or "openai/gpt-oss-120b"
                 ),
                 "FIX_PLACE_AGENT_MODEL": (
                     config.get("fix_place_agent_model") or "x-ai/grok-4.3"
@@ -196,15 +195,13 @@ class FixPlaceLambda(ComponentResource):
                 "FIX_PLACE_AGENT_MAX_ROUNDS": "3",
                 # OpenAI (for embeddings)
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
-                # Chroma Cloud
-                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
-                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
-                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
                 # LangSmith tracing
                 "LANGCHAIN_API_KEY": langchain_api_key,
                 "LANGCHAIN_TRACING_V2": "true",
                 "LANGCHAIN_ENDPOINT": ("https://api.smith.langchain.com"),
-                "LANGCHAIN_PROJECT": (config.get("langchain_project") or "fix-place"),
+                "LANGCHAIN_PROJECT": (
+                    config.get("langchain_project") or "fix-place"
+                ),
             },
         }
 
@@ -214,8 +211,8 @@ class FixPlaceLambda(ComponentResource):
             build_context_path=".",
             source_paths=[
                 "receipt_agent",
-                "receipt_chroma",
                 "receipt_dynamo",
+                "receipt_embeddings",
                 "receipt_places",
                 "receipt_upload",
             ],

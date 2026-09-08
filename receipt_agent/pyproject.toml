@@ -5,10 +5,10 @@ build-backend = "hatchling.build"
 [project]
 name = "receipt_agent"
 version = "0.2.0"
-description = "Agentic validation for receipt metadata using LangGraph and ChromaDB"
+description = "Agentic validation for receipt metadata using LangGraph"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 authors = [
     { name = "Tyler Norlund" }
 ]
@@ -17,7 +17,6 @@ keywords = [
     "validation",
     "agent",
     "langgraph",
-    "chromadb",
     "langsmith",
 ]
 classifiers = [
@@ -25,15 +24,14 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
 dependencies = [
-    # Internal packages (transitive deps: boto3, requests, pydantic*, tenacity, structlog, chromadb, openai)
+    # Internal packages (transitive deps: boto3, requests, pydantic*, tenacity, structlog, openai)
     "receipt-dynamo",              # DynamoDB client for receipts
-    "receipt-chroma",              # ChromaDB client (brings chromadb, openai)
+    "receipt-embeddings",          # Vector-search seam (VectorSearchClient)
     "receipt-places",              # Google Places API (brings pydantic*, tenacity, structlog)
     # LangGraph/LangChain for agent orchestration
     "langgraph>=0.2.0",
@@ -113,7 +111,7 @@ packages = ["receipt_agent"]
 include = ["receipt_agent/py.typed"]
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py313"
 line-length = 79
 select = [
     "E",      # pycodestyle errors
@@ -133,11 +131,11 @@ ignore = [
 ]
 
 [tool.ruff.isort]
-known-first-party = ["receipt_agent", "receipt_dynamo", "receipt_chroma", "receipt_places"]
+known-first-party = ["receipt_agent", "receipt_dynamo", "receipt_places"]
 
 [tool.black]
 line-length = 79
-target-version = ["py312"]
+target-version = ["py313"]
 include = '\.pyi?$'
 
 [tool.isort]
@@ -146,7 +144,7 @@ multi_line_output = 3
 line_length = 79
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
@@ -207,4 +205,3 @@ exclude_lines = [
     "pass",
     "raise ImportError",
 ]
-

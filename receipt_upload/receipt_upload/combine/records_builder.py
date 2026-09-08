@@ -195,7 +195,7 @@ def combine_receipt_words_to_image_coords(
     # This handles cases where the same word was detected on multiple lines
     # with identical bounding box coordinates
     deduplicated_words = []
-    seen_coords = set()
+    seen_coords = {}
     for word in all_words:
         # Create a coordinate signature for deduplication
         # Use a small tolerance for floating point comparison (0.1 pixels)
@@ -213,8 +213,15 @@ def combine_receipt_words_to_image_coords(
         )
 
         if coord_key not in seen_coords:
-            seen_coords.add(coord_key)
+            word["source_line_keys"] = [(word["line_id"], word["receipt_id"])]
+            seen_coords[coord_key] = word
             deduplicated_words.append(word)
+        else:
+            # A section can belong to the duplicate source's line. Keep
+            # those aliases even though only one word is persisted.
+            seen_coords[coord_key]["source_line_keys"].append(
+                (word["line_id"], word["receipt_id"])
+            )
         # Skip duplicate - log if needed for debugging
         # Note: We keep the first occurrence (already sorted by reading order)
 
@@ -553,16 +560,22 @@ def create_combined_receipt_records(
     # Create ReceiptWord entities
     # IMPORTANT: We assign word IDs sequentially to ALL words (including noise)
     # to maintain proper structure (words belong to lines, letters belong to words).
-    # However, we need to ensure word IDs match between DynamoDB and ChromaDB.
+    # However, we need to ensure word IDs match between DynamoDB and the
+    # embedding index.
     # Since noise words are filtered out during embedding, we assign IDs to all
     # words but only non-noise words will be embedded with those IDs.
     receipt_words = []
     word_id_map = {}
+    section_line_id_map = defaultdict(set)
     new_word_id = 1
 
     for word in combined_words:
         original_key = (word["word_id"], word["line_id"], word["receipt_id"])
         new_line_id = line_id_map.get((word["line_id"], word["receipt_id"]), 1)
+        for source_key in word.get(
+            "source_line_keys", [(word["line_id"], word["receipt_id"])]
+        ):
+            section_line_id_map[tuple(source_key)].add(new_line_id)
 
         # Transform word corners from original image space to warped space
         word_corners_ocr_warped = {}
@@ -682,6 +695,7 @@ def create_combined_receipt_records(
         "receipt_words": receipt_words,
         "receipt_letters": [],
         "line_id_map": line_id_map,
+        "section_line_id_map": dict(section_line_id_map),
         "word_id_map": word_id_map,
         "letter_id_map": {},
     }

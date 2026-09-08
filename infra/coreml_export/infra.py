@@ -182,7 +182,7 @@ class CoreMLExportComponent(ComponentResource):
             f"{name}-process-coreml-results-lambda",
             name=f"{name}-{stack}-process-coreml-results",
             role=process_results_role.arn,
-            runtime="python3.12",
+            runtime="python3.13",
             handler="process_results.handler",
             code=AssetArchive(
                 {
@@ -299,7 +299,7 @@ class CoreMLExportComponent(ComponentResource):
                 f"{name}-queue-export-lambda",
                 name=f"{name}-{stack}-queue-coreml-export",
                 role=queue_export_role.arn,
-                runtime="python3.12",
+                runtime="python3.13",
                 handler="queue_export.handler",
                 code=AssetArchive(
                     {

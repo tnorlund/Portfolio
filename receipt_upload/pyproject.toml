@@ -7,7 +7,7 @@ name = "receipt_upload"
 version = "0.1.0"
 description = "A Python package for uploading receipts to DynamoDB"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 license = {file = "LICENSE"}
 authors = [
     {name = "Receipt Upload Contributors"}
@@ -17,11 +17,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Development Status :: 4 - Beta",
@@ -33,12 +29,12 @@ classifiers = [
 ]
 dependencies = [
   "receipt-dynamo",  # Local package for DynamoDB entities and operations
-  "receipt-chroma",  # Local package for ChromaDB embedding operations
+  "receipt-embeddings",  # Backend-neutral vector search + embedding writers
   "receipt-places",  # Local package for Google Places API
   "numpy>=1.26.0,<3.0.0",
   "Pillow>=11.2.1",
   "pillow-avif-plugin>=1.3.0",
-  "boto3>=1.43.32,<1.44.0",
+  "boto3>=1.43.64,<1.44.0",
   "langsmith>=0.1.0",  # For Langsmith tracing
 ]
 keywords = ["dynamo", "dynamodb", "receipts", "aws", "database"]
@@ -55,14 +51,14 @@ test = [
 ]
 dev = [
     "black==26.5.1",
-    "isort==8.0.1",
+    "isort==9.0.1",
     "mypy>=1.19.0",
     "pylint>=3.0.0,<5.0.0",
 ]
-# Pinned to match the rest of the monorepo's CI lint job (see receipt_chroma).
+# Pinned to match the rest of the monorepo's CI lint job.
 lint = [
     "black==26.5.1",
-    "isort==8.0.1",
+    "isort==9.0.1",
 ]
 
 [tool.hatch.build]
@@ -110,7 +106,7 @@ include = ["receipt_upload/py.typed"]
 
 [tool.black]
 line-length = 79
-target-version = ["py312"]
+target-version = ["py313"]
 include = '\.pyi?$'
 
 [tool.isort]
@@ -119,7 +115,7 @@ multi_line_output = 3
 line_length = 79
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

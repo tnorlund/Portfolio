@@ -16,13 +16,10 @@ Environment:
     Requires Pulumi config for DynamoDB credentials.
     Set PORTFOLIO_ENV=dev or PORTFOLIO_ENV=prod
 
-    Chroma Cloud credentials are OPTIONAL: without them the server still
-    starts and serves every Dynamo-backed tool; only the vector-search
-    tools (search_receipts, list_all_receipts, search_product_lines,
-    validate_word_similarity) return a structured error at call time.
-    CHROMA_CLOUD_ENABLED / CHROMA_CLOUD_API_KEY / CHROMA_CLOUD_TENANT /
-    CHROMA_CLOUD_DATABASE environment variables override Pulumi config
-    (e.g. CHROMA_CLOUD_ENABLED=false runs Dynamo-only).
+    The semantic search tools (search_receipts, search_product_lines)
+    embed the query with OpenAI and retrieve through the receipt table's
+    DynamoDB vector indexes; every other tool is served from DynamoDB /
+    Lambda / Athena directly.
 """
 
 import asyncio
@@ -30,6 +27,7 @@ import base64
 import json
 import logging
 import os
+import re
 import sys
 import urllib.request
 from collections import defaultdict
@@ -42,7 +40,7 @@ sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_upload"))
-sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
+sys.path.insert(0, os.path.join(parent_dir, "receipt_embeddings"))
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -64,36 +62,55 @@ logger = logging.getLogger(__name__)
 
 # Global clients (initialized lazily on first use)
 _dynamo_client = None
-_chroma_client = None
 _embed_fn = None
 _config = None
 
-# Tools that require Chroma Cloud (vector/embedding search). Every other
-# tool is served from DynamoDB / Lambda / Athena and must keep working
-# when Chroma Cloud is not configured.
-CHROMA_TOOLS = frozenset(
-    {
-        "search_receipts",
-        "list_all_receipts",
-        "search_product_lines",
-        "validate_word_similarity",
+# Tools that embed the query (OpenAI) before searching the DynamoDB vector
+# indexes. Every other tool is served from DynamoDB / Lambda / Athena.
+VECTOR_TOOLS = frozenset({"search_receipts", "search_product_lines"})
+
+
+def _mode_unavailable(search_type: str, query: str) -> dict:
+    """Structured result for retired substring/label search modes."""
+    return {
+        "search_type": search_type,
+        "query": query,
+        "error": (
+            f"search_type '{search_type}' is not supported by the "
+            "DynamoDB vector indexes; use 'semantic' or the "
+            "DynamoDB-backed tools instead"
+        ),
+        "total_matches": 0,
+        "results": [],
     }
-)
-
-CHROMA_NOT_CONFIGURED_MESSAGE = (
-    "Chroma Cloud not configured: set CHROMA_CLOUD_ENABLED=true and "
-    "CHROMA_CLOUD_API_KEY (plus CHROMA_CLOUD_TENANT / "
-    "CHROMA_CLOUD_DATABASE) in Pulumi config or the environment to "
-    "enable semantic search."
-)
 
 
-class ChromaNotConfiguredError(RuntimeError):
-    """Raised when a Chroma-backed tool is called without Chroma Cloud creds."""
+_vector_search_client = None
+
+
+def get_vector_search_client():
+    """Resolve the similarity backend for SEMANTIC retrieval.
+
+    SearchVectors on the receipt table's vector indexes. The session's
+    configured table (and its low-level boto3 client) is threaded
+    through, so semantic search targets the SAME table as every other
+    tool instead of backend.py's environment fallback (E3 review P1-3).
+    """
+    global _vector_search_client
+
+    from receipt_embeddings.backend import vector_search_client
+
+    if _vector_search_client is None:
+        dynamo_client = get_dynamo_client()
+        _vector_search_client = vector_search_client(
+            dynamodb_client=getattr(dynamo_client, "_client", None),
+            table_name=getattr(dynamo_client, "table_name", None),
+        )
+    return _vector_search_client
 
 
 def _load_config():
-    """Load and cache Pulumi config + secrets (env vars override Chroma keys)."""
+    """Load and cache Pulumi config + secrets."""
     global _config
 
     if _config is None:
@@ -112,18 +129,6 @@ def _load_config():
             )
             config[normalized_key] = value
 
-        # Environment variables override Pulumi config for the Chroma keys,
-        # so the server can run Dynamo-only (CHROMA_CLOUD_ENABLED=false) or
-        # be pointed at Chroma without Pulumi.
-        for env_key in (
-            "CHROMA_CLOUD_ENABLED",
-            "CHROMA_CLOUD_API_KEY",
-            "CHROMA_CLOUD_TENANT",
-            "CHROMA_CLOUD_DATABASE",
-        ):
-            if os.environ.get(env_key) is not None:
-                config[env_key.lower()] = os.environ[env_key]
-
         # Set up API keys
         if config.get("openai_api_key"):
             os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config[
@@ -135,16 +140,8 @@ def _load_config():
     return _config
 
 
-def chroma_is_configured(config) -> bool:
-    """True when Chroma Cloud is enabled and an API key is present."""
-    enabled = (
-        str(config.get("chroma_cloud_enabled", "false")).lower() == "true"
-    )
-    return enabled and bool(config.get("chroma_cloud_api_key"))
-
-
 def get_dynamo_client():
-    """Get or initialize the DynamoDB client (no Chroma required)."""
+    """Get or initialize the DynamoDB client."""
     global _dynamo_client
 
     if _dynamo_client is None:
@@ -159,44 +156,22 @@ def get_dynamo_client():
     return _dynamo_client
 
 
-def get_chroma_clients():
-    """Get or initialize the Chroma Cloud client and embedding function.
+def get_embed_fn():
+    """Get or initialize the OpenAI embedding function.
 
-    Raises ChromaNotConfiguredError when Chroma Cloud credentials are
-    absent, so Chroma-backed tools fail cleanly at call time instead of
-    the server crashing at startup.
+    Only the VECTOR_TOOLS need it; it is built lazily so every other tool
+    works without an OpenAI key.
     """
-    global _chroma_client, _embed_fn
+    global _embed_fn
 
-    if _chroma_client is None:
+    if _embed_fn is None:
         from receipt_agent.clients.factory import create_embed_fn
-        from receipt_chroma import ChromaClient
 
-        config = _load_config()
-        if not chroma_is_configured(config):
-            raise ChromaNotConfiguredError(CHROMA_NOT_CONFIGURED_MESSAGE)
-
-        _chroma_client = ChromaClient(
-            cloud_api_key=config.get("chroma_cloud_api_key"),
-            cloud_tenant=config.get("chroma_cloud_tenant"),
-            cloud_database=config.get("chroma_cloud_database"),
-            mode="read",
-        )
+        _load_config()
         _embed_fn = create_embed_fn()
-        logger.info("Chroma clients initialized")
+        logger.info("Embedding function initialized")
 
-    return _chroma_client, _embed_fn
-
-
-def get_clients():
-    """Get or initialize all database clients (requires Chroma Cloud).
-
-    Backwards-compatible wrapper; prefer get_dynamo_client() /
-    get_chroma_clients() so Dynamo-only tools work without Chroma creds.
-    """
-    dynamo_client = get_dynamo_client()
-    chroma_client, embed_fn = get_chroma_clients()
-    return dynamo_client, chroma_client, embed_fn
+    return _embed_fn
 
 
 # Create MCP server
@@ -368,30 +343,26 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="search_receipts",
-            description="""Search for receipts by text content, label type, or semantic similarity.
-
-Use search_type:
-- "text": Exact text match (e.g., query="COFFEE", "MILK", "COSTCO")
-- "label": Search by label type (e.g., query="TAX", "GRAND_TOTAL", "MERCHANT_NAME")
-- "semantic": Meaning-based similarity (e.g., query="coffee purchases", "dairy products")
+            description="""Search for receipts by semantic similarity over their line text.
 
 Examples:
-- search_receipts("COFFEE", "text") - find receipts mentioning coffee
-- search_receipts("COSTCO", "text") - find Costco receipts
-- search_receipts("GRAND_TOTAL", "label") - find receipts with totals
-- search_receipts("breakfast items", "semantic") - semantic search""",
+- search_receipts("coffee purchases") - receipts with coffee-like lines
+- search_receipts("breakfast items") - semantic search
+
+For exact merchant lookups use list_merchants / get_receipts_by_merchant;
+for label-driven questions use list_words_by_label.""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search term - product name, label type, or natural language",
+                        "description": "Natural-language description of the receipts to find",
                     },
                     "search_type": {
                         "type": "string",
-                        "enum": ["text", "label", "semantic"],
-                        "default": "text",
-                        "description": "Search method",
+                        "enum": ["semantic"],
+                        "default": "semantic",
+                        "description": "Search method (semantic only)",
                     },
                     "limit": {
                         "type": "integer",
@@ -440,22 +411,6 @@ Labels mean:
             },
         ),
         Tool(
-            name="list_all_receipts",
-            description="""List all receipts in the database with their merchant names and totals.
-
-Use this to get an overview of what receipts are available.""",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "limit": {
-                        "type": "integer",
-                        "default": 50,
-                        "description": "Maximum receipts to return",
-                    }
-                },
-            },
-        ),
-        Tool(
             name="list_merchants",
             description="""List all merchants with receipt counts.
 
@@ -496,23 +451,21 @@ Returns compact format: {"merchant": "...", "count": 191, "receipts": [[image_id
             name="search_product_lines",
             description="""Search for product lines and return prices for spending analysis.
 
-Use search_type:
-- "text": Exact text match (e.g., query="MILK", "COFFEE") - fast but requires exact words
-- "semantic": Meaning-based similarity (e.g., query="snack foods", "cleaning supplies") - finds conceptually similar items
+Meaning-based similarity (e.g., query="snack foods", "cleaning supplies")
+finds conceptually similar items.
 
 Use this to answer spending questions like "how much did I spend on X?"
 
 Returns lines with:
 - text: The full line text (e.g., "RAW WHOLE MILK 17.99")
 - price: The price if found (regex extracted)
-- similarity: Match score (semantic only)
+- similarity: Match score
 - merchant: Store name
 - image_id/receipt_id: For drilling into specific receipts
 
 Examples:
-  search_product_lines("MILK", "text") -> exact matches for MILK
-  search_product_lines("dairy products", "semantic") -> milk, cheese, yogurt, etc.
-  search_product_lines("cleaning supplies", "semantic") -> soap, detergent, wipes, etc.
+  search_product_lines("dairy products") -> milk, cheese, yogurt, etc.
+  search_product_lines("cleaning supplies") -> soap, detergent, wipes, etc.
 
 The LLM should filter false positives before summing prices.""",
             inputSchema={
@@ -524,9 +477,9 @@ The LLM should filter false positives before summing prices.""",
                     },
                     "search_type": {
                         "type": "string",
-                        "enum": ["text", "semantic"],
-                        "default": "text",
-                        "description": "Search method: 'text' for exact match, 'semantic' for meaning-based",
+                        "enum": ["semantic"],
+                        "default": "semantic",
+                        "description": "Search method (semantic only)",
                     },
                     "limit": {
                         "type": "integer",
@@ -567,6 +520,8 @@ Returns aggregates AND individual receipt summaries:
 - summaries: List of individual receipts with merchant_name, merchant_category, date, grand_total, tax, tip, item_count
 
 Filter by merchant name, category (from Google Places), and/or date range.
+Date bounds are inclusive calendar dates as printed on the receipt.
+Receipts with unknown dates are excluded when a date bound is supplied.
 
 Common categories: grocery_store, supermarket, restaurant, gas_station, pharmacy, convenience_store, coffee_shop""",
             inputSchema={
@@ -677,29 +632,14 @@ Example:
         ),
         Tool(
             name="validate_word_similarity",
-            description="""Validate a word's label using ChromaDB similarity search.
+            description="""[DEPRECATED] Use similar_labeled_words instead.
 
-Given a specific word (by image_id, receipt_id, line_id, word_id), runs the
-same similarity search used by the label validation system:
-
-1. Retrieves the word's embedding from Chroma Cloud
-2. Queries for similar VALIDATED words where label=True (positive evidence)
-3. Queries for similar VALIDATED words where label=False (negative evidence)
-4. Computes weighted consensus (with same-merchant boosting)
-5. Returns the evidence and a validation decision
-
-Use this to manually review and validate individual words found via
-list_words_by_label.
-
-Returns:
-  - recommended_status: VALID, INVALID, NEEDS_REVIEW, or PENDING (matches ValidationStatus enum in receipt_dynamo)
-  - confidence: 0-1 score
-  - evidence_for: list of similar words supporting the label
-  - evidence_against: list of similar words rejecting the label
-  - suggested_labels: if invalid/uncertain, top alternative label candidates
-
-NOTE: This tool is READ-ONLY. It does NOT write to DynamoDB. It returns a
-recommendation that you can review before taking any action.""",
+This tool's positive/negative queries filtered the words collection on
+label_{NAME} metadata keys the embedding writer never wrote, so every
+call returned empty evidence with confidence 0.0. It now returns a
+pointer to similar_labeled_words, which performs the working
+search-then-join over validated word embeddings and ReceiptWordLabel
+rows.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -734,6 +674,61 @@ recommendation that you can review before taking any action.""",
             },
         ),
         Tool(
+            name="similar_labeled_words",
+            description="""Similarity evidence for a word's candidate label (search-then-join).
+
+Replaces the retired validate_word_similarity tool. Given a specific word
+(image_id, receipt_id, line_id, word_id) and a candidate label:
+
+1. Reads the word's stored embedding vector (no OpenAI call)
+2. Searches validated word embeddings for nearest neighbors
+3. Applies the old validator's effective similarity cut (0.60 on the
+   corrected cosine scale; its 0.80 was on a halved scale)
+4. Joins each surviving neighbor's ReceiptWordLabel rows
+5. Returns evidence FOR (VALID rows) and AGAINST (INVALID rows) the
+   candidate label -- each neighbor carrying its original reasoning and
+   provenance -- plus alternative-label candidates and a weighted
+   consensus recommendation.
+
+Use this to review words found via list_words_by_label before
+update_word_label. If the word has no stored vector yet, the response
+says so instead of erroring.
+
+NOTE: This tool is READ-ONLY. It does NOT write to DynamoDB.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the word",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID of the word",
+                    },
+                    "line_id": {
+                        "type": "integer",
+                        "description": "Line ID of the word",
+                    },
+                    "word_id": {
+                        "type": "integer",
+                        "description": "Word ID within the line",
+                    },
+                    "label": {
+                        "type": "string",
+                        "description": "The candidate label (e.g., GRAND_TOTAL)",
+                    },
+                },
+                "required": [
+                    "image_id",
+                    "receipt_id",
+                    "line_id",
+                    "word_id",
+                    "label",
+                ],
+            },
+        ),
+        Tool(
             name="update_word_label",
             description="""Update the validation_status of a ReceiptWordLabel record in DynamoDB.
 
@@ -744,7 +739,7 @@ NONE, PENDING, VALID, INVALID, NEEDS_REVIEW.
 The label_proposed_by field is set to "mcp-claude-review" for audit trail.
 
 Use this AFTER reviewing a word with get_receipt (for context) and
-validate_word_similarity (for Chroma evidence). Only update when you are
+similar_labeled_words (for similarity evidence). Only update when you are
 confident in the decision.
 
 WARNING: This WRITES to DynamoDB. Double-check the word context before calling.""",
@@ -1203,22 +1198,99 @@ Optionally filter to a single line_id to reduce output.""",
             },
         ),
         Tool(
+            name="find_places",
+            description="""Search Google Places directly and return candidates.
+
+Runs phone, address, and free-text searches (each returns its best match)
+and returns the deduplicated candidates. Use this to identify the correct
+business for a receipt, then write it with set_receipt_place.
+
+Never modifies receipt data. Note: Places lookups are cached as
+PlacesCache rows in the receipts table (cache writes on miss, hit
+counters on hit) - the same cache the rest of the pipeline uses.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Free-text search, e.g. 'Trader Joe's 2716 N Green Valley Pkwy Henderson NV'",
+                    },
+                    "phone": {
+                        "type": "string",
+                        "description": "Phone number from the receipt (any format, 10+ digits)",
+                    },
+                    "address": {
+                        "type": "string",
+                        "description": "Street address from the receipt",
+                    },
+                },
+            },
+        ),
+        Tool(
+            name="set_receipt_place",
+            description="""Set a receipt's merchant/place directly (no Lambda, no inner LLM).
+
+Updates the ReceiptPlace record (creating it if missing) and keeps the
+denormalized ReceiptSummary merchant_name in sync. Use after verifying the
+correct business via get_receipt + find_places.
+
+WARNING: This WRITES to DynamoDB.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {"type": "string", "description": "Image ID"},
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "merchant_name": {
+                        "type": "string",
+                        "description": "Correct business name (matches corpus casing, e.g. 'Trader Joe's')",
+                    },
+                    "place_id": {
+                        "type": "string",
+                        "description": "Google place_id (from find_places), if known",
+                    },
+                    "formatted_address": {
+                        "type": "string",
+                        "description": "Formatted address, if known",
+                    },
+                    "phone_number": {
+                        "type": "string",
+                        "description": "Phone number, if known",
+                    },
+                    "reasoning": {
+                        "type": "string",
+                        "description": "Why this place is correct (audit trail)",
+                    },
+                    "confidence": {
+                        "type": "number",
+                        "description": "Match confidence 0.0-1.0 (default 1.0)",
+                    },
+                    "validation_status": {
+                        "type": "string",
+                        "enum": ["MATCHED", "UNSURE", "NO_MATCH"],
+                        "description": "Match quality status (default MATCHED)",
+                    },
+                },
+                "required": ["image_id", "receipt_id", "merchant_name"],
+            },
+        ),
+        Tool(
             name="fix_place",
-            description="""Fix an incorrect merchant/place assignment on a receipt.
+            description="""Fix an incorrect merchant/place assignment on a receipt (runs locally).
 
-Invokes the fix-place Lambda which uses an LLM agent to:
-1. Read the receipt content (lines, words, labels)
-2. Extract merchant hints (name, address, phone) from the receipt text
-3. Search Google Places for the correct match
-4. Update the ReceiptPlace record in DynamoDB
+Extracts merchant/address/phone hints from the receipt's labeled words,
+searches Google Places directly, and:
+- applies the match immediately when it is unambiguous (phone digits or
+  street number confirm exactly one candidate), returning status "fixed";
+- otherwise returns status "needs_decision" with the hints and candidates
+  so YOU decide, then call set_receipt_place with the right values.
 
-Use this when a receipt's merchant name is wrong (e.g., "Mouthful Eatery"
-when the receipt clearly says "WHOLE FOODS MARKET").
+No Lambda, no inner LLM: you are the deciding agent.
 
-Returns the old and new merchant names, the new place_id, and confidence.
-
-WARNING: This WRITES to DynamoDB. Verify the receipt is misidentified first
-using get_receipt to read its content.""",
+WARNING: This can WRITE to DynamoDB (the unambiguous case). Verify the
+receipt is misidentified first using get_receipt.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -1436,10 +1508,9 @@ Choosing the right tool:
 - merge_receipts: combine TWO fragments that are halves of the SAME receipt.
 - delete_image: remove the whole image and every receipt on it.
 
-How it works: deletes the Receipt entity from DynamoDB. The enhanced compactor
-then automatically removes the ChromaDB embeddings and all child records
-(ReceiptLine, ReceiptWord, ReceiptLetter, ReceiptWordLabel, ReceiptPlace) via
-DynamoDB streams.
+How it works: deletes the Receipt entity from DynamoDB. Child records
+(ReceiptLine, ReceiptWord, ReceiptLetter, ReceiptWordLabel, ReceiptPlace) and
+embedding items are not cascaded by this tool.
 
 Returns the receipt's merchant and a breakdown of child-record counts. By
 default runs in dry-run mode — set dry_run=false to actually delete.
@@ -2136,17 +2207,13 @@ async def call_tool(
     """Handle tool calls."""
     try:
         dynamo_client = get_dynamo_client()
-        if name in CHROMA_TOOLS:
-            chroma_client, embed_fn = get_chroma_clients()
-        else:
-            chroma_client = embed_fn = None
+        embed_fn = get_embed_fn() if name in VECTOR_TOOLS else None
 
         if name == "search_receipts":
             result = await search_receipts_impl(
-                chroma_client,
                 embed_fn,
                 query=arguments["query"],
-                search_type=arguments.get("search_type", "text"),
+                search_type=arguments.get("search_type", "semantic"),
                 limit=arguments.get("limit", 20),
             )
         elif name == "get_receipt":
@@ -2154,11 +2221,6 @@ async def call_tool(
                 dynamo_client,
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
-            )
-        elif name == "list_all_receipts":
-            result = await list_all_receipts_impl(
-                chroma_client,
-                limit=arguments.get("limit", 50),
             )
         elif name == "list_merchants":
             result = await list_merchants_impl(dynamo_client)
@@ -2169,10 +2231,9 @@ async def call_tool(
             )
         elif name == "search_product_lines":
             result = await search_product_lines_impl(
-                chroma_client,
                 embed_fn,
                 query=arguments["query"],
-                search_type=arguments.get("search_type", "text"),
+                search_type=arguments.get("search_type", "semantic"),
                 limit=arguments.get("limit", 100),
             )
         elif name == "get_receipt_summaries":
@@ -2197,7 +2258,15 @@ async def call_tool(
             )
         elif name == "validate_word_similarity":
             result = await validate_word_similarity_impl(
-                chroma_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                line_id=arguments["line_id"],
+                word_id=arguments["word_id"],
+                label=arguments["label"],
+            )
+        elif name == "similar_labeled_words":
+            result = await similar_labeled_words_impl(
+                dynamo_client,
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments["line_id"],
@@ -2254,8 +2323,30 @@ async def call_tool(
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments.get("line_id"),
             )
+        elif name == "find_places":
+            result = await find_places_impl(
+                query=arguments.get("query"),
+                phone=arguments.get("phone"),
+                address=arguments.get("address"),
+            )
+        elif name == "set_receipt_place":
+            result = await set_receipt_place_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                merchant_name=arguments["merchant_name"],
+                place_id=arguments.get("place_id"),
+                formatted_address=arguments.get("formatted_address"),
+                phone_number=arguments.get("phone_number"),
+                reasoning=arguments.get("reasoning"),
+                confidence=arguments.get("confidence", 1.0),
+                validation_status=arguments.get(
+                    "validation_status", "MATCHED"
+                ),
+            )
         elif name == "fix_place":
             result = await fix_place_impl(
+                dynamo_client,
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 reason=arguments["reason"],
@@ -2467,93 +2558,64 @@ async def call_tool(
                     )
         return content
 
-    except ChromaNotConfiguredError as e:
-        logger.warning("Chroma tool %r unavailable: %s", name, e)
-        return [
-            TextContent(
-                type="text",
-                text=json.dumps(
-                    {
-                        "error": str(e),
-                        "error_type": "chroma_not_configured",
-                        "tool": name,
-                    }
-                ),
-            )
-        ]
     except Exception as e:
         logger.exception("Tool error")
         return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
 
 
 async def search_receipts_impl(
-    chroma_client,
     embed_fn,
     query: str,
     search_type: str,
     limit: int,
+    vector_client=None,
 ) -> dict:
-    """Search for receipts."""
+    """Search for receipts.
+
+    The semantic mode retrieves through the VectorSearchClient seam
+    (``vector_client`` is a test-injection override). The retired
+    substring/label modes answer with a structured "unavailable" result.
+    """
     try:
-        if search_type == "label":
-            words_collection = chroma_client.get_collection("words")
-            results = words_collection.get(
-                where={"label": query.upper()},
-                include=["metadatas"],
-            )
-
-            unique_receipts = {}
-            for meta in results["metadatas"]:
-                key = (meta.get("image_id"), meta.get("receipt_id"))
-                if key not in unique_receipts:
-                    unique_receipts[key] = {
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "matched_text": meta.get("text"),
-                        "matched_label": query.upper(),
-                    }
-
-            return {
-                "search_type": "label",
-                "query": query,
-                "total_matches": len(results["ids"]),
-                "unique_receipts": len(unique_receipts),
-                "results": list(unique_receipts.values())[:limit],
-            }
-
-        elif search_type == "semantic":
-            lines_collection = chroma_client.get_collection("lines")
+        if search_type == "semantic":
             query_embeddings = embed_fn([query])
 
             if not query_embeddings or not query_embeddings[0]:
                 return {"error": "Failed to generate embedding"}
 
-            results = lines_collection.query(
-                query_embeddings=query_embeddings,
-                n_results=limit * 2,
-                include=["metadatas", "distances"],
+            # Imported lazily: the server must stay importable without
+            # the embeddings stack.
+            from receipt_embeddings.service_limits import (
+                LINE_INDEX,
+                MAX_SEARCH_RESULTS,
+            )
+
+            client = (
+                vector_client
+                if vector_client is not None
+                else get_vector_search_client()
+            )
+            # limit*2 is trimmed to the 100-result SearchVectors cap
+            # (spec section 3.5b).
+            neighbors = client.search(
+                query_embeddings[0],
+                index=LINE_INDEX,
+                top_k=max(1, min(limit * 2, MAX_SEARCH_RESULTS)),
             )
 
             unique_receipts = {}
-            if results["ids"] and results["ids"][0]:
-                for idx, (id_, meta) in enumerate(
-                    zip(results["ids"][0], results["metadatas"][0])
-                ):
-                    key = (meta.get("image_id"), meta.get("receipt_id"))
-                    distance = (
-                        results["distances"][0][idx]
-                        if results["distances"]
-                        else 1.0
-                    )
-                    similarity = max(0.0, 1.0 - distance)
+            for neighbor in neighbors:
+                meta = neighbor.metadata
+                key = (meta.get("image_id"), meta.get("receipt_id"))
+                similarity = max(0.0, 1.0 - neighbor.distance)
 
-                    if key not in unique_receipts:
-                        unique_receipts[key] = {
-                            "image_id": meta.get("image_id"),
-                            "receipt_id": meta.get("receipt_id"),
-                            "matched_text": meta.get("text", "")[:100],
-                            "similarity": round(similarity, 3),
-                        }
+                if key not in unique_receipts:
+                    unique_receipts[key] = {
+                        "image_id": meta.get("image_id"),
+                        "receipt_id": meta.get("receipt_id"),
+                        "matched_text": str(meta.get("text", ""))[:100],
+                        "similarity": round(similarity, 3),
+                    }
 
             sorted_results = sorted(
                 unique_receipts.values(),
@@ -2568,30 +2630,7 @@ async def search_receipts_impl(
                 "results": sorted_results,
             }
 
-        else:  # text search
-            lines_collection = chroma_client.get_collection("lines")
-            results = lines_collection.get(
-                where_document={"$contains": query.upper()},
-                include=["metadatas"],
-            )
-
-            unique_receipts = {}
-            for meta in results["metadatas"]:
-                key = (meta.get("image_id"), meta.get("receipt_id"))
-                if key not in unique_receipts:
-                    unique_receipts[key] = {
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "matched_line": meta.get("text", "")[:100],
-                    }
-
-            return {
-                "search_type": "text",
-                "query": query,
-                "total_matches": len(results["ids"]),
-                "unique_receipts": len(unique_receipts),
-                "results": list(unique_receipts.values())[:limit],
-            }
+        return _mode_unavailable(search_type, query)
 
     except Exception as e:
         return {"error": str(e)}
@@ -2704,7 +2743,13 @@ async def get_receipt_impl(
 
         formatted_receipt = "\n".join(formatted_lines)
 
-        # Extract amounts
+        # Extract amounts. parse_receipt_amount accepts the accounting
+        # negatives return receipts print ("$16.25-" trailing minus,
+        # parenthesized, leading minus) that a bare float() rejects, so
+        # refunds stay visible to spend aggregation. TIP is a money
+        # label like the others and must surface here too.
+        from receipt_dynamo.amounts import parse_receipt_amount
+
         amounts = []
         currency_labels = [
             "TAX",
@@ -2712,11 +2757,12 @@ async def get_receipt_impl(
             "GRAND_TOTAL",
             "LINE_TOTAL",
             "UNIT_PRICE",
+            "TIP",
         ]
         for w in sorted_words:
             if w["label"] in currency_labels:
-                try:
-                    amount = float(w["text"].replace("$", "").replace(",", ""))
+                amount = parse_receipt_amount(w["text"])
+                if amount is not None:
                     amounts.append(
                         {
                             "label": w["label"],
@@ -2724,8 +2770,6 @@ async def get_receipt_impl(
                             "amount": amount,
                         }
                     )
-                except ValueError:
-                    pass
 
         return {
             "image_id": image_id,
@@ -2733,35 +2777,6 @@ async def get_receipt_impl(
             "merchant": merchant,
             "formatted_receipt": formatted_receipt,
             "amounts": amounts,
-        }
-
-    except Exception as e:
-        return {"error": str(e)}
-
-
-async def list_all_receipts_impl(chroma_client, limit: int) -> dict:
-    """List all receipts."""
-    try:
-        lines_collection = chroma_client.get_collection("lines")
-
-        # Get all receipts by querying metadata (no label filtering)
-        results = lines_collection.get(
-            include=["metadatas"],
-        )
-
-        unique_receipts = {}
-        for meta in results["metadatas"]:
-            key = (meta.get("image_id"), meta.get("receipt_id"))
-            if key not in unique_receipts:
-                unique_receipts[key] = {
-                    "image_id": meta.get("image_id"),
-                    "receipt_id": meta.get("receipt_id"),
-                    "sample_text": meta.get("text", "")[:50],
-                }
-
-        return {
-            "total_receipts": len(unique_receipts),
-            "receipts": list(unique_receipts.values())[:limit],
         }
 
     except Exception as e:
@@ -2843,29 +2858,25 @@ async def get_receipts_by_merchant_impl(
 
 
 async def search_product_lines_impl(
-    chroma_client,
     embed_fn,
     query: str,
     search_type: str,
     limit: int,
+    vector_client=None,
 ) -> dict:
     """Search for product lines and extract prices for spending analysis.
 
-    Supports both text (exact match) and semantic (embedding-based) search.
-    Results exclude sections that never hold products (totals, payment,
-    footer, ...); rows with no section_label are kept, because on
-    under-sectioned receipts those are the product lines.
+    Semantic (embedding-based) search only; the retired substring mode
+    answers with a structured "unavailable" result. Results exclude
+    sections that never hold products (totals, payment, footer, ...);
+    rows with no section_label are kept, because on under-sectioned
+    receipts those are the product lines.
     """
     import re
 
-    # Imported here, not at module scope: receipt_chroma.__init__ pulls in
-    # chromadb, and this server must stay importable without it
-    # (tests/test_receipt_mcp_lazy_chroma.py).
-    from receipt_chroma.section_labels import non_item_section_filter
+    from receipt_embeddings.section_labels import NON_ITEM_SECTION_LABELS
 
     try:
-        lines_collection = chroma_client.get_collection("lines")
-
         # Extract price from text (e.g., "RAW WHOLE MILK 17.99" -> 17.99)
         def extract_price(text: str) -> Optional[float]:
             matches = re.findall(r"\d+\.\d{2}", text)
@@ -2874,20 +2885,33 @@ async def search_product_lines_impl(
             return None
 
         if search_type == "semantic":
-            # Semantic search using embeddings
+            # Semantic search using embeddings via the vector seam
             query_embeddings = embed_fn([query])
 
             if not query_embeddings or not query_embeddings[0]:
                 return {"error": "Failed to generate embedding"}
 
-            results = lines_collection.query(
-                query_embeddings=query_embeddings,
-                n_results=limit * 3,  # Get more to filter duplicates
-                where=non_item_section_filter(),
-                include=["metadatas", "distances"],
+            # Imported lazily: the server must stay importable without
+            # the embeddings stack.
+            from receipt_embeddings.service_limits import (
+                LINE_INDEX,
+                MAX_SEARCH_RESULTS,
             )
 
-            if not results["ids"] or not results["ids"][0]:
+            client = (
+                vector_client
+                if vector_client is not None
+                else get_vector_search_client()
+            )
+            # limit*3 is trimmed to the 100-result SearchVectors cap
+            # (spec section 3.5b).
+            neighbors = client.search(
+                query_embeddings[0],
+                index=LINE_INDEX,
+                top_k=max(1, min(limit * 3, MAX_SEARCH_RESULTS)),
+            )
+
+            if not neighbors:
                 return {
                     "query": query,
                     "search_type": "semantic",
@@ -2898,11 +2922,17 @@ async def search_product_lines_impl(
             # Process semantic results with similarity scores
             items = []
             seen = set()
+            # The seam takes equality filters only, so non-item sections
+            # are excluded after retrieval. Rows with no section label
+            # stay (under-sectioned receipts).
+            non_item_sections = set(NON_ITEM_SECTION_LABELS)
 
-            for idx, (id_, meta) in enumerate(
-                zip(results["ids"][0], results["metadatas"][0])
-            ):
-                text = meta.get("text", "")
+            for neighbor in neighbors:
+                meta = neighbor.metadata
+                section = meta.get("section_label") or meta.get("section_type")
+                if section in non_item_sections:
+                    continue
+                text = str(meta.get("text", ""))
                 image_id = meta.get("image_id")
                 receipt_id = meta.get("receipt_id")
 
@@ -2912,19 +2942,17 @@ async def search_product_lines_impl(
                     continue
                 seen.add(key)
 
-                # Calculate similarity from distance
-                distance = (
-                    results["distances"][0][idx]
-                    if results["distances"]
-                    else 1.0
-                )
-                similarity = max(0.0, 1.0 - distance)
+                similarity = max(0.0, 1.0 - neighbor.distance)
 
                 # Skip low similarity results
                 if similarity < 0.25:
                     continue
 
-                has_line_total = meta.get("label_LINE_TOTAL", False)
+                # DynamoDB line-embedding items never carry a
+                # label_LINE_TOTAL flag, so the field is honestly
+                # "unknown" when the metadata lacks it rather than a
+                # false False (E3 review P2-5).
+                has_line_total = meta.get("label_LINE_TOTAL", "unknown")
                 price = extract_price(text)
 
                 items.append(
@@ -2951,80 +2979,14 @@ async def search_product_lines_impl(
             return {
                 "query": query,
                 "search_type": "semantic",
-                "total_matches": len(results["ids"][0]),
+                "total_matches": len(neighbors),
                 "unique_items": len(items),
                 "items": items,
                 "raw_total": round(total, 2),
                 "note": "Semantic search finds conceptually similar items. Review relevance before summing prices.",
             }
 
-        else:
-            # Text search (exact match)
-            results = lines_collection.get(
-                where_document={"$contains": query.upper()},
-                where=non_item_section_filter(),
-                include=["metadatas"],
-            )
-
-            if not results["ids"]:
-                return {
-                    "query": query,
-                    "search_type": "text",
-                    "total_matches": 0,
-                    "items": [],
-                }
-
-            # Process results
-            items = []
-            seen = set()  # Dedupe by image_id + receipt_id + text
-
-            for meta in results["metadatas"]:
-                text = meta.get("text", "")
-                image_id = meta.get("image_id")
-                receipt_id = meta.get("receipt_id")
-
-                # Dedupe
-                key = (image_id, receipt_id, text)
-                if key in seen:
-                    continue
-                seen.add(key)
-
-                # Check if this line has a LINE_TOTAL label (from ML model)
-                has_line_total = meta.get("label_LINE_TOTAL", False)
-
-                price = extract_price(text)
-
-                items.append(
-                    {
-                        "text": text,
-                        "price": price,
-                        "has_price_label": has_line_total,
-                        "merchant": meta.get("merchant_name", "Unknown"),
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                    }
-                )
-
-            # Sort by price descending (items with prices first)
-            items.sort(key=lambda x: (x["price"] is None, -(x["price"] or 0)))
-
-            # Limit results
-            items = items[:limit]
-
-            # Calculate total for items that have prices
-            total = sum(
-                item["price"] for item in items if item["price"] is not None
-            )
-
-            return {
-                "query": query,
-                "search_type": "text",
-                "total_matches": len(results["ids"]),
-                "unique_items": len(items),
-                "items": items,
-                "raw_total": round(total, 2),
-                "note": "Review items and exclude false positives (e.g., 'MILK CHOCOLATE' when searching for milk) before reporting final total.",
-            }
+        return _mode_unavailable(search_type, query)
 
     except Exception as e:
         logger.exception("Error searching product lines")
@@ -3054,7 +3016,7 @@ async def get_receipt_summaries_impl(
             try:
                 start_dt = datetime.fromisoformat(
                     start_date.replace("Z", "+00:00")
-                )
+                ).date()
             except ValueError:
                 return {
                     "error": f"Invalid start_date format: '{start_date}'. Use ISO format (e.g., 2024-01-15)."
@@ -3063,11 +3025,14 @@ async def get_receipt_summaries_impl(
             try:
                 end_dt = datetime.fromisoformat(
                     end_date.replace("Z", "+00:00")
-                )
+                ).date()
             except ValueError:
                 return {
                     "error": f"Invalid end_date format: '{end_date}'. Use ISO format (e.g., 2024-01-15)."
                 }
+
+        if start_dt and end_dt and start_dt > end_dt:
+            return {"error": "start_date must be on or before end_date"}
 
         # Load all summaries from DynamoDB (pre-computed)
         all_summaries = []
@@ -3127,12 +3092,15 @@ async def get_receipt_summaries_impl(
                 if not category_match:
                     continue
 
-            # Date filter
-            if start_dt and record.date:
-                if record.date < start_dt:
+            # Date filters use the receipt's calendar date, inclusively.
+            # Unknown dates cannot establish membership in a requested range.
+            if start_dt or end_dt:
+                if record.date is None:
                     continue
-            if end_dt and record.date:
-                if record.date > end_dt:
+                receipt_date = record.date.date()
+                if start_dt and receipt_date < start_dt:
+                    continue
+                if end_dt and receipt_date > end_dt:
                     continue
 
             # Build output dict with category info
@@ -3325,262 +3293,84 @@ async def list_words_by_label_impl(
 
 
 async def validate_word_similarity_impl(
-    chroma_client,
     image_id: str,
     receipt_id: int,
     line_id: int,
     word_id: int,
     label: str,
 ) -> dict:
-    """Validate a word's label using ChromaDB similarity search."""
-    from receipt_dynamo.constants import CORE_LABELS
+    """Deprecated: point callers at similar_labeled_words.
 
-    MIN_SIMILARITY = 0.80
-    MIN_MATCHES = 3
-    CONSENSUS_THRESHOLD = 0.80
+    The old implementation filtered the words collection on label_{NAME}
+    metadata keys the embedding writer never wrote (see the read-path
+    inventory), so both polarity queries matched zero records and every
+    call returned empty evidence with confidence 0.0. Rather than keep
+    returning silently-empty results, answer with a deprecation pointer
+    to the working search-then-join replacement.
+    """
+    return {
+        "deprecated": True,
+        "error_type": "deprecated_tool",
+        "replacement": "similar_labeled_words",
+        "message": (
+            "validate_word_similarity is retired: its label_{X} metadata "
+            "filters matched zero records (the words index never carried "
+            "those keys), so it always returned empty evidence. Call "
+            "similar_labeled_words with the same ids plus the candidate "
+            "label for working similarity evidence."
+        ),
+        "word": {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "line_id": line_id,
+            "word_id": word_id,
+            "label": label,
+        },
+    }
+
+
+async def similar_labeled_words_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    line_id: int,
+    word_id: int,
+    label: str,
+    vector_client=None,
+) -> dict:
+    """Search-then-join similarity evidence for a candidate word label.
+
+    Reads the word's stored vector (GetItem; no OpenAI call), searches
+    validated word embeddings, joins the neighbors' ReceiptWordLabel
+    rows, and returns evidence for/against with each neighbor's
+    reasoning and provenance (spec section 3.7). Degrades to structured
+    answers on a missing vector or backend failure.
+    """
+    # Imported lazily so the server stays importable without the
+    # embeddings stack (tests stub only what a test exercises).
+    from receipt_embeddings.label_consensus import similar_labeled_words
 
     try:
-        # Build the word's ChromaDB ID
-        chroma_id = (
-            f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
-            f"#LINE#{line_id:05d}#WORD#{word_id:05d}"
+        if vector_client is None:
+            vector_client = get_vector_search_client()
+        target_merchant = None
+        try:
+            place = dynamo_client.get_receipt_place(image_id, receipt_id)
+            target_merchant = getattr(place, "merchant_name", None)
+        except Exception:  # noqa: BLE001 - merchant boost is optional
+            target_merchant = None
+        return similar_labeled_words(
+            vector_client,
+            dynamo_client.get_receipt_word_labels,
+            image_id=image_id,
+            receipt_id=receipt_id,
+            line_id=line_id,
+            word_id=word_id,
+            label=label,
+            target_merchant=target_merchant,
         )
-
-        # Get the word's embedding from Chroma
-        words_collection = chroma_client.get_collection("words")
-        result = words_collection.get(
-            ids=[chroma_id],
-            include=["embeddings", "metadatas"],
-        )
-
-        if not result["ids"]:
-            return {"error": f"Word not found in Chroma: {chroma_id}"}
-
-        embeddings = result.get("embeddings")
-        if embeddings is None or len(embeddings) == 0:
-            return {"error": "Word has no embedding"}
-
-        embedding = embeddings[0]
-        if hasattr(embedding, "tolist"):
-            embedding = embedding.tolist()
-
-        word_meta = result["metadatas"][0] if result["metadatas"] else {}
-        word_text = word_meta.get("text", "")
-        merchant_name = word_meta.get("merchant_name", "")
-
-        # Distance to similarity conversion (L2)
-        def dist_to_sim(distance: float) -> float:
-            return max(0.0, 1.0 - (distance / 2.0))
-
-        # Query for positive evidence (validated words WITH this label)
-        label_field = f"label_{label}"
-
-        positive_results = words_collection.query(
-            query_embeddings=[embedding],
-            n_results=10,
-            where={
-                "$and": [
-                    {"label_status": "validated"},
-                    {label_field: True},
-                ]
-            },
-            include=["metadatas", "distances"],
-        )
-
-        # Query for negative evidence (validated words WITHOUT this label)
-        negative_results = words_collection.query(
-            query_embeddings=[embedding],
-            n_results=10,
-            where={
-                "$and": [
-                    {"label_status": "validated"},
-                    {label_field: False},
-                ]
-            },
-            include=["metadatas", "distances"],
-        )
-
-        # Process results
-        evidence_for = []
-        evidence_against = []
-
-        for metas, dists in [
-            (
-                positive_results.get("metadatas", [[]]),
-                positive_results.get("distances", [[]]),
-            )
-        ]:
-            for meta, dist in zip(
-                metas[0] if metas else [], dists[0] if dists else []
-            ):
-                sim = dist_to_sim(dist)
-                if sim < MIN_SIMILARITY:
-                    continue
-                # Skip self
-                rid = f"IMAGE#{meta.get('image_id', '')}#RECEIPT#{meta.get('receipt_id', 0):05d}#LINE#{meta.get('line_id', 0):05d}#WORD#{meta.get('word_id', 0):05d}"
-                if rid == chroma_id:
-                    continue
-                evidence_for.append(
-                    {
-                        "text": meta.get("text", ""),
-                        "similarity": round(sim, 3),
-                        "merchant": meta.get("merchant_name", ""),
-                        "same_merchant": meta.get("merchant_name", "")
-                        == merchant_name,
-                    }
-                )
-
-        for metas, dists in [
-            (
-                negative_results.get("metadatas", [[]]),
-                negative_results.get("distances", [[]]),
-            )
-        ]:
-            for meta, dist in zip(
-                metas[0] if metas else [], dists[0] if dists else []
-            ):
-                sim = dist_to_sim(dist)
-                if sim < MIN_SIMILARITY:
-                    continue
-                rid = f"IMAGE#{meta.get('image_id', '')}#RECEIPT#{meta.get('receipt_id', 0):05d}#LINE#{meta.get('line_id', 0):05d}#WORD#{meta.get('word_id', 0):05d}"
-                if rid == chroma_id:
-                    continue
-                evidence_against.append(
-                    {
-                        "text": meta.get("text", ""),
-                        "similarity": round(sim, 3),
-                        "merchant": meta.get("merchant_name", ""),
-                        "same_merchant": meta.get("merchant_name", "")
-                        == merchant_name,
-                    }
-                )
-
-        total_matches = len(evidence_for) + len(evidence_against)
-
-        if total_matches == 0:
-            return {
-                "word_text": word_text,
-                "label": label,
-                "recommended_status": "PENDING",
-                "confidence": 0.0,
-                "reason": f"No similar validated words found for {label}",
-                "evidence_for": [],
-                "evidence_against": [],
-                "suggested_labels": [],
-            }
-
-        if total_matches < MIN_MATCHES:
-            return {
-                "word_text": word_text,
-                "label": label,
-                "recommended_status": "PENDING",
-                "confidence": 0.0,
-                "reason": f"Only {total_matches} matches (need {MIN_MATCHES})",
-                "evidence_for": evidence_for,
-                "evidence_against": evidence_against,
-                "suggested_labels": [],
-            }
-
-        # Weighted consensus voting
-        SAME_MERCHANT_BOOST = 0.10
-        votes_for = 0.0
-        votes_against = 0.0
-
-        for ev in evidence_for:
-            weight = ev["similarity"]
-            if ev["same_merchant"]:
-                weight = min(1.0, weight + SAME_MERCHANT_BOOST)
-            votes_for += weight
-
-        for ev in evidence_against:
-            weight = ev["similarity"]
-            if ev["same_merchant"]:
-                weight = min(1.0, weight + SAME_MERCHANT_BOOST)
-            votes_against += weight
-
-        total_votes = votes_for + votes_against
-        confidence = votes_for / total_votes if total_votes > 0 else 0.0
-
-        # Map to ValidationStatus enum values (VALID, INVALID, NEEDS_REVIEW, PENDING)
-        if confidence >= CONSENSUS_THRESHOLD:
-            recommended_status = "VALID"
-            reason = f"{confidence:.0%} of similar words validated as {label}"
-        elif confidence <= (1.0 - CONSENSUS_THRESHOLD):
-            recommended_status = "INVALID"
-            reason = (
-                f"{1.0 - confidence:.0%} of similar words rejected {label}"
-            )
-        else:
-            recommended_status = "NEEDS_REVIEW"
-            reason = f"Mixed evidence: {confidence:.0%} for, {1.0 - confidence:.0%} against"
-
-        # Find suggested labels if invalid or uncertain
-        suggested_labels = []
-        if recommended_status in ("INVALID", "NEEDS_REVIEW"):
-            for candidate_label in CORE_LABELS:
-                if candidate_label == label:
-                    continue
-                try:
-                    cand_field = f"label_{candidate_label}"
-                    cand_results = words_collection.query(
-                        query_embeddings=[embedding],
-                        n_results=10,
-                        where={
-                            "$and": [
-                                {"label_status": "validated"},
-                                {cand_field: True},
-                            ]
-                        },
-                        include=["distances"],
-                    )
-                    cand_dists = (
-                        cand_results.get("distances", [[]])[0]
-                        if cand_results.get("distances")
-                        else []
-                    )
-                    cand_sims = [
-                        dist_to_sim(d)
-                        for d in cand_dists
-                        if dist_to_sim(d) >= MIN_SIMILARITY
-                    ]
-                    if cand_sims:
-                        avg_sim = sum(cand_sims) / len(cand_sims)
-                        score = len(cand_sims) * avg_sim
-                        suggested_labels.append(
-                            {
-                                "label": candidate_label,
-                                "match_count": len(cand_sims),
-                                "avg_similarity": round(avg_sim, 3),
-                                "score": round(score, 3),
-                            }
-                        )
-                except Exception as e:
-                    logger.warning(
-                        "Error querying label %s (%s): %s",
-                        candidate_label,
-                        cand_field,
-                        e,
-                    )
-                    continue
-
-            suggested_labels.sort(key=lambda x: x["score"], reverse=True)
-            suggested_labels = suggested_labels[:5]
-
-        return {
-            "word_text": word_text,
-            "label": label,
-            "recommended_status": recommended_status,
-            "confidence": round(confidence, 3),
-            "reason": reason,
-            "votes_for": round(votes_for, 3),
-            "votes_against": round(votes_against, 3),
-            "evidence_for": evidence_for,
-            "evidence_against": evidence_against,
-            "suggested_labels": suggested_labels,
-        }
-
     except Exception as e:
-        logger.exception("Error validating word similarity")
+        logger.exception("Error collecting similar labeled words")
         return {"error": str(e)}
 
 
@@ -3943,20 +3733,616 @@ async def _invoke_lambda(function_name: str, payload: dict) -> dict:
     return response_payload
 
 
+# ---------------------------------------------------------------------------
+# Local place fixing (no Lambda). The old fix-place Lambda wrapped its own
+# LLM agent; since the MCP caller is already an LLM with the receipt in
+# context, these tools just supply data (Places search) and a write
+# primitive, and hand ambiguous decisions back to the caller.
+# ---------------------------------------------------------------------------
+
+_places_client = None
+
+
+def _get_places_client():
+    """Lazily construct a Google Places client from the environment."""
+    global _places_client
+    if _places_client is None:
+        api_key = os.environ.get(
+            "GOOGLE_PLACES_API_KEY"
+        ) or _load_config().get("google_places_api_key")
+        if not api_key:
+            raise RuntimeError(
+                "GOOGLE_PLACES_API_KEY is not set in the MCP server "
+                "environment. Add it to the receipt-tools entry in "
+                "~/.claude.json (value: "
+                "`pulumi config get portfolio:GOOGLE_PLACES_API_KEY`)."
+            )
+        from receipt_places import PlacesClient, PlacesConfig
+
+        # Point the Places cache at the same receipts table this server
+        # uses (PlacesConfig defaults to a nonexistent "receipts" table).
+        config = _load_config()
+        _places_client = PlacesClient(
+            config=PlacesConfig(
+                api_key=api_key,
+                table_name=config["dynamodb_table_name"],
+            )
+        )
+    return _places_client
+
+
+def _digits(value: str | None) -> str:
+    return "".join(c for c in (value or "") if c.isdigit())
+
+
+def _place_to_candidate(place, source: str) -> dict:
+    return {
+        "source": source,
+        "place_id": place.place_id,
+        "name": place.name,
+        "formatted_address": place.formatted_address,
+        "phone_number": place.formatted_phone_number,
+        "types": (place.types or [])[:5],
+        "business_status": place.business_status,
+    }
+
+
+def _search_place_candidates(
+    query: str | None = None,
+    phone: str | None = None,
+    address: str | None = None,
+) -> list[dict]:
+    """Run the available Places searches and return deduplicated candidates."""
+    places = _get_places_client()
+    candidates: list[dict] = []
+    seen: set[str] = set()
+
+    searches = []
+    if phone and len(_digits(phone)) >= 10:
+        searches.append(("phone", lambda: places.search_by_phone(phone)))
+    if address:
+        searches.append(("address", lambda: places.search_by_address(address)))
+    if query:
+        searches.append(("text", lambda: places.search_by_text(query)))
+
+    for source, run in searches:
+        try:
+            place = run()
+        except Exception:
+            logger.exception("Places %s search failed", source)
+            continue
+        if place and place.place_id and place.place_id not in seen:
+            seen.add(place.place_id)
+            candidates.append(_place_to_candidate(place, source))
+    return candidates
+
+
+def _collect_receipt_hints(
+    dynamo_client, image_id: str, receipt_id: int
+) -> dict:
+    """Pull merchant/address/phone hints from the receipt's labeled words."""
+    words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
+    text_by_key = {(w.line_id, w.word_id): w.text for w in words}
+
+    labels = []
+    last_key = None
+    while True:
+        page, last_key = dynamo_client.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id, last_evaluated_key=last_key
+        )
+        labels.extend(page)
+        if last_key is None:
+            break
+
+    hints: dict[str, list[tuple[tuple[int, int], str]]] = {
+        "MERCHANT_NAME": [],
+        "ADDRESS_LINE": [],
+        "PHONE_NUMBER": [],
+    }
+    for label in labels:
+        if label.label in hints and label.validation_status != "INVALID":
+            key = (label.line_id, label.word_id)
+            text = text_by_key.get(key)
+            if text:
+                hints[label.label].append((key, text))
+
+    def joined(name: str) -> str:
+        return " ".join(t for _, t in sorted(hints[name]))
+
+    # Phones: group per line and keep only plausible numbers (10-11 digits,
+    # not a run of a single repeated digit - LayoutLM sometimes labels EMV
+    # fields like "TVR: 0000000000" as PHONE_NUMBER).
+    phone_by_line: dict[int, list[tuple[tuple[int, int], str]]] = {}
+    for key, text in hints["PHONE_NUMBER"]:
+        phone_by_line.setdefault(key[0], []).append((key, text))
+    phones = []
+    for line_id in sorted(phone_by_line):
+        candidate = " ".join(t for _, t in sorted(phone_by_line[line_id]))
+        digits = _digits(candidate)
+        if 10 <= len(digits) <= 11 and len(set(digits)) > 2:
+            phones.append(candidate)
+
+    # Fragments for matching: labeled phone text often misses the area
+    # code ("433-6773"), which still suffix-matches a candidate's number.
+    fragments = []
+    for line_id in sorted(phone_by_line):
+        digits = _digits(
+            " ".join(t for _, t in sorted(phone_by_line[line_id]))
+        )
+        if len(digits) >= 7 and len(set(digits)) > 2:
+            fragments.append(digits[-10:])
+
+    return {
+        "merchant": joined("MERCHANT_NAME"),
+        "address": joined("ADDRESS_LINE"),
+        "phone": phones[0] if phones else "",
+        "phones": phones,
+        "phone_fragments": fragments,
+    }
+
+
+async def find_places_impl(
+    query: str | None = None,
+    phone: str | None = None,
+    address: str | None = None,
+) -> dict:
+    """Search Google Places directly and return candidates."""
+    try:
+        if not any([query, phone, address]):
+            return {"error": "Provide at least one of query, phone, address"}
+        candidates = await asyncio.to_thread(
+            _search_place_candidates, query, phone, address
+        )
+        return {"candidates": candidates, "count": len(candidates)}
+    except Exception as e:
+        logger.exception("Error searching places")
+        return {"error": str(e)}
+
+
+async def set_receipt_place_impl(
+    dynamo_client,
+    image_id: str,
+    receipt_id: int,
+    merchant_name: str,
+    place_id: str | None = None,
+    formatted_address: str | None = None,
+    phone_number: str | None = None,
+    reasoning: str | None = None,
+    validated_by: str = "INFERENCE",
+    confidence: float = 1.0,
+    validation_status: str = "MATCHED",
+    matched_fields: list[str] | None = None,
+) -> dict:
+    """Write the ReceiptPlace (and denormalized summary merchant) directly.
+
+    validated_by must be a ValidationMethod value (PHONE_LOOKUP,
+    ADDRESS_LOOKUP, NEARBY_LOOKUP, TEXT_SEARCH, INFERENCE); agent/manual
+    decisions record as INFERENCE."""
+    try:
+        from datetime import datetime, timezone
+
+        from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+        from receipt_dynamo.entities.receipt_place import ReceiptPlace
+
+        # Friendly input validation (the entity revalidates at
+        # serialization time via to_item/__post_init__, but these produce
+        # clear errors instead of stack traces).
+        if not (merchant_name or "").strip():
+            return {"error": "merchant_name cannot be empty"}
+        if not 0.0 <= float(confidence) <= 1.0:
+            return {"error": "confidence must be between 0.0 and 1.0"}
+        if validation_status not in ("MATCHED", "UNSURE", "NO_MATCH"):
+            return {
+                "error": (
+                    "validation_status must be MATCHED, UNSURE, or NO_MATCH"
+                )
+            }
+
+        def _write():
+            # Refuse writes for nonexistent receipts: a typo'd id would
+            # otherwise create a durable orphan PLACE row (nothing cleans
+            # those up - the summary tombstone guard only covers
+            # summaries).
+            dynamo_client.get_receipt(image_id, receipt_id)
+
+            before = None
+            try:
+                place = dynamo_client.get_receipt_place(image_id, receipt_id)
+                before = {
+                    "merchant_name": place.merchant_name,
+                    "place_id": place.place_id,
+                }
+                merchant_changed = (
+                    merchant_name.strip().lower()
+                    != (place.merchant_name or "").strip().lower()
+                )
+                identity_changed = (
+                    place_id is not None and place_id != place.place_id
+                ) or (place_id is None and merchant_changed)
+                if identity_changed:
+                    # The business itself changed: clear place-derived
+                    # metadata so stale category/coords/hours from the
+                    # wrong business don't survive the correction.
+                    place.merchant_category = ""
+                    place.merchant_types = []
+                    place.formatted_address = ""
+                    place.short_address = ""
+                    place.address_components = {}
+                    place.latitude = None
+                    place.longitude = None
+                    place.viewport_ne_lat = None
+                    place.viewport_ne_lng = None
+                    place.viewport_sw_lat = None
+                    place.viewport_sw_lng = None
+                    place.plus_code = ""
+                    place.phone_number = ""
+                    place.phone_intl = ""
+                    place.website = ""
+                    place.maps_url = ""
+                    place.business_status = ""
+                    place.open_now = None
+                    place.hours_summary = []
+                    place.hours_data = {}
+                    place.photo_references = []
+                    place.matched_fields = []
+                    place.confidence = 0.0
+                    if place_id is None:
+                        # merchant replaced with no new Google identity:
+                        # drop the stale place_id rather than keep the
+                        # wrong business's ID attached
+                        place.place_id = ""
+                place.merchant_name = merchant_name
+                if place_id is not None:
+                    place.place_id = place_id
+                if formatted_address is not None:
+                    place.formatted_address = formatted_address
+                if phone_number is not None:
+                    place.phone_number = phone_number
+                place.validated_by = validated_by
+                place.confidence = confidence
+                place.validation_status = validation_status
+                place.matched_fields = list(matched_fields or [])
+                if reasoning:
+                    place.reasoning = reasoning
+                # get_best_receipt_place breaks ties by recency when
+                # combining fragments; a correction must win over older
+                # wrong records.
+                place.timestamp = datetime.now(timezone.utc)
+                dynamo_client.update_receipt_place(place)
+            except EntityNotFoundError:
+                place = ReceiptPlace(
+                    image_id=image_id,
+                    receipt_id=receipt_id,
+                    place_id=place_id or "",
+                    merchant_name=merchant_name,
+                    formatted_address=formatted_address or "",
+                    phone_number=phone_number or "",
+                    validated_by=validated_by,
+                    reasoning=reasoning or "",
+                    confidence=confidence,
+                    validation_status=validation_status,
+                    matched_fields=list(matched_fields or []),
+                )
+                dynamo_client.add_receipt_place(place)
+
+            # Keep the denormalized summary merchant in sync (the milk
+            # table and other summary-driven views read it). The summary
+            # entity is read-only, so patch the row directly; a missing
+            # row is fine - the stream recomputes it from the place.
+            import boto3
+            import botocore.exceptions
+
+            table = boto3.resource("dynamodb").Table(dynamo_client.table_name)
+            try:
+                table.update_item(
+                    Key={
+                        "PK": f"IMAGE#{image_id}",
+                        "SK": f"RECEIPT#{receipt_id:05d}#SUMMARY",
+                    },
+                    UpdateExpression="SET merchant_name = :m",
+                    ConditionExpression="attribute_exists(PK)",
+                    ExpressionAttributeValues={":m": merchant_name},
+                )
+                summary_updated = True
+            except botocore.exceptions.ClientError as ce:
+                if (
+                    ce.response["Error"]["Code"]
+                    != "ConditionalCheckFailedException"
+                ):
+                    raise
+                summary_updated = False
+            return before, summary_updated
+
+        try:
+            before, summary_updated = await asyncio.to_thread(_write)
+        except EntityNotFoundError:
+            return {
+                "error": (
+                    f"Receipt {receipt_id} on image {image_id} does not "
+                    "exist; refusing to create an orphan place row"
+                )
+            }
+        return {
+            "success": True,
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "before": before,
+            "after": {"merchant_name": merchant_name, "place_id": place_id},
+            "summary_updated": summary_updated,
+        }
+    except Exception as e:
+        logger.exception("Error setting receipt place")
+        return {"error": str(e)}
+
+
 async def fix_place_impl(
+    dynamo_client,
     image_id: str,
     receipt_id: int,
     reason: str,
 ) -> dict:
-    """Invoke the fix-place Lambda to correct a receipt's merchant/place."""
+    """Fix a receipt's place locally: extract hints, search Places, and
+    either apply an unambiguous match or return candidates for the
+    calling agent to decide (then call set_receipt_place)."""
     try:
-        env = os.environ.get("PORTFOLIO_ENV", "dev")
-        return await _invoke_lambda(
-            f"fix-place-{env}-fix-place",
-            {"image_id": image_id, "receipt_id": receipt_id, "reason": reason},
+        hints = await asyncio.to_thread(
+            _collect_receipt_hints, dynamo_client, image_id, receipt_id
         )
+        current = None
+        try:
+            place = await asyncio.to_thread(
+                dynamo_client.get_receipt_place, image_id, receipt_id
+            )
+            current = {
+                "merchant_name": place.merchant_name,
+                "place_id": place.place_id,
+                "formatted_address": place.formatted_address,
+                "phone_number": place.phone_number,
+            }
+        except Exception:
+            pass
+
+        query = " ".join(v for v in (hints["merchant"], hints["address"]) if v)
+        candidates = await asyncio.to_thread(
+            _search_place_candidates,
+            query or None,
+            hints["phone"] or None,
+            hints["address"] or None,
+        )
+
+        # Text-search results omit phone numbers (field mask); enrich
+        # candidates from place details so phone matching can work.
+        def _enrich(cands):
+            places = _get_places_client()
+            for c in cands:
+                if c.get("phone_number") or not c.get("place_id"):
+                    continue
+                try:
+                    details = places.get_place_details(c["place_id"])
+                except Exception:
+                    continue
+                if details:
+                    c["phone_number"] = details.formatted_phone_number
+                    c["formatted_address"] = (
+                        c.get("formatted_address") or details.formatted_address
+                    )
+            return cands
+
+        candidates = await asyncio.to_thread(_enrich, candidates)
+
+        # An unambiguous match: the receipt's phone digits equal the
+        # candidate's, or the receipt's street number appears in the
+        # candidate address. Apply it directly.
+        def _usable(c):
+            # Mirrors receipt_agent place_finder tiered._place_is_usable:
+            # reject "places" that are really just addresses - the class
+            # of Places result that caused address-as-merchant records.
+            if not c.get("place_id") or not c.get("name"):
+                return False
+            types = {str(t).lower() for t in (c.get("types") or [])}
+            address_types = {"premise", "street_address", "subpremise"}
+            business_types = {"establishment", "point_of_interest"}
+            return not (types & address_types and not types & business_types)
+
+        def _tokens(value):
+            return {
+                t
+                for t in re.sub(
+                    r"[^a-z0-9 ]", " ", (value or "").lower()
+                ).split()
+                if len(t) >= 3
+            }
+
+        merchant_tokens = _tokens(hints["merchant"])
+
+        def _names_agree(candidate_name):
+            # Meaningful agreement, not a single shared token: the overlap
+            # must cover most of the shorter name ("Trader Joe's" vs
+            # "Joe's Seafood" shares only "joe" and must NOT pass).
+            cand_tokens = _tokens(candidate_name)
+            if not merchant_tokens or not cand_tokens:
+                return False
+            overlap = len(merchant_tokens & cand_tokens)
+            shorter = min(len(merchant_tokens), len(cand_tokens))
+            if overlap / shorter < 0.6:
+                return False
+            # A single generic token ("Market") is not agreement: with a
+            # one-token hint, require the candidate name to be that
+            # token exactly.
+            if len(merchant_tokens) == 1:
+                return cand_tokens == merchant_tokens
+            return True
+
+        def _street_number(address):
+            # First plausible house number anywhere in the hint: stray
+            # city/header words can precede the street line in
+            # ADDRESS_LINE labels.
+            for token in (address or "").split():
+                t = token.strip(".,#")
+                if t.isdigit() and 1 <= len(t) <= 6:
+                    return t
+            return ""
+
+        _US_STATES = {
+            "AL",
+            "AK",
+            "AZ",
+            "AR",
+            "CA",
+            "CO",
+            "CT",
+            "DE",
+            "FL",
+            "GA",
+            "HI",
+            "ID",
+            "IL",
+            "IN",
+            "IA",
+            "KS",
+            "KY",
+            "LA",
+            "ME",
+            "MD",
+            "MA",
+            "MI",
+            "MN",
+            "MS",
+            "MO",
+            "MT",
+            "NE",
+            "NV",
+            "NH",
+            "NJ",
+            "NM",
+            "NY",
+            "NC",
+            "ND",
+            "OH",
+            "OK",
+            "OR",
+            "PA",
+            "RI",
+            "SC",
+            "SD",
+            "TN",
+            "TX",
+            "UT",
+            "VT",
+            "VA",
+            "WA",
+            "WV",
+            "WI",
+            "WY",
+            "DC",
+        }
+
+        def _state(address):
+            tokens = re.sub(
+                r"[^A-Za-z ]", " ", (address or "").upper()
+            ).split()
+            for t in reversed(tokens):
+                if t in _US_STATES:
+                    return t
+            return ""
+
+        fragments = hints.get("phone_fragments", [])
+        receipt_street = _street_number(hints["address"])
+        receipt_state = _state(hints["address"])
+        strong = []
+        for c in candidates:
+            # Auto-apply is deliberately strict (mirrors the tiered
+            # resolver's invariants): usable business listing, meaningful
+            # merchant-name agreement, at least one exact corroboration
+            # (phone or street number), and NO active clue conflict -
+            # a chain's corporate phone can match while the address
+            # identifies a different location.
+            if not _usable(c):
+                continue
+            if not _names_agree(c.get("name")):
+                continue
+            cand_phone = _digits(c.get("phone_number"))[-10:]
+            phone_match = bool(cand_phone) and any(
+                cand_phone.endswith(f) or f.endswith(cand_phone)
+                for f in fragments
+            )
+            phone_conflict = (
+                bool(cand_phone) and bool(fragments) and not phone_match
+            )
+            cand_street = _street_number(c.get("formatted_address"))
+            addr_match = (
+                bool(receipt_street)
+                and bool(cand_street)
+                and receipt_street == cand_street
+            )
+            addr_conflict = (
+                bool(receipt_street)
+                and bool(cand_street)
+                and receipt_street != cand_street
+            )
+            cand_state = _state(c.get("formatted_address"))
+            state_conflict = (
+                bool(receipt_state)
+                and bool(cand_state)
+                and receipt_state != cand_state
+            )
+            if phone_conflict or addr_conflict or state_conflict:
+                continue
+            if phone_match or addr_match:
+                strong.append((c, phone_match, addr_match))
+
+        if len(strong) == 1:
+            c, phone_match, addr_match = strong[0]
+            result = await set_receipt_place_impl(
+                dynamo_client,
+                image_id,
+                receipt_id,
+                merchant_name=c["name"],
+                place_id=c["place_id"],
+                formatted_address=c["formatted_address"],
+                phone_number=c["phone_number"],
+                reasoning=(
+                    f"{reason} | matched via "
+                    f"{'phone' if phone_match else 'street number'}"
+                ),
+                validated_by=(
+                    "PHONE_LOOKUP" if phone_match else "ADDRESS_LOOKUP"
+                ),
+                confidence=0.9 if phone_match else 0.85,
+                validation_status="MATCHED",
+                matched_fields=(["phone"] if phone_match else ["address"])
+                + ["merchant_name"],
+            )
+            if result.get("success"):
+                result["status"] = "fixed"
+                result["candidate"] = c
+                result["hints"] = hints
+                return result
+            return {
+                "status": "needs_decision",
+                "hints": hints,
+                "current": current,
+                "candidates": candidates,
+                "write_error": result.get("error"),
+                "next_step": (
+                    "Automatic apply failed; review candidates and call "
+                    "set_receipt_place directly."
+                ),
+            }
+
+        return {
+            "status": "needs_decision",
+            "hints": hints,
+            "current": current,
+            "candidates": candidates,
+            "next_step": (
+                "Review the candidates against the receipt content and call "
+                "set_receipt_place with the correct merchant_name/place_id "
+                "(or with receipt-derived values if none match)."
+            ),
+        }
     except Exception as e:
-        logger.exception("Error invoking fix-place Lambda")
+        logger.exception("Error fixing place locally")
         return {"error": str(e)}
 
 
@@ -4414,11 +4800,10 @@ async def delete_image_impl(
 async def delete_receipt_impl(
     dynamo_client, image_id: str, receipt_id: int, dry_run: bool = True
 ) -> dict:
-    """Delete a single receipt and its children, keeping the rest of the image.
+    """Delete a single receipt, keeping the rest of the image.
 
-    Only the Receipt entity is deleted here; the enhanced compactor removes the
-    ChromaDB embeddings and child records (lines, words, letters, labels, place)
-    asynchronously via DynamoDB streams.
+    Only the Receipt entity is deleted here; child records (lines, words,
+    letters, labels, place) and embedding items are not cascaded.
     """
     try:
         from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
@@ -4456,9 +4841,9 @@ async def delete_receipt_impl(
                 "dry_run": True,
                 "breakdown": breakdown,
                 "message": (
-                    "Deletes the Receipt entity; the compactor then removes "
-                    "ChromaDB embeddings and all child records via DynamoDB "
-                    "streams. Re-run with dry_run=false to delete."
+                    "Deletes the Receipt entity only; child records and "
+                    "embedding items are not cascaded. Re-run with "
+                    "dry_run=false to delete."
                 ),
             }
 
@@ -4482,9 +4867,9 @@ async def delete_receipt_impl(
             "deleted": True,
             "breakdown": breakdown,
             "message": (
-                "Receipt entity deleted. The enhanced compactor will remove "
-                "ChromaDB embeddings and child records (lines, words, letters, "
-                "labels, place) asynchronously via DynamoDB streams."
+                "Receipt entity deleted. Child records (lines, words, "
+                "letters, labels, place) and embedding items were not "
+                "cascaded."
             ),
         }
 
@@ -4865,12 +5250,24 @@ def _summary_baseline(record) -> tuple[dict, Optional[float]]:
 def _evaluate_items_zone(words: list[dict], summary: dict, line_ids) -> dict:
     """Run the real extractor over a line set and reconcile.
 
-    Discounts are excluded from the sum, matching the stream stage and
-    scripts/repair_item_sections.evaluate.
+    Uses ``evaluate_items_zone`` so discount-inclusion and unnamed-band
+    drops stay in lockstep with ingest.
     """
     from receipt_upload.line_items.geometry import evaluate_items_zone
 
     return evaluate_items_zone(words, summary, set(line_ids))
+
+
+def _reconcile_stored_items(items: list[dict], summary: Optional[dict]):
+    """Discount-aware sum for stored rows; same helper as ingest.
+
+    Deferred import matches ``_evaluate_items_zone``: this module loads
+    in tests with a stub ``mcp`` package before upload extras are
+    guaranteed at import time.
+    """
+    from receipt_upload.line_items.geometry import reconcile_extracted_items
+
+    return reconcile_extracted_items(items, summary)
 
 
 async def get_receipt_line_items_impl(
@@ -4920,18 +5317,29 @@ async def get_receipt_line_items_impl(
             }
             for li in line_items
         ]
-        # Discounts excluded from the sum, matching reconcile()'s callers
-        # (the stream stage and repair_item_sections.evaluate).
-        items_sum = round(
-            sum(float(li.price) for li in line_items if not li.is_discount),
-            2,
-        )
+        priced = [
+            {
+                "price": float(li.price),
+                "is_discount": bool(li.is_discount),
+            }
+            for li in line_items
+        ]
 
-        summary = None
+        figures = None
         baseline = None
+        summary = None
         if record is not None:
             figures, baseline = _summary_baseline(record)
             summary = {**figures, "merchant_name": record.merchant_name}
+        recon = _reconcile_stored_items(priced, figures)
+        items_sum = recon.item_sum
+        if items_sum is None:
+            items_sum = round(
+                sum(p["price"] for p in priced if not p["is_discount"]),
+                2,
+            )
+        if recon.baseline is not None:
+            baseline = recon.baseline
         delta = (
             round(items_sum - baseline, 2) if baseline is not None else None
         )
@@ -5230,13 +5638,17 @@ async def list_reconciliation_worklist_impl(
                     {
                         "merchant": None,
                         "items": 0,
-                        "items_sum": 0.0,
+                        "priced": [],
                         "statuses": set(),
                     },
                 )
                 bucket["items"] += 1
-                if not li.is_discount:
-                    bucket["items_sum"] += float(li.price)
+                bucket["priced"].append(
+                    {
+                        "price": float(li.price),
+                        "is_discount": bool(li.is_discount),
+                    }
+                )
                 if li.merchant_name and not bucket["merchant"]:
                     bucket["merchant"] = li.merchant_name
                 if li.reconciliation_status:
@@ -5266,23 +5678,36 @@ async def list_reconciliation_worklist_impl(
                     "receipt_id": rid,
                     "merchant": bucket["merchant"],
                     "items": bucket["items"],
-                    "items_sum": round(bucket["items_sum"], 2),
+                    "priced": bucket["priced"],
                 }
             )
 
         for i, cand in enumerate(candidates):
+            priced = cand.pop("priced")
+            excluded_sum = round(
+                sum(p["price"] for p in priced if not p["is_discount"]),
+                2,
+            )
+            figures = None
             baseline = None
             if i < max_summary_fetches:
                 try:
                     record = dynamo_client.get_receipt_summary(
                         cand["image_id"], cand["receipt_id"]
                     )
-                    _, baseline = _summary_baseline(record)
+                    figures, baseline = _summary_baseline(record)
                 except EntityNotFoundError:
-                    baseline = None
+                    figures, baseline = None, None
+            recon = _reconcile_stored_items(priced, figures)
+            items_sum = (
+                recon.item_sum if recon.item_sum is not None else excluded_sum
+            )
+            if recon.baseline is not None:
+                baseline = recon.baseline
+            cand["items_sum"] = items_sum
             cand["subtotal"] = baseline
             cand["delta"] = (
-                round(cand["items_sum"] - baseline, 2)
+                round(items_sum - baseline, 2)
                 if baseline is not None
                 else None
             )
@@ -5842,47 +6267,173 @@ async def get_active_model_impl(dynamo_client) -> dict:
         return {"error": str(e)}
 
 
+def coreml_bundle_reference(job) -> tuple[str, str]:
+    """Resolve a Job's immutable export identity without accessing services."""
+    from urllib.parse import urlparse
+
+    results = job.results or {}
+    if isinstance(results, str):
+        results = json.loads(results)
+    export_id = results.get("coreml_export_id")
+    uri = results.get("coreml_versioned_bundle_s3_uri")
+    if uri:
+        parsed = urlparse(uri)
+        match = re.fullmatch(
+            r"/coreml/versions/([A-Za-z0-9_-]+)/layoutlm-coreml-bundle\.zip",
+            parsed.path,
+        )
+        if parsed.scheme != "s3" or not parsed.netloc or not match:
+            raise ValueError("job has an invalid versioned CoreML bundle URI")
+        if export_id and export_id != match[1]:
+            raise ValueError("job CoreML export ID does not match bundle URI")
+        export_id = match[1]
+    if not export_id:
+        raise ValueError(
+            "job has no exported CoreML bundle; export before promoting"
+        )
+    if not isinstance(export_id, str) or not re.fullmatch(
+        r"[A-Za-z0-9_-]+", export_id
+    ):
+        raise ValueError("job has an invalid CoreML export ID")
+    return export_id, (
+        f"coreml/versions/{export_id}/layoutlm-coreml-bundle.zip"
+    )
+
+
 async def set_active_model_impl(
     dynamo_client,
     job_name: str,
+    training_bucket: str | None = None,
+    s3_client=None,
+    resolved_job=None,
 ) -> dict:
-    """Mark a training job as the active model for inference services."""
+    """Promote an exported bundle and align the active Job tag and S3 pointer.
+
+    Preflight the target bucket before changing tags. If publishing the pointer
+    fails, restore the previous tags and report any failed compensation. S3 and
+    DynamoDB cannot participate in one atomic transaction.
+    """
+    from datetime import datetime, timezone
+
+    import boto3
+    import botocore.exceptions
+
     try:
-        # Find the job
-        jobs, _ = dynamo_client.get_job_by_name(job_name)
-        if not jobs:
-            return {"error": f"No job found with name: {job_name}"}
-        job = jobs[0]
+        if resolved_job is not None:
+            # Reuse the Job just copied by the CLI. Both a name-index query
+            # and the client's default primary-key read may lag that write.
+            job = resolved_job
+            if job.name != job_name:
+                raise ValueError(
+                    "resolved job does not match the requested job name"
+                )
+        else:
+            jobs, _ = dynamo_client.get_job_by_name(job_name)
+            if not jobs:
+                return {
+                    "success": False,
+                    "error": f"No job found with name: {job_name}",
+                }
+            job = jobs[0]
+        export_id, bundle_key = coreml_bundle_reference(job)
+        training_bucket = training_bucket or _load_config().get(
+            "layoutlm_training_bucket"
+        )
+        if not training_bucket:
+            raise ValueError("layoutlm_training_bucket is not configured")
+        s3 = s3_client or boto3.client("s3")
+        head = s3.head_object(Bucket=training_bucket, Key=bundle_key)
+        # Capture the pointer's current ETag so the write below can be
+        # conditional. Two overlapping promotions would otherwise both read
+        # the same old_active, both flip tags, and race on active.json; the
+        # table could end with two active Jobs while workers load whichever
+        # pointer landed last. S3 is the arbiter: the loser's write fails
+        # with 412 and falls into the rollback path.
+        try:
+            prior_pointer_etag = s3.head_object(
+                Bucket=training_bucket, Key="coreml/active.json"
+            )["ETag"]
+        except botocore.exceptions.ClientError as e:
+            if e.response.get("Error", {}).get("Code") not in (
+                "404",
+                "NoSuchKey",
+                "NotFound",
+            ):
+                raise
+            prior_pointer_etag = None
+        pointer = {
+            "schema_version": 1,
+            "export_id": export_id,
+            "training_job_id": job.job_id,
+            "training_job_name": job.name,
+            "bundle_key": bundle_key,
+            "bundle_etag": head["ETag"],
+            "bundle_size_bytes": head["ContentLength"],
+            "promoted_at": datetime.now(timezone.utc).isoformat(),
+            "promoted_by": "set_active_model",
+        }
+        if not pointer["bundle_etag"] or pointer["bundle_size_bytes"] <= 0:
+            raise ValueError("exported CoreML bundle is empty or has no ETag")
 
-        # Clear old active model tag
         old_active = dynamo_client.get_active_model_job()
-        if old_active:
-            old_active.tags = {
-                k: v
-                for k, v in (old_active.tags or {}).items()
-                if k != "active_model"
-            }
-            dynamo_client.update_job(old_active)
+        originals = [(job, dict(job.tags or {}))]
+        if old_active and old_active.job_id != job.job_id:
+            originals.insert(0, (old_active, dict(old_active.tags or {})))
+        try:
+            if len(originals) == 2:
+                old_active.tags = {
+                    k: v
+                    for k, v in (old_active.tags or {}).items()
+                    if k != "active_model"
+                }
+                dynamo_client.update_job(old_active)
+            job.tags = {**(job.tags or {}), "active_model": "true"}
+            dynamo_client.update_job(job)
+            # Conditional on the ETag read during preflight (or on absence):
+            # a concurrent promotion that landed in between makes this raise
+            # PreconditionFailed, which the except below turns into a tag
+            # rollback instead of a split-brain pointer.
+            write_condition = (
+                {"IfMatch": prior_pointer_etag}
+                if prior_pointer_etag
+                else {"IfNoneMatch": "*"}
+            )
+            s3.put_object(
+                Bucket=training_bucket,
+                Key="coreml/active.json",
+                Body=json.dumps(pointer).encode("utf-8"),
+                ContentType="application/json",
+                CacheControl="no-cache",
+                **write_condition,
+            )
+        except Exception as error:
+            rollback_errors = []
+            for original, tags in reversed(originals):
+                original.tags = tags
+                try:
+                    dynamo_client.update_job(original)
+                except Exception as rollback_error:
+                    rollback_errors.append(str(rollback_error))
+            if rollback_errors:
+                raise RuntimeError(
+                    f"{error}; tag rollback failed: {rollback_errors}"
+                ) from error
+            raise
 
-        # Set new active model
-        job.tags = {**(job.tags or {}), "active_model": "true"}
-        dynamo_client.update_job(job)
-
-        r = job.results or {}
-        if isinstance(r, str):
-            r = json.loads(r)
-
+        results = job.results or {}
+        if isinstance(results, str):
+            results = json.loads(results)
         return {
             "success": True,
             "name": job.name,
             "job_id": job.job_id,
-            "best_f1": r.get("best_f1"),
+            "best_f1": results.get("best_f1"),
+            "pointer": pointer,
             "message": f"Set {job.name} as the active model",
         }
-
-    except Exception as e:
+    except Exception as error:
         logger.exception("Error setting active model")
-        return {"error": str(e)}
+        return {"success": False, "error": str(error)}
 
 
 async def get_label_distribution_impl(dynamo_client) -> dict:
@@ -5944,23 +6495,11 @@ async def main():
     """Run the MCP server."""
     logger.info("Starting Receipt MCP Server...")
 
-    # Pre-initialize clients (Chroma is optional: Dynamo-only is fine)
+    # Pre-initialize the DynamoDB client (embeddings are built lazily)
     try:
         get_dynamo_client()
     except Exception as e:
         logger.error("Failed to initialize DynamoDB client: %s", e)
-        # Continue anyway - will retry on first tool call
-    try:
-        get_chroma_clients()
-    except ChromaNotConfiguredError as e:
-        logger.warning(
-            "%s Chroma-backed tools (%s) are disabled; Dynamo-backed "
-            "tools remain available.",
-            e,
-            ", ".join(sorted(CHROMA_TOOLS)),
-        )
-    except Exception as e:
-        logger.error("Failed to initialize Chroma clients: %s", e)
         # Continue anyway - will retry on first tool call
 
     async with stdio_server() as (read_stream, write_stream):

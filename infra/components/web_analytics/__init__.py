@@ -97,9 +97,7 @@ class WebAnalytics(ComponentResource):
         child = ResourceOptions(parent=self)
 
         bucket_name = Output.from_input(cloudfront_logs_bucket)
-        logs_location = bucket_name.apply(
-            lambda b: f"s3://{b}/{log_prefix}"
-        )
+        logs_location = bucket_name.apply(lambda b: f"s3://{b}/{log_prefix}")
 
         # --- Athena results bucket (short-lived query output) ---
         self.results_bucket = aws.s3.Bucket(
@@ -125,9 +123,7 @@ class WebAnalytics(ComponentResource):
                     filter=aws.s3.BucketLifecycleConfigurationRuleFilterArgs(
                         prefix=""
                     ),
-                    expiration=_LifecycleExpiry(
-                        days=results_expiration_days
-                    ),
+                    expiration=_LifecycleExpiry(days=results_expiration_days),
                 )
             ],
             opts=ResourceOptions(parent=self.results_bucket),
@@ -307,7 +303,7 @@ class WebAnalytics(ComponentResource):
         )
         self.transform_lambda = aws.lambda_.Function(
             f"{name}-transform",
-            runtime="python3.12",
+            runtime="python3.13",
             handler="handler.handler",
             code=pulumi.FileArchive(_HANDLER_DIR),
             role=transform_role.arn,
@@ -444,11 +440,11 @@ class WebAnalytics(ComponentResource):
         # snapshots it daily and merges into this NDJSON so history survives.
         github_columns = [
             ("repo", "string"),
-            ("metric", "string"),        # views|clones|referrer|path
-            ("item", "string"),          # event day (views/clones) or name
+            ("metric", "string"),  # views|clones|referrer|path
+            ("item", "string"),  # event day (views/clones) or name
             ("cnt", "bigint"),
             ("uniques", "bigint"),
-            ("event_day", "string"),     # set for views/clones timeseries
+            ("event_day", "string"),  # set for views/clones timeseries
             ("snapshot_date", "string"),
         ]
         self.github_traffic_table = aws.glue.CatalogTable(
@@ -520,7 +516,7 @@ class WebAnalytics(ComponentResource):
             )
             self.github_lambda = aws.lambda_.Function(
                 f"{name}-gh-extract",
-                runtime="python3.12",
+                runtime="python3.13",
                 handler="handler.handler",
                 code=pulumi.FileArchive(_GH_HANDLER_DIR),
                 role=gh_role.arn,

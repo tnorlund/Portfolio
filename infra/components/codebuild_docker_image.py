@@ -440,8 +440,8 @@ class CodeBuildDockerImage(ComponentResource):
                 )
         extra_context_paths_str = " ".join(self.extra_context_paths)
 
-        # Package trees are explicit. This keeps an unrelated receipt_chroma
-        # edit from rebuilding a Lambda whose Dockerfile never copies it.
+        # Package trees are explicit. This keeps an edit to an unlisted
+        # package from rebuilding a Lambda whose Dockerfile never copies it.
         packages_to_include = sorted(set(self.source_paths))
 
         # Build rsync include patterns for each package
@@ -1108,13 +1108,13 @@ fi
 
 echo "📦 Pushing minimal bootstrap image to ECR..."
 # Pull public Lambda base image (with error handling)
-if ! docker pull public.ecr.aws/lambda/python:3.12-arm64; then
+if ! docker pull public.ecr.aws/lambda/python:3.13-arm64; then
   echo "⚠️  Failed to pull base image."
   wait_for_pipeline_image
 fi
 
 # Tag it for our ECR repo
-docker tag public.ecr.aws/lambda/python:3.12-arm64 "$REPO_URL:latest"
+docker tag public.ecr.aws/lambda/python:3.13-arm64 "$REPO_URL:latest"
 
 # Login to ECR
 # Note: On macOS, credential helper may fail but login still succeeds

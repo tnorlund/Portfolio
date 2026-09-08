@@ -56,14 +56,14 @@
          ▼                                                 ▼
 ┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
 │   API Gateway   │────▶│ Lambda Functions │────▶│   DynamoDB      │
-│   (HTTP API)    │     │  (Python 3.12)   │     │  (NoSQL DB)     │
+│   (HTTP API)    │     │  (Python 3.13)   │     │  (NoSQL DB)     │
 └─────────────────┘     └──────────────────┘     └─────────────────┘
 ```
 
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js 18+ 
+- Node.js 20.9+ (Node.js 22 recommended)
 - npm or yarn
 - AWS credentials (for API access)
 

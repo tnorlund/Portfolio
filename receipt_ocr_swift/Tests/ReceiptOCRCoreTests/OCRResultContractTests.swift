@@ -335,6 +335,7 @@ final class OCRResultContractTests: XCTestCase {
     }
 
     private final class S3Mock: S3ClientProtocol {
+        func headObject(bucket: String, key: String) async throws -> S3ObjectHead? { nil }
         var objects: [String: Data] = [:]
         var uploads: [(bucket: String, key: String)] = []
         func getObject(bucket: String, key: String) async throws -> Data {
@@ -365,6 +366,25 @@ final class OCRResultContractTests: XCTestCase {
         func addReceiptWordLabels(_ labels: [ReceiptWordLabel]) async throws {
             wordLabels.append(contentsOf: labels)
         }
+        func addReceiptSections(
+            imageId: String, receiptId: Int,
+            sections: [ReceiptSectionPayload], createdAt: Date
+        ) async throws {}
+        func addReceiptLineItems(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?
+        ) async throws {}
+        func replaceReceiptLineItems(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?, merchantName: String?
+        ) async throws {}
+        func addReceiptLineItemsIfWorkerOwned(
+            imageId: String, receiptId: Int,
+            items: [ReceiptLineItemPayload], extractedAt: Date,
+            baselineFiguresAgreeing: Int?
+        ) async throws -> Int { 0 }
     }
 
     /// Engine that "produces" the shared contract fixture plus the warped

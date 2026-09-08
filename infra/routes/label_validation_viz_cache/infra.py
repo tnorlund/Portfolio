@@ -12,7 +12,7 @@ This component creates:
    - Step 6: Start EMR Serverless job for visualization cache generation
 
 Unlike Label Evaluator (which has 6 evaluator scanners), Label Validation has
-a two-tier structure: ChromaDB consensus (Tier 1) and LLM fallback (Tier 2).
+a two-tier structure: similarity consensus (Tier 1) and LLM fallback (Tier 2).
 """
 
 import json
@@ -193,7 +193,7 @@ class LabelValidationVizCache(ComponentResource):
         # ============================================================
         self.api_lambda = aws.lambda_.Function(
             f"{name}-api-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.api_lambda_role.arn,
             code=AssetArchive({".": FileArchive(LAMBDAS_DIR)}),
@@ -301,7 +301,7 @@ class LabelValidationVizCache(ComponentResource):
         # DynamoDB query code - exports receipts, words, and labels
         self.dynamo_query_lambda = aws.lambda_.Function(
             f"{name}-dynamo-query-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.dynamo_query_role.arn,
             code=AssetArchive(
@@ -384,7 +384,7 @@ class LabelValidationVizCache(ComponentResource):
 
         self.trigger_export_lambda = aws.lambda_.Function(
             f"{name}-trigger-export-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.trigger_export_role.arn,
             code=AssetArchive(
@@ -448,7 +448,7 @@ class LabelValidationVizCache(ComponentResource):
 
         self.check_export_lambda = aws.lambda_.Function(
             f"{name}-check-export-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.check_export_role.arn,
             code=AssetArchive(
@@ -760,7 +760,7 @@ class LabelValidationVizCache(ComponentResource):
                                             "--conf spark.sql.files.openCostInBytes=134217728 "
                                             "--conf spark.sql.files.maxPartitionBytes=268435456 "
                                             "--conf spark.eventLog.enabled=true "
-                                            f"--conf spark.eventLog.dir=s3://{args[5]}/spark-event-logs/ "
+                                            f"--conf spark.eventLog.dir=s3a://{args[5]}/spark-event-logs/ "
                                             "--conf spark.executor.cores=2 "
                                             "--conf spark.executor.memory=4g "
                                             "--conf spark.executor.instances=2 "

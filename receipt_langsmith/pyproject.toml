@@ -9,10 +9,10 @@ authors = [
   { name="Tyler Norlund", email="tnorlund@icloud.com" },
 ]
 description = "LangSmith trace schemas, API client, and analytics for receipt evaluation"
-requires-python = ">=3.12"
+requires-python = ">=3.13"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Development Status :: 4 - Beta",
@@ -27,9 +27,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# PySpark variant for EMR Serverless processing
+# Local-only Spark dependencies. EMR supplies both PySpark and PyArrow natively;
+# the deployment archive installs only the package's base dependencies.
 pyspark = [
-    "pyspark>=3.5.0",
+    "pyspark==4.0.2",
     "pyarrow>=14.0.0",  # Required by parsers/parquet.py
 ]
 
@@ -52,13 +53,13 @@ dev = [
     "pylint>=3.0.0,<5.0.0",
     "mypy>=1.19.0",
     "pyarrow-stubs>=15.0.0",
-    "isort==8.0.1",
+    "isort==9.0.1",
 ]
 
 # Lint-only dependencies (installed by CI's lint step)
 lint = [
     "black==26.5.1",
-    "isort==8.0.1",
+    "isort==9.0.1",
 ]
 
 [tool.hatch.build]
@@ -76,7 +77,7 @@ include = ["receipt_langsmith/py.typed"]
 
 [tool.black]
 line-length = 79
-target-version = ["py312"]
+target-version = ["py313"]
 
 [tool.isort]
 profile = "black"
@@ -86,7 +87,7 @@ line_length = 79
 max-line-length = 79
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false

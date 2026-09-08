@@ -60,6 +60,12 @@ class OCRJob:
     reocr_words_rejected: int | None = None
     reocr_delta_before: float | None = None
     reocr_delta_after: float | None = None
+    # LINE_ITEM_REFINE fields: the real summary (from ReceiptSummary) and
+    # merchant, carried on the job so the Mac worker decodes with the
+    # graded baseline instead of its own scanned figures. Values may be
+    # None per figure (a summary without a printed tax is normal).
+    refine_summary: dict[str, float | None] | None = None
+    refine_merchant_name: str | None = None
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
@@ -127,6 +133,32 @@ class OCRJob:
                 raise ValueError(
                     "reocr_region width and height must be greater than 0"
                 )
+
+        if self.refine_summary is not None:
+            if not isinstance(self.refine_summary, dict):
+                raise ValueError("refine_summary must be a dict or None")
+            required = {"subtotal", "tax", "grand_total"}
+            if set(self.refine_summary.keys()) != required:
+                raise ValueError(
+                    "refine_summary must contain exactly: "
+                    "subtotal, tax, grand_total"
+                )
+            for key, value in self.refine_summary.items():
+                if value is None:
+                    continue
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, int | float)
+                    or not isfinite(value)
+                ):
+                    raise ValueError(
+                        f"refine_summary[{key}] must be numeric or None"
+                    )
+
+        if self.refine_merchant_name is not None and not isinstance(
+            self.refine_merchant_name, str
+        ):
+            raise ValueError("refine_merchant_name must be a string or None")
 
         if self.reocr_reason is not None and not isinstance(
             self.reocr_reason, str
@@ -260,6 +292,25 @@ class OCRJob:
                 if self.reocr_delta_after is not None
                 else {"NULL": True}
             ),
+            "refine_summary": (
+                {
+                    "M": {
+                        key: (
+                            {"N": str(float(value))}
+                            if value is not None
+                            else {"NULL": True}
+                        )
+                        for key, value in self.refine_summary.items()
+                    }
+                }
+                if self.refine_summary is not None
+                else {"NULL": True}
+            ),
+            "refine_merchant_name": (
+                {"S": self.refine_merchant_name}
+                if self.refine_merchant_name is not None
+                else {"NULL": True}
+            ),
         }
 
     def __repr__(self) -> str:
@@ -303,6 +354,8 @@ class OCRJob:
         yield "reocr_words_rejected", self.reocr_words_rejected
         yield "reocr_delta_before", self.reocr_delta_before
         yield "reocr_delta_after", self.reocr_delta_after
+        yield "refine_summary", self.refine_summary
+        yield "refine_merchant_name", self.refine_merchant_name
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, OCRJob):
@@ -325,6 +378,8 @@ class OCRJob:
             and self.reocr_words_rejected == other.reocr_words_rejected
             and self.reocr_delta_before == other.reocr_delta_before
             and self.reocr_delta_after == other.reocr_delta_after
+            and self.refine_summary == other.refine_summary
+            and self.refine_merchant_name == other.refine_merchant_name
         )
 
     def __hash__(self) -> int:
@@ -410,11 +465,40 @@ class OCRJob:
 
             return _extract
 
+        def _extract_refine_summary(
+            item_dict: dict[str, Any],
+        ) -> dict[str, float | None] | None:
+            if "refine_summary" not in item_dict:
+                return None
+            raw = item_dict["refine_summary"]
+            if raw.get("NULL"):
+                return None
+            summary_map = raw.get("M")
+            if not isinstance(summary_map, dict):
+                raise ValueError("refine_summary must be a map (M) or NULL")
+            parsed: dict[str, float | None] = {}
+            for key in ("subtotal", "tax", "grand_total"):
+                attribute = summary_map.get(key)
+                if attribute is None or attribute.get("NULL"):
+                    parsed[key] = None
+                    continue
+                value = attribute.get("N")
+                if value is None:
+                    raise ValueError(
+                        f"refine_summary[{key}] must be numeric (N) or NULL"
+                    )
+                parsed[key] = float(value)
+            return parsed
+
         custom_extractors = {
             **create_ocr_job_extractors(),
             "job_type": EntityFactory.extract_string_field("job_type"),
             "receipt_id": EntityFactory.extract_int_field("receipt_id"),
             "reocr_region": _extract_reocr_region,
+            "refine_summary": _extract_refine_summary,
+            "refine_merchant_name": _extract_optional_string(
+                "refine_merchant_name"
+            ),
             "reocr_reason": _extract_optional_string("reocr_reason"),
             "reocr_strategy": _extract_optional_string("reocr_strategy"),
             "reocr_mechanism": _extract_optional_string("reocr_mechanism"),

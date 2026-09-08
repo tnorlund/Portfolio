@@ -40,24 +40,19 @@ from typing import Optional
 
 # Import our infrastructure components
 from billing_alerts import BillingAlerts
-from chromadb_compaction import create_chromadb_compaction_infrastructure
-from combine_receipts_step_functions import CombineReceiptsStepFunction
 from dynamo_db import (
     dynamodb_table,  # Import DynamoDB table from original code
 )
-from embedding_step_functions import EmbeddingInfrastructure
 from fix_place_lambda import create_fix_place_lambda
-from label_evaluator_step_functions import LabelEvaluatorStepFunction
-from label_refresh_lambda import create_label_refresh_lambda
 from merge_receipt_lambda import create_merge_receipt_lambda
 
 # Using the optimized docker-build based base images with scoped contexts
 from networking import PublicVpc
 from notifications import NotificationSystem
 from raw_bucket import raw_bucket  # Import the actual bucket instance
+from receipt_update_queues import ReceiptUpdateQueues
 from resegment_receipt_lambda import create_resegment_receipt_lambda
 from s3_website import site_bucket  # Import the site bucket instance
-from security import ChromaSecurity
 from trigger_reocr_lambda import create_trigger_reocr_lambda
 from upload_images import UploadImages
 
@@ -67,7 +62,6 @@ label_validation_project_name = f"receipt-validation-v1-{pulumi.get_stack()}"
 
 # from spot_interruption import SpotInterruptionHandler
 # from efs_storage import EFSStorage
-# from instance_registry import InstanceRegistry
 # from job_queue import JobQueue
 # from ml_packages import MLPackageBuilder
 # from networking import VpcForCodeBuild  # Import the new VPC component
@@ -84,7 +78,6 @@ except ImportError as e:
     # These may not be available in all environments
     print(f"⚠️  Failed to import label cache updater: {e}")
 # import step_function  # Legacy - receipt_processor depends on removed receipt_label
-from chroma.nat_egress import NatEgress
 
 # from step_function_enhanced import create_enhanced_receipt_processor  # Legacy
 # - depends on receipt_processor which needs receipt_label
@@ -93,15 +86,11 @@ from chroma.nat_egress import NatEgress
 public_vpc = PublicVpc("foundation")
 pulumi.export("foundation_vpc_id", public_vpc.vpc_id)
 
-# (moved DynamoDB gateway endpoint below after NAT creation to reference both route tables)
 pulumi.export("foundation_public_subnet_ids", public_vpc.public_subnet_ids)
-# (moved S3 gateway endpoint below after NAT creation to reference its route table)
 
-# Task 2: Security (depends on VPC)
-security = ChromaSecurity("chroma", vpc_id=public_vpc.vpc_id)
-pulumi.export("sg_lambda_id", security.sg_lambda_id)
-
-# Task 3 snapshot bucket not used; shared_chromadb_buckets provides storage
+# VPC security groups retired (VPC prune): no Lambdas remain in the VPC,
+# so the shared Lambda-egress and interface-endpoint security groups are
+# gone along with the NAT egress layer below.
 
 # --- Removed Config reading for VPC resources ---
 
@@ -128,9 +117,6 @@ notification_system = NotificationSystem(
     },
 )
 
-# Import shared ChromaDB bucket (created in chromadb_buckets.py for route access)
-from chromadb_buckets import shared_chromadb_buckets
-
 # Shared resources for the label evaluator pipeline (S3 buckets used by the EMR
 # analytics and Step Function components created ~1300 lines below).
 #
@@ -150,7 +136,6 @@ from components.shared_label_evaluator_resources import (
 
 label_evaluator_shared = create_shared_label_evaluator_resources()
 
-# Create ChromaDB compaction infrastructure using shared bucket
 # Note: currency validation, create labels, and validation-by-merchant workflows are
 # temporarily disabled to decouple from receipt_label.
 
@@ -189,115 +174,53 @@ billing_alerts = BillingAlerts(
 # pulumi.export("enhanced_receipt_processor_arn", enhanced_receipt_processor.arn)
 # Commented out - legacy code
 
-# NAT egress (public subnet) + private subnets for Lambda internet access
-nat = NatEgress(
-    name=f"nat-egress-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    public_subnet_id=public_vpc.public_subnet_ids.apply(lambda ids: ids[0]),
-)
-pulumi.export("nat_instance_id", nat.nat_instance_id)
-pulumi.export("nat_private_subnet_ids", nat.private_subnet_ids)
+# NAT egress + private subnets retired (VPC prune): the last two VPC
+# Lambdas (process-ocr, word-similarity cache generator) now run outside
+# the VPC with default Lambda egress — the NAT existed only for them.
 
-# Create ChromaDB compaction infrastructure using the shared S3 bucket.
-compaction_lambda_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])
-
-chromadb_infrastructure = create_chromadb_compaction_infrastructure(
-    name=f"chromadb-{pulumi.get_stack()}",
+# Summary/line-item update pipeline + stream processor. The
+# ``queues_name``/``lambdas_name`` prefixes are frozen physical-resource
+# identities inherited from the retired vector-store compaction stack
+# (see docs/chroma-removal/); renaming them would replace live queues.
+receipt_update_queues = ReceiptUpdateQueues(
+    f"receipt-updates-{pulumi.get_stack()}",
+    queues_name=f"chromadb-{pulumi.get_stack()}-queues",
+    lambdas_name=f"chromadb-{pulumi.get_stack()}",
     dynamodb_table_arn=dynamodb_table.arn,
     dynamodb_stream_arn=dynamodb_table.stream_arn,
-    chromadb_buckets=shared_chromadb_buckets,
-    subnet_ids=compaction_lambda_subnets,  # Private subnets only for Lambda
-    lambda_security_group_id=security.sg_lambda_id,
-    alert_topic_arn=notification_system.critical_error_topic_arn,
 )
 
-# Create embedding infrastructure using shared bucket and queues
-embedding_infrastructure = EmbeddingInfrastructure(
-    f"embedding-infra-{pulumi.get_stack()}",
-    chromadb_queues=chromadb_infrastructure.chromadb_queues,
-    chromadb_buckets=shared_chromadb_buckets,
-    # Use same subnets as compaction Lambda
-    vpc_subnet_ids=compaction_lambda_subnets,
-    lambda_security_group_id=security.sg_lambda_id,
-)
-
-pulumi.export(
-    "embedding_embed_all_v1_sf_arn",
-    embedding_infrastructure.embed_all_workflow.state_machine.arn,
-)
-
-# Add S3 Gateway Endpoint for faster S3 access from both public and private subnets
+# S3 Gateway Endpoint (free) for faster S3 access from the public subnets
 s3_gateway_endpoint = aws.ec2.VpcEndpoint(
     f"s3-gateway-{pulumi.get_stack()}",
     vpc_id=public_vpc.vpc_id,
     service_name=f"com.amazonaws.{aws.config.region}.s3",
     vpc_endpoint_type="Gateway",
-    route_table_ids=[public_vpc.public_route_table_id, nat.private_rt.id],
+    route_table_ids=[public_vpc.public_route_table_id],
 )
 
-# Provide private access to DynamoDB from both public and private subnets (no NAT required)
+# DynamoDB Gateway Endpoint (free) for private access from the public subnets
 dynamodb_gateway_endpoint = aws.ec2.VpcEndpoint(
     f"dynamodb-gateway-{pulumi.get_stack()}",
     vpc_id=public_vpc.vpc_id,
     service_name=f"com.amazonaws.{aws.config.region}.dynamodb",
     vpc_endpoint_type="Gateway",
-    route_table_ids=[public_vpc.public_route_table_id, nat.private_rt.id],
+    route_table_ids=[public_vpc.public_route_table_id],
 )
 
-# CloudWatch Logs Interface Endpoint for faster logging from VPC Lambdas
-# Single AZ for cost savings ($0.12/day savings per endpoint)
-# Lambda functions can access endpoints from any AZ in the VPC
-# If endpoint AZ fails, Lambda falls back to NAT (slower but works)
+# Interface endpoints (logs, sqs) retired (VPC prune): they billed hourly
+# and existed only for the private-subnet Lambdas, which now run outside
+# the VPC with default egress.
 # Get stack name for conditional logic (reused later in file)
 stack = pulumi.get_stack()
-# Use single AZ for both dev and prod - AZ failures are rare (< 0.1%)
-# and Lambda functions have fallback to NAT Instance
-logs_endpoint_subnets = public_vpc.public_subnet_ids.apply(
-    lambda ids: [ids[0]]
-)  # Single AZ
 
-logs_interface_endpoint = aws.ec2.VpcEndpoint(
-    f"logs-interface-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    service_name=f"com.amazonaws.{aws.config.region}.logs",
-    vpc_endpoint_type="Interface",
-    # Conditional: single AZ for dev, multi-AZ for prod
-    subnet_ids=logs_endpoint_subnets,
-    security_group_ids=[security.sg_vpce_id],
-    private_dns_enabled=True,
-)
-
-# SQS Interface Endpoint for cost-effective SQS access from both public and private subnets
-# Keep upload Lambdas private while allowing SQS access without internet.
-# Single AZ for cost savings ($0.12/day savings)
-# Lambda functions can access endpoints from any AZ in the VPC
-# If endpoint AZ fails, Lambda falls back to NAT (slower but works)
-sqs_endpoint_subnets = public_vpc.public_subnet_ids.apply(
-    lambda ids: [ids[0]]
-)  # Single AZ
-
-sqs_interface_endpoint = aws.ec2.VpcEndpoint(
-    f"sqs-interface-{pulumi.get_stack()}",
-    vpc_id=public_vpc.vpc_id,
-    service_name=f"com.amazonaws.{aws.config.region}.sqs",
-    vpc_endpoint_type="Interface",
-    # Conditional: single AZ for dev, multi-AZ for prod
-    subnet_ids=sqs_endpoint_subnets,
-    security_group_ids=[security.sg_vpce_id],
-    private_dns_enabled=True,
-)
-
-# Word Similarity Cache Generator Lambda (in VPC for DynamoDB Gateway endpoint access)
-# This reduces DynamoDB query latency variance by using AWS backbone instead of public internet
+# Word Similarity Cache Generator Lambda (VPC prune: runs outside the VPC
+# now — the DynamoDB-Gateway latency optimization died with the NAT layer)
 from routes.word_similarity_cache_generator.infra import (
     create_word_similarity_cache_generator,
 )
 
-word_similarity_cache_generator = create_word_similarity_cache_generator(
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    vpc_subnet_ids=nat.private_subnet_ids.apply(lambda ids: [ids[0]]),
-    lambda_security_group_id=security.sg_lambda_id,
-)
+word_similarity_cache_generator = create_word_similarity_cache_generator()
 
 pulumi.export(
     "word_similarity_cache_generator_lambda_arn",
@@ -336,21 +259,40 @@ create_lambda_route(
 # - Embedding polling handlers (LangGraph)
 # Consolidation and batch cleaning can be added as standalone Lambdas if needed
 
-# Wire upload-images after NAT is available so it can reach external APIs.
-upload_images_subnets = nat.private_subnet_ids.apply(lambda ids: [ids[0]])
-
+# upload-images runs outside the VPC (VPC prune): default Lambda egress
+# reaches Google Places / OpenAI / OpenRouter / LangSmith directly.
 upload_images = UploadImages(
     "upload-images",
     raw_bucket=raw_bucket,
     site_bucket=site_bucket,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    vpc_subnet_ids=upload_images_subnets,
-    security_group_id=security.sg_lambda_id,
     label_validation_project_name=label_validation_project_name,
     # Post-re-OCR line-item refresh (summary recompute -> stream ->
     # LINE_ITEMS stage)
-    summary_queue_url=chromadb_infrastructure.chromadb_queues.summary_queue_url,
-    summary_queue_arn=chromadb_infrastructure.chromadb_queues.summary_queue_arn,
+    summary_queue_url=receipt_update_queues.summary_queue_url,
+    summary_queue_arn=receipt_update_queues.summary_queue_arn,
+)
+
+# Section verification failures are caught per receipt so ingestion can
+# continue. Alarm on that degraded path using the same table dimension
+# emitted by the upload handler.
+upload_section_verification_alarm = aws.cloudwatch.MetricAlarm(
+    "upload-section-verification-error",
+    alarm_description=(
+        "Receipt section vector verification failed; inspect upload logs "
+        "before treating newly ingested sections as verified."
+    ),
+    metric_name="UploadLambdaSectionVerificationError",
+    namespace="EmbeddingWorkflow",
+    dimensions={"TableName": dynamodb_table.name},
+    statistic="Sum",
+    period=300,
+    evaluation_periods=1,
+    threshold=0,
+    comparison_operator="GreaterThanThreshold",
+    alarm_actions=[notification_system.critical_error_topic_arn],
+    ok_actions=[notification_system.critical_error_topic_arn],
+    treat_missing_data="notBreaching",
+    tags={"environment": stack},
 )
 
 pulumi.export("ocr_job_queue_url", upload_images.ocr_queue.url)
@@ -368,6 +310,7 @@ enable_sagemaker = ml_cfg.get_bool("enable-sagemaker") or False
 
 # Training bucket - either from SageMaker training infra or existing bucket name
 layoutlm_training_bucket_name: Optional[Output[str]] = None
+pulumi.export("layoutlm_model_pointer_key", "coreml/active.json")
 
 if enable_sagemaker:
     from sagemaker_training import SageMakerTrainingInfra
@@ -538,577 +481,12 @@ s3_policy_attachment = aws.iam.RolePolicyAttachment(
     policy_arn="arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess",
 )
 
-# ChromaDB compaction infrastructure already created above
 
-# Create spot interruption handler
-# spot_handler = SpotInterruptionHandler(
-#     "ml-training",
-#     instance_role_name=ml_training_role.name,
-# )
-
-# Create SNS policy for spot interruption notifications
-# sns_policy = aws.iam.Policy(
-#     "ml-training-sns-policy",
-#     description="Allow ML training instances to subscribe to SNS topics",
-#     policy=pulumi.Output.all(
-#         spot_topic_arn=spot_handler.sns_topic_arn,
-#     ).apply(
-#         lambda args: f"""{{
-#             "Version": "2012-10-17",
-#             "Statement": [
-#                 {{
-#                     "Effect": "Allow",
-#                     "Action": [
-#                         "sns:Subscribe",
-#                         "sns:Unsubscribe",
-#                         "sns:ListSubscriptionsByTopic"
-#                     ],
-#                     "Resource": "{args['spot_topic_arn']}"
-#                 }}
-#             ]
-#         }}"""
-#     ),
-# )
-
-# Attach SNS policy to the role
-# sns_policy_attachment = aws.iam.RolePolicyAttachment(
-#     "ml-sns-policy-attachment",
-#     role=ml_training_role.name,
-#     policy_arn=sns_policy.arn,
-#     opts=ResourceOptions(depends_on=[ml_training_role, spot_handler.sns_topic]),
-# )
-
-# Create instance profile
-# ml_instance_profile = aws.iam.InstanceProfile(
-#     "ml-instance-profile", role=ml_training_role.name
-# )
-
-
-# Create EFS storage, referencing the new VPC and SG from the network component
-# efs_storage = EFSStorage(
-#     "ml-training-vpc",
-#     vpc_id=network.vpc_id,  # Use network component output
-#     subnet_ids=network.private_subnet_ids,  # Use network component output
-#     security_group_ids=[network.security_group_id],  # Use new security group
-#     instance_role_name=ml_training_role.name,
-#     lifecycle_policies=[{"transition_to_ia": "AFTER_30_DAYS"}],
-#     opts=pulumi.ResourceOptions(
-#         depends_on=[network],
-#         replace_on_changes=["vpc_id", "subnet_ids", "security_group_ids"],
-#         delete_before_replace=True,
-#     ),  # Depend on network creation
-# )
-
-# Create VPC endpoints in parallel, using the new VPC and SG from the network component
-# vpc_endpoints = []
-# for service in [
-#     "com.amazonaws.us-east-1.codebuild",
-#     "com.amazonaws.us-east-1.ecr.api",
-#     "com.amazonaws.us-east-1.ecr.dkr",
-#     "com.amazonaws.us-east-1.logs",
-#     "com.amazonaws.us-east-1.elasticfilesystem",
-# ]:
-#     private_dns = False  # Keep disabled as per previous findings
-#     endpoint = aws.ec2.VpcEndpoint(
-#         f"codebuild-{service.split('.')[-1]}",
-#         vpc_id=network.vpc_id,  # Use network component output
-#         service_name=service,
-#         vpc_endpoint_type="Interface",
-#         subnet_ids=network.private_subnet_ids,  # Use network component output
-#         security_group_ids=[network.security_group_id],  # Use new security group
-#         private_dns_enabled=private_dns,
-#         opts=pulumi.ResourceOptions(depends_on=[network]),  # Depend on network creation
-#     )
-#     vpc_endpoints.append(endpoint)
-
-# --- Security Group Rule for EFS is now handled within the VpcForCodeBuild component ---
-# --- or should be, if not, add it back referencing network outputs ---
-# Re-adding here explicitly for clarity, referencing component outputs
-# aws.ec2.SecurityGroupRule(
-#     "codebuild-efs-nfs-explicit",  # Renamed to avoid conflict if defined in component
-#     type="ingress",
-#     from_port=2049,
-#     to_port=2049,
-#     protocol="tcp",
-#     security_group_id=network.efs_security_group_id, # Use network component output
-#     source_security_group_id=network.codebuild_security_group_id, # Use network component output
-#     description="Allow NFS from CodeBuild SG (Explicit)",
-#     opts=pulumi.ResourceOptions(depends_on=[network]), # Depend on network creation
-# )
-
-# Create instance registry for auto-registration
-# instance_registry = InstanceRegistry(
-#     "ml-training",
-#     instance_role_name=ml_training_role.name,
-#     dynamodb_table_name=dynamodb_table.name,
-#     ttl_hours=2,
-# )
-
-# Create job queue for training job management
-# job_queue = JobQueue(
-#     "ml-training",
-#     env=stack,
-#     tags={
-#         "Purpose": "ML Training Job Management",
-#         "ManagedBy": "Pulumi",
-#     },
-# )
-
-# Update the IAM role to allow access to SQS
-# sqs_policy_document = pulumi.Output.all(
-#     queue_arn=job_queue.get_queue_arn(), dlq_arn=job_queue.get_dlq_arn()
-# ).apply(
-#     lambda args: f"""{{
-#         "Version": "2012-10-17",
-#         "Statement": [
-#             {{
-#                 "Effect": "Allow",
-#                 "Action": [
-#                     "sqs:ReceiveMessage",
-#                     "sqs:DeleteMessage",
-#                     "sqs:GetQueueAttributes",
-#                     "sqs:GetQueueUrl",
-#                     "sqs:SendMessage",
-#                     "sqs:ChangeMessageVisibility"
-#                 ],
-#                 "Resource": [
-#                     "{args['queue_arn']}",
-#                     "{args['dlq_arn']}"
-#                 ]
-#             }}
-#         ]
-#     }}"""
-# )
-
-# sqs_policy = aws.iam.Policy(
-#     "ml-training-sqs-policy",
-#     description="Allow ML training instances to access SQS queues",
-#     policy=sqs_policy_document,
-# )
-
-# sqs_policy_attachment = aws.iam.RolePolicyAttachment(
-#     "ml-sqs-policy-attachment",
-#     role=ml_training_role.name,
-#     policy_arn=sqs_policy.arn,
-#     opts=ResourceOptions(depends_on=[ml_training_role]),
-# )
-
-# # IAM policy for EFS access required by EC2 instances
-# efs_ec2_policy = aws.iam.Policy(
-#     "ml-training-efs-ec2-policy",
-#     description="Allow EC2 instances to use EFS and describe necessary resources",
-#     policy=pulumi.Output.all(
-#         file_system_id=efs_storage.file_system_id,
-#         region=aws.config.region,
-#         account_id=aws.get_caller_identity().account_id,
-#     ).apply(
-#         lambda args: f"""{{
-#             "Version": "2012-10-17",
-#             "Statement": [
-#                 {{
-#                     "Effect": "Allow",
-#                     "Action": [
-#                         "ec2:DescribeAvailabilityZones",
-#                         "ec2:DescribeSubnets",
-#                         "ec2:DescribeNetworkInterfaces",
-#                         "elasticfilesystem:DescribeMountTargets",
-#                         "elasticfilesystem:DescribeFileSystems"
-#                     ],
-#                     "Resource": "*"
-#                 }},
-#                 {{
-#                     "Effect": "Allow",
-#                     "Action": [
-#                         "elasticfilesystem:ClientMount",
-#                         "elasticfilesystem:ClientWrite"
-#                     ],
-#                     "Resource": "arn:aws:elasticfilesystem:{args['region']}:"
-#                     "{args['account_id']}:file-system/{args['file_system_id']}"
-#                 }}
-#             ]
-#         }}"""
-#     ),
-# )
-
-# # Attach this policy to your EC2 instance role
-# efs_ec2_policy_attachment = aws.iam.RolePolicyAttachment(
-#     "ml-training-efs-ec2-policy-attachment",
-#     role=ml_training_role.name,
-#     policy_arn=efs_ec2_policy.arn,
-#     opts=pulumi.ResourceOptions(depends_on=[ml_training_role, efs_ec2_policy]),
-# )
-
-# # Generate instance registration script
-# registration_script = instance_registry.create_registration_script(
-#     leader_election_enabled=True
-# )
-
-# # Get the latest Deep Learning AMI
-# dl_ami = aws.ec2.get_ami(
-#     most_recent=True,
-#     owners=["amazon"],
-#     filters=[
-#         aws.ec2.GetAmiFilterArgs(
-#             name="name", values=["Deep Learning AMI GPU PyTorch*"]
-#         ),
-#         aws.ec2.GetAmiFilterArgs(name="architecture", values=["x86_64"]),
-#         aws.ec2.GetAmiFilterArgs(name="virtualization-type", values=["hvm"]),
-#     ],
-# )
-
-# # Get ML training configuration
-# ml_training_config = pulumi.Config("ml-training")
-# force_rebuild = ml_training_config.get_bool("force-rebuild") or False
-
-# # Create the package builder using VPC info from network component
-# ml_package_builder = MLPackageBuilder(
-#     f"receipt-trainer-{stack}",
-#     packages=["receipt_trainer"],
-#     supplementary_packages=["receipt_dynamo"],
-#     python_version="3.12",
-#     vpc_id=network.vpc_id,  # Use network component output
-#     subnet_ids=network.private_subnet_ids,  # Use network component output
-#     security_group_ids=[network.security_group_id],  # Use new security group
-#     efs_storage_id=efs_storage.file_system_id,  # Get EFS ID from EFS component
-#     efs_access_point_id=efs_storage.training_access_point_id,  # Get AP ID from EFS component
-#     efs_dns_name=efs_storage.file_system_dns_name,  # Get DNS name from EFS component
-#     force_rebuild=force_rebuild,
-#     vpc_endpoints=vpc_endpoints,  # Pass created endpoints
-#     opts=pulumi.ResourceOptions(depends_on=[network] + vpc_endpoints),
-# )
-
-# # Create EC2 Launch Template, referencing SG from network component
-# launch_template = aws.ec2.LaunchTemplate(
-#     "ml-training-launch-template",
-#     image_id=dl_ami.id,
-#     instance_type="g4dn.xlarge",
-#     key_name=key_pair_name,
-#     iam_instance_profile=aws.ec2.LaunchTemplateIamInstanceProfileArgs(
-#         name=ml_instance_profile.name,
-#     ),
-#     network_interfaces=[
-#         aws.ec2.LaunchTemplateNetworkInterfaceArgs(
-#             associate_public_ip_address=True,
-#             # Ensure instances in private subnets don't get public IPs
-#             security_groups=[network.security_group_id],  # Use new security group
-#             # subnet_id is determined by the ASG's vpc_zone_identifiers
-#         )
-#     ],
-#     user_data=pulumi.Output.all(
-#         efs_dns_name=efs_storage.file_system_dns_name,
-#         training_ap_id=efs_storage.training_access_point_id,
-#         checkpoints_ap_id=efs_storage.checkpoints_access_point_id,
-#         dynamo_table_name=dynamodb_table.name,
-#         spot_topic_arn=spot_handler.sns_topic_arn,
-#         job_queue_url=job_queue.get_queue_url(),
-#         bucket_name=ml_package_builder.artifact_bucket.bucket,
-#     ).apply(
-#         lambda args: base64.b64encode(
-#             f"""#!/bin/bash
-# # Install required utilities
-# yum update -y
-# yum install -y amazon-efs-utils awscli jq
-
-# # Set environment variable for DynamoDB table name
-# export DYNAMO_TABLE_NAME={args['dynamo_table_name']}
-
-# # Activate the PyTorch Conda environment (adjust path/environment name as needed)
-# source /opt/conda/bin/activate pytorch
-
-# # Create mount points
-# mkdir -p /mnt/training || echo "Failed to create training mount point"
-# mkdir -p /mnt/checkpoints || echo "Failed to create checkpoints mount point"
-
-# # Mount EFS access points
-# mount -t efs -o tls,accesspoint={args['training_ap_id']} \
-# {args['efs_dns_name']}:/ /mnt/training || echo "Failed to mount EFS training"
-# echo "{args['efs_dns_name']}:/ /mnt/training efs \
-# _netdev,tls,accesspoint={args['training_ap_id']} 0 0" \
-# >> /etc/fstab || echo "Failed to add EFS training to fstab"
-
-# mount -t efs -o tls,accesspoint={args['checkpoints_ap_id']} \
-# {args['efs_dns_name']}:/ /mnt/checkpoints || echo "Failed to mount EFS checkpoints"
-# echo "{args['efs_dns_name']}:/ /mnt/checkpoints efs \
-# _netdev,tls,accesspoint={args['checkpoints_ap_id']} 0 0" \
-# >> /etc/fstab || echo "Failed to add EFS checkpoints to fstab"
-
-# # Get instance metadata
-# export INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-# export REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
-# export INSTANCE_TYPE=$(curl -s http://169.254.169.254/latest/meta-data/instance-type)
-# export AZ=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
-# export IP_ADDRESS=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
-# export IS_SPOT=$(curl -s \
-# http://169.254.169.254/latest/meta-data/instance-life-cycle | \
-# grep -q "spot" && echo "true" || echo "false")
-# # Determine GPU count in a generic manner
-# if command -v nvidia-smi >/dev/null 2>&1; then
-#     export GPU_COUNT=$(nvidia-smi --query-gpu=count --format=csv,noheader 2>/dev/null)
-#     if [[ $GPU_COUNT =~ ^[0-9]+$ ]]; then
-#         echo "Detected NVIDIA GPUs: $GPU_COUNT"
-#     else
-#         echo "nvidia-smi did not return a valid count. Assuming GPU_COUNT=0."
-#         export GPU_COUNT=0
-#     fi
-# else
-#     echo "nvidia-smi not found. Setting GPU_COUNT=0."
-#     export GPU_COUNT=0
-# fi
-
-# cat <<EOF
-# ###############################
-# # Instance Metadata Summary
-# ###############################
-# Instance ID:       $INSTANCE_ID
-# Region:            $REGION
-# Instance Type:     $INSTANCE_TYPE
-# Availability Zone: $AZ
-# Local IP:          $IP_ADDRESS
-# Is Spot Instance:  $IS_SPOT
-# Detected GPUs:     $GPU_COUNT
-# ###############################
-# EOF
-
-# # Download and setup training code
-# cd /mnt/training
-# aws s3 cp s3://{args['bucket_name']}/output/receipt_trainer/wheels/ \
-# receipt_trainer-0.1.0-py3-none-any.whl /tmp/ || \
-# echo "Failed to download receipt_trainer"
-# aws s3 cp s3://{args['bucket_name']}/output/receipt_dynamo/wheels/ \
-# receipt_dynamo-0.1.0-py3-none-any.whl /tmp/ || \
-# echo "Failed to download receipt_dynamo"
-
-# # Install the package with pip (this will also install dependencies if specified in setup.py)
-# pip install /tmp/receipt_dynamo-0.1.0-py3-none-any.whl
-# pip install /tmp/receipt_trainer-0.1.0-py3-none-any.whl
-
-# # (Optional) Verify installation of key modules
-# python -c "import receipt_trainer; print('ReceiptTrainer module loaded successfully')"
-# python -c "import transformers; print('Transformers version:', \
-# getattr(transformers, '__version__', 'unknown'))"
-# python -c "import datasets; print('Datasets version:', \
-# getattr(datasets, '__version__', 'unknown'))"
-
-# # Register instance using the receipt_dynamo package
-# python -c "
-# import os
-# from datetime import datetime
-
-# from receipt_dynamo import DynamoClient, Instance
-
-# table_name = os.environ['DYNAMO_TABLE_NAME']
-# region = os.environ['REGION']
-
-# instance_id = os.environ['INSTANCE_ID']
-# instance_type = os.environ['INSTANCE_TYPE']
-# gpu_count = int(os.environ['GPU_COUNT'])
-# ip_address = os.environ['IP_ADDRESS']
-# availability_zone = os.environ['AZ']
-# is_spot = (os.environ['IS_SPOT'].lower() == 'true')
-
-# dynamo_client = DynamoClient(table_name=table_name, region_name=region)
-
-# instance = Instance(
-#     instance_id=instance_id,
-#     instance_type=instance_type,
-#     gpu_count=gpu_count,
-#     status='pending',
-#     launched_at=datetime.utcnow().isoformat(),
-#     ip_address=ip_address,
-#     availability_zone=availability_zone,
-#     is_spot=is_spot,
-#     health_status='healthy',
-# )
-
-# dynamo_client.add_instance(instance)
-# " || echo "Failed to register instance"
-
-# # Subscribe to spot interruption notifications
-# aws sns subscribe \
-#     --topic-arn {args['spot_topic_arn']} \
-#     --protocol http \
-#     --notification-endpoint http://169.254.169.254/latest/meta-data/spot/instance-action \
-#     --region $REGION || echo "Failed to subscribe to spot interruption notifications"
-
-# # Start training job
-# cd /mnt/training
-# python -m receipt_trainer.train \
-#     --checkpoint-dir /mnt/checkpoints \
-#     --job-queue {args['job_queue_url']} \
-#     --instance-id $INSTANCE_ID \
-#     --region $REGION &
-
-# # Monitor spot interruption
-# while true; do
-#     if [ -f /tmp/spot-interruption-notice ]; then
-#         # Update the instance using receipt_dynamo
-#         python -c "
-# import os
-# from datetime import datetime
-
-# from receipt_dynamo import DynamoClient
-
-# table_name = os.environ['DYNAMO_TABLE_NAME']
-# region = os.environ['REGION']
-# instance_id = os.environ['INSTANCE_ID']
-
-# dynamo_client = DynamoClient(table_name=table_name, region_name=region)
-
-# # Fetch the current record
-# instance = dynamo_client.get_instance(instance_id)
-
-# # Adjust fields to reflect termination
-# instance.status = 'terminated'
-# instance.launched_at = datetime.utcnow().isoformat()
-# or store a termination timestamp if desired
-# instance.health_status = 'unhealthy'
-
-# # Write changes back to DynamoDB
-# dynamo_client.update_instance(instance)
-# " || echo "Failed to update instance"
-#         break
-#     fi
-#     sleep 5
-# done
-# """.encode(
-#                 "utf-8"
-#             )
-#         ).decode("utf-8")
-#     ),
-#     tag_specifications=[
-#         aws.ec2.LaunchTemplateTagSpecificationArgs(
-#             resource_type="instance",
-#             tags={
-#                 "Name": "ML-Training-Instance",
-#                 "Purpose": "ML Model Training",
-#                 "ManagedBy": "Pulumi",
-#             },
-#         ),
-#     ],
-#     opts=pulumi.ResourceOptions(depends_on=[network]),  # Depend on network creation
-# )
-
-# # Create Auto Scaling Group using private subnets from network component
-# asg = aws.autoscaling.Group(
-#     "ml-training-asg",
-#     max_size=4,
-#     min_size=0,
-#     desired_capacity=0,
-#     vpc_zone_identifiers=network.public_subnet_ids,  # Use network component output
-#     mixed_instances_policy=aws.autoscaling.GroupMixedInstancesPolicyArgs(
-#         instances_distribution=aws.autoscaling.GroupMixedInstancesPolicyInstancesDistributionArgs(
-#             on_demand_base_capacity=0,
-#             on_demand_percentage_above_base_capacity=0,
-#             spot_allocation_strategy="capacity-optimized",
-#         ),
-#         launch_template=aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateArgs(
-#             launch_template_specification=aws.autoscaling.
-#             GroupMixedInstancesPolicyLaunchTemplateLaunchTemplateSpecificationArgs(
-#                 launch_template_id=launch_template.id,
-#                 version="$Latest",
-#             ),
-#             overrides=[
-#                 aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateOverrideArgs(
-#                     instance_type="g4dn.xlarge",
-#                 ),
-#                 aws.autoscaling.GroupMixedInstancesPolicyLaunchTemplateOverrideArgs(
-#                     instance_type="g5.xlarge",
-#                 ),
-#             ],
-#         ),
-#     ),
-#     health_check_type="EC2",
-#     health_check_grace_period=300,
-#     tags=[
-#         aws.autoscaling.GroupTagArgs(
-#             key="Name",
-#             value="ML-Training-ASG",
-#             propagate_at_launch=True,
-#         ),
-#         aws.autoscaling.GroupTagArgs(
-#             key="Purpose",
-#             value="ML Training",
-#             propagate_at_launch=True,
-#         ),
-#     ],
-#     opts=pulumi.ResourceOptions(
-#         depends_on=[launch_template]
-#     ),  # Depend on launch template
-# )
-
-# # Create a simple scaling policy based on CPU utilization
-# scaling_policy = aws.autoscaling.Policy(
-#     "ml-training-scaling-policy",
-#     autoscaling_group_name=asg.name,
-#     policy_type="TargetTrackingScaling",
-#     target_tracking_configuration=aws.autoscaling.PolicyTargetTrackingConfigurationArgs(
-#         predefined_metric_specification=aws.autoscaling.
-#         PolicyTargetTrackingConfigurationPredefinedMetricSpecificationArgs(
-#             predefined_metric_type="ASGAverageCPUUtilization",
-#         ),
-#         target_value=70.0,
-#         disable_scale_in=False,
-#     ),
-# )
-
-# # --- Adjusted Exports ---
-# pulumi.export("vpc_id", network.vpc_id)
-# pulumi.export("private_subnet_ids", network.private_subnet_ids)
-# pulumi.export("public_subnet_ids", network.public_subnet_ids)
-# pulumi.export("security_group_id", network.security_group_id)  # Updated export name
-
-# pulumi.export("instance_registry_table", instance_registry.table_name)
-# pulumi.export("efs_dns_name", efs_storage.file_system_dns_name)
-# pulumi.export("efs_training_access_point", efs_storage.training_access_point_id)
-# pulumi.export("efs_checkpoints_access_point", efs_storage.checkpoints_access_point_id)
-# pulumi.export("spot_interruption_sns_topic", spot_handler.sns_topic_arn)
-# pulumi.export("launch_template_id", launch_template.id)
-# pulumi.export("auto_scaling_group_name", asg.name)
-# pulumi.export("deep_learning_ami_id", dl_ami.id)
-# pulumi.export("deep_learning_ami_name", dl_ami.name)
-# pulumi.export("job_queue_url", job_queue.get_queue_url())
-# pulumi.export("job_dlq_url", job_queue.get_dlq_url())
-
-# pulumi.export("training_ami_id", dl_ami.id)
-# pulumi.export("training_instance_profile_name", ml_instance_profile.name)
-
-
-# def get_first_subnet(subnets):
-#     return subnets[0]
-
-
-# pulumi.export("training_subnet_id", network.private_subnet_ids.apply(get_first_subnet))
-
-# pulumi.export("training_efs_id", efs_storage.file_system_id)
-# pulumi.export("instance_registry_table_name", instance_registry.table_name)
-# pulumi.export("ml_packages_built", ml_package_builder.packages)
-
-# ChromaDB infrastructure exports (hybrid deployment)
-pulumi.export("chromadb_bucket_name", shared_chromadb_buckets.bucket_name)
-pulumi.export(
-    "chromadb_lines_queue_url", chromadb_infrastructure.lines_queue_url
-)
-pulumi.export(
-    "chromadb_words_queue_url", chromadb_infrastructure.words_queue_url
-)
 pulumi.export(
     "stream_processor_function_arn",
-    chromadb_infrastructure.stream_processor_arn,
-)
-pulumi.export(
-    "enhanced_compaction_function_arn",
-    chromadb_infrastructure.enhanced_compaction_arn,
+    receipt_update_queues.stream_processor_arn,
 )
 
-# Export the embedding infrastructure ChromaDB bucket (the one actually used!)
-pulumi.export(
-    "embedding_chromadb_bucket_name",
-    embedding_infrastructure.chromadb_buckets.bucket_name,
-)
-pulumi.export(
-    "embedding_chromadb_bucket_arn",
-    embedding_infrastructure.chromadb_buckets.bucket_arn,
-)
 
 # Export label cache updater if successfully imported
 try:
@@ -1132,23 +510,6 @@ except ImportError:
 # validate_pending_labels_sf, create_labels_sf, and validate_metadata_sf remain
 # disabled until we refactor those flows off receipt_label.
 
-# Combine Receipts Step Function (now receipt_label-free)
-combine_receipts_sf = CombineReceiptsStepFunction(
-    f"combine-receipts-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
-    raw_bucket_name=raw_bucket.bucket,
-    site_bucket_name=site_bucket.bucket,
-)
-
-pulumi.export("combine_receipts_sf_arn", combine_receipts_sf.state_machine_arn)
-pulumi.export(
-    "combine_receipts_batch_bucket_name",
-    combine_receipts_sf.batch_bucket_name,
-)
-
 # Fix Place Lambda (for correcting incorrect ReceiptPlace records)
 # Can be invoked with: {image_id, receipt_id, reason}
 fix_place_lambda = create_fix_place_lambda(
@@ -1158,6 +519,38 @@ fix_place_lambda = create_fix_place_lambda(
 pulumi.export("fix_place_lambda_arn", fix_place_lambda.lambda_arn)
 pulumi.export("fix_place_lambda_name", fix_place_lambda.lambda_function.name)
 pulumi.export("fix_place_lambda_role_name", fix_place_lambda.lambda_role_name)
+
+# The receipt and ATS inboxes share the account's sole active SES receipt rule
+# set. Construct them together before the MCP gateway so the ATS reader can be
+# exposed through its own OAuth scope without creating a second mail plane.
+email_inbox = None
+ats_inbox = None
+email_inbox_enabled = portfolio_config.get_bool("email_receipt_inbox_enabled")
+ats_inbox_enabled = portfolio_config.get_bool("ats_verification_inbox_enabled")
+if ats_inbox_enabled and not email_inbox_enabled:
+    raise ValueError(
+        "portfolio:ats_verification_inbox_enabled requires "
+        "portfolio:email_receipt_inbox_enabled so both recipients share the "
+        "active SES receipt rule set"
+    )
+if email_inbox_enabled:
+    from email_receipt_inbox import EmailReceiptInbox
+
+    email_inbox = EmailReceiptInbox("email-receipt-inbox")
+    pulumi.export("email_receipt_inbox_address", email_inbox.address)
+    pulumi.export("email_receipt_inbox_bucket", email_inbox.bucket.bucket)
+
+if ats_inbox_enabled and email_inbox is not None:
+    from ats_verification_inbox import AtsVerificationInbox
+
+    ats_inbox = AtsVerificationInbox(
+        "ats-verification-inbox",
+        domain=email_inbox.domain,
+        rule_set_name=email_inbox.rule_set.rule_set_name,
+    )
+    pulumi.export("ats_verification_inbox_address", ats_inbox.address)
+    pulumi.export("ats_verification_inbox_bucket", ats_inbox.bucket.bucket)
+    pulumi.export("ats_verification_codes_table", ats_inbox.table.name)
 
 # Receipt MCP Server Lambda
 from mcp_server_lambda import McpServerLambda
@@ -1185,9 +578,12 @@ mcp_auth_gateway = McpAuthGateway(
     "portfolio-mcp-auth",
     receipt_lambda=mcp_server.lambda_function,
     glyph_lambda=glyph_mcp_server.lambda_function,
+    ats_lambda=ats_inbox.mcp_lambda if ats_inbox is not None else None,
 )
 pulumi.export("mcp_server_url", mcp_auth_gateway.receipt_url)
 pulumi.export("glyph_mcp_server_url", mcp_auth_gateway.glyph_url)
+if mcp_auth_gateway.ats_url is not None:
+    pulumi.export("ats_mcp_server_url", mcp_auth_gateway.ats_url)
 pulumi.export("mcp_oauth_issuer_url", mcp_auth_gateway.issuer_url)
 pulumi.export("mcp_oauth_user_pool_id", mcp_auth_gateway.user_pool.id)
 pulumi.export(
@@ -1198,6 +594,11 @@ pulumi.export(
     "mcp_oauth_automation_secret_arn",
     mcp_auth_gateway.automation_secret_arn,
 )
+if mcp_auth_gateway.ats_automation_secret_arn is not None:
+    pulumi.export(
+        "mcp_oauth_ats_automation_secret_arn",
+        mcp_auth_gateway.ats_automation_secret_arn,
+    )
 
 # Web analytics query layer: Glue + Athena over the CloudFront access logs,
 # read by the analytics_* MCP tools. No new pipeline — just a queryable view
@@ -1261,8 +662,10 @@ merge_receipt_lambda = create_merge_receipt_lambda(
     raw_bucket_name=raw_bucket.bucket,
     site_bucket_name=site_bucket.bucket,
     image_bucket_name=upload_images.image_bucket.bucket,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
+    summary_queue_url=receipt_update_queues.summary_queue_url,
+    summary_queue_arn=receipt_update_queues.summary_queue_arn,
+    line_item_queue_url=receipt_update_queues.line_item_queue_url,
+    line_item_queue_arn=receipt_update_queues.line_item_queue_arn,
 )
 pulumi.export("merge_receipt_lambda_arn", merge_receipt_lambda.lambda_arn)
 pulumi.export(
@@ -1276,8 +679,6 @@ resegment_receipt_lambda = create_resegment_receipt_lambda(
     raw_bucket_name=raw_bucket.bucket,
     site_bucket_name=site_bucket.bucket,
     image_bucket_name=upload_images.image_bucket.bucket,
-    chromadb_bucket_name=embedding_infrastructure.chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=embedding_infrastructure.chromadb_buckets.bucket_arn,
 )
 pulumi.export(
     "resegment_receipt_lambda_arn", resegment_receipt_lambda.lambda_arn
@@ -1300,29 +701,9 @@ pulumi.export(
     "trigger_reocr_lambda_name", trigger_reocr_lambda.lambda_function.name
 )
 
-# Label Refresh Lambda — subscribes to the DynamoDB stream and
-# automatically re-evaluates ReceiptWord labels whenever a word's
-# text changes (e.g. after the Mac worker writes new OCR text from
-# a regional re-OCR job). Closes the loop so labels don't go stale.
-#
-# Per-stack rollout switch — defaults to True (dry-run) so first
-# deploy is observe-only. Flip per stack with:
-#   pulumi config set portfolio:label_refresh_dry_run false --stack dev
-# Then verify dev for 48h before flipping prod.
-_label_refresh_dry_run = pulumi.Config("portfolio").get_bool(
-    "label_refresh_dry_run"
-)
-label_refresh_lambda = create_label_refresh_lambda(
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    dynamodb_stream_arn=dynamodb_table.stream_arn,
-    dry_run=True if _label_refresh_dry_run is None else _label_refresh_dry_run,
-)
-pulumi.export("label_refresh_lambda_arn", label_refresh_lambda.lambda_arn)
-pulumi.export(
-    "label_refresh_lambda_name", label_refresh_lambda.lambda_function.name
-)
-pulumi.export("label_refresh_dlq_url", label_refresh_lambda.dlq_url)
+# Label Refresh Lambda: RETIRED with the vector-store teardown (see
+# docs/chroma-removal/); the pipeline-consolidation plan called for its
+# removal.
 
 # LangSmith Bulk Export infrastructure (for Parquet exports)
 from components.langsmith_bulk_export import LangSmithBulkExport
@@ -1359,22 +740,6 @@ pulumi.export(
 )
 pulumi.export("label_validation_project_name", label_validation_project_name)
 
-# EMR Serverless Docker Image (for custom Spark image with receipt_langsmith)
-from components.emr_serverless_docker_image import (
-    create_emr_serverless_docker_image,
-)
-
-emr_docker_image = create_emr_serverless_docker_image(
-    name="emr-spark",
-    emr_release="emr-7.5.0",  # Using 7.5.0 base with Python 3.12 installed
-    # CodeBuild will stop and update the EMR Application after building the image
-    emr_application_name=f"langsmith-analytics-{stack}",
-    # Use sync mode on first deployment to ensure image exists before EMR App is created
-    # After first deployment, this can be set to False for faster deployments
-    sync_mode=True,
-)
-pulumi.export("emr_docker_image_uri", emr_docker_image.image_uri)
-
 # EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
 from components.emr_serverless_analytics import create_emr_serverless_analytics
 
@@ -1383,14 +748,8 @@ from components.emr_serverless_analytics import create_emr_serverless_analytics
 # label_evaluator_shared) so that `pulumi --target` reconciles cleanly; see the
 # comment there. The instance is reused here via label_evaluator_shared.
 
-# NOTE: On first deployment, don't pass custom_image_uri - the EMR Application will use
-# the default EMR image initially. After the CodeBuild pipeline completes, it will
-# update the EMR Application with the custom image (see emr_application_name above).
-# On subsequent deployments, the image already exists so custom_image_uri can be used.
 emr_analytics = create_emr_serverless_analytics(
     langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
-    # Uncomment after first successful deployment:
-    # custom_image_uri=emr_docker_image.image_uri,
     # Shared buckets - grant EMR job access
     cache_bucket_arn=label_evaluator_shared.viz_cache_bucket_arn,
     batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
@@ -1399,35 +758,19 @@ pulumi.export("emr_application_id", emr_analytics.emr_application.id)
 pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
 pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
 pulumi.export(
+    "emr_python_environment_uri",
+    emr_analytics.python_environment_uri,
+)
+pulumi.export(
     "label_evaluator_viz_cache_merged_bucket",
     label_evaluator_shared.viz_cache_bucket_name,
 )
 
-# Label Evaluator Step Function (with LangSmith observability + EMR analytics + viz-cache)
-label_evaluator_sf = LabelEvaluatorStepFunction(
-    f"label-evaluator-{stack}",
-    dynamodb_table_name=dynamodb_table.name,
-    dynamodb_table_arn=dynamodb_table.arn,
-    chromadb_bucket_name=shared_chromadb_buckets.bucket_name,
-    chromadb_bucket_arn=shared_chromadb_buckets.bucket_arn,
-    ocr_job_queue_url=upload_images.ocr_queue.url,
-    ocr_job_queue_arn=upload_images.ocr_queue.arn,
-    # EMR Serverless Analytics integration
-    emr_application_id=emr_analytics.emr_application.id,
-    emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
-    langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
-    analytics_output_bucket=emr_analytics.analytics_bucket.id,
-    spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-    # Shared resources (viz-cache bucket for Lambda output, batch bucket for data)
-    cache_bucket=label_evaluator_shared.viz_cache_bucket_name,
-    batch_bucket_name=label_evaluator_shared.batch_bucket_name,
-    batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
-)
-
-pulumi.export("label_evaluator_sf_arn", label_evaluator_sf.state_machine_arn)
-pulumi.export(
-    "label_evaluator_batch_bucket_name", label_evaluator_sf.batch_bucket_name
-)
+# Label Evaluator Step Function: RETIRED 2026-09-02 (vector-store
+# teardown, closing #1523); the pipeline-consolidation plan supersedes it.
+# Shared resources it merely referenced (OCR queue, EMR analytics,
+# LangSmith bulk export, label_evaluator_shared viz-cache/batch buckets)
+# all remain — the viz-cache API routes keep serving the frozen cache.
 
 # CoreML Export Queue Infrastructure (for exporting LayoutLM models to CoreML on macOS)
 # Only create if SageMaker training is enabled (we need the training bucket)
@@ -1623,16 +966,3 @@ if hasattr(api_gateway, "api"):
         lambda_function=qa_viz_cache.api_lambda,
         permission_name="qa_viz_lambda_permission",
     )
-
-
-# Inbound email receipt pipeline (SES -> S3 -> parser Lambda -> S3 parsed/).
-# Gated off by default: enable per-stack with
-#   pulumi config set portfolio:email_receipt_inbox_enabled true
-# CAUTION: activates the account's SES receipt rule set (one active per
-# account+region) — see email_receipt_inbox/infrastructure.py.
-if portfolio_config.get_bool("email_receipt_inbox_enabled"):
-    from email_receipt_inbox import EmailReceiptInbox
-
-    email_inbox = EmailReceiptInbox("email-receipt-inbox")
-    pulumi.export("email_receipt_inbox_address", email_inbox.address)
-    pulumi.export("email_receipt_inbox_bucket", email_inbox.bucket.bucket)

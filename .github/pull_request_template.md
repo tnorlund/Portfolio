@@ -18,7 +18,7 @@
 
 - [ ] receipt_dynamo
 - [ ] receipt_dynamo_stream
-- [ ] receipt_chroma
+- [ ] receipt_embeddings
 - [ ] receipt_upload
 - [ ] receipt_places
 - [ ] receipt_agent
@@ -39,7 +39,7 @@
 
 - [ ] Documentation or comments updated for complex logic
 - [ ] README updated (if introducing new feature/dependency)
-- [ ] TypeDoc/JSDoc comments added where needed
+- [ ] JSDoc comments added where needed
 - [ ] No new warnings or linting issues introduced
 - [ ] Code follows project style guidelines
 

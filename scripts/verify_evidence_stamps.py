@@ -1,11 +1,11 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3.13
 """Verify committed evaluation evidence against the ACTIVE merchant fleet.
 
 The default verification path is hermetic and reads the committed
 ``evidence/ACTIVE_FLEET.json`` snapshot. Refreshing that snapshot is an
 explicit, read-only DynamoDB operation:
 
-    python3.12 scripts/verify_evidence_stamps.py --refresh-active-fleet
+    python3.13 scripts/verify_evidence_stamps.py --refresh-active-fleet
 """
 
 from __future__ import annotations

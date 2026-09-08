@@ -116,7 +116,7 @@ class QAVizCache(ComponentResource):
         # ============================================================
         self.api_lambda = aws.lambda_.Function(
             f"{name}-api-lambda",
-            runtime="python3.12",
+            runtime="python3.13",
             architectures=["arm64"],
             role=self.api_lambda_role.arn,
             code=AssetArchive({".": FileArchive(LAMBDAS_DIR)}),

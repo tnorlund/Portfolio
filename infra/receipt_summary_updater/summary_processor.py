@@ -26,6 +26,26 @@ TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME", "")
 dynamo_client = DynamoClient(TABLE_NAME) if TABLE_NAME else None
 
 
+def _total_line_ids(sections: list[Any] | None) -> list[int]:
+    """TOTAL_LINE section line ids from dict or entity section records."""
+    ids: list[int] = []
+    for section in sections or []:
+        if isinstance(section, dict):
+            section_type = section.get("section_type")
+            line_ids = section.get("line_ids") or []
+        else:
+            section_type = getattr(section, "section_type", None)
+            line_ids = getattr(section, "line_ids", None) or []
+        if section_type != "TOTAL_LINE":
+            continue
+        for line_id in line_ids:
+            try:
+                ids.append(int(line_id))
+            except (TypeError, ValueError):
+                continue
+    return ids
+
+
 def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     """Recompute and upsert ReceiptSummary for a receipt.
 
@@ -102,6 +122,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         image_id, receipt_id
     )
     tender = classify_tender_for_receipt(lines, sections, word_labels, words)
+    total_line_ids = _total_line_ids(sections)
 
     # Bank-match fields are computed OFFLINE (scripts/
     # backfill_tender_bank.py); carry them over from the stored summary
@@ -134,14 +155,11 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     # through the current pipeline never get LINE_TOTAL labels, so the
     # label rule reported 0 for receipts that hold real line items.
     #
-    # Ordering caveat: a summary write is what triggers the line-item
+    # A summary write is what triggers the line-item
     # updater (RECEIPT_SUMMARY -> LINE_ITEMS queue), so on a receipt's
-    # FIRST summary write there are no rows yet and the count still falls
-    # back to labels. It becomes correct on the next recompute (any label
-    # or place change). A stream back-edge from RECEIPT_LINE_ITEM to this
-    # queue is deliberately NOT added: the line-item updater
-    # delete-then-inserts every row on each run, so that edge would be an
-    # unbounded recompute loop.
+    # FIRST summary write there may be no rows yet. The item worker
+    # finalizes only item_count after its rewrite, preserving this summary's
+    # timestamp so that finalization does not trigger another extraction.
     try:
         line_item_count = len(
             dynamo_client.get_receipt_line_items_from_receipt(
@@ -165,11 +183,34 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         bank_amount=bank_amount,
         bank_match_confidence=bank_match_confidence,
         line_item_count=line_item_count,
+        total_line_ids=total_line_ids,
     )
 
     # Convert to record and upsert
     record = ReceiptSummaryRecord.from_summary(summary)
     dynamo_client.upsert_receipt_summary(record)
+
+    # Close the race with a merge deleting the parent after our initial
+    # guard. Parent-first deletion + a consistent child sweep handles writes
+    # before deletion; this consistent POST-write read handles writes after
+    # deletion, even when the sweep already finished. Errors propagate for
+    # SQS retry, whose initial guard also removes an orphan summary.
+    if not dynamo_client.receipt_exists_consistent(image_id, receipt_id):
+        try:
+            dynamo_client.delete_receipt_summary(record)
+        except EntityNotFoundError:
+            pass  # The merge sweep or another worker already removed it.
+        logger.info(
+            "Removed late summary for deleted receipt %s#%s",
+            image_id,
+            receipt_id,
+        )
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "skipped": "parent receipt deleted",
+            "orphan_summary_deleted": True,
+        }
 
     result = {
         "image_id": image_id,

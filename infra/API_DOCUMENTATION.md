@@ -175,7 +175,7 @@ The API supports CORS for the following origins:
 
 The API is built using:
 - AWS API Gateway (HTTP API)
-- AWS Lambda functions (Python 3.12, ARM64)
+- AWS Lambda functions (Python 3.13, ARM64)
 - DynamoDB for data storage
 - CloudWatch for logging and monitoring
 

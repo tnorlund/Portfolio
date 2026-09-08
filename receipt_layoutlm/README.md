@@ -10,7 +10,10 @@ current runtime.
 
 Last updated: 2026-07-09 UTC.
 
-- Active deployed model: `layoutlm-v23-qty-pinned`.
+- Active deployed model: `layoutlm-v31-nonproduct-clean-20260729` (8 merged
+  classes: `AMOUNT` = all money fields, `ADDRESS` = address + phone; no
+  line-item labels). See `EVALUATION.md` for why its reported F1 is not a
+  usable baseline.
 - Active model held-out F1: about `0.719` on its original canonical split.
 - Completed full-core adversarial retrain:
   `layoutlm-v25-adversarial-real-20260708-022719`.
@@ -104,8 +107,14 @@ Install from the repo root:
 
 ```bash
 pip install -e receipt_dynamo
-pip install -e receipt_layoutlm
+pip install -e 'receipt_layoutlm[training]'
 ```
+
+The `training` extra installs `seqeval` and scikit-learn for evaluation
+metrics. Do not install it in the CoreML export worker: CoreMLtools 9.0 only
+supports scikit-learn through 1.5.1, which has no Python 3.13 macOS ARM wheel.
+The worker uses the separate `coreml` extra documented in the repository
+runbook.
 
 Train locally against DynamoDB:
 

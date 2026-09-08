@@ -150,6 +150,17 @@
   "merchant": "Costco Wholesale",
   "items": [
    {
+    "name": "",
+    "price": 5.79,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": "low",
+    "line_ids": [
+     48
+    ]
+   },
+   {
     "name": "i: IFS 3 LB.",
     "price": 7.49,
     "quantity": null,
@@ -158,21 +169,18 @@
     "name_quality": null,
     "line_ids": [
      45,
-     47,
-     48
+     47
     ]
    },
    {
-    "name": "E 1391546 29827 AHI BAGEL TUNA CH",
+    "name": "1391546 BAGEL CH",
     "price": 7.99,
     "quantity": null,
     "unit_price": null,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
-     35,
      37,
-     38,
      39,
      40,
      41,
@@ -182,7 +190,20 @@
     ]
    },
    {
-    "name": "1113319 15' S COLICORNIA MONDELUKE",
+    "name": "E 29827 AHI TUNA",
+    "price": 38.4,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     35,
+     37,
+     38
+    ]
+   },
+   {
+    "name": "1113319 S MONDELUKE",
     "price": 1.89,
     "quantity": null,
     "unit_price": null,
@@ -190,13 +211,37 @@
     "name_quality": null,
     "line_ids": [
      33,
-     34,
      35,
      36
     ]
    },
    {
-    "name": "003 137 003 STRAWBERRIES SEAWEED SALJ",
+    "name": "15' COLICORNIA",
+    "price": 9.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     33,
+     34
+    ]
+   },
+   {
+    "name": "003 003 STRAWBERRIES",
+    "price": 6.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     29,
+     31,
+     32
+    ]
+   },
+   {
+    "name": "137 SEAWEED SALJ",
     "price": 1.99,
     "quantity": null,
     "unit_price": null,
@@ -205,13 +250,24 @@
     "line_ids": [
      26,
      29,
-     30,
-     31,
-     32
+     30
     ]
    },
    {
-    "name": "or 57554 '917 BLUEBERRI! S&P PISTACH",
+    "name": "or '917 S&P PISTACH",
+    "price": 17.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     24,
+     26,
+     28
+    ]
+   },
+   {
+    "name": "57554 BLUEBERRI!",
     "price": 5.79,
     "quantity": null,
     "unit_price": null,
@@ -220,13 +276,24 @@
     "line_ids": [
      22,
      24,
-     25,
-     26,
-     28
+     25
     ]
    },
    {
-    "name": "709616 25595 COCKTAIL BUFALA MOZZ TOM",
+    "name": "709616 BUFALA MOZZ",
+    "price": 14.69,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     20,
+     22,
+     23
+    ]
+   },
+   {
+    "name": "25595 COCKTAIL TOM",
     "price": 6.99,
     "quantity": null,
     "unit_price": null,
@@ -235,14 +302,25 @@
     "line_ids": [
      18,
      20,
-     21,
-     22,
-     23
+     21
     ]
    },
    {
-    "name": "1055663 1131563 CHICKN HNY RSTD SALAD MIX",
+    "name": "1131563 CHICKN SALAD",
     "price": 8.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     16,
+     18,
+     19
+    ]
+   },
+   {
+    "name": "1055663 HNY RSTD MIX",
+    "price": 15.49,
     "quantity": null,
     "unit_price": null,
     "is_discount": false,
@@ -250,13 +328,11 @@
     "line_ids": [
      14,
      16,
-     17,
-     18,
-     19
+     17
     ]
    },
    {
-    "name": "10'8249 ORG HORIZON ATAULFO",
+    "name": "10'8249 ORG ATAULFO",
     "price": 6.99,
     "quantity": null,
     "unit_price": null,
@@ -264,9 +340,20 @@
     "name_quality": null,
     "line_ids": [
      12,
-     13,
      14,
      15
+    ]
+   },
+   {
+    "name": "HORIZON",
+    "price": 12.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12,
+     13
     ]
    }
   ],
@@ -277,6 +364,17 @@
   },
   "items_with_summary": [
    {
+    "name": "",
+    "price": 5.79,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": "low",
+    "line_ids": [
+     48
+    ]
+   },
+   {
     "name": "i: IFS 3 LB.",
     "price": 7.49,
     "quantity": null,
@@ -285,21 +383,18 @@
     "name_quality": null,
     "line_ids": [
      45,
-     47,
-     48
+     47
     ]
    },
    {
-    "name": "E 1391546 29827 AHI BAGEL TUNA CH",
+    "name": "1391546 BAGEL CH",
     "price": 7.99,
     "quantity": null,
     "unit_price": null,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
-     35,
      37,
-     38,
      39,
      40,
      41,
@@ -309,7 +404,20 @@
     ]
    },
    {
-    "name": "1113319 15' S COLICORNIA MONDELUKE",
+    "name": "E 29827 AHI TUNA",
+    "price": 38.4,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     35,
+     37,
+     38
+    ]
+   },
+   {
+    "name": "1113319 S MONDELUKE",
     "price": 1.89,
     "quantity": null,
     "unit_price": null,
@@ -317,13 +425,37 @@
     "name_quality": null,
     "line_ids": [
      33,
-     34,
      35,
      36
     ]
    },
    {
-    "name": "003 137 003 STRAWBERRIES SEAWEED SALJ",
+    "name": "15' COLICORNIA",
+    "price": 9.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     33,
+     34
+    ]
+   },
+   {
+    "name": "003 003 STRAWBERRIES",
+    "price": 6.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     29,
+     31,
+     32
+    ]
+   },
+   {
+    "name": "137 SEAWEED SALJ",
     "price": 1.99,
     "quantity": null,
     "unit_price": null,
@@ -332,13 +464,24 @@
     "line_ids": [
      26,
      29,
-     30,
-     31,
-     32
+     30
     ]
    },
    {
-    "name": "or 57554 '917 BLUEBERRI! S&P PISTACH",
+    "name": "or '917 S&P PISTACH",
+    "price": 17.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     24,
+     26,
+     28
+    ]
+   },
+   {
+    "name": "57554 BLUEBERRI!",
     "price": 5.79,
     "quantity": null,
     "unit_price": null,
@@ -347,13 +490,24 @@
     "line_ids": [
      22,
      24,
-     25,
-     26,
-     28
+     25
     ]
    },
    {
-    "name": "709616 25595 COCKTAIL BUFALA MOZZ TOM",
+    "name": "709616 BUFALA MOZZ",
+    "price": 14.69,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     20,
+     22,
+     23
+    ]
+   },
+   {
+    "name": "25595 COCKTAIL TOM",
     "price": 6.99,
     "quantity": null,
     "unit_price": null,
@@ -362,14 +516,25 @@
     "line_ids": [
      18,
      20,
-     21,
-     22,
-     23
+     21
     ]
    },
    {
-    "name": "1055663 1131563 CHICKN HNY RSTD SALAD MIX",
+    "name": "1131563 CHICKN SALAD",
     "price": 8.49,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     16,
+     18,
+     19
+    ]
+   },
+   {
+    "name": "1055663 HNY RSTD MIX",
+    "price": 15.49,
     "quantity": null,
     "unit_price": null,
     "is_discount": false,
@@ -377,13 +542,11 @@
     "line_ids": [
      14,
      16,
-     17,
-     18,
-     19
+     17
     ]
    },
    {
-    "name": "10'8249 ORG HORIZON ATAULFO",
+    "name": "10'8249 ORG ATAULFO",
     "price": 6.99,
     "quantity": null,
     "unit_price": null,
@@ -391,15 +554,26 @@
     "name_quality": null,
     "line_ids": [
      12,
-     13,
      14,
      15
+    ]
+   },
+   {
+    "name": "HORIZON",
+    "price": 12.99,
+    "quantity": null,
+    "unit_price": null,
+    "is_discount": false,
+    "name_quality": null,
+    "line_ids": [
+     12,
+     13
     ]
    }
   ],
   "reconcile": {
    "status": "mismatch",
-   "item_sum": 47.62,
+   "item_sum": 168.95,
    "baseline": 198.93,
    "baseline_source": "subtotal",
    "baseline_figures_agreeing": null
@@ -2405,6 +2579,7 @@
     "name_quality": null,
     "line_ids": [
      13,
+     14,
      23
     ]
    },
@@ -2429,6 +2604,7 @@
     "name_quality": null,
     "line_ids": [
      10,
+     11,
      21
     ]
    },
@@ -2520,6 +2696,7 @@
     "name_quality": null,
     "line_ids": [
      13,
+     14,
      23
     ]
    },
@@ -2544,6 +2721,7 @@
     "name_quality": null,
     "line_ids": [
      10,
+     11,
      21
     ]
    },
@@ -5427,17 +5605,6 @@
     ]
    },
    {
-    "name": "IF",
-    "price": 8.502,
-    "quantity": null,
-    "unit_price": null,
-    "is_discount": false,
-    "name_quality": "low",
-    "line_ids": [
-     121
-    ]
-   },
-   {
     "name": "OUTY 5 GALLON BUCKET GRID",
     "price": 8.76,
     "quantity": null,
@@ -5887,17 +6054,6 @@
     ]
    },
    {
-    "name": "IF",
-    "price": 8.502,
-    "quantity": null,
-    "unit_price": null,
-    "is_discount": false,
-    "name_quality": "low",
-    "line_ids": [
-     121
-    ]
-   },
-   {
     "name": "OUTY 5 GALLON BUCKET GRID",
     "price": 8.76,
     "quantity": null,
@@ -6319,7 +6475,7 @@
   ],
   "reconcile": {
    "status": "mismatch",
-   "item_sum": 1195.46,
+   "item_sum": 1186.96,
    "baseline": 1023.48,
    "baseline_source": "subtotal",
    "baseline_figures_agreeing": null
@@ -9447,7 +9603,8 @@
     "line_ids": [
      5,
      6,
-     7
+     7,
+     8
     ]
    }
   ],
@@ -9478,7 +9635,8 @@
     "line_ids": [
      5,
      6,
-     7
+     7,
+     8
     ]
    }
   ],
@@ -9660,6 +9818,8 @@
     "name_quality": null,
     "line_ids": [
      52,
+     53,
+     54,
      71
     ]
    },
@@ -9672,6 +9832,7 @@
     "name_quality": null,
     "line_ids": [
      50,
+     51,
      70,
      95
     ]
@@ -9698,6 +9859,7 @@
     "name_quality": null,
     "line_ids": [
      44,
+     45,
      68,
      93
     ]
@@ -9724,6 +9886,7 @@
     "name_quality": null,
     "line_ids": [
      41,
+     42,
      66,
      91
     ]
@@ -9763,6 +9926,7 @@
     "name_quality": null,
     "line_ids": [
      37,
+     38,
      63,
      88
     ]
@@ -9848,6 +10012,8 @@
     "name_quality": null,
     "line_ids": [
      52,
+     53,
+     54,
      71
     ]
    },
@@ -9860,6 +10026,7 @@
     "name_quality": null,
     "line_ids": [
      50,
+     51,
      70,
      95
     ]
@@ -9886,6 +10053,7 @@
     "name_quality": null,
     "line_ids": [
      44,
+     45,
      68,
      93
     ]
@@ -9912,6 +10080,7 @@
     "name_quality": null,
     "line_ids": [
      41,
+     42,
      66,
      91
     ]
@@ -9951,6 +10120,7 @@
     "name_quality": null,
     "line_ids": [
      37,
+     38,
      63,
      88
     ]
@@ -10418,6 +10588,7 @@
     "name_quality": null,
     "line_ids": [
      37,
+     38,
      53
     ]
    },
@@ -10509,6 +10680,7 @@
     "name_quality": null,
     "line_ids": [
      37,
+     38,
      53
     ]
    },
@@ -10743,6 +10915,7 @@
     "name_quality": null,
     "line_ids": [
      21,
+     22,
      37
     ]
    },
@@ -10755,6 +10928,7 @@
     "name_quality": null,
     "line_ids": [
      19,
+     20,
      36
     ]
    },
@@ -10767,6 +10941,7 @@
     "name_quality": null,
     "line_ids": [
      17,
+     18,
      35
     ]
    },
@@ -10791,6 +10966,7 @@
     "name_quality": null,
     "line_ids": [
      14,
+     15,
      33
     ]
    },
@@ -10871,6 +11047,7 @@
     "name_quality": null,
     "line_ids": [
      21,
+     22,
      37
     ]
    },
@@ -10883,6 +11060,7 @@
     "name_quality": null,
     "line_ids": [
      19,
+     20,
      36
     ]
    },
@@ -10895,6 +11073,7 @@
     "name_quality": null,
     "line_ids": [
      17,
+     18,
      35
     ]
    },
@@ -10919,6 +11098,7 @@
     "name_quality": null,
     "line_ids": [
      14,
+     15,
      33
     ]
    },
@@ -11633,6 +11813,7 @@
     "name_quality": null,
     "line_ids": [
      45,
+     46,
      55,
      73
     ]
@@ -11740,6 +11921,7 @@
     "name_quality": null,
     "line_ids": [
      45,
+     46,
      55,
      73
     ]
@@ -12062,20 +12244,25 @@
     "name_quality": null,
     "line_ids": [
      63,
+     64,
+     65,
      71,
-     72
+     72,
+     73
     ]
    },
    {
     "name": "GARLIC-BULK",
     "price": 2.24,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 0.28,
+    "unit_price": 7.99,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
      60,
-     69
+     61,
+     69,
+     70
     ]
    },
    {
@@ -12087,6 +12274,7 @@
     "name_quality": null,
     "line_ids": [
      57,
+     58,
      67,
      68
     ]
@@ -12100,6 +12288,7 @@
     "name_quality": null,
     "line_ids": [
      54,
+     55,
      66
     ]
    },
@@ -12150,6 +12339,7 @@
     "name_quality": null,
     "line_ids": [
      36,
+     37,
      40,
      41
     ]
@@ -12170,20 +12360,25 @@
     "name_quality": null,
     "line_ids": [
      63,
+     64,
+     65,
      71,
-     72
+     72,
+     73
     ]
    },
    {
     "name": "GARLIC-BULK",
     "price": 2.24,
-    "quantity": null,
-    "unit_price": null,
+    "quantity": 0.28,
+    "unit_price": 7.99,
     "is_discount": false,
     "name_quality": null,
     "line_ids": [
      60,
-     69
+     61,
+     69,
+     70
     ]
    },
    {
@@ -12195,6 +12390,7 @@
     "name_quality": null,
     "line_ids": [
      57,
+     58,
      67,
      68
     ]
@@ -12208,6 +12404,7 @@
     "name_quality": null,
     "line_ids": [
      54,
+     55,
      66
     ]
    },
@@ -12258,6 +12455,7 @@
     "name_quality": null,
     "line_ids": [
      36,
+     37,
      40,
      41
     ]

@@ -1,0 +1,106 @@
+name: Dependabot maintenance
+
+# Report-only by default. Merge mode verifies each guarded head and waits
+# for its main deployment and smoke tests before considering the next PR.
+# A write PAT triggers push workflows; verification gets only GITHUB_TOKEN.
+# Fine-grained PAT: Contents and Pull requests read/write; Actions,
+# Commit statuses and Checks read. Never cancel an active deployment.
+
+on:
+  schedule:
+    # Dependabot opens this repo's weekly batch on Thursdays at ~12:35 UTC
+    # (observed 2026-08-20, 08-27, 09-03). Run ~65 min later so the PRs'
+    # CI/CD Pipeline runs have had time to finish. Adjust this if
+    # .github/dependabot.yml gains an explicit schedule.day / schedule.time.
+    - cron: "40 13 * * 4"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "report (read-only) or merge (authorizes normal production releases)"
+        type: choice
+        options:
+          - report
+          - merge
+        default: report
+
+# GITHUB_TOKEN stays read-only: merge mode authenticates gh with
+# DEPENDABOT_MAINTAINER_TOKEN instead (see header).
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+  statuses: read
+  actions: read
+
+concurrency:
+  group: dependabot-maintenance
+  cancel-in-progress: false
+
+jobs:
+  maintain:
+    name: Dependabot maintenance
+    runs-on: ubuntu-latest
+    timeout-minutes: 210
+    steps:
+      - name: Resolve mode and token
+        id: config
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_MODE: ${{ inputs.mode }}
+          AUTOMERGE_VAR: ${{ vars.DEPENDABOT_AUTOMERGE }}
+          HAS_MAINTAINER_TOKEN: ${{ secrets.DEPENDABOT_MAINTAINER_TOKEN != '' }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            mode="${INPUT_MODE:-report}"
+          else
+            if [ "$AUTOMERGE_VAR" = "true" ]; then
+              mode="merge"
+            else
+              mode="report"
+              echo "DEPENDABOT_AUTOMERGE is not 'true'; scheduled run reports only."
+            fi
+          fi
+
+          if [ "$mode" = "merge" ] && [ "$HAS_MAINTAINER_TOKEN" != "true" ]; then
+            echo "::error title=Missing DEPENDABOT_MAINTAINER_TOKEN::merge mode needs a PAT secret named DEPENDABOT_MAINTAINER_TOKEN (see workflow header). GITHUB_TOKEN merges would not trigger the CI/CD Pipeline deploy and Dependabot ignores its rebase comments."
+            exit 1
+          fi
+
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Resolved mode=$mode (event=$EVENT_NAME)"
+
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Run Dependabot maintenance
+        env:
+          MODE: ${{ steps.config.outputs.mode }}
+          REPO: ${{ github.repository }}
+          # Merge mode uses the PAT so the resulting push to main triggers
+          # the CI/CD Pipeline and Dependabot honors rebase comments.
+          VERIFICATION_GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.config.outputs.mode == 'merge' && secrets.DEPENDABOT_MAINTAINER_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          args=(--repo "$REPO" --mode "$MODE" --limit 50 --max-merges 3)
+          python .agents/skills/dependabot-maintainer/scripts/dependabot_maintenance_ci.py \
+            "${args[@]}" | tee report.txt
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dependabot-maintenance-report
+          path: report.txt
+          if-no-files-found: ignore
+          retention-days: 14

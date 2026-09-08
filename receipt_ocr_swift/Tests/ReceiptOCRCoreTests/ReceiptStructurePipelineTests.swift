@@ -29,6 +29,7 @@ import Testing
         let lineItems: [ExpectedItem]
         let printedSubtotal: Double?
         let reconciliationStatus: String
+        let reconciliation: ExpectedReconciliation
         let shouldReocrItemsZone: Bool
 
         enum CodingKeys: String, CodingKey {
@@ -38,7 +39,24 @@ import Testing
             case lineItems = "line_items"
             case printedSubtotal = "printed_subtotal"
             case reconciliationStatus = "reconciliation_status"
+            case reconciliation
             case shouldReocrItemsZone = "should_reocr_items_zone"
+        }
+    }
+
+    struct ExpectedReconciliation: Decodable {
+        let status: String
+        let itemSum: Double?
+        let baseline: Double?
+        let baselineSource: String?
+        let baselineFiguresAgreeing: Int?
+
+        enum CodingKeys: String, CodingKey {
+            case status
+            case itemSum = "item_sum"
+            case baseline
+            case baselineSource = "baseline_source"
+            case baselineFiguresAgreeing = "baseline_figures_agreeing"
         }
     }
 
@@ -62,6 +80,7 @@ import Testing
         let nameQuality: String
         let lineIds: [Int]
         let reconciliationStatus: String
+        let rawText: String
 
         enum CodingKeys: String, CodingKey {
             case itemIndex = "item_index"
@@ -73,6 +92,7 @@ import Testing
             case nameQuality = "name_quality"
             case lineIds = "line_ids"
             case reconciliationStatus = "reconciliation_status"
+            case rawText = "raw_text"
         }
     }
 
@@ -207,6 +227,7 @@ import Testing
                         || got.lineIds != wanted.lineIds
                         || got.reconciliationStatus
                             != wanted.reconciliationStatus
+                        || got.rawText != wanted.rawText
                         || got.modelSource != swiftWorkerModelSource
                         || got.extractorVersion
                             != swiftWorkerExtractorVersion
@@ -224,6 +245,17 @@ import Testing
                 != expectation.reconciliationStatus
             {
                 differences.append("reconciliation")
+            }
+            let gotRec = result.reconciliation
+            let wantRec = expectation.reconciliation
+            if gotRec.status != wantRec.status
+                || !equalMoney(gotRec.itemSum, wantRec.itemSum)
+                || !equalMoney(gotRec.baseline, wantRec.baseline)
+                || gotRec.baselineSource != wantRec.baselineSource
+                || gotRec.baselineFiguresAgreeing
+                    != wantRec.baselineFiguresAgreeing
+            {
+                differences.append("reconciliation detail")
             }
             if result.shouldReocrItemsZone
                 != expectation.shouldReocrItemsZone

@@ -61,4 +61,68 @@ import Testing
         let bogusJob = try SotoDynamoClient.decodeOCRJob(baseAttrs(strategy: .s("sharpen4x")))
         #expect(bogusJob.reocrStrategy == .plain)
     }
+
+    private func refineAttrs(
+        summary: DynamoDB.AttributeValue? = nil,
+        merchant: DynamoDB.AttributeValue? = nil
+    ) -> [String: DynamoDB.AttributeValue] {
+        var attrs = baseAttrs()
+        attrs["job_type"] = .s("LINE_ITEM_REFINE")
+        attrs["receipt_id"] = .n("2")
+        if let summary = summary { attrs["refine_summary"] = summary }
+        if let merchant = merchant { attrs["refine_merchant_name"] = merchant }
+        return attrs
+    }
+
+    /// The refine fields walked into the same trap as the strategy
+    /// fields: a job decoded here without its summary re-grades against
+    /// the worker's own scanned figures instead of the printed ones the
+    /// trigger carried, which is the entire point of the pass.
+    @Test func refineSummaryAndMerchantDecodeFromSotoAttributes() throws {
+        let job = try SotoDynamoClient.decodeOCRJob(
+            refineAttrs(
+                summary: .m([
+                    "subtotal": .n("3.99"),
+                    "tax": .n("0.35"),
+                    "grand_total": .n("4.34"),
+                ]),
+                merchant: .s("SPROUTS FARMERS MARKET")
+            )
+        )
+        #expect(job.jobType == .lineItemRefine)
+        #expect(job.receiptId == 2)
+        #expect(job.refineSummary?.subtotal == 3.99)
+        #expect(job.refineSummary?.tax == 0.35)
+        #expect(job.refineSummary?.grandTotal == 4.34)
+        #expect(job.refineMerchantName == "SPROUTS FARMERS MARKET")
+    }
+
+    /// A figure the receipt never printed stays nil — collapsing it to
+    /// zero would hand the reconciler a baseline the receipt never had.
+    @Test func partialRefineSummaryKeepsMissingFiguresNil() throws {
+        let job = try SotoDynamoClient.decodeOCRJob(
+            refineAttrs(
+                summary: .m([
+                    "subtotal": .n("12.50"),
+                    "tax": .null(true),
+                ])
+            )
+        )
+        #expect(job.refineSummary?.subtotal == 12.50)
+        #expect(job.refineSummary?.tax == nil)
+        #expect(job.refineSummary?.grandTotal == nil)
+        #expect(job.refineMerchantName == nil)
+    }
+
+    @Test func absentOrNullRefineFieldsDecodeAsNil() throws {
+        let absent = try SotoDynamoClient.decodeOCRJob(refineAttrs())
+        #expect(absent.refineSummary == nil)
+        #expect(absent.refineMerchantName == nil)
+
+        let nulled = try SotoDynamoClient.decodeOCRJob(
+            refineAttrs(summary: .null(true), merchant: .null(true))
+        )
+        #expect(nulled.refineSummary == nil)
+        #expect(nulled.refineMerchantName == nil)
+    }
 }

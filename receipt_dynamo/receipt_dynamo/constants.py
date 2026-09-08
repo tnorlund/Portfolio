@@ -63,13 +63,6 @@ class JobStatus(str, Enum):
     INTERRUPTED = "interrupted"
 
 
-class LabelStatus(str, Enum):
-    """Status assigned to a canonical label."""
-
-    ACTIVE = "ACTIVE"
-    DEPRECATED = "DEPRECATED"
-
-
 class EmbeddingStatus(str, Enum):
     """Tracking the outcome of OpenAI embedding jobs."""
 
@@ -131,13 +124,6 @@ class ValidationMethod(Enum):
     INFERENCE = "INFERENCE"
 
 
-class PassNumber(Enum):
-    """The pass number for a completion batch result."""
-
-    FIRST = "FIRST_PASS"
-    SECOND = "SECOND_PASS"
-
-
 class OCRStatus(Enum):
     """The status of an OCR job."""
 
@@ -152,6 +138,12 @@ class OCRJobType(Enum):
     REFINEMENT = "REFINEMENT"
     FIRST_PASS = "FIRST_PASS"
     REGIONAL_REOCR = "REGIONAL_REOCR"
+    # Second worker pass: re-decode line items on the Mac worker once the
+    # receipt's summary exists, so the graded baseline and zone-gap
+    # boundary extension run on device. The job's s3_key points at the
+    # receipt's ORIGINAL OCR-result JSON (not an image): the refine pass
+    # must decode over the same word universe as the persisted rows.
+    LINE_ITEM_REFINE = "LINE_ITEM_REFINE"
 
 
 class ImageType(Enum):
@@ -160,22 +152,6 @@ class ImageType(Enum):
     SCAN = "SCAN"
     PHOTO = "PHOTO"
     NATIVE = "NATIVE"
-
-
-class ChromaDBCollection(str, Enum):
-    """ChromaDB collection types for receipt embeddings."""
-
-    LINES = "lines"
-    WORDS = "words"
-
-
-class CompactionState(str, Enum):
-    """States for ChromaDB compaction runs/delta merges."""
-
-    PENDING = "PENDING"
-    PROCESSING = "PROCESSING"
-    COMPLETED = "COMPLETED"
-    FAILED = "FAILED"
 
 
 class CoreMLExportStatus(str, Enum):
@@ -188,7 +164,7 @@ class CoreMLExportStatus(str, Enum):
 
 
 # Core receipt label types with descriptions.
-# Used for metadata filtering in ChromaDB and RAG queries.
+# Used for metadata filtering in vector search and RAG queries.
 CORE_LABELS: dict[str, str] = {
     # ── Merchant & store info ───────────────────────────────────
     "MERCHANT_NAME": "Trading name or brand of the store issuing the receipt.",

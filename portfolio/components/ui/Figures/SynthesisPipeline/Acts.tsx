@@ -14,6 +14,7 @@ import {
   nodeCount,
   skeletonPathDsCloud,
 } from "./geometry";
+import { knockOutReceiptPaper } from "./pixelKernels";
 import {
   ActId,
   BOLD_WEIGHT_CALLOUT,
@@ -39,6 +40,21 @@ import {
   WEIGHT_STEP,
 } from "./pipelineData";
 import styles from "./SynthesisPipeline.module.css";
+import {
+  caretVisibleAt,
+  newlyRevealedWordIndices,
+  rectToCrop,
+  revealedCountsForProgress,
+} from "./assembleDraw";
+import { getKnockedOutInkBitmap } from "./inkCache";
+import {
+  knockOutAndBlit,
+  knockOutReceiptPaperFast,
+  stampThermalDotsAndBlit,
+} from "./wasm/kernels";
+
+/** Re-export for existing tests that import from Acts. */
+export { knockOutReceiptPaper };
 
 export interface ActProps {
   merchant: Merchant;
@@ -66,30 +82,31 @@ const AssetPending: React.FC<{ children: React.ReactNode }> = ({
 );
 
 /**
- * Turn opaque dark-ink-on-white receipt pixels into black ink with real alpha.
- * The grayscale intensity is preserved as opacity, so antialiasing and the
- * consensus cloud survive while the receipt-paper pixels disappear entirely.
+ * Resolve any CSS color the browser understands (named, hex8, hsl, oklch,
+ * space-separated rgb, custom-property tokens) via a 1×1 canvas readback.
  */
-export const knockOutReceiptPaper = (pixels: Uint8ClampedArray): void => {
-  const paperLuminance = 220;
-  const solidInkLuminance = 70;
-  for (let i = 0; i < pixels.length; i += 4) {
-    const luminance = Math.round(
-      pixels[i] * 0.2126 + pixels[i + 1] * 0.7152 + pixels[i + 2] * 0.0722,
-    );
-    const normalizedInk = Math.min(
-      1,
-      Math.max(
-        0,
-        (paperLuminance - luminance) /
-          (paperLuminance - solidInkLuminance),
-      ),
-    );
-    const inkAlpha = normalizedInk ** 1.5;
-    pixels[i + 3] = Math.round(pixels[i + 3] * inkAlpha);
-    pixels[i] = 0;
-    pixels[i + 1] = 0;
-    pixels[i + 2] = 0;
+const parseCssColor = (
+  value: string,
+): { red: number; green: number; blue: number } => {
+  const fallback = { red: 34, green: 34, blue: 34 };
+  if (typeof document === "undefined") {
+    return fallback;
+  }
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) {
+      return fallback;
+    }
+    ctx.fillStyle = "#000";
+    ctx.fillStyle = value.trim() || "#222";
+    ctx.fillRect(0, 0, 1, 1);
+    const data = ctx.getImageData(0, 0, 1, 1).data;
+    return { red: data[0], green: data[1], blue: data[2] };
+  } catch {
+    return fallback;
   }
 };
 
@@ -116,27 +133,61 @@ const ReceiptInkLayer: React.FC<ReceiptInkLayerProps> = ({
       return;
     }
     let cancelled = false;
-    const source = new Image();
-    source.decoding = "async";
-    source.onload = () => {
-      if (cancelled) {
-        return;
-      }
-      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+    const paintBitmap = (bitmap: ImageBitmap, width: number, height: number) => {
+      // Display canvas is write-only — no willReadFrequently / getImageData.
+      const ctx = canvas.getContext("2d");
       if (!ctx) {
         return;
       }
-      canvas.width = source.naturalWidth;
-      canvas.height = source.naturalHeight;
-      ctx.drawImage(source, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      knockOutReceiptPaper(imageData.data);
-      ctx.putImageData(imageData, 0, 0);
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      ctx.clearRect(0, 0, width, height);
+      ctx.drawImage(bitmap, 0, 0);
     };
-    source.src = src;
+
+    const fallbackImagePath = () => {
+      const source = new Image();
+      source.decoding = "async";
+      source.onload = () => {
+        if (cancelled) {
+          return;
+        }
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        if (!ctx) {
+          return;
+        }
+        canvas.width = source.naturalWidth;
+        canvas.height = source.naturalHeight;
+        ctx.drawImage(source, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        void knockOutAndBlit(ctx, imageData, () => cancelled);
+      };
+      source.src = src;
+      return () => {
+        source.onload = null;
+      };
+    };
+
+    let disposeFallback: (() => void) | undefined;
+    void getKnockedOutInkBitmap(src, async (pixels) => {
+      await knockOutReceiptPaperFast(pixels);
+    }).then((entry) => {
+      if (cancelled) {
+        return;
+      }
+      if (entry) {
+        paintBitmap(entry.bitmap, entry.width, entry.height);
+        return;
+      }
+      disposeFallback = fallbackImagePath();
+    });
+
     return () => {
       cancelled = true;
-      source.onload = null;
+      disposeFallback?.();
     };
   }, [src]);
 
@@ -301,33 +352,59 @@ const CharacterAct: React.FC<ActProps> = ({
   const dotReveal = reducedMotion ? 1 : phase(p, 0.62, 1);
 
   // Thermal dots stamp along the path as the handles fade.
+  // Prefer the WASM ImageData kernel; fall back to the JS reference stamp.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !geom || !dotParams) {
       return;
     }
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) {
       return; // jsdom / no 2d context
     }
+    let cancelled = false;
     const dpr =
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-    canvas.width = Math.round(geom.viewBox.width * dpr);
-    canvas.height = Math.round(geom.viewBox.height * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, geom.viewBox.width, geom.viewBox.height);
-    const radius = (dotParams.dotSize / 2) * dotWeight * geom.pxPerUnit;
+    const width = Math.round(geom.viewBox.width * dpr);
+    const height = Math.round(geom.viewBox.height * dpr);
+    canvas.width = width;
+    canvas.height = height;
+    const radius = Math.max(
+      0.5,
+      (dotParams.dotSize / 2) * dotWeight * geom.pxPerUnit * dpr,
+    );
     const reveal = active && !reducedMotion ? dotReveal : 1;
     const count = Math.max(0, Math.round(geom.points.length * reveal));
-    ctx.fillStyle =
+    const points = new Float32Array(count * 2);
+    for (let i = 0; i < count && i < geom.points.length; i += 1) {
+      points[i * 2] = geom.points[i].x * dpr;
+      points[i * 2 + 1] = geom.points[i].y * dpr;
+    }
+    const cssColor =
       getComputedStyle(canvas).getPropertyValue("--text-color").trim() ||
       "#222";
-    for (let i = 0; i < count && i < geom.points.length; i += 1) {
-      const pt = geom.points[i];
-      ctx.beginPath();
-      ctx.arc(pt.x, pt.y, Math.max(0.5, radius), 0, Math.PI * 2);
-      ctx.fill();
+    const { red, green, blue } = parseCssColor(cssColor);
+    // jsdom's canvas mock lacks a real ImageData — skip paint there.
+    if (typeof ImageData === "undefined") {
+      return;
     }
+    void stampThermalDotsAndBlit(
+      ctx,
+      {
+        width,
+        height,
+        points,
+        count,
+        radius,
+        red,
+        green,
+        blue,
+      },
+      () => cancelled,
+    );
+    return () => {
+      cancelled = true;
+    };
   }, [geom, dotParams, dotWeight, dotReveal, active, reducedMotion]);
 
   if (!geom || !dotParams) {
@@ -602,7 +679,9 @@ const AssembleAct: React.FC<ActProps> = ({
   const { compose, finalLabels } = assets;
   const p = reducedMotion ? 1 : progress;
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imgRef = useRef<HTMLImageElement | null>(null);
+  const sourceRef = useRef<HTMLImageElement | ImageBitmap | null>(null);
+  const prevCountsRef = useRef<number[]>([]);
+  const prevCaretOnRef = useRef(false);
   const [imgReady, setImgReady] = useState(false);
 
   const render = finalLabels?.metadata?.render;
@@ -643,25 +722,58 @@ const AssembleAct: React.FC<ActProps> = ({
   const typingP = phase(p, TYPE_START, TYPE_END);
   const labelsShown = p >= TYPE_END + 0.06;
 
-  // Load the printed receipt once.
+  // Load the printed receipt once (prefer ImageBitmap; fall back to <img>).
   useEffect(() => {
     if (!finalLabels) {
       return;
     }
-    const img = new window.Image();
-    img.onload = () => {
-      imgRef.current = img;
-      setImgReady(true);
+    let cancelled = false;
+    const src = finalSrc(merchant);
+
+    const load = async () => {
+      if (typeof createImageBitmap === "function") {
+        try {
+          const response = await fetch(src);
+          if (response.ok) {
+            const bitmap = await createImageBitmap(await response.blob());
+            if (cancelled) {
+              bitmap.close();
+              return;
+            }
+            sourceRef.current = bitmap;
+            setImgReady(true);
+            return;
+          }
+        } catch {
+          // fall through to Image()
+        }
+      }
+      const img = new window.Image();
+      img.onload = () => {
+        if (cancelled) {
+          return;
+        }
+        sourceRef.current = img;
+        setImgReady(true);
+      };
+      img.src = src;
     };
-    img.src = finalSrc(merchant);
+
+    void load();
     return () => {
-      img.onload = null;
+      cancelled = true;
+      const source = sourceRef.current;
+      if (source && typeof ImageBitmap !== "undefined" && source instanceof ImageBitmap) {
+        source.close();
+      }
+      sourceRef.current = null;
+      prevCountsRef.current = [];
+      prevCaretOnRef.current = false;
     };
   }, [merchant, finalLabels]);
 
-  // Draw the revealed words. Each group reveals in order, all groups at once, so
-  // the receipt materializes top-to-bottom in four places simultaneously; a
-  // caret blinks at each section's leading edge.
+  // Incremental typing reveal: size the canvas once, draw only newly revealed
+  // word crops, and redraw carets without wiping the whole receipt buffer.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) {
@@ -671,39 +783,155 @@ const AssembleAct: React.FC<ActProps> = ({
     if (!ctx) {
       return; // jsdom / no 2d context
     }
-    canvas.width = renderW;
-    canvas.height = renderH;
-    ctx.clearRect(0, 0, renderW, renderH);
-    const img = imgRef.current;
+    const sized = canvas.width !== renderW || canvas.height !== renderH;
+    if (sized) {
+      canvas.width = renderW;
+      canvas.height = renderH;
+      prevCountsRef.current = groups.map(() => 0);
+      prevCaretOnRef.current = false;
+    }
+
+    const img = sourceRef.current;
     if (!img || !imgReady) {
       return;
     }
+
     const t = clamp01(typingP);
-    const drawWordCrop = (r: ReturnType<typeof toCssRectInner>) => {
-      const sx = (r.left / 100) * renderW;
-      const sy = (r.top / 100) * renderH;
-      const sw = (r.width / 100) * renderW;
-      const sh = (r.height / 100) * renderH;
-      if (sw > 0 && sh > 0) {
-        ctx.drawImage(img, sx, sy, sw, sh, sx, sy, sw, sh);
+    const nextCounts = revealedCountsForProgress(groups, t);
+    const prevCounts = prevCountsRef.current.length
+      ? prevCountsRef.current
+      : groups.map(() => 0);
+
+    // Progress went backwards (act restart / scrub) — full redraw.
+    const wentBackwards = nextCounts.some((n, i) => n < (prevCounts[i] ?? 0));
+    if (wentBackwards || sized) {
+      ctx.clearRect(0, 0, renderW, renderH);
+      const full = newlyRevealedWordIndices(
+        groups,
+        groups.map(() => 0),
+        nextCounts,
+      );
+      full.forEach((wordIndex) => {
+        const r = wordRects[wordIndex];
+        if (!r) {
+          return;
+        }
+        const crop = rectToCrop(r, renderW, renderH);
+        if (crop) {
+          ctx.drawImage(
+            img,
+            crop.sx,
+            crop.sy,
+            crop.sw,
+            crop.sh,
+            crop.sx,
+            crop.sy,
+            crop.sw,
+            crop.sh,
+          );
+        }
+      });
+    } else {
+      const delta = newlyRevealedWordIndices(groups, prevCounts, nextCounts);
+      delta.forEach((wordIndex) => {
+        const r = wordRects[wordIndex];
+        if (!r) {
+          return;
+        }
+        const crop = rectToCrop(r, renderW, renderH);
+        if (crop) {
+          ctx.drawImage(
+            img,
+            crop.sx,
+            crop.sy,
+            crop.sw,
+            crop.sh,
+            crop.sx,
+            crop.sy,
+            crop.sw,
+            crop.sh,
+          );
+        }
+      });
+    }
+
+    // Carets are overlaid on ink. Erase at the *previous* leading edge (where
+    // the old caret was drawn), restore every revealed crop that intersects
+    // that strip, then paint carets at the new leading edge.
+    const caretOn = caretVisibleAt(t);
+    const cropsIntersect = (
+      a: { sx: number; sy: number; sw: number; sh: number },
+      b: { sx: number; sy: number; sw: number; sh: number },
+    ): boolean =>
+      a.sx < b.sx + b.sw &&
+      a.sx + a.sw > b.sx &&
+      a.sy < b.sy + b.sh &&
+      a.sy + a.sh > b.sy;
+
+    const drawWord = (wordIndex: number) => {
+      const r = wordRects[wordIndex];
+      if (!r) {
+        return;
       }
+      const crop = rectToCrop(r, renderW, renderH);
+      if (!crop) {
+        return;
+      }
+      ctx.drawImage(
+        img,
+        crop.sx,
+        crop.sy,
+        crop.sw,
+        crop.sh,
+        crop.sx,
+        crop.sy,
+        crop.sw,
+        crop.sh,
+      );
     };
-    groups.forEach((g) => {
-      const revealed = Math.round(t * g.length);
-      for (let i = 0; i < revealed; i += 1) {
-        const r = wordRects[g[i]];
-        if (r) {
-          drawWordCrop(r);
+
+    const eraseCaretAt = (count: number, group: number[], revealed: number) => {
+      if (group.length === 0) {
+        return;
+      }
+      const idx = group[Math.min(group.length - 1, count)];
+      const r = wordRects[idx];
+      if (!r) {
+        return;
+      }
+      const crop = rectToCrop(r, renderW, renderH);
+      if (!crop) {
+        return;
+      }
+      const strip = {
+        sx: crop.sx - 4,
+        sy: crop.sy,
+        sw: 6,
+        sh: crop.sh,
+      };
+      ctx.clearRect(strip.sx, strip.sy, strip.sw, strip.sh);
+      // Heal any ink the strip removed — not just the previous logical word.
+      const healThrough = Math.max(revealed, count);
+      for (let i = 0; i < healThrough && i < group.length; i += 1) {
+        const word = wordRects[group[i]];
+        const wordCrop = word ? rectToCrop(word, renderW, renderH) : null;
+        if (wordCrop && cropsIntersect(wordCrop, strip)) {
+          drawWord(group[i]);
         }
       }
-    });
-    // Blinking carets at each leading edge while typing.
-    if (t > 0 && t < 1 && Math.floor(t * 48) % 2 === 0) {
+    };
+
+    if (prevCaretOnRef.current) {
+      groups.forEach((g, gi) => {
+        eraseCaretAt(prevCounts[gi] ?? 0, g, nextCounts[gi] ?? 0);
+      });
+    }
+    if (caretOn) {
       ctx.fillStyle =
         getComputedStyle(canvas).getPropertyValue("--color-blue").trim() ||
         "#4a90d9";
-      groups.forEach((g) => {
-        const revealed = Math.round(t * g.length);
+      groups.forEach((g, gi) => {
+        const revealed = nextCounts[gi] ?? 0;
         const r = wordRects[g[Math.min(g.length - 1, revealed)]];
         if (r) {
           ctx.fillRect(
@@ -715,6 +943,9 @@ const AssembleAct: React.FC<ActProps> = ({
         }
       });
     }
+
+    prevCountsRef.current = nextCounts;
+    prevCaretOnRef.current = caretOn;
   }, [typingP, imgReady, groups, wordRects, renderW, renderH]);
 
   if (!finalLabels || !compose) {

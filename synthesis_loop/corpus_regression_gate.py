@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.12
+#!/usr/bin/env python3.13
 """Standing eval-regression corpus gate (offline, zero AWS, PR-runner-safe).
 
 Companion to ``render_regression_guard.py``. Where that guard pins the
@@ -76,7 +76,7 @@ current values, and (for numerics) the delta -- e.g.
 guards it this way.
 
 Intended CI invocation (wired in H7, NOT here):
-    python3.12 synthesis_loop/corpus_regression_gate.py check --json
+    python3.13 synthesis_loop/corpus_regression_gate.py check --json
 On a self-hosted PR runner with NO AWS credentials. Exit 0 = corpus stable;
 exit 1 = a metric verdict/value/render-hash regressed (findings on stdout for
 the comment poster); exit 2 = usage error.

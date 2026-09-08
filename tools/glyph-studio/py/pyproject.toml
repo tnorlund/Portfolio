@@ -6,18 +6,17 @@ build-backend = "setuptools.build_meta"
 name = "glyphstudio"
 version = "0.1.0"
 description = "Parametric stroke-skeleton glyph fonts for synthetic receipts"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "numpy",
     "pillow",
 ]
 
 [project.optional-dependencies]
-# receipt-chroma is a local monorepo package (not on PyPI). Only
-# section_propagate / section_propagate_eval need it; the glyph MCP Lambda
-# image installs the default (numpy + PIL only) package and must stay
-# resolvable without it.
-sections = ["receipt-chroma"]
+# receipt-embeddings is a local monorepo package (not on PyPI). Only
+# section_propagate needs it; the glyph MCP Lambda image installs the
+# default (numpy + PIL only) package and must stay resolvable without it.
+sections = ["receipt-embeddings"]
 
 [tool.setuptools]
 packages = ["glyphstudio"]

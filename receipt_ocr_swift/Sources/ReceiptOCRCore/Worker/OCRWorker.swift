@@ -46,6 +46,11 @@ private struct ParsedReceiptInfo {
     let warpedHeight: Int
     let lineIndices: [Int]
     let layoutLMPredictions: [ParsedLinePrediction]?
+    /// On-device decoded line items, re-read from the result JSON so the
+    /// worker can write them to DynamoDB directly.
+    let lineItems: [ReceiptLineItemPayload]
+    /// Receipt-level graded reconciliation verdict, when present.
+    let reconciliation: ReceiptReconciliationPayload?
 }
 
 /// Parsed LayoutLM prediction for a line
@@ -116,6 +121,25 @@ private func parseReceiptsFromJSON(_ jsonData: Data) -> [ParsedReceiptInfo] {
             }
         }
 
+        // Re-decode the typed structure payloads through Codable so the
+        // Dynamo write path shares one source of truth with the wire
+        // contract (a hand-rolled dict parse here would be a third schema).
+        var lineItems: [ReceiptLineItemPayload] = []
+        if let itemsArray = receiptDict["line_items"] as? [[String: Any]],
+           let data = try? JSONSerialization.data(withJSONObject: itemsArray),
+           let decoded = try? JSONDecoder().decode(
+               [ReceiptLineItemPayload].self, from: data
+           ) {
+            lineItems = decoded
+        }
+        var reconciliation: ReceiptReconciliationPayload? = nil
+        if let recDict = receiptDict["reconciliation"] as? [String: Any],
+           let data = try? JSONSerialization.data(withJSONObject: recDict) {
+            reconciliation = try? JSONDecoder().decode(
+                ReceiptReconciliationPayload.self, from: data
+            )
+        }
+
         return ParsedReceiptInfo(
             clusterId: clusterId,
             localFileName: s3Key,  // s3Key initially contains local filename
@@ -123,7 +147,9 @@ private func parseReceiptsFromJSON(_ jsonData: Data) -> [ParsedReceiptInfo] {
             warpedWidth: warpedWidth,
             warpedHeight: warpedHeight,
             lineIndices: lineIndices,
-            layoutLMPredictions: layoutLMPredictions
+            layoutLMPredictions: layoutLMPredictions,
+            lineItems: lineItems,
+            reconciliation: reconciliation
         )
     }
 }
@@ -137,6 +163,10 @@ public final class OCRWorker {
     private let dynamo: DynamoClientProtocol
     // Hold factory to manage AWSClient lifecycle when using Soto-backed clients
     private let sotoFactory: SotoAWSFactory?
+    // Entity types the loaded LayoutLM bundle can emit, read from its own
+    // config.json. Passed to the label writer so a merged-head model
+    // (AMOUNT, ADDRESS) is not filtered down to the unmerged core list.
+    private let modelEntityTypes: Set<String>
 
     public init(
         config: Config,
@@ -144,7 +174,8 @@ public final class OCRWorker {
         sqs: SQSClientProtocol,
         s3: S3ClientProtocol,
         dynamo: DynamoClientProtocol,
-        sotoFactory: SotoAWSFactory? = nil
+        sotoFactory: SotoAWSFactory? = nil,
+        modelEntityTypes: Set<String> = []
     ) {
         self.config = config
         self.ocr = ocr
@@ -152,6 +183,7 @@ public final class OCRWorker {
         self.s3 = s3
         self.dynamo = dynamo
         self.sotoFactory = sotoFactory
+        self.modelEntityTypes = modelEntityTypes
         var logger = Logger(label: "receipt.ocr.worker")
         logger.logLevel = .from(string: config.logLevel)
         self.logger = logger
@@ -167,18 +199,41 @@ public final class OCRWorker {
 
         // Download LayoutLM model if configured
         var layoutLMBundlePath: URL? = nil
+        var modelEntityTypes: Set<String> = []
         #if os(macOS)
         if let bucket = config.layoutLMModelS3Bucket,
            let key = config.layoutLMModelS3Key,
            !bucket.isEmpty, !key.isEmpty {
-            modelLogger.info("layoutlm_download_start bucket=\(bucket) key=\(key)")
             let downloader = ModelDownloader(s3: s3Client, logger: modelLogger)
-            layoutLMBundlePath = try await downloader.ensureModelDownloaded(
-                bucket: bucket,
-                key: key,
-                localCachePath: config.layoutLMLocalCachePath
-            )
-            modelLogger.info("layoutlm_download_complete path=\(layoutLMBundlePath?.path ?? "nil")")
+            do {
+                layoutLMBundlePath = try await downloader.ensureModelDownloaded(
+                    bucket: bucket,
+                    key: key,
+                    localCachePath: config.layoutLMLocalCachePath,
+                    pointerKey: config.layoutLMPointerKey,
+                    env: config.environment
+                )
+            } catch ModelDownloaderError.noActiveModel(let env) {
+                modelLogger.warning("layoutlm_no_active_model env=\(env)")
+            } catch let error as ModelDownloaderError {
+                // A malformed pointer, an identity mismatch, or a failed
+                // extraction must not take Vision OCR down with it. Fail
+                // loudly for the model, keep draining the queue without it —
+                // the same degraded mode as a missing pointer.
+                modelLogger.error(
+                    "layoutlm_model_unavailable env=\(config.environment) reason=\(error.errorDescription ?? String(describing: error))"
+                )
+            }
+            if let bundle = layoutLMBundlePath {
+                do {
+                    let cfg = try LayoutLMConfig.load(from: bundle.appendingPathComponent("config.json"))
+                    modelEntityTypes = Set(cfg.entityTypes)
+                    modelLogger.info("layoutlm_entity_types count=\(modelEntityTypes.count) types=\(modelEntityTypes.sorted().joined(separator: ","))")
+                } catch {
+                    // Fall back to the core list; the writer only ever widens from it.
+                    modelLogger.warning("layoutlm_entity_types_unavailable error=\(error)")
+                }
+            }
         } else {
             // Log why LayoutLM is disabled
             let bucketStatus = config.layoutLMModelS3Bucket.map { $0.isEmpty ? "empty" : "set" } ?? "nil"
@@ -201,7 +256,8 @@ public final class OCRWorker {
             sqs: SotoSQSClient(sqs: factory.makeSQS()),
             s3: s3Client,
             dynamo: SotoDynamoClient(dynamo: factory.makeDynamo(), tableName: config.dynamoTableName),
-            sotoFactory: factory
+            sotoFactory: factory,
+            modelEntityTypes: modelEntityTypes
         )
         return worker
     }
@@ -240,6 +296,205 @@ public final class OCRWorker {
     }
     #endif
 
+    enum RefineOutcome: Equatable {
+        /// Structure written and job completed — delete the message.
+        case completed
+        /// The job can never succeed (bad payload, receipt not in the
+        /// JSON, decode failure) — job FAILED, delete the message.
+        case permanentFailure
+        /// Transient (S3/Dynamo hiccup) — leave the message for
+        /// redelivery.
+        case transient
+    }
+
+    /// Second worker pass (LINE_ITEM_REFINE): decode the receipt's STORED
+    /// OCR JSON — the same word universe ingest persisted — with the real
+    /// summary carried on the job, then write LINE ITEMS straight to
+    /// DynamoDB.
+    ///
+    /// Line items ONLY — deliberately no section write. The cloud
+    /// recompute that runs at summary time performs the same
+    /// deterministic boundary extension and persists the widened section
+    /// itself through `update_receipt_section`, which preserves the
+    /// validation status and verifier provenance the worker cannot read.
+    /// A section put from here would (a) stamp those existing sections
+    /// back to PENDING and drop their verification fields, and (b) fire
+    /// the stream's canonical-ITEMS trigger, re-invoking the updater that
+    /// enqueued this very job. With no section write the pass emits no
+    /// stream event at all, so it cannot retrigger itself.
+    func processLineItemRefine(
+        job: OCRJob, imageId: String, jobId: String
+    ) async -> RefineOutcome {
+        /// Persist the terminal FAILED status and report the outcome the
+        /// caller should return. `.permanentFailure` deletes the SQS
+        /// message, so it is only safe once the row is durably FAILED —
+        /// otherwise the job stays PENDING forever and the enqueuer,
+        /// which reads a PENDING refine job as "already running",
+        /// suppresses every future refine for this receipt. When the
+        /// update cannot be persisted, leave the message instead.
+        func failJob() async -> RefineOutcome {
+            var failed = job
+            failed.status = .failed
+            failed.updatedAt = Date()
+            do {
+                try await Retry.withBackoff {
+                    try await self.dynamo.updateOCRJob(failed)
+                }
+                return .permanentFailure
+            } catch {
+                logger.warning(
+                    "refine_fail_status_unpersisted image_id=\(imageId) job_id=\(jobId) error=\(error)"
+                )
+                return .transient
+            }
+        }
+
+        guard let receiptId = job.receiptId else {
+            logger.warning("refine_missing_receipt_id image_id=\(imageId) job_id=\(jobId)")
+            return await failJob()
+        }
+
+        let jsonData: Data
+        do {
+            jsonData = try await Retry.withBackoff {
+                try await self.s3.getObject(
+                    bucket: job.s3Bucket, key: job.s3Key
+                )
+            }
+        } catch is ObjectNotFoundError {
+            logger.warning("refine_result_json_gone image_id=\(imageId) key=\(job.s3Key)")
+            return await failJob()
+        } catch {
+            logger.warning("refine_deferred stage=download image_id=\(imageId) error=\(error)")
+            return .transient
+        }
+
+        // ReceiptOutput cannot be decoded whole: its own coding keys are
+        // explicit snake_case while nested Line/LinePrediction rely on
+        // .convertFromSnakeCase (the same reason the contract tests use a
+        // custom envelope). Extract the receipt dict manually and decode
+        // the nested arrays with the snake-case strategy.
+        let snakeDecoder = JSONDecoder()
+        snakeDecoder.keyDecodingStrategy = .convertFromSnakeCase
+        func decodeLines(_ array: [[String: Any]]) -> [Line]? {
+            guard
+                let data = try? JSONSerialization.data(withJSONObject: array)
+            else { return nil }
+            return try? snakeDecoder.decode([Line].self, from: data)
+        }
+        // Two stored shapes reach here. A FIRST_PASS result is
+        // image-level: its `receipts` array carries one entry per
+        // detected receipt, keyed by cluster_id. A REFINEMENT result is
+        // already scoped to ONE receipt (the worker runs those with
+        // includeClassification: false), so its warped-crop lines sit in
+        // a top-level `lines` array with no `receipts` key at all — the
+        // job's own receiptId identifies it, exactly as the cloud
+        // refinement path treats that shape. The presence of `receipts`
+        // is therefore the discriminator between the two.
+        let obj =
+            try? JSONSerialization.jsonObject(with: jsonData)
+            as? [String: Any]
+        let receiptsArray = obj?["receipts"] as? [[String: Any]]
+        let receiptDict = receiptsArray?.first(
+            where: { ($0["cluster_id"] as? Int) == receiptId }
+        )
+        let lines: [Line]
+        if let receiptLines = receiptDict?["lines"] as? [[String: Any]],
+            let decoded = decodeLines(receiptLines)
+        {
+            lines = decoded
+        } else if receiptsArray == nil,
+            let topLines = obj?["lines"] as? [[String: Any]],
+            let decoded = decodeLines(topLines)
+        {
+            // The top-level fallback applies ONLY to the single-receipt
+            // shape. An image-level envelope's top-level `lines` are the
+            // WHOLE image's first-pass OCR, so falling back to them when
+            // the requested cluster_id is simply absent would persist
+            // another receipt's lines under this receipt's id.
+            lines = decoded
+        } else {
+            logger.warning("refine_receipt_not_in_json image_id=\(imageId) receipt_id=\(receiptId)")
+            return await failJob()
+        }
+
+        var merchantName = job.refineMerchantName
+        if merchantName == nil,
+            let predsArray = receiptDict?["layoutlm_predictions"]
+                as? [[String: Any]],
+            let predsData = try? JSONSerialization.data(
+                withJSONObject: predsArray
+            ),
+            let predictions = try? snakeDecoder.decode(
+                [LinePrediction].self, from: predsData
+            )
+        {
+            merchantName = merchantNameFromLayoutPredictions(predictions)
+        }
+
+        #if os(macOS)
+        let structure: OnDeviceReceiptStructure
+        do {
+            structure = try buildOnDeviceReceiptStructure(
+                lines: lines,
+                receiptId: receiptId,
+                merchantName: merchantName,
+                summaryOverride: job.refineSummary
+            )
+        } catch {
+            logger.warning("refine_decode_failed image_id=\(imageId) receipt_id=\(receiptId) error=\(error)")
+            return await failJob()
+        }
+
+        let now = Date()
+        do {
+            // REPLACE, not add: this decode supersedes the cloud's, and a
+            // summary that filters a spurious total leaves fewer items
+            // than the rows already stored. A put-only write would leave
+            // the surplus indices behind as phantom items. The merchant
+            // carried on the job goes back onto the rows too — cloud
+            // resolution already ran, and this path emits no stream event
+            // that would re-enrich them.
+            try await Retry.withBackoff {
+                try await self.dynamo.replaceReceiptLineItems(
+                    imageId: imageId, receiptId: receiptId,
+                    items: structure.lineItems, extractedAt: now,
+                    baselineFiguresAgreeing: structure.reconciliation
+                        .baselineFiguresAgreeing,
+                    merchantName: job.refineMerchantName
+                )
+            }
+        } catch {
+            logger.warning("refine_deferred stage=dynamo_write image_id=\(imageId) error=\(error)")
+            return .transient
+        }
+
+        var completed = job
+        completed.status = .completed
+        completed.updatedAt = now
+        do {
+            try await Retry.withBackoff {
+                try await self.dynamo.updateOCRJob(completed)
+            }
+        } catch {
+            // Acknowledging the message with the job still PENDING in
+            // Dynamo would suppress every future refine for this receipt
+            // (the enqueuer treats a PENDING job as "already running").
+            // Redelivery is cheap: the pass is idempotent — same JSON,
+            // same summary, same deterministic decode, same rows.
+            logger.debug("refine_job_update_failed image_id=\(imageId) error=\(error)")
+            return .transient
+        }
+        logger.info(
+            "refine_complete image_id=\(imageId) receipt_id=\(receiptId) items=\(structure.lineItems.count) status=\(structure.reconciliationStatus)"
+        )
+        return .completed
+        #else
+        logger.warning("refine_unsupported_platform image_id=\(imageId)")
+        return await failJob()
+        #endif
+    }
+
     public func processBatch() async throws -> Bool {
         logger.info("sqs_receive_start max=10 visibility=60 queue=\(config.ocrJobQueueURL)")
         let messages = try await Retry.withBackoff {
@@ -266,6 +521,12 @@ public final class OCRWorker {
             /// region (REGIONAL_REOCR only; nil otherwise). Recorded in
             /// the uploaded result JSON as `reocr_strategy_applied`.
             let strategyApplied: String?
+            /// Whether the job row was already COMPLETED when it was fetched,
+            /// i.e. this delivery is a redelivery of work that already
+            /// finished. A cheap fast path around the direct line-item write,
+            /// whose per-row condition is the actual safety guarantee (see
+            /// below).
+            let jobWasCompleted: Bool
         }
         var imageURLs: [URL] = []
         var contexts: [Context] = []
@@ -303,6 +564,26 @@ public final class OCRWorker {
                 logger.warning("job_deferred stage=get_job image_id=\(imageId) job_id=\(jobId) error=\(error)")
                 continue
             }
+            // LINE_ITEM_REFINE is not an OCR job: no image download, no
+            // Vision pass. Re-decode the stored OCR JSON with the real
+            // summary and write the structure directly (Tier 2 surface),
+            // then delete the message. Transient failures leave the
+            // message for redelivery.
+            if job.jobType == .lineItemRefine {
+                let outcome = await processLineItemRefine(
+                    job: job, imageId: imageId, jobId: jobId
+                )
+                if outcome != .transient {
+                    poisonEntries.append(
+                        SQSDeleteEntry(
+                            id: msg.messageId,
+                            receiptHandle: msg.receiptHandle
+                        )
+                    )
+                }
+                continue
+            }
+
             // Update processing stage to DOWNLOADING
             do {
                 try await self.dynamo.updateOCRJobStage(imageId: imageId, jobId: jobId, stage: "DOWNLOADING")
@@ -360,7 +641,8 @@ public final class OCRWorker {
                         jobId: jobId,
                         s3Bucket: config.rawBucketName,
                         jobType: job.jobType,
-                        strategyApplied: strategy.rawValue
+                        strategyApplied: strategy.rawValue,
+                        jobWasCompleted: job.status == .completed
                     )
                 )
                 logger.info(
@@ -381,7 +663,8 @@ public final class OCRWorker {
                     jobId: jobId,
                     s3Bucket: config.rawBucketName,
                     jobType: job.jobType,
-                    strategyApplied: nil
+                    strategyApplied: nil,
+                    jobWasCompleted: job.status == .completed
                 )
             )
         }
@@ -501,7 +784,8 @@ public final class OCRWorker {
                         let labels = ReceiptWordLabel.fromLinePredictions(
                             predictions: linePredictions,
                             imageId: imageId,
-                            receiptId: receiptId
+                            receiptId: receiptId,
+                            modelLabels: self.modelEntityTypes
                         )
 
                         guard !labels.isEmpty else { return }
@@ -517,6 +801,62 @@ public final class OCRWorker {
                 }
             }
             #endif
+
+            // Write the on-device decoded line items straight to DynamoDB
+            // (Tier 2 of the worker-authority migration). Best-effort like
+            // the labels write: the ingest Lambda still persists the same
+            // rows from the JSON payload (delete-then-add), so a failure
+            // here costs nothing but the head start. Sections are NOT
+            // written from the worker at single-pass time — a section
+            // write before the receipt's words exist would fire the
+            // stream's canonical-ITEMS trigger and cause a premature
+            // cloud recompute against a word-less receipt.
+            //
+            // Every row is written CONDITIONALLY: a put lands only where no
+            // row exists yet or the worker itself wrote the one that does.
+            // Rows the cloud pipeline produced may since have been enriched
+            // (merchant rollup keys, VALID section provenance, reconciliation
+            // against the real summary), and the worker's sparse payload
+            // would erase that — the condition is what guarantees it cannot,
+            // under any interleaving of crash, redelivery and enrichment.
+            //
+            // The COMPLETED-at-fetch-time check below is only a fast path: a
+            // redelivery of finished work would have every put rejected
+            // anyway, so skip the round trips. It is NOT the guarantee —
+            // a first attempt that crashed after sending its results message
+            // but before marking the job COMPLETED comes back as PENDING.
+            if ctx.jobType != .regionalReocr {
+                if ctx.jobWasCompleted {
+                    logger.info(
+                        "worker_line_items_skip_redelivery image_id=\(ctx.imageId) job_id=\(ctx.jobId)"
+                    )
+                } else {
+                    for receipt in receipts where !receipt.lineItems.isEmpty {
+                        let receiptId = receipt.clusterId
+                        do {
+                            let skipped = try await Retry.withBackoff {
+                                try await self.dynamo
+                                    .addReceiptLineItemsIfWorkerOwned(
+                                        imageId: ctx.imageId,
+                                        receiptId: receiptId,
+                                        items: receipt.lineItems,
+                                        extractedAt: now,
+                                        baselineFiguresAgreeing: receipt
+                                            .reconciliation?
+                                            .baselineFiguresAgreeing
+                                    )
+                            }
+                            logger.info(
+                                "worker_line_items_written image_id=\(ctx.imageId) receipt_id=\(receiptId) count=\(receipt.lineItems.count - skipped) skipped_cloud_owned=\(skipped)"
+                            )
+                        } catch {
+                            logger.warning(
+                                "failed_write_line_items image_id=\(ctx.imageId) receipt_id=\(receiptId) error=\(error)"
+                            )
+                        }
+                    }
+                }
+            }
 
             // Record the applied preprocess strategy in the uploaded result
             // JSON (REGIONAL_REOCR only) so the overlay Lambda can persist

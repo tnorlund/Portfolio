@@ -64,7 +64,7 @@ pytest tests/integration/test__receipt.py --cov=receipt_dynamo
 
 If you see "Failed to generate report: No data to report":
 1. Check that `.coveragerc` exists in the project root
-2. Ensure `COVERAGE_CORE=sysmon` is set for Python 3.12+
+2. Ensure `COVERAGE_CORE=sysmon` is set for Python 3.13+
 3. Try running tests sequentially first to verify coverage works
 4. Clean up old coverage files: `rm -f .coverage*`
 

@@ -2,8 +2,8 @@
 Merge Receipt Lambda Handler (Container Lambda)
 
 Merges multiple receipt fragments into a single new receipt with proper
-warping, re-runs embeddings, waits for compaction to complete, then deletes
-the originals.
+warping, writes the merged receipt's native DynamoDB embeddings, then
+deletes the originals (and their embedding items).
 
 Input:
     {
@@ -20,7 +20,6 @@ Output:
         "status": "success",
         "words_merged": 110,
         "labels_merged": 17,
-        "compaction_run_id": "uuid",
         "deleted_receipts": [3, 2]
     }
 
@@ -28,17 +27,22 @@ Environment Variables:
     DYNAMODB_TABLE_NAME: DynamoDB table name
     RAW_BUCKET: S3 bucket for raw receipt images
     SITE_BUCKET: S3 bucket for CDN images
-    CHROMADB_BUCKET: S3 bucket for ChromaDB snapshots
     OPENAI_API_KEY: OpenAI API key (for embeddings)
+    SUMMARY_QUEUE_URL: SQS queue for summary recomputation
+    LINE_ITEM_QUEUE_URL: SQS queue for row/line-item recomputation
 """
 
 import io
+import json
 import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import boto3
 from PIL import Image as PIL_Image
+
+if TYPE_CHECKING:  # heavy imports stay lazy in this Lambda by design
+    from receipt_embeddings.protocols import EmbeddingTableHandle
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -48,6 +52,98 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
+def _delete_native_embedding_items(
+    client: "EmbeddingTableHandle", image_id: str, receipt_id: int
+) -> int:
+    """Best-effort delete of a source receipt's ``#EMBEDDING`` items.
+
+    ``delete_receipt`` removes only the parent Receipt row; native
+    DynamoDB embedding items would otherwise linger and keep the deleted
+    fragment queryable via SearchVectors (codex review P1). Returns the
+    number of items deleted; never raises.
+    """
+    try:
+        # pylint: disable=import-outside-toplevel
+        from receipt_embeddings.sweep import delete_native_embedding_items
+
+        return delete_native_embedding_items(
+            client._client,  # pylint: disable=protected-access
+            client.table_name,
+            image_id,
+            receipt_id,
+        )
+    except Exception:  # pylint: disable=broad-exception-caught
+        # CONTRACTUAL never-raise: the source receipts are already
+        # deleted — surfacing here would fail a merge that succeeded.
+        logger.exception(
+            "Failed to delete native embedding items for %s#%s "
+            "(orphaned vectors may remain queryable)",
+            image_id,
+            receipt_id,
+        )
+        return 0
+
+
+def _collect_receipt_assets(receipt: Any) -> set[tuple[str, str]]:
+    """Snapshot explicit raw/CDN references, never infer keys from a prefix."""
+    assets = set()
+    if getattr(receipt, "raw_s3_bucket", None) and receipt.raw_s3_key:
+        assets.add((receipt.raw_s3_bucket, receipt.raw_s3_key))
+    if getattr(receipt, "cdn_s3_bucket", None):
+        for name in vars(receipt):
+            if name.startswith("cdn_") and name.endswith("s3_key"):
+                key = getattr(receipt, name)
+                if key:
+                    assets.add((receipt.cdn_s3_bucket, key))
+    return assets
+
+
+def _purge_receipt_children(
+    client: Any, image_id: str, receipt_id: int
+) -> int:
+    """The data layer owns the consistent, bounded canonical/legacy sweep."""
+    return client.purge_receipt_children(image_id, receipt_id)
+
+
+def _delete_receipt_assets(
+    s3_client: Any, assets: set[tuple[str, str]]
+) -> None:
+    """Delete captured references; one failed object must not skip the rest."""
+    for bucket, key in sorted(assets):
+        try:
+            s3_client.delete_object(Bucket=bucket, Key=key)
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "Failed to delete receipt asset s3://%s/%s", bucket, key
+            )
+
+
+def _enqueue_recompute(image_id: str, receipt_id: int) -> None:
+    """Send one request per updater, independently best-effort."""
+    for env_name in ("SUMMARY_QUEUE_URL", "LINE_ITEM_QUEUE_URL"):
+        try:
+            boto3.client("sqs").send_message(
+                QueueUrl=os.environ[env_name],
+                MessageBody=json.dumps(
+                    {
+                        "entity_data": {
+                            "image_id": image_id,
+                            "receipt_id": receipt_id,
+                        }
+                    }
+                ),
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "Failed to enqueue %s recompute for %s#%s",
+                env_name,
+                image_id,
+                receipt_id,
+            )
+
+
+# Validation-heavy Lambda entrypoint; `context` is the AWS-provided arg.
+# pylint: disable-next=too-many-return-statements,unused-argument
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """
     Lambda handler to merge receipt fragments into a single receipt.
@@ -60,7 +156,7 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     5. Create new Receipt/Line/Word/Letter entities in warped space
     6. Migrate labels and place data
     7. Write to DynamoDB
-    8. Create embeddings and wait for compaction
+    8. Write native DynamoDB embeddings (abort before deletion if incomplete)
     9. Delete original receipts
     """
     try:
@@ -99,13 +195,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         )
 
         # Import here to avoid cold start overhead if validation fails
+        # pylint: disable=import-outside-toplevel
         from receipt_agent.lifecycle.receipt_manager import delete_receipt
-        from receipt_chroma.embedding import (
-            EmbeddingConfig,
-            create_embeddings_and_compaction_run,
-        )
         from receipt_dynamo import DynamoClient
-
         from receipt_upload.combine import (
             calculate_min_area_rect,
             clone_receipt_place_for_receipt,
@@ -115,7 +207,10 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             create_receipt_letters_from_combined,
             create_warped_receipt_image,
             get_best_receipt_place,
+            migrate_receipt_barcodes,
+            migrate_receipt_sections,
             migrate_receipt_word_labels,
+            receipt_barcodes_in_image_space,
             upsert_receipt_place,
         )
         from receipt_upload.utils import (
@@ -124,11 +219,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             upload_png_to_s3,
         )
 
+        # pylint: enable=import-outside-toplevel
+
         # Initialize clients
         table_name = os.environ.get("DYNAMODB_TABLE_NAME")
         raw_bucket = os.environ.get("RAW_BUCKET")
         site_bucket = os.environ.get("SITE_BUCKET")
-        chromadb_bucket = os.environ.get("CHROMADB_BUCKET")
 
         if not table_name:
             return {"status": "error", "error": "DYNAMODB_TABLE_NAME not set"}
@@ -136,8 +232,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             return {"status": "error", "error": "RAW_BUCKET not set"}
         if not site_bucket:
             return {"status": "error", "error": "SITE_BUCKET not set"}
-        if not chromadb_bucket:
-            return {"status": "error", "error": "CHROMADB_BUCKET not set"}
 
         client = DynamoClient(table_name=table_name)
         s3_client = boto3.client("s3")
@@ -191,8 +285,28 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         # Step 3: Calculate new bounding rectangle
         # ============================================================
         logger.info("Calculating min-area bounding rectangle...")
+        image_barcodes = receipt_barcodes_in_image_space(
+            client, image_id, receipt_ids, image_width, image_height
+        )
+        # Barcodes may lie outside every text box. Include them in the crop
+        # so migrating their coordinates also preserves the visible symbol.
+        barcode_bounds = [
+            {
+                name: {
+                    "x": getattr(barcode, name)["x"] * image_width,
+                    "y": getattr(barcode, name)["y"] * image_height,
+                }
+                for name in (
+                    "top_left",
+                    "top_right",
+                    "bottom_left",
+                    "bottom_right",
+                )
+            }
+            for barcode in image_barcodes
+        ]
         rect_info = calculate_min_area_rect(
-            combined_words, image_width, image_height
+            combined_words + barcode_bounds, image_width, image_height
         )
         bounds = rect_info["bounds"]
         src_corners = rect_info["src_corners"]
@@ -253,6 +367,22 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         receipt_words = records["receipt_words"]
         line_id_map = records["line_id_map"]
         word_id_map = records["word_id_map"]
+        sections = migrate_receipt_sections(
+            client,
+            image_id,
+            receipt_ids,
+            new_receipt_id,
+            records["section_line_id_map"],
+        )
+        barcodes = migrate_receipt_barcodes(
+            image_barcodes,
+            new_receipt_id,
+            image_width,
+            image_height,
+            src_corners,
+            warped_width,
+            warped_height,
+        )
 
         logger.info(
             "Created: 1 receipt, %d lines, %d words",
@@ -335,6 +465,8 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             "letters_merged": len(receipt_letters),
             "labels_merged": len(new_labels),
             "lines_created": len(receipt_lines),
+            "sections_migrated": len(sections),
+            "barcodes_migrated": len(barcodes),
             "warped_dimensions": f"{warped_width}x{warped_height}",
             "place": receipt_place.merchant_name if receipt_place else None,
         }
@@ -401,6 +533,11 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             client.add_receipt_word_labels(new_labels)
             logger.info("  Added %d labels", len(new_labels))
 
+        if sections:
+            client.add_receipt_sections(sections)
+        if barcodes:
+            client.add_receipt_barcodes(barcodes)
+
         if receipt_place:
             # Idempotent: retries after partial write must not abort before
             # embeddings (step 11) and source deletion (step 13).
@@ -412,17 +549,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             )
 
         # ============================================================
-        # Step 11: Create embeddings and compaction run
+        # Step 11: Write native embeddings for the merged receipt
         # ============================================================
-        logger.info("Creating embeddings and compaction run...")
-        embedding_config = EmbeddingConfig(
-            image_id=image_id,
-            receipt_id=new_receipt_id,
-            chromadb_bucket=chromadb_bucket,
-            dynamo_client=client,
-            receipt_place=receipt_place,
-            receipt_word_labels=new_labels if new_labels else None,
-        )
+        logger.info("Writing native embeddings for merged receipt...")
 
         # Filter out noise words for embedding (non-noise words only)
         non_noise_words = [
@@ -431,30 +560,50 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         if not non_noise_words:
             non_noise_words = receipt_words  # Fallback: use all words
 
-        embedding_result = create_embeddings_and_compaction_run(
-            receipt_lines=receipt_lines,
-            receipt_words=non_noise_words,
-            config=embedding_config,
+        # The merged receipt's vectors are written
+        # directly as native DynamoDB embedding items in one batched
+        # OpenAI call. Destructive-step ordering (codex review P1):
+        # source receipts are deleted below, so an incomplete native
+        # write must abort the merge as retryable BEFORE deletion —
+        # never report success with the merged receipt missing vectors.
+        # pylint: disable=import-outside-toplevel
+        from receipt_upload.merchant_resolution.dynamo_embedding_write import (
+            write_native_embeddings,
         )
-        compaction_run_id = embedding_result.compaction_run.run_id
-        logger.info("CompactionRun created: %s", compaction_run_id)
 
-        # ============================================================
-        # Step 12: Close embedding resources (compaction runs async
-        #          via DynamoDB stream — no need to wait)
-        # ============================================================
         try:
-            embedding_result.close()
-        except Exception:
-            logger.warning(
-                "Failed to close embedding resources for compaction_run_id=%s; "
-                "proceeding with receipt deletion",
-                compaction_run_id,
-                exc_info=True,
+            native_report = write_native_embeddings(
+                client,
+                image_id=image_id,
+                receipt_id=new_receipt_id,
+                lines=receipt_lines,
+                words=non_noise_words,
+                word_labels=new_labels or [],
+                receipt_place=receipt_place,
             )
-        logger.info(
-            "Compaction will complete asynchronously: %s", compaction_run_id
+        # pylint: disable-next=broad-exception-caught
+        except Exception as native_exc:
+            # CONTRACTUAL: synthesized into the report so the
+            # abort-before-source-deletion check below sees it.
+            logger.exception("Native embeddings write raised")
+            native_report = {"error": str(native_exc), "failed": 0}
+        logger.info("Native embeddings report: %s", native_report)
+        from receipt_embeddings import (  # pylint: disable=import-outside-toplevel
+            report_incomplete,
         )
+
+        if report_incomplete(native_report):
+            return {
+                "status": "error",
+                "error": (
+                    "native embeddings write incomplete; source "
+                    "receipts NOT deleted (safe to retry): "
+                    f"{native_report}"
+                ),
+                "image_id": image_id,
+                "receipt_ids": receipt_ids,
+                "new_receipt_id": new_receipt_id,
+            }
 
         # ============================================================
         # Step 13: Delete original receipts (highest ID first)
@@ -462,10 +611,62 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         deleted_receipts = []
         for rid in sorted(receipt_ids, reverse=True):
             logger.info("Deleting original receipt %d...", rid)
+            assets = set()
+            try:
+                # Capture from the source Receipt while it still exists.
+                assets = _collect_receipt_assets(
+                    client.get_receipt(image_id, rid)
+                )
+            except Exception:  # pylint: disable=broad-exception-caught
+                logger.exception(
+                    "Failed to collect assets for %s#%s", image_id, rid
+                )
             deletion_result = delete_receipt(client, image_id, rid)
             if deletion_result.success:
                 deleted_receipts.append(rid)
                 logger.info("  Deleted receipt %d", rid)
+                # Native embedding items are not receipt children the
+                # deleter knows about; sweep them so the deleted
+                # fragment stops matching SearchVectors (review P1).
+                removed = _delete_native_embedding_items(client, image_id, rid)
+                if removed:
+                    logger.info(
+                        "  Deleted %d native embedding items for "
+                        "receipt %d",
+                        removed,
+                        rid,
+                    )
+                try:
+                    removed_children = _purge_receipt_children(
+                        client, image_id, rid
+                    )
+                    logger.info(
+                        "Deleted %d child rows for %s#%s",
+                        removed_children,
+                        image_id,
+                        rid,
+                    )
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.exception(
+                        "Failed to purge children for %s#%s", image_id, rid
+                    )
+                try:
+                    # A native receipt can share all its objects with Image.
+                    # Also retain keys referenced by a surviving receipt,
+                    # including a source whose parent deletion failed.
+                    owners = [
+                        client.get_image(image_id),
+                        *client.get_receipts_from_image_consistent(image_id),
+                    ]
+                    protected = set().union(
+                        *(_collect_receipt_assets(owner) for owner in owners)
+                    )
+                    _delete_receipt_assets(s3_client, assets - protected)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    # Unknown ownership must retain objects, never delete them.
+                    logger.exception(
+                        "Retaining assets: ownership check failed"
+                    )
             else:
                 logger.error(
                     "  Failed to delete receipt %d: %s",
@@ -474,7 +675,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 )
 
         # ============================================================
-        # Step 14: Update Image entity receipt count
+        # Step 14: Request derived rows for the merged receipt
+        # ============================================================
+        _enqueue_recompute(image_id, new_receipt_id)
+
+        # ============================================================
+        # Step 15: Update Image entity receipt count
         # ============================================================
         remaining_receipts = client.get_receipts_from_image(image_id)
         image_entity.receipt_count = len(remaining_receipts)
@@ -482,12 +688,13 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         logger.info("Updated image receipt_count=%d", len(remaining_receipts))
 
         result["status"] = "success"
-        result["compaction_run_id"] = compaction_run_id
         result["deleted_receipts"] = deleted_receipts
         logger.info("Merge complete: %s", result)
         return result
 
-    except Exception as e:
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        # CONTRACTUAL Lambda error contract: callers get a structured
+        # error return, never an unhandled exception.
         logger.exception("Error merging receipts")
         return {
             "status": "error",

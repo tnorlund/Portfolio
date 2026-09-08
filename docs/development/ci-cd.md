@@ -95,7 +95,7 @@ git commit -m "fix: typo [skip tests]"
 ### Environment Variables
 ```yaml
 env:
-  PYTHON_VERSION: "3.12"
+  PYTHON_VERSION: "3.13"
   NODE_VERSION: "18"
   AWS_REGION: "us-east-1"
 ```
@@ -135,7 +135,7 @@ Required secrets in GitHub repository settings:
 
 **Python version mismatch**
 ```bash
-# Ensure Python 3.12 is used
+# Ensure Python 3.13 is used
 python --version
 ```
 

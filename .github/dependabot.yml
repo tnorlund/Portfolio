@@ -15,18 +15,59 @@ updates:
       prefix: "chore"
       include: "scope"
 
-  # Monitor every current and future Python dependency manifest.
+  # Python dependency manifests, listed explicitly rather than via "**/*".
+  # Dependabot's pip file fetcher also scans one directory level below the
+  # target directory for requirements *.txt/*.in files, so the glob matched
+  # scripts/requirements.txt from both "/" and "/scripts" and opened duplicate
+  # PRs (e.g. #1478/#1482, #1550/#1567). Add a directory here when a new
+  # pyproject.toml, setup.py or requirements*.txt is introduced.
   - package-ecosystem: "pip"
     directories:
-      - "**/*"
+      - "/infra"
+      - "/infra/components/langsmith_bulk_export/lambdas"
+      - "/infra/upload_images/container_ocr"
+      - "/receipt_agent"
+      - "/receipt_dynamo"
+      - "/receipt_dynamo_stream"
+      - "/receipt_embeddings"
+      - "/receipt_langsmith"
+      - "/receipt_layoutlm"
+      - "/receipt_logo"
+      - "/receipt_places"
+      - "/receipt_upload"
+      - "/scripts"
+      - "/tools/glyph-studio/py"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 6
+    groups:
+      python-formatters:
+        group-by: dependency-name
+        patterns:
+          - "black"
+          - "isort"
     labels:
       - "dependencies"
     commit-message:
       prefix: "chore"
       include: "scope"
+    ignore:
+      # pyspark deliberately mirrors EMR_SPARK_RELEASE/EMR_SPARK_VERSION in
+      # infra/components/emr_serverless_runtime.py (parity enforced by
+      # infra/components/test_emr_serverless_runtime.py). Bump all three
+      # together when AWS ships an EMR Serverless label with a newer Spark.
+      - dependency-name: "pyspark"
+      # mcp is pinned <2: receipt_logo/receipt_logo/mcp_server.py and
+      # scripts/receipt_mcp_server.py use the mcp 1.x low-level Server API,
+      # which breaks under the mcp 2.x rework. Drop after migrating both
+      # servers to the v2 API.
+      - dependency-name: "mcp"
+        update-types: ["version-update:semver-major"]
+      # torch is capped <=2.7.0 in receipt_layoutlm: coremltools 9.0 (latest)
+      # validates PyTorch only through 2.7.0 and the [coreml] extra has no
+      # torch pin of its own. Raise the cap only alongside a coremltools
+      # release that certifies a newer torch.
+      - dependency-name: "torch"
 
   # Monitor base-image tags in Dockerfiles throughout the repository.
   - package-ecosystem: "docker"

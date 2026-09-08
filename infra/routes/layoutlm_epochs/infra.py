@@ -80,7 +80,7 @@ def create_layoutlm_epochs_lambda(
 
     epochs_lambda = aws.lambda_.Function(
         f"api_{ROUTE_NAME}_GET_lambda",
-        runtime="python3.12",
+        runtime="python3.13",
         architectures=["arm64"],
         role=lambda_role.arn,
         code=AssetArchive({".": FileArchive(HANDLER_DIR)}),

@@ -47,7 +47,7 @@ from receipt_upload.line_items.geometry import (
     extract_items,
     is_column_header_row,
     is_proven,
-    reconcile_detailed,
+    reconcile_extracted_items,
 )
 from receipt_upload.line_items.reconstructor import dedupe_grand_total
 
@@ -906,9 +906,7 @@ def derive_labels(
     texts = {(w["line_id"], w["word_id"]): w["text"] for w in words}
 
     items, collapsed = extract_items(words, line_ids, summary=summary)
-    recon = reconcile_detailed(
-        [item for item in items if not item.get("is_discount")], summary
-    )
+    recon = reconcile_extracted_items(items, summary)
     result = DerivationResult(
         gate=GATE_OK,
         reconciliation_status=recon.status,

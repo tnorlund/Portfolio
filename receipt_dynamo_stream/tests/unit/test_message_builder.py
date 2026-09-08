@@ -2,9 +2,6 @@
 
 from datetime import datetime
 from typing import Any
-from unittest.mock import MagicMock
-
-import pytest
 
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_line import ReceiptLine
@@ -13,15 +10,10 @@ from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo_stream.message_builder import (
     _extract_entity_data,
-    build_compaction_run_messages,
     build_entity_change_message,
     build_messages_from_records,
 )
-from receipt_dynamo_stream.models import (
-    ChromaDBCollection,
-    StreamMessage,
-    TargetQueue,
-)
+from receipt_dynamo_stream.models import TargetQueue
 
 from .conftest import MockMetrics
 
@@ -104,30 +96,6 @@ def _make_receipt_line() -> ReceiptLine:
     )
 
 
-def _create_compaction_run_insert_record() -> dict[str, Any]:
-    """Create a mock DynamoDB stream record for COMPACTION_RUN INSERT."""
-    return {
-        "eventName": "INSERT",
-        "eventID": "event-123",
-        "awsRegion": "us-east-1",
-        "dynamodb": {
-            "Keys": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
-            },
-            "NewImage": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
-                "run_id": {"S": "run-abc"},
-                "receipt_id": {"N": "1"},
-                "lines_delta_prefix": {"S": "s3://bucket/lines/"},
-                "words_delta_prefix": {"S": "s3://bucket/words/"},
-            },
-        },
-    }
-
-
-
 def _create_place_modify_record() -> dict[str, Any]:
     """Create a mock DynamoDB stream record for RECEIPT_PLACE MODIFY."""
     old_place = _make_place("Old Merchant")
@@ -163,16 +131,6 @@ def _create_word_label_remove_record() -> dict[str, Any]:
 # Test build_messages_from_records
 
 
-def test_build_messages_from_records_with_insert() -> None:
-    """Test building messages from INSERT event."""
-    record = _create_compaction_run_insert_record()
-    messages = build_messages_from_records([record])
-
-    assert len(messages) == 2  # One per collection
-    assert all(msg.entity_type == "COMPACTION_RUN" for msg in messages)
-    assert all(msg.event_name == "INSERT" for msg in messages)
-
-
 def test_build_messages_from_records_with_modify() -> None:
     """Test building messages from MODIFY event."""
     record = _create_place_modify_record()
@@ -189,41 +147,22 @@ def test_build_messages_from_records_with_remove() -> None:
     record = _create_word_label_remove_record()
     messages = build_messages_from_records([record])
 
-    # Word label changes return 1 message targeting both collections + summary queue
     assert len(messages) == 1
     assert messages[0].entity_type == "RECEIPT_WORD_LABEL"
     assert messages[0].event_name == "REMOVE"
-    # Verify collections and summary queue are targeted
-    assert messages[0].collections == (
-        ChromaDBCollection.WORDS,
-        ChromaDBCollection.LINES,
-        TargetQueue.RECEIPT_SUMMARY,
-    )
+    assert messages[0].collections == (TargetQueue.RECEIPT_SUMMARY,)
 
 
-def test_build_messages_from_records_ignores_compaction_run_completion() -> None:
-    """CompactionRun MODIFY (completion) events should be ignored.
-
-    The merge Lambda polls DynamoDB directly for completion status, so
-    forwarding these to the compaction handler only wastes resources.
-    """
+def test_build_messages_from_records_ignores_unknown_insert() -> None:
+    """INSERTs of non-synced entity types produce no messages."""
+    place = _make_place()
     record = {
-        "eventName": "MODIFY",
+        "eventName": "INSERT",
         "eventID": "event-456",
         "awsRegion": "us-east-1",
         "dynamodb": {
-            "Keys": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
-            },
-            "NewImage": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
-                "run_id": {"S": "run-abc"},
-                "receipt_id": {"N": "1"},
-                "lines_state": {"S": "COMPLETED"},
-                "words_state": {"S": "COMPLETED"},
-            },
+            "Keys": place.key,
+            "NewImage": place.to_item(),
         },
     }
     messages = build_messages_from_records([record])
@@ -239,7 +178,7 @@ def test_build_messages_from_records_with_metrics() -> None:
     assert len(messages) == 1
     # Check that metrics were recorded
     metric_names = [m[0] for m in metrics.counts]
-    assert "ChromaDBRelevantChanges" in metric_names
+    assert "UpdateRelevantChanges" in metric_names
     assert "StreamMessageCreated" in metric_names
 
 
@@ -247,83 +186,6 @@ def test_build_messages_from_records_empty_list() -> None:
     """Test with empty records list."""
     messages = build_messages_from_records([])
     assert messages == []
-
-
-# Test build_compaction_run_messages
-
-
-def test_build_compaction_run_messages_success() -> None:
-    """Test successful building of compaction run messages."""
-    record = _create_compaction_run_insert_record()
-    messages = build_compaction_run_messages(record)
-
-    assert len(messages) == 2
-    assert messages[0].collections == (ChromaDBCollection.LINES,)
-    assert messages[1].collections == (ChromaDBCollection.WORDS,)
-
-    # Verify entity data
-    for msg in messages:
-        assert msg.entity_data["run_id"] == "run-abc"
-        assert (
-            msg.entity_data["image_id"]
-            == "550e8400-e29b-41d4-a716-446655440000"
-        )
-        assert msg.entity_data["receipt_id"] == 1
-
-
-def test_build_compaction_run_messages_missing_new_image() -> None:
-    """Test with missing NewImage."""
-    record = {
-        "eventName": "INSERT",
-        "dynamodb": {
-            "Keys": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#COMPACTION_RUN#run-abc"},
-            },
-        },
-    }
-    messages = build_compaction_run_messages(record)
-    assert messages == []
-
-
-def test_build_compaction_run_messages_not_compaction_run() -> None:
-    """Test with non-compaction-run SK."""
-    record = {
-        "eventName": "INSERT",
-        "dynamodb": {
-            "Keys": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#00001#PLACE"},
-            },
-            "NewImage": {},
-        },
-    }
-    messages = build_compaction_run_messages(record)
-    assert messages == []
-
-
-def test_build_compaction_run_messages_with_metrics() -> None:
-    """Test that metrics are recorded on errors."""
-    metrics = MockMetrics()
-    record = {
-        "eventName": "INSERT",
-        "dynamodb": {
-            "Keys": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#INVALID#COMPACTION_RUN#run-abc"},
-            },
-            "NewImage": {
-                "PK": {"S": "IMAGE#550e8400-e29b-41d4-a716-446655440000"},
-                "SK": {"S": "RECEIPT#INVALID#COMPACTION_RUN#run-abc"},
-                # Missing required fields to cause an error
-            },
-        },
-    }
-    messages = build_compaction_run_messages(record, metrics)
-    assert messages == []
-    # Should have recorded error metric
-    metric_names = [m[0] for m in metrics.counts]
-    assert "CompactionRunMessageBuildError" in metric_names
 
 
 # Test build_entity_change_message
@@ -338,11 +200,7 @@ def test_build_entity_change_message_place_modify() -> None:
     assert message.entity_type == "RECEIPT_PLACE"
     assert message.event_name == "MODIFY"
     assert "merchant_name" in message.changes
-    assert message.collections == (
-        ChromaDBCollection.LINES,
-        ChromaDBCollection.WORDS,
-        TargetQueue.RECEIPT_SUMMARY,
-    )
+    assert message.collections == (TargetQueue.RECEIPT_SUMMARY,)
 
 
 def test_build_entity_change_message_word_label_remove() -> None:
@@ -353,16 +211,11 @@ def test_build_entity_change_message_word_label_remove() -> None:
     assert message is not None
     assert message.entity_type == "RECEIPT_WORD_LABEL"
     assert message.event_name == "REMOVE"
-    # Word labels affect WORDS, LINES collections, and trigger summary update
-    assert message.collections == (
-        ChromaDBCollection.WORDS,
-        ChromaDBCollection.LINES,
-        TargetQueue.RECEIPT_SUMMARY,
-    )
+    assert message.collections == (TargetQueue.RECEIPT_SUMMARY,)
 
 
 def test_build_entity_change_message_no_relevant_changes() -> None:
-    """Test when there are no ChromaDB-relevant changes."""
+    """Test when there are no update-relevant changes."""
     # Create a MODIFY record with no relevant field changes
     place = _make_place()
     record = {
@@ -393,8 +246,24 @@ def test_build_entity_change_message_with_metrics() -> None:
 
     assert message is not None
     metric_names = [m[0] for m in metrics.counts]
-    assert "ChromaDBRelevantChanges" in metric_names
+    assert "UpdateRelevantChanges" in metric_names
     assert "StreamMessageCreated" in metric_names
+
+
+def test_build_entity_change_message_receipt_remove_has_no_target() -> None:
+    """Receipt/word/line deletes no longer fan out anywhere (the vector
+    compaction legs are retired), so no message is built."""
+    receipt = _make_receipt()
+    record = {
+        "eventName": "REMOVE",
+        "eventID": "event-receipt-remove",
+        "awsRegion": "us-east-1",
+        "dynamodb": {
+            "Keys": receipt.key,
+            "OldImage": receipt.to_item(),
+        },
+    }
+    assert build_entity_change_message(record) is None
 
 
 # Test _extract_entity_data
@@ -408,11 +277,7 @@ def test_extract_entity_data_receipt_place() -> None:
     assert data["entity_type"] == "RECEIPT_PLACE"
     assert data["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
     assert data["receipt_id"] == 1
-    assert collections == [
-        ChromaDBCollection.LINES,
-        ChromaDBCollection.WORDS,
-        TargetQueue.RECEIPT_SUMMARY,
-    ]
+    assert collections == [TargetQueue.RECEIPT_SUMMARY]
 
 
 def test_extract_entity_data_receipt_word_label() -> None:
@@ -426,12 +291,7 @@ def test_extract_entity_data_receipt_word_label() -> None:
     assert data["line_id"] == 1
     assert data["word_id"] == 1
     assert data["label"] == "TOTAL"
-    # Word labels affect WORDS, LINES collections, and trigger summary update
-    assert collections == [
-        ChromaDBCollection.WORDS,
-        ChromaDBCollection.LINES,
-        TargetQueue.RECEIPT_SUMMARY,
-    ]
+    assert collections == [TargetQueue.RECEIPT_SUMMARY]
 
 
 def test_extract_entity_data_none_entity() -> None:
@@ -458,40 +318,13 @@ def test_extract_entity_data_unknown_type() -> None:
     assert collections == []
 
 
-def test_extract_entity_data_receipt() -> None:
-    """Test extracting data from Receipt for deletion."""
-    entity = _make_receipt()
-    data, collections = _extract_entity_data("RECEIPT", entity)
-
-    assert data["entity_type"] == "RECEIPT"
-    assert data["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
-    assert data["receipt_id"] == 1
-    # RECEIPT deletion affects both collections
-    assert collections == [ChromaDBCollection.LINES, ChromaDBCollection.WORDS]
-
-
-def test_extract_entity_data_receipt_word() -> None:
-    """Test extracting data from ReceiptWord for deletion."""
-    entity = _make_receipt_word()
-    data, collections = _extract_entity_data("RECEIPT_WORD", entity)
-
-    assert data["entity_type"] == "RECEIPT_WORD"
-    assert data["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
-    assert data["receipt_id"] == 1
-    assert data["line_id"] == 2
-    assert data["word_id"] == 3
-    # RECEIPT_WORD only affects WORDS collection
-    assert collections == [ChromaDBCollection.WORDS]
-
-
-def test_extract_entity_data_receipt_line() -> None:
-    """Test extracting data from ReceiptLine for deletion."""
-    entity = _make_receipt_line()
-    data, collections = _extract_entity_data("RECEIPT_LINE", entity)
-
-    assert data["entity_type"] == "RECEIPT_LINE"
-    assert data["image_id"] == "550e8400-e29b-41d4-a716-446655440000"
-    assert data["receipt_id"] == 1
-    assert data["line_id"] == 2
-    # RECEIPT_LINE only affects LINES collection
-    assert collections == [ChromaDBCollection.LINES]
+def test_extract_entity_data_receipt_word_and_line_have_no_targets() -> None:
+    """Receipt, word and line entities are parsed but not routed."""
+    for entity_type, entity in (
+        ("RECEIPT", _make_receipt()),
+        ("RECEIPT_WORD", _make_receipt_word()),
+        ("RECEIPT_LINE", _make_receipt_line()),
+    ):
+        data, collections = _extract_entity_data(entity_type, entity)
+        assert data == {}
+        assert collections == []

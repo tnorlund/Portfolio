@@ -174,6 +174,91 @@ def test_different_values_are_not_deduped():
     assert dedupe_grand_total(words, labels) == []
 
 
+def _section(section_type, line_ids):
+    return SimpleNamespace(section_type=section_type, line_ids=line_ids)
+
+
+def _payment_vs_total_words():
+    """The 2026-08-10 audit shape: the printed total row and the tender row
+    carry the identical amount, BOTH rows are grand-total-keyword anchored
+    ("TOTAL" / "AMOUNT"), and the tender row prints lower on the paper."""
+    return [
+        _w(19, 1, "TOTAL", 0.10, 0.30),
+        _w(19, 2, "$20.56", 0.72, 0.30),  # the printed grand total
+        _w(25, 1, "DEBIT", 0.05, 0.18),
+        _w(25, 2, "PAYMENT", 0.20, 0.18),
+        _w(25, 3, "AMOUNT", 0.40, 0.18),  # "amount" keyword-anchors the row
+        _w(25, 4, "$20.56", 0.72, 0.18),  # tender restatement, lower
+    ]
+
+
+def _payment_vs_total_labels():
+    return [
+        _label(19, 2, "GRAND_TOTAL", _PENDING),
+        _label(25, 4, "GRAND_TOTAL", _PENDING),
+    ]
+
+
+def test_without_sections_lower_anchored_payment_row_wins():
+    """Documents the fallback (and the audited bug shape): with no section
+    info, both rows are keyword-anchored so lowest-y elects the tender row and
+    the printed TOTAL row is reported redundant."""
+    redundant = dedupe_grand_total(
+        _payment_vs_total_words(), _payment_vs_total_labels()
+    )
+    assert _keys(redundant) == {(19, 2)}
+
+
+def test_empty_sections_matches_no_sections():
+    """An empty section list must reproduce the pre-section election exactly."""
+    redundant = dedupe_grand_total(
+        _payment_vs_total_words(), _payment_vs_total_labels(), sections=[]
+    )
+    assert _keys(redundant) == {(19, 2)}
+
+
+def test_total_line_section_beats_lower_anchored_payment_row():
+    """Regression for the 2026-08-10 audit (dev images 6e00af0f / f98c0c1a /
+    8f31f88a): swift-worker-v1 had already marked the printed "TOTAL $20.56"
+    row a TOTAL_LINE section (0.95) with the duplicate inside a PAYMENT
+    section, yet dedupe invalidated the printed total and kept the tender-row
+    copy. With sections supplied, the TOTAL_LINE copy must be canonical."""
+    sections = [
+        _section("TOTAL_LINE", [19]),
+        _section("PAYMENT", [24, 25, 26]),
+    ]
+    redundant = dedupe_grand_total(
+        _payment_vs_total_words(), _payment_vs_total_labels(), sections
+    )
+    assert _keys(redundant) == {(25, 4)}
+    assert (19, 2) not in _keys(redundant)
+
+
+def test_unsectioned_copy_beats_payment_section_copy():
+    """Even without a TOTAL_LINE section, a copy inside the PAYMENT (tender)
+    block must lose to a copy in no section at all."""
+    sections = [_section("PAYMENT", [25])]
+    redundant = dedupe_grand_total(
+        _payment_vs_total_words(), _payment_vs_total_labels(), sections
+    )
+    assert _keys(redundant) == {(25, 4)}
+
+
+def test_section_type_enum_is_unwrapped():
+    """ReceiptSection entities may carry SectionType enum members, not bare
+    strings; the tiebreak must read them the same way."""
+    from receipt_dynamo.constants import SectionType
+
+    sections = [
+        _section(SectionType.TOTAL_LINE, [19]),
+        _section(SectionType.PAYMENT, [25]),
+    ]
+    redundant = dedupe_grand_total(
+        _payment_vs_total_words(), _payment_vs_total_labels(), sections
+    )
+    assert _keys(redundant) == {(25, 4)}
+
+
 def test_invalid_duplicate_is_ignored():
     """An already-INVALID copy doesn't count toward the duplicate set."""
     words = [

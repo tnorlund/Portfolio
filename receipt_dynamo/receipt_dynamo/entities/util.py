@@ -485,29 +485,6 @@ def validate_confidence_range(field_name: str, value: Any) -> float:
     return value
 
 
-def validate_metadata_field(metadata: Any) -> dict[str, Any]:
-    """
-    Validate and default a metadata field.
-
-    Eliminates duplicate validation code across entities that have
-    optional metadata dictionary fields (receipt_chatgpt_validation,
-    receipt_validation_category, etc.).
-
-    Args:
-        metadata: The metadata value to validate
-            (can be None, dict, or invalid)
-
-    Returns:
-        Validated metadata dict (empty dict if None was passed)
-
-    Raises:
-        ValueError: If metadata is not None and not a dictionary
-    """
-    if metadata is not None and not isinstance(metadata, dict):
-        raise ValueError("metadata must be a dictionary")
-    return metadata if metadata is not None else {}
-
-
 def validate_iso_timestamp(
     value: Any, field_name: str = "timestamp", default_now: bool = True
 ) -> str:
