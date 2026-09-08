@@ -1,5 +1,6 @@
 import { GetStaticProps } from "next";
 import Head from "next/head";
+import Link from "next/link";
 import React, { useCallback, useEffect, useState } from "react";
 import { useInView } from "react-intersection-observer";
 import ClientOnly from "../components/ClientOnly";
@@ -786,6 +787,13 @@ M1LK 2%           1    $4.4g`}</code>
       <p>
         Same pattern for my laptop talking to AWS. SQS queues everywhere.
         Things fail, things retry, nothing gets lost.
+      </p>
+
+      <p>
+        Paper is only half of it. The receipts that arrive as email, DoorDash,
+        Apple, Amazon, and the rest, get parsed into the same corpus, and the
+        way I let agents read them without reading my inbox is{" "}
+        <Link href="/email">its own page</Link>.
       </p>
 
       <FigureBoundary name="upload-diagram" intrinsicSize="360px">
