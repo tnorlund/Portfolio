@@ -83,6 +83,12 @@ previous evidence. Partial or malformed output is not a successful checkpoint.
    use an explicitly documented export-derived identity from capture metadata
    and content hashes; do not invent a Photos identifier. Filenames alone are
    insufficient, and ambiguous source identities stay unresolved.
+   Preserve separate export occurrences when multiple selected entries produce
+   identical bytes and capture metadata. A content hash identifies bytes, not
+   necessarily one Photos asset. Record the collision and each occurrence's
+   export path; do not silently deduplicate the inventory or invent stable
+   library IDs. Keep source multiplicity unresolved in `enumeration_issues`
+   until authorized Photos evidence establishes the distinct source assets.
 4. Take a complete, paginated dev snapshot, then cross-check its receipt IDs
    with the working MCP summary tool. Investigate missing/extra IDs without
    deleting them. Seven images without receipt rows and four orphan summaries
