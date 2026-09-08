@@ -22,6 +22,11 @@ class BackupError(ValueError):
     """The backup cannot be certified complete and unchanged."""
 
 
+def _private_opener(path: str, flags: int) -> int:
+    """Create exported originals and manifests for the current user only."""
+    return os.open(path, flags, 0o600)
+
+
 def _inventory(directory: Path) -> list[Path]:
     """Reject links and special files rather than copying unrelated data."""
     if directory.is_symlink() or not directory.is_dir():
@@ -103,15 +108,18 @@ def create_backup(source_dir: Path, backup_dir: Path) -> dict[str, Any]:
         for path in source_files
     ]
     # exist_ok=False prevents reruns from replacing a previously good backup.
-    destination.mkdir(parents=True, exist_ok=False)
+    destination.mkdir(parents=True, exist_ok=False, mode=0o700)
     content_dir = destination / "files"
-    content_dir.mkdir()
+    content_dir.mkdir(mode=0o700)
     for entry in entries:
         relative = str(entry["path"])
         target = content_dir / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with (source / relative).open("rb") as reader, target.open(
-            "xb"
+        target_parent = content_dir
+        for part in Path(relative).parts[:-1]:
+            target_parent /= part
+            target_parent.mkdir(exist_ok=True, mode=0o700)
+        with (source / relative).open("rb") as reader, open(
+            target, "xb", opener=_private_opener
         ) as writer:
             shutil.copyfileobj(reader, writer, length=1024 * 1024)
             writer.flush()
@@ -135,7 +143,12 @@ def create_backup(source_dir: Path, backup_dir: Path) -> dict[str, Any]:
         "source_directory": str(source),
         "files": entries,
     }
-    with (destination / "manifest.json").open("x", encoding="utf-8") as stream:
+    with open(
+        destination / "manifest.json",
+        "x",
+        encoding="utf-8",
+        opener=_private_opener,
+    ) as stream:
         json.dump(manifest, stream, indent=2)
         stream.write("\n")
         stream.flush()

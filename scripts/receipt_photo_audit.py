@@ -42,8 +42,13 @@ def write_new_json(path: Path, value: dict[str, Any]) -> None:
     """Preserve evidence and keep private output outside Git checkouts."""
     if any((p / ".git").exists() for p in path.resolve().parents):
         raise AuditError("Private audit output must be outside Git checkouts")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("x", encoding="utf-8") as stream:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with open(
+        path,
+        "x",
+        encoding="utf-8",
+        opener=lambda name, flags: os.open(name, flags, 0o600),
+    ) as stream:
         json.dump(value, stream, indent=2, default=str)
         stream.write("\n")
         stream.flush()

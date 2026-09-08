@@ -4,6 +4,8 @@
 # pylint: disable=missing-function-docstring
 
 import json
+import os
+import stat
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -12,6 +14,17 @@ from types import SimpleNamespace
 import pytest
 
 from scripts import receipt_photo_audit as audit
+
+
+def test_audit_output_is_private_with_permissive_umask(tmp_path: Path):
+    destination = tmp_path / "private" / "snapshot.json"
+    previous = os.umask(0)
+    try:
+        audit.write_new_json(destination, {"receipt": "private"})
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o600
+    assert stat.S_IMODE(destination.parent.stat().st_mode) == 0o700
 
 
 def inputs():

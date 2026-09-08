@@ -4,6 +4,8 @@
 # pylint: disable=redefined-outer-name
 
 import json
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -50,6 +52,25 @@ def test_existing_backup_is_never_overwritten(
         backup.create_backup(exports, destination)
     assert (destination / "manifest.json").read_bytes() == before
     backup.verify_backup(destination)
+
+
+def test_backup_is_private_with_permissive_umask(
+    exports: Path, tmp_path: Path
+) -> None:
+    """Exported originals and their manifest never inherit public access."""
+    nested = exports / "year" / "month"
+    nested.mkdir(parents=True)
+    (nested / "receipt.heic").write_bytes(b"nested-original")
+    destination = tmp_path / "backup"
+    previous = os.umask(0)
+    try:
+        backup.create_backup(exports, destination)
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o700
+    for path in destination.rglob("*"):
+        expected = 0o700 if path.is_dir() else 0o600
+        assert stat.S_IMODE(path.stat().st_mode) == expected
 
 
 @pytest.mark.parametrize("damage", ["corrupt", "missing", "extra", "symlink"])
