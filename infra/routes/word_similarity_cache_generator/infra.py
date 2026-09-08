@@ -19,12 +19,9 @@ DYNAMODB_TABLE_NAME = dynamodb_table.name
 stack = pulumi.get_stack()
 is_production = stack == "prod"
 
-# Load portfolio config for Chroma Cloud settings
-portfolio_config = pulumi.Config("portfolio")
-
 
 class WordSimilarityCacheGenerator(ComponentResource):
-    """Container-based Lambda for generating word similarity cache from ChromaDB."""
+    """Container-based Lambda for generating the word similarity cache."""
 
     def __init__(
         self,
@@ -41,7 +38,7 @@ class WordSimilarityCacheGenerator(ComponentResource):
             opts,
         )
 
-        # Create dedicated S3 bucket for API cache (separate from ChromaDB bucket)
+        # Create dedicated S3 bucket for the API cache
         self.cache_bucket = aws.s3.Bucket(
             f"{name}-cache-bucket",
             force_destroy=not is_production,  # Prevent accidental data loss in prod
@@ -181,22 +178,17 @@ class WordSimilarityCacheGenerator(ComponentResource):
             source_paths=[
                 "receipt_dynamo",
                 "receipt_embeddings",
-                "receipt_chroma",
             ],
             lambda_function_name=lambda_function_name,
             lambda_config={
                 "role_arn": self.lambda_role.arn,
                 "timeout": 300,  # 5 minutes
-                "memory_size": 2048,  # More memory for ChromaDB operations
-                "ephemeral_storage": 10240,  # 10GB for snapshot download
+                "memory_size": 2048,
+                "ephemeral_storage": 10240,
                 "architectures": ["arm64"],
                 "vpc_config": vpc_config,
                 "environment": {
                     "DYNAMODB_TABLE_NAME": DYNAMODB_TABLE_NAME,
-                    # Vector backend seam (chroma | dynamodb)
-                    "VECTOR_BACKEND": (
-                        portfolio_config.get("vector-backend") or "chroma"
-                    ),
                     "S3_CACHE_BUCKET": self.cache_bucket.id,
                 },
             },

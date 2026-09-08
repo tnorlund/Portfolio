@@ -52,10 +52,9 @@ if [ ! -x "$BIN" ]; then
   exit 1
 fi
 
-# The LayoutLM CoreML bundle caches to the relative path .models/layoutlm, so
-# cd first or the ~220 MB model is refetched into whatever directory launchd
-# happened to pick.
+# Keep each environment’s versioned model cache in this checkout.
 cd "$SWIFT_DIR" || exit 1
 echo "$(date -u +%FT%TZ) starting drain on $(hostname -s)"
-"$BIN" --env prod --continuous --log-level info
+"$BIN" --env prod --continuous --log-level info \
+  --layoutlm-cache-path "$SWIFT_DIR/.models/layoutlm/prod"
 echo "$(date -u +%FT%TZ) drain exited rc=$?"

@@ -1,9 +1,7 @@
 """Normalization utilities for embedding metadata.
 
 These functions normalize phone numbers, addresses, and URLs for consistent
-matching and storage in embedding metadata. Promoted verbatim from
-``receipt_chroma.embedding.utils.normalize`` (Chroma teardown) so the
-chroma-free write path carries no receipt_chroma dependency.
+matching and storage in embedding metadata.
 """
 
 import re

@@ -1,14 +1,14 @@
 """
-DynamoDB Stream Processor Lambda for ChromaDB Compaction Integration
+DynamoDB Stream Processor Lambda for the receipt update pipeline
 
 This module defines the Lambda function that processes DynamoDB stream events
-for receipt place data and word label changes, triggering ChromaDB metadata
-updates through the existing compaction SQS queue.
+for receipt place data and word label changes, fanning summary / line-item
+recompute messages to the update SQS queues.
 
 Focuses on:
 - RECEIPT_PLACE entities (merchant info changes)
 - RECEIPT_WORD_LABEL entities (word label changes)
-- COMPACTION_RUN entities (delta compaction jobs)
+- RECEIPT_SECTION / RECEIPT_SUMMARY entities
 - Both MODIFY and REMOVE operations
 
 Lambda Bundling:
@@ -145,14 +145,14 @@ def lambda_handler(
     event: DynamoDBStreamEvent, context: LambdaContext
 ) -> StreamProcessorResponseData:
     """
-    Process DynamoDB stream events for ChromaDB metadata synchronization.
+    Process DynamoDB stream events for the receipt update pipeline.
 
     This function is lightweight and focuses only on:
     1. Parsing stream events for relevant entities
-    2. Detecting ChromaDB-relevant field changes
-    3. Creating SQS messages for the compaction Lambda
+    2. Detecting update-relevant field changes
+    3. Creating SQS messages for the summary / line-item updaters
 
-    Heavy processing is delegated to the compaction Lambda.
+    Heavy processing is delegated to the updater Lambdas.
 
     Args:
         event: DynamoDB stream event

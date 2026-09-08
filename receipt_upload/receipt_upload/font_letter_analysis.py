@@ -443,87 +443,6 @@ def cluster_line_font_styles(
     return _build_line_analysis(samples, labels, prepared_vectors)
 
 
-def upsert_letter_samples_to_chroma(
-    samples: Sequence[LetterImageSample],
-    *,
-    persist_directory: str,
-    collection_name: str = "letter_font_glyphs",
-    extra_metadata_by_id: Mapping[str, Mapping[str, object]] | None = None,
-    batch_size: int = 1000,
-    reset_collection: bool = False,
-) -> int:
-    """Persist letter style vectors into a separate local Chroma collection.
-
-    Existing rows are preserved unless ``reset_collection`` is explicitly set.
-    """
-    from receipt_chroma import ChromaClient
-
-    extra_metadata_by_id = extra_metadata_by_id or {}
-    with ChromaClient(
-        persist_directory=persist_directory,
-        mode="write",
-        metadata_only=True,
-    ) as client:
-        collection = client.get_collection(
-            collection_name,
-            create_if_missing=True,
-            metadata={
-                "description": "Receipt OCR letter crop style embeddings"
-            },
-        )
-        if reset_collection and collection.count():
-            existing = collection.get(include=["metadatas"])
-            existing_ids = list(existing.get("ids") or [])
-            for start in range(0, len(existing_ids), batch_size):
-                collection.delete(ids=existing_ids[start : start + batch_size])
-
-        for start in range(0, len(samples), batch_size):
-            batch = samples[start : start + batch_size]
-            client.upsert(
-                collection_name=collection_name,
-                ids=[sample.sample_id for sample in batch],
-                embeddings=[list(sample.style_vector) for sample in batch],
-                documents=[sample.text for sample in batch],
-                metadatas=[
-                    {
-                        **_sample_metadata(sample),
-                        **dict(extra_metadata_by_id.get(sample.sample_id, {})),
-                    }
-                    for sample in batch
-                ],
-            )
-
-        return client.count(collection_name)
-
-
-def query_similar_letters(
-    *,
-    persist_directory: str,
-    query_sample: LetterImageSample,
-    collection_name: str = "letter_font_glyphs",
-    n_results: int = 8,
-    same_character_only: bool = True,
-) -> dict[str, Any]:
-    """Query Chroma for similar letter style vectors."""
-    from receipt_chroma import ChromaClient
-
-    where = None
-    if same_character_only:
-        where = {"normalized_char": query_sample.normalized_char}
-
-    with ChromaClient(
-        persist_directory=persist_directory,
-        mode="read",
-    ) as client:
-        return client.query(
-            collection_name=collection_name,
-            query_embeddings=[list(query_sample.style_vector)],
-            n_results=n_results,
-            where=where,
-            include=["metadatas", "documents", "distances"],
-        )
-
-
 def _extract_letter_crop_features(
     image: PILImage.Image,
     box: BoundingBox,
@@ -1635,25 +1554,6 @@ def _promote_large_noise_groups(
             promoted[index] = next_cluster
         next_cluster += 1
     return promoted
-
-
-def _sample_metadata(sample: LetterImageSample) -> dict[str, object]:
-    metadata: dict[str, object] = {
-        "ocr_char": sample.text,
-        "normalized_char": sample.normalized_char,
-        "line_id": sample.line_id,
-        "word_id": sample.word_id,
-        "letter_id": sample.letter_id,
-        "confidence": sample.metrics.get("confidence", 0.0),
-        "ink_ratio": sample.metrics.get("ink_ratio", 0.0),
-        "box_height": sample.metrics.get("box_height", 0.0),
-        "box_width": sample.metrics.get("box_width", 0.0),
-    }
-    if sample.image_id is not None:
-        metadata["image_id"] = sample.image_id
-    if sample.receipt_id is not None:
-        metadata["receipt_id"] = sample.receipt_id
-    return metadata
 
 
 def _top_counts(values: Sequence[str]) -> list[tuple[str, int]]:

@@ -303,10 +303,10 @@ def trace_s3_operation(operation: str):
     )
 
 
-def trace_chromadb_operation(operation: str):
-    """Trace ChromaDB operations."""
+def trace_stream_operation(operation: str):
+    """Trace stream-processor operations."""
     return tracer.trace_function(
-        f"ChromaDB.{operation}",
+        f"Stream.{operation}",
         namespace="local",
         capture_error=True,
     )
@@ -359,26 +359,6 @@ def trace_s3_snapshot_operation(operation: str, bucket: str, key: str):
                 "bucket": bucket,
                 "key": key,
                 "operation": operation,
-            }
-        },
-    ) as subseg:
-        yield subseg
-
-
-@contextmanager
-def trace_chromadb_delta_save(collection: str, delta_count: int):
-    """Trace ChromaDB delta save operation."""
-    with tracer.subsegment(
-        "ChromaDB.SaveDelta",
-        namespace="local",
-        annotations={
-            "chromadb.collection": collection,
-            "chromadb.operation": "save_delta",
-        },
-        metadata={
-            "chromadb_details": {
-                "collection": collection,
-                "delta_count": delta_count,
             }
         },
     ) as subseg:

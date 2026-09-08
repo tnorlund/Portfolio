@@ -10,11 +10,11 @@ FilterValue: TypeAlias = str | int | float | bool
 Vector: TypeAlias = Sequence[float]
 
 # The neighbor-metadata fields the real MerchantResolver reads from every
-# line-index search result. The Chroma path's metadata shape is the contract
-# (Round C fetch-join ruling); every backend must surface exactly these keys
-# for a neighbor, with the two normalized_* keys present only when the
-# neighbor row carries the corresponding anchor — matching Chroma's sparse
-# anchor enrichment.
+# line-index search result. The original vector store's metadata shape is
+# the contract (Round C fetch-join ruling); every backend must surface
+# exactly these keys for a neighbor, with the two normalized_* keys present
+# only when the neighbor row carries the corresponding anchor (sparse anchor
+# enrichment).
 RESOLVER_NEIGHBOR_METADATA_KEYS = frozenset(
     {
         "image_id",

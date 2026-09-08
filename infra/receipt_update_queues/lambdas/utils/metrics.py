@@ -359,13 +359,6 @@ def track_s3_operation(operation: str):
     return timed_operation("S3OperationDuration", {"operation": operation})
 
 
-def track_chromadb_operation(operation: str):
-    """Track ChromaDB operation duration."""
-    return timed_operation(
-        "ChromaDBOperationDuration", {"operation": operation}
-    )
-
-
 def track_dynamodb_operation(operation: str):
     """Track DynamoDB operation duration."""
     return timed_operation(

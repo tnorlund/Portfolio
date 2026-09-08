@@ -1246,10 +1246,10 @@ def _stage_outputs(
 def _dual_write_outputs_native_only(
     *, outputs: list[dict[str, Any]], dynamo_client: "EmbeddingTableHandle"
 ) -> None:
-    """Write output receipts' native embedding items without Chroma.
+    """Write output receipts' native DynamoDB embedding items.
 
-    Memory-light replacement for the OOM-prone ``_embed_outputs`` when
-    only the DynamoDB corpus needs refreshing: build vector-less write
+    Memory-light replacement for the OOM-prone snapshot-based
+    ``_embed_outputs`` it retired: build vector-less write
     requests (the engine writer embeds realtime via OpenAI) using the
     same formatting the ingest path uses. Raises on an incomplete
     write so the apply fails BEFORE commit deletes the source vectors.
@@ -1659,11 +1659,10 @@ def apply_plan(
             site_bucket=site_bucket,
             uploaded_keys=uploaded_keys,
         )
-        run_ids = []
         # Cleanup deletes the source's embedding rows, so outputs MUST
         # get native replacements before the commit. This light path
-        # embeds realtime via the engine writer (the retired Chroma
-        # _embed_outputs snapshot work OOMed the deployed Lambda) and
+        # embeds realtime via the engine writer (the retired snapshot
+        # based _embed_outputs OOMed the deployed Lambda) and
         # raises on an incomplete write so the apply fails BEFORE the
         # destructive commit (codex flip-review P1/P2).
         _dual_write_outputs_native_only(
@@ -1732,7 +1731,6 @@ def apply_plan(
                 "output_receipt_ids": output_ids,
             }
 
-        result["compaction_run_ids"] = run_ids
         plan["status"] = "APPLIED"
         plan["result"] = result
         try:

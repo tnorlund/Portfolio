@@ -19,29 +19,20 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Optional
 
 from langchain_core.messages import HumanMessage
+from receipt_dynamo import ReceiptWordLabel
 from receipt_dynamo.amounts import (
     looks_like_receipt_amount,
     parse_receipt_amount,
 )
-from receipt_dynamo import ReceiptWordLabel
 from receipt_dynamo.entities import ReceiptWord
 
 from receipt_agent.prompts.label_evaluator import (
     build_batched_review_prompt,
     build_receipt_context_prompt,
-    build_review_prompt,
     parse_llm_response,
 )
 from receipt_agent.prompts.structured_outputs import BatchedReviewResponse
 from receipt_agent.utils import LLMRateLimitError
-from receipt_agent.utils.chroma_helpers import (
-    SimilarWordEvidence,
-    compute_label_distribution,
-    compute_merchant_breakdown,
-    compute_similarity_distribution,
-    format_label_evidence_for_prompt,
-    query_cascade_evidence,
-)
 
 from .state import (
     EvaluationIssue,
@@ -527,20 +518,23 @@ DEFAULT_ISSUES_PER_LLM_CALL = 10
 def gather_evidence_for_issue(
     issue: dict[str, Any],
     merchant_name: str,
-    chroma_client: Optional[Any] = None,
 ) -> dict[str, Any]:
     """
-    Gather all evidence needed for LLM review of a single issue.
+    Build the evidence envelope used for LLM review of a single issue.
+
+    The similar-word evidence fields are kept for prompt compatibility but
+    are always empty now that the vector-store lookup has been retired;
+    the batched review relies on the full receipt context instead.
 
     Args:
         issue: The issue dict with word_text, line_id, word_id, image_id, etc.
-        merchant_name: Merchant name for same-merchant filtering
-        chroma_client: Optional ChromaDB client for similar word queries
+        merchant_name: Merchant name (retained for call-site compatibility)
 
     Returns:
-        Dict with issue and all gathered evidence
+        Dict with issue and evidence placeholders
     """
-    evidence: dict[str, Any] = {
+    del merchant_name
+    return {
         "issue": issue,
         "evidence_text": "",
         "consensus": 0.0,
@@ -548,106 +542,6 @@ def gather_evidence_for_issue(
         "negative_count": 0,
         "currency_context": [],
     }
-
-    if not chroma_client:
-        return evidence
-
-    # Query cascade evidence: words first, lines if inconclusive
-    try:
-        current_label = issue.get("current_label") or ""
-        all_evidence, consensus, pos_count, neg_count, _lines_used = (
-            query_cascade_evidence(
-                chroma_client=chroma_client,
-                image_id=issue.get("image_id", ""),
-                receipt_id=issue.get("receipt_id", 0),
-                line_id=issue.get("line_id", 0),
-                word_id=issue.get("word_id", 0),
-                target_label=current_label,
-                target_merchant=merchant_name,
-            )
-        )
-        evidence["evidence_text"] = format_label_evidence_for_prompt(
-            all_evidence, current_label
-        )
-        evidence["consensus"] = consensus
-        evidence["positive_count"] = pos_count
-        evidence["negative_count"] = neg_count
-
-    except Exception as e:
-        logger.warning("Error gathering evidence for issue: %s", e)
-
-    return evidence
-
-
-def review_single_issue(
-    issue: dict[str, Any],
-    similar_evidence: list[SimilarWordEvidence],
-    merchant_name: str,
-    merchant_receipt_count: int,
-    llm: "BaseChatModel",
-    currency_context: Optional[list[dict]] = None,
-    line_item_patterns: Optional[dict] = None,
-    rate_limiter: Optional["RateLimitedLLMInvoker"] = None,
-) -> dict[str, Any]:
-    """
-    Review a single issue with LLM.
-
-    Args:
-        issue: The issue dict
-        similar_evidence: List of similar word evidence
-        merchant_name: Merchant name
-        merchant_receipt_count: Number of receipts for this merchant
-        llm: LangChain chat model
-        currency_context: Optional currency context from receipt
-        line_item_patterns: Optional line item patterns for merchant
-        rate_limiter: Optional rate limiter wrapper
-
-    Returns:
-        Dict with decision, reasoning, suggested_label, confidence
-    """
-    # Compute distributions from evidence
-    similarity_dist = compute_similarity_distribution(similar_evidence)
-    label_dist = compute_label_distribution(similar_evidence)
-    merchant_breakdown = compute_merchant_breakdown(similar_evidence)
-
-    # Build prompt
-    prompt = build_review_prompt(
-        issue=issue,
-        similar_evidence=similar_evidence,
-        similarity_dist=similarity_dist,
-        label_dist=label_dist,
-        merchant_breakdown=merchant_breakdown,
-        merchant_name=merchant_name,
-        merchant_receipt_count=merchant_receipt_count,
-        currency_context=currency_context,
-        line_item_patterns=line_item_patterns,
-    )
-
-    # Call LLM (with optional rate limiting)
-    try:
-        if rate_limiter:
-            response = rate_limiter.invoke([HumanMessage(content=prompt)])
-        else:
-            response = llm.invoke([HumanMessage(content=prompt)])
-
-        response_text = response.content.strip()
-        return parse_llm_response(response_text)
-
-    except Exception as e:
-        # Check if this is a rate limit error that should trigger Step Function retry
-        if isinstance(e, LLMRateLimitError):
-            logger.error(
-                "LLM review rate limited, propagating for retry: %s", e
-            )
-            raise  # Let Step Function retry handle this
-
-        logger.error("LLM review failed: %s", e)
-        return {
-            "decision": "NEEDS_REVIEW",
-            "reasoning": f"LLM review failed: {e}",
-            "suggested_label": None,
-            "confidence": "low",
-        }
 
 
 def review_issues_batch(
@@ -697,9 +591,7 @@ def review_issues_batch(
 
     try:
         structured_llm = caller.with_structured_output(BatchedReviewResponse)
-        response = structured_llm.invoke(
-            [HumanMessage(content=prompt)]
-        )
+        response = structured_llm.invoke([HumanMessage(content=prompt)])
         return response.to_ordered_list(len(normalized_issues))
     except LLMRateLimitError:
         raise  # Propagate for Step Function retry
@@ -781,9 +673,7 @@ def review_issues_with_receipt_context(
 
     try:
         structured_llm = caller.with_structured_output(BatchedReviewResponse)
-        response = structured_llm.invoke(
-            [HumanMessage(content=prompt)]
-        )
+        response = structured_llm.invoke([HumanMessage(content=prompt)])
         return response.to_ordered_list(len(issues_with_context))
     except LLMRateLimitError:
         raise  # Propagate for Step Function retry
@@ -812,7 +702,6 @@ def review_all_issues(
     merchant_name: str,
     merchant_receipt_count: int,
     llm: "BaseChatModel",
-    chroma_client: Optional[Any] = None,
     dynamo_client: Optional[Any] = None,
     rate_limiter: Optional["RateLimitedLLMInvoker"] = None,
     line_item_patterns: Optional[dict] = None,
@@ -835,7 +724,6 @@ def review_all_issues(
         merchant_name: Merchant name
         merchant_receipt_count: Number of receipts for this merchant
         llm: LangChain chat model
-        chroma_client: Optional ChromaDB client
         dynamo_client: Optional DynamoDB client
         rate_limiter: Optional rate limiter
         line_item_patterns: Optional line item patterns
@@ -861,7 +749,6 @@ def review_all_issues(
         evidence = gather_evidence_for_issue(
             issue=issue,
             merchant_name=merchant_name,
-            chroma_client=chroma_client,
         )
         issues_with_context.append(evidence)
 

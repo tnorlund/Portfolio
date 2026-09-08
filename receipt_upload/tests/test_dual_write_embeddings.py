@@ -1,4 +1,4 @@
-"""Native embedding writer tests (Chroma teardown).
+"""Native embedding writer tests.
 
 Covers the ingest request builder, the unconditional precomputed-vector
 write (``write_precomputed_embeddings``), the processor wiring that makes

@@ -1,10 +1,9 @@
 """
 Merchant-resolving embedding processor for unified upload container.
 
-Chroma-free (teardown PR #4): embeddings are computed once per receipt and
-persisted as native DynamoDB ``*_EMBEDDING`` items; every similarity read
-goes through the ``receipt_embeddings`` vector-search seam (DynamoDB
-SearchVectors). The snapshot/delta/CompactionRun machinery is gone.
+Embeddings are computed once per receipt and persisted as native DynamoDB
+``*_EMBEDDING`` items; every similarity read goes through the
+``receipt_embeddings`` vector-search seam (DynamoDB SearchVectors).
 
 Phase 1: Embed (one batched OpenAI call for visual rows + words)
 Phase 1b: Write native DynamoDB embedding items (THE persistence step —
@@ -470,7 +469,6 @@ def _run_lines_pipeline_worker(
         )
         with capture_cm:
             merchant_result = resolver.resolve(
-                lines_client=None,
                 lines=lines,
                 words=words,
                 image_id=image_id,
@@ -530,7 +528,6 @@ def _run_lines_pipeline_worker(
         verification_stats: Dict[str, Any] = {}
         try:
             verified = verify_receipt_sections(
-                None,
                 dynamo,
                 embedding_rows,
                 row_embeddings,
@@ -666,9 +663,8 @@ def _run_words_pipeline_worker(
 ) -> Dict[str, Any]:
     """Worker function for words pipeline (runs in separate process).
 
-    Runs label hygiene + validation. The lightweight similarity validator
-    abstains (its Chroma surface is retired), so pending labels route to
-    the LLM validator exactly as they did in production before teardown.
+    Runs label hygiene + validation. The lightweight validator abstains on
+    every non-``O`` label, so pending labels route to the LLM validator.
     """
     # Import inside worker to avoid pickling issues
     from receipt_dynamo import DynamoClient
@@ -800,7 +796,6 @@ def _run_words_pipeline_worker(
         for pn_label in propose_product_names(
             words,
             word_labels,
-            None,
             word_embedding_cache,
             vector_client=vector_client,
         ):
@@ -811,13 +806,10 @@ def _run_words_pipeline_worker(
         if pending_labels:
             from receipt_upload.label_validation import ValidationDecision
 
-            # No similarity backend: the validator abstains on every label
-            # (KEEP_PENDING), which routes them to the LLM — identical to
-            # the retired words collection whose filter surface matched
-            # nothing in production. The cache still serves the LLM
+            # The validator abstains on every non-"O" label (KEEP_PENDING),
+            # which routes them to the LLM. The cache still serves the LLM
             # evidence path's embedding lookups.
             lightweight_validator = LightweightLabelValidator(
-                words_client=None,
                 word_embeddings=word_embedding_cache,
             )
 
@@ -864,7 +856,7 @@ def _run_words_pipeline_worker(
                             else ValidationStatus.INVALID.value
                         )
                         label.label_proposed_by = (
-                            f"chroma_{result.decision.value}"
+                            f"similarity_{result.decision.value}"
                         )
                         dynamo.update_receipt_word_label(label)
                         similarity_validated += 1
@@ -902,7 +894,7 @@ def _run_words_pipeline_worker(
                     "LANGCHAIN_PROJECT", "receipt-label-validation"
                 )
                 traced_loop = traceable(
-                    name="chroma_label_validation",
+                    name="similarity_label_validation",
                     project_name=project,
                     metadata={
                         "image_id": image_id,
@@ -973,7 +965,7 @@ def _run_words_pipeline_worker(
 
             validation_stats = {
                 "pending_labels": len(pending_labels),
-                "chroma_validated": similarity_validated,
+                "similarity_validated": similarity_validated,
                 "llm_validated": llm_validated,
                 "llm_deferred": llm_deferred,
             }
@@ -1043,7 +1035,6 @@ class MerchantResolvingEmbeddingProcessor:
     def __init__(
         self,
         table_name: str,
-        chromadb_bucket: Optional[str] = None,
         google_places_api_key: Optional[str] = None,
         openai_api_key: Optional[str] = None,
         llm_staging_bucket: Optional[str] = None,
@@ -1053,14 +1044,11 @@ class MerchantResolvingEmbeddingProcessor:
 
         Args:
             table_name: DynamoDB table name
-            chromadb_bucket: Deprecated (Chroma teardown); accepted and
-                ignored so existing callers keep working
             google_places_api_key: Google Places API key for Tier 2 resolution
             openai_api_key: OpenAI API key for embeddings
             llm_staging_bucket: S3 bucket for staging the async-LLM payload
                 (defaults to the ``RAW_BUCKET`` env var)
         """
-        del chromadb_bucket  # retired with the Chroma write path
         self.dynamo = DynamoClient(table_name)
         self.openai_api_key = openai_api_key
         self.google_places_api_key = google_places_api_key
@@ -1221,8 +1209,8 @@ class MerchantResolvingEmbeddingProcessor:
         # =====================================================================
         # PHASE 1b: Persist native DynamoDB embedding items
         # =====================================================================
-        # This IS the vector corpus now (Chroma teardown): a failed or
-        # partial write marks the receipt failed (success=False) so the
+        # This IS the vector corpus: a failed or partial write marks the
+        # receipt failed (success=False) so the
         # handler's embedding metrics flag it, instead of silently leaving
         # the receipt invisible to SearchVectors. Recovery is the healing
         # backfill (the OCR-results mapping does not redrive on failure —
