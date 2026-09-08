@@ -1612,7 +1612,8 @@ class OCRProcessor:
                 continue
 
             # Create Receipt entity
-            # Note: warped images already uploaded by Swift OCRWorker
+            # Swift writes crops beside its OCR results, which may be in a
+            # different bucket from the original upload.
             raw_s3_key = f"receipts/{image_id}/{s3_key}"
 
             receipt = Receipt(
@@ -1621,7 +1622,7 @@ class OCRProcessor:
                 width=warped_width,
                 height=warped_height,
                 timestamp_added=current_time,
-                raw_s3_bucket=ocr_job.s3_bucket,
+                raw_s3_bucket=ocr_routing_decision.s3_bucket,
                 raw_s3_key=raw_s3_key,
                 top_left=bounds["top_left"],
                 top_right=bounds["top_right"],
@@ -1635,7 +1636,7 @@ class OCRProcessor:
             # become an alarmable signal rather than a permanent blank image.
             crop_image = self._obtain_receipt_crop(
                 receipt=receipt,
-                source_bucket=ocr_job.s3_bucket,
+                source_bucket=ocr_routing_decision.s3_bucket,
                 raw_s3_key=raw_s3_key,
                 image_id=image_id,
                 receipt_id=receipt_id,

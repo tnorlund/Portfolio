@@ -22,7 +22,7 @@ The code automatically detects the correct project root directory regardless of 
 
 ### Path Resolution
 
-The Lambda Layer builder automatically resolves paths to find the correct package directories (`receipt_dynamo`, `receipt_label`, `receipt_upload`) whether you're running:
+The Lambda Layer builder automatically resolves paths to find the correct package directories (`receipt_dynamo`, `receipt_upload`, `receipt_agent`) whether you're running:
 
 - Locally from the `infra/` directory
 - Locally from the repository root

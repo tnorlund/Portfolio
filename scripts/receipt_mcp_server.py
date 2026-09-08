@@ -520,6 +520,8 @@ Returns aggregates AND individual receipt summaries:
 - summaries: List of individual receipts with merchant_name, merchant_category, date, grand_total, tax, tip, item_count
 
 Filter by merchant name, category (from Google Places), and/or date range.
+Date bounds are inclusive calendar dates as printed on the receipt.
+Receipts with unknown dates are excluded when a date bound is supplied.
 
 Common categories: grocery_store, supermarket, restaurant, gas_station, pharmacy, convenience_store, coffee_shop""",
             inputSchema={
@@ -3014,7 +3016,7 @@ async def get_receipt_summaries_impl(
             try:
                 start_dt = datetime.fromisoformat(
                     start_date.replace("Z", "+00:00")
-                )
+                ).date()
             except ValueError:
                 return {
                     "error": f"Invalid start_date format: '{start_date}'. Use ISO format (e.g., 2024-01-15)."
@@ -3023,11 +3025,14 @@ async def get_receipt_summaries_impl(
             try:
                 end_dt = datetime.fromisoformat(
                     end_date.replace("Z", "+00:00")
-                )
+                ).date()
             except ValueError:
                 return {
                     "error": f"Invalid end_date format: '{end_date}'. Use ISO format (e.g., 2024-01-15)."
                 }
+
+        if start_dt and end_dt and start_dt > end_dt:
+            return {"error": "start_date must be on or before end_date"}
 
         # Load all summaries from DynamoDB (pre-computed)
         all_summaries = []
@@ -3087,12 +3092,15 @@ async def get_receipt_summaries_impl(
                 if not category_match:
                     continue
 
-            # Date filter
-            if start_dt and record.date:
-                if record.date < start_dt:
+            # Date filters use the receipt's calendar date, inclusively.
+            # Unknown dates cannot establish membership in a requested range.
+            if start_dt or end_dt:
+                if record.date is None:
                     continue
-            if end_dt and record.date:
-                if record.date > end_dt:
+                receipt_date = record.date.date()
+                if start_dt and receipt_date < start_dt:
+                    continue
+                if end_dt and receipt_date > end_dt:
                     continue
 
             # Build output dict with category info
