@@ -78,6 +78,14 @@ Flag flips, prod backfill, Phase 4 ordered teardown, VPC deletion (after EIP
 allowlist check), Chroma Cloud account closure — driven by you with the spec's
 §5 checklist; agents prepare the PRs, you sequence the merges and deploys.
 
+### Post-teardown packaging follow-up
+
+Z1 evaluates one Lambda ZIP replacement at a time. Supply the built function
+ZIP and every layer to `scripts/lambda_zip_budget.py`; the combined payload
+must be below 200 MiB. Also require Linux runtime/architecture import and
+handler tests plus a reviewed dev replacement preview. Keep LayoutLM and
+SageMaker on images. See [ZIP_LAMBDA_FOLLOWUP.md](ZIP_LAMBDA_FOLLOWUP.md).
+
 ## Comparing implementations
 
 One scorecard, run identically per candidate branch:
