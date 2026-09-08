@@ -54,6 +54,14 @@ run journal. Never replace a valid ledger with an empty one after a read error.
 Audit helper outputs use exclusive creation, so a rerun cannot overwrite
 previous evidence. Partial or malformed output is not a successful checkpoint.
 
+When changing hosts, stop the current owner before starting another run.
+A lock in a cloud-synced folder is not an atomic lock across two machines.
+Verify the transferred files by hash, preserve earlier evidence paths, and
+record which host owns the writable state. Re-establish the Photos selection
+from source evidence on the destination; an open dialog, grid position or
+timestamp alone cannot be transferred. Verify its Photos/MCP access separately
+from SSH reachability. An online shell does not prove native Photos access.
+
 ## Audit sequence
 
 1. Read `AGENTS.md`, the saved checkpoint and ledger. Verify tool availability.
@@ -70,7 +78,13 @@ previous evidence. Partial or malformed output is not a successful checkpoint.
    observed IDs and the native library count. A keyword search or scrolling a
    recent-date window does not certify a full scan.
    Compare the library footer, filtered Select All count and actual export
-   count. Record disagreements, inaccessible scope and ambiguous source
+   count. Record Personal/Shared Library scope, media filters and whether
+   View > Shared with You is included. That display can add Messages attachments
+   to Select All without increasing the library footer. Compare the counts
+   with it excluded, record those additional photos/videos separately, then
+   restore the original scope. Counting may replace the pending export
+   selection; update its checkpoint before any later export.
+   Record disagreements, inaccessible scope and ambiguous source
    identities in `enumeration_issues`; do not choose whichever denominator
    makes the scan appear complete. Clear an issue only after saving evidence
    that resolves it. Confirm each batch's exported files decode and match its

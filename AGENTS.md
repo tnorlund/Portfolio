@@ -79,8 +79,13 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
   orphans every child).
 - `scripts/*dev_to_prod*`, `scripts/promote_*`, `scripts/activate_merchant_truth.py`,
   and any `--live` flag are owner-only; never run them.
-- Production is a hard no-go: never select, preview, refresh, update, destroy, or
-  import `tnorlund/portfolio/prod`, and never trigger a production deployment.
+- Direct production commands are prohibited: never select, preview, refresh,
+  update, destroy, or import `tnorlund/portfolio/prod`. The normal main CI
+  deployment is part of a PR merge explicitly authorized by the user. Scheduled
+  maintenance stays report-only unless the owner separately enables
+  `DEPENDABOT_AUTOMERGE=true`; a manual maintenance merge dispatch likewise
+  explicitly authorizes those normal releases. Never enable either on the
+  user's behalf without authorization.
 - Pulumi against `tnorlund/portfolio/dev` only when the user explicitly asks for a
   dev deployment or live dev test. Pin every command to that fully qualified stack,
   verify AWS account `681647709217`, preview before applying, refuse unrelated
