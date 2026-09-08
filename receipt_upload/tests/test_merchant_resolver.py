@@ -562,10 +562,21 @@ class TestMerchantResolverOCRCrossValidation:
         assert resolver._merchant_name_matches_receipt("", lines)
 
     def test_short_merchant_name_passes(self, resolver):
-        """Single-token merchant names pass (too short to validate)."""
+        """Three-character merchant names pass (too short to validate)."""
         lines = [self._make_line(1, "Something Else Entirely")]
-        # "JOi" → only token is "joi" (3 chars) → 1 token < 2 → pass
         assert resolver._merchant_name_matches_receipt("JOi", lines)
+
+    @pytest.mark.parametrize("merchant", ["Freddy's", "Target", "Costco"])
+    def test_single_token_wrong_merchant_rejected(self, resolver, merchant):
+        """A phone/address neighbor still needs brand evidence in the OCR."""
+        lines = [self._make_line(1, "RIVER DISCOUNT LIQUOR")]
+        assert not resolver._merchant_name_matches_receipt(merchant, lines)
+
+    @pytest.mark.parametrize("merchant", ["Freddy's", "Target", "Costco"])
+    def test_single_token_matching_merchant_passes(self, resolver, merchant):
+        """Distinctive single-token brands can validate against the header."""
+        lines = [self._make_line(1, merchant.upper())]
+        assert resolver._merchant_name_matches_receipt(merchant, lines)
 
     def test_tokenizer_ignores_short_words(self, resolver):
         """Tokens under 3 chars are ignored."""
@@ -1055,6 +1066,25 @@ class TestModuleLevelFunctions:
         assert "a" not in tokens
         assert "b" not in tokens
         assert "grocery" in tokens
+
+    @pytest.mark.parametrize("name", ["Smith's", "Smith’s", "Smiths"])
+    @pytest.mark.parametrize("ocr", ["SMITH'S", "SMITH’S", "SMITHS"])
+    def test_merchant_apostrophe_variants_match(self, name, ocr):
+        """A missing or typographic apostrophe must not reject the right store."""
+        assert merchant_name_matches_receipt(name, [self._make_line(1, ocr)])
+
+    @pytest.mark.parametrize("name", ["Smith's", "Smith’s", "Smiths"])
+    def test_merchant_apostrophe_does_not_bypass_validation(self, name):
+        assert not merchant_name_matches_receipt(
+            name, [self._make_line(1, "SPROUTS FARMERS MARKET")]
+        )
+
+    def test_tokenize_text_keeps_other_word_boundaries(self):
+        assert tokenize_text("'Smiths' / Fresh-Market") == {
+            "smiths",
+            "fresh",
+            "market",
+        }
 
     def test_module_level_merchant_name_matches_receipt_pass(self):
         """Module-level function detects token overlap."""

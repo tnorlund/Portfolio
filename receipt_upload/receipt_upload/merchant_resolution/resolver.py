@@ -435,6 +435,9 @@ def locality_from_lines(line_texts: List[str]) -> Optional[str]:
 
 def tokenize_text(text: str) -> Set[str]:
     """Extract lowercase alphanumeric tokens (>= *_MIN_TOKEN_LEN* chars) from *text*."""
+    # OCR often omits apostrophes in logos ("Smith's" -> "Smiths"). Join
+    # apostrophes inside words, but retain other punctuation as boundaries.
+    text = re.sub(r"(?<=[a-zA-Z])['’](?=[a-zA-Z])", "", text)
     return {
         t
         for t in re.split(r"[^a-zA-Z0-9]+", text.lower())
@@ -509,8 +512,8 @@ def merchant_name_matches_receipt(
 
     Returns ``True`` (pass) when:
     - *merchant_name* is empty / None (nothing to validate)
-    - The merchant name has fewer than 2 significant tokens (too short
-      to validate reliably — e.g. "JOi")
+    - The merchant name has no significant tokens, or only a token of three
+      characters (too short to validate reliably — e.g. "JOi")
     - At least one **distinctive** merchant token appears in the receipt text
       (or, for an all-generic merchant name, any overlap)
     """
@@ -520,7 +523,9 @@ def merchant_name_matches_receipt(
         return True  # Nothing to validate against
 
     merchant_tokens = tokenize_text(merchant_name)
-    if len(merchant_tokens) < 2:
+    if not merchant_tokens or (
+        len(merchant_tokens) == 1 and len(next(iter(merchant_tokens))) <= 3
+    ):
         return True  # Too short to validate reliably
 
     if not lines:

@@ -850,7 +850,7 @@ def verify_receipt_upload_dir(worktree: Path, venv_python: Path) -> None:
             "pip",
             "install",
             "black==26.5.1",
-            "isort==8.0.1",
+            "isort==9.0.1",
         ],
         cwd=worktree,
     )
