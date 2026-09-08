@@ -83,7 +83,7 @@ const LEGEND_STAGES: { key: DecoderStageKey; label: string; color: string }[] =
     },
     {
       key: "sections",
-      label: "Assign sections",
+      label: "View sections",
       color: "var(--color-yellow)",
     },
     { key: "zone", label: "Find the items zone", color: "var(--color-orange)" },
@@ -103,7 +103,7 @@ const LEGEND_STAGES: { key: DecoderStageKey; label: string; color: string }[] =
   ];
 
 const fmtMoney = (v: number | null | undefined): string =>
-  v == null ? "—" : `$${Math.abs(v).toFixed(2)}`;
+  v == null ? "—" : `${v < 0 ? "-" : ""}$${Math.abs(v).toFixed(2)}`;
 
 const usePrefersReducedMotion = (): boolean => {
   const [reduced, setReduced] = useState(false);
@@ -821,6 +821,8 @@ export default function LineItemDecoderVisualization() {
   const [error, setError] = useState<string | null>(null);
   const [initialLoading, setInitialLoading] = useState(true);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
+  const elapsedRef = useRef(0);
   const [frame, setFrame] = useState<DecoderFrame>({
     stageIndex: 0,
     stageKey: "rows",
@@ -900,12 +902,12 @@ export default function LineItemDecoderVisualization() {
   }, [hasReceipts, reducedMotion, currentIndex]);
 
   useEffect(() => {
-    if (!inView || !hasReceipts || reducedMotion) return;
+    if (!inView || !hasReceipts || reducedMotion || !isPlaying) return;
     if (isAnimatingRef.current) return;
     isAnimatingRef.current = true;
 
     let receiptIndex = currentIndex;
-    let startTime = performance.now();
+    let startTime = performance.now() - elapsedRef.current * getReceiptMotionScale();
     let wasTransitioning = false;
 
     const animate = (now: number) => {
@@ -923,6 +925,7 @@ export default function LineItemDecoderVisualization() {
 
       const motionScale = getReceiptMotionScale();
       const elapsed = (now - startTime) / motionScale;
+      elapsedRef.current = elapsed;
       const nextFrame = computeFrame(
         plan,
         elapsed,
@@ -934,6 +937,7 @@ export default function LineItemDecoderVisualization() {
         receiptIndex = (receiptIndex + 1) % currentReceipts.length;
         startTime = now;
         wasTransitioning = false;
+        elapsedRef.current = 0;
         setCurrentIndex(receiptIndex);
         setIsTransitioning(false);
         setFrame({
@@ -973,10 +977,7 @@ export default function LineItemDecoderVisualization() {
       // flying/next-legend presentation when the loop restarts.
       setIsTransitioning(false);
     };
-    // The loop owns receiptIndex after startup (same pattern as
-    // LayoutLMBatchVisualization).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inView, hasReceipts, reducedMotion]);
+  }, [inView, hasReceipts, reducedMotion, isPlaying, currentIndex]);
 
   const getNextReceipt = useCallback(
     (items: LineItemDemoReceipt[], idx: number) =>
@@ -1053,8 +1054,25 @@ export default function LineItemDecoderVisualization() {
     "--rf-motion-scale": motionScale,
   } as React.CSSProperties;
 
+  const navigateReceipt = (direction: number) => {
+    elapsedRef.current = 0;
+    setIsTransitioning(false);
+    setFrame({ stageIndex: 0, stageKey: "rows", progress: 0, phase: "stages" });
+    setCurrentIndex((index) => (index + direction + receipts.length) % receipts.length);
+  };
+
   return (
-    <div ref={setRefs} className={styles.container}>
+    <div ref={setRefs} className={styles.container} data-testid="line-item-decoder">
+      <div className={styles.controls}>
+        <button type="button" onClick={() => navigateReceipt(-1)} aria-label="Previous receipt">Previous</button>
+        <span aria-live="polite">{currentIndex + 1} / {receipts.length}</span>
+        {!reducedMotion ? (
+          <button type="button" onClick={() => setIsPlaying((playing) => !playing)} aria-label={isPlaying ? "Pause walkthrough" : "Play walkthrough"}>
+            {isPlaying ? "Pause" : "Play"}
+          </button>
+        ) : null}
+        <button type="button" onClick={() => navigateReceipt(1)} aria-label="Next receipt">Next</button>
+      </div>
       <ReceiptFlowShell
         layoutVars={layoutVars}
         isTransitioning={isTransitioning}

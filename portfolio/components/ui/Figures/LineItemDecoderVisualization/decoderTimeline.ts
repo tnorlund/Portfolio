@@ -35,7 +35,7 @@ const STAGE_DEFS: Record<
   { title: string; duration: number }
 > = {
   rows: { title: "Group lines into embeddings", duration: 2400 },
-  sections: { title: "Assign receipt sections", duration: 2000 },
+  sections: { title: "View receipt sections", duration: 2000 },
   zone: { title: "Locate the items zone", duration: 1500 },
   bands: { title: "Group words into rows", duration: 2000 },
   guards: { title: "Reject non-products", duration: 1800 },

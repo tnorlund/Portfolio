@@ -36,14 +36,49 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Optional
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "receipt_dynamo"))
 sys.path.insert(0, str(REPO_ROOT / "receipt_upload"))
 
-OCR_FIXTURE = REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden_ocr.json"
-GOLDEN_FIXTURE = REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden.json"
+sys.path.insert(0, str(REPO_ROOT / "receipt_embeddings"))
+
+# Package imports follow the standalone-script path bootstrap.
+# isort: off
+from collections import defaultdict
+from receipt_dynamo import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.receipt_summary import (
+    find_printed_grand_total_words,
+    find_printed_subtotal_words,
+)
+from receipt_embeddings.formatting.line_format import (
+    group_lines_into_visual_rows,
+)
+from receipt_upload.line_items.blocks import _zone_bands
+from receipt_upload.line_items.blocks import load_default_priors
+from receipt_upload.line_items.geometry import (
+    NON_PRODUCT_NOTE_RE,
+    SALE_PRICE_RE,
+    WAS_PRICE_RE,
+    is_settlement_row,
+    is_unit_rate_row,
+)
+from receipt_upload.line_items.geometry import (
+    extract_items,
+    reconcile_extracted_items,
+)
+
+# isort: on
+
+OCR_FIXTURE = (
+    REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden_ocr.json"
+)
+GOLDEN_FIXTURE = (
+    REPO_ROOT / "receipt_upload/tests/fixtures/line_items_golden.json"
+)
 DEFAULT_OUTPUT = REPO_ROOT / "portfolio/public/line-item-demo/receipts.json"
 
 DEV_CDN = "https://dev.tylernorlund.com"
@@ -96,7 +131,6 @@ def words_to_lines(
     receipt_id: int = 0,
 ) -> list[_EmbedLine]:
     """Collapse OCR words into ReceiptLine-shaped units (one per line_id)."""
-    from collections import defaultdict
 
     by_line: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for w in words:
@@ -147,8 +181,6 @@ def dump_lines(lines: list[_EmbedLine]) -> list[dict[str, Any]]:
 
 def dump_visual_rows(lines: list[_EmbedLine]) -> list[dict[str, Any]]:
     """Visual rows = embedding units (name+price OCR lines grouped by y)."""
-    from receipt_chroma.embedding.formatting.line_format import \
-        group_lines_into_visual_rows
 
     rows_out: list[dict[str, Any]] = []
     for row in group_lines_into_visual_rows(lines):
@@ -238,7 +270,9 @@ def synthesize_sections(
             continue
         x0, x1 = min(xs), max(xs)
         y0, y1 = min(ys), max(ys)
-        row_ids = sorted({row_by_line[lid] for lid in line_ids if lid in row_by_line})
+        row_ids = sorted(
+            {row_by_line[lid] for lid in line_ids if lid in row_by_line}
+        )
         sections.append(
             {
                 "section_type": section_type,
@@ -313,12 +347,6 @@ def annotate_bands(ocr_receipt: dict, priors: dict) -> list[dict]:
     Guard order matters and must mirror blocks.decode_band_blocks: the
     first guard to fire is the recorded reason.
     """
-    from receipt_upload.line_items.blocks import _zone_bands
-    from receipt_upload.line_items.geometry import (NON_PRODUCT_NOTE_RE,
-                                                    SALE_PRICE_RE,
-                                                    WAS_PRICE_RE,
-                                                    is_settlement_row,
-                                                    is_unit_rate_row)
 
     bands = _zone_bands(ocr_receipt)
     out = []
@@ -338,7 +366,9 @@ def annotate_bands(ocr_receipt: dict, priors: dict) -> list[dict]:
 
         prior = priors.get(b["template"])
         prior_used = (
-            prior is not None and prior["purity"] >= 0.75 and prior["support"] >= 2
+            prior is not None
+            and prior["purity"] >= 0.75
+            and prior["support"] >= 2
         )
         if guard:
             role = "OUTSIDE"
@@ -355,7 +385,9 @@ def annotate_bands(ocr_receipt: dict, priors: dict) -> list[dict]:
             {
                 "band_id": i,
                 "line_ids": b["line_ids"],
-                "word_refs": [[w["line_id"], w["word_id"]] for w in b["words"]],
+                "word_refs": [
+                    [w["line_id"], w["word_id"]] for w in b["words"]
+                ],
                 "text": b["text"],
                 "y": round(b["y"], 5),
                 "amounts": b["amounts"],
@@ -399,7 +431,9 @@ def dump_item(item: dict, y_lookup: dict) -> dict:
         "stacked": bool(item.get("stacked")),
         "name_quality": item.get("name_quality"),
         "line_ids": sorted(item.get("line_ids", [])),
-        "name_word_ids": [_wref(w) for w in item.get("name_word_ids", []) if w],
+        "name_word_ids": [
+            _wref(w) for w in item.get("name_word_ids", []) if w
+        ],
         "price_word_id": _wref(item.get("price_word_id")),
         "qty_word_ids": [_wref(w) for w in item.get("qty_word_ids", []) if w],
     }
@@ -417,8 +451,6 @@ def find_figure_words(
     anchor can never highlight a different number than the verdict
     compares against.
     """
-    from receipt_dynamo.entities.receipt_summary import (
-        find_printed_grand_total_words, find_printed_subtotal_words)
 
     if value is None:
         return []
@@ -470,7 +502,11 @@ def check_cdn(key: str) -> bool:
             text=True,
         )
         parts = result.stdout.split(None, 1)
-        if len(parts) != 2 or parts[0] != "200" or not parts[1].startswith("image/"):
+        if (
+            len(parts) != 2
+            or parts[0] != "200"
+            or not parts[1].startswith("image/")
+        ):
             return False
     return True
 
@@ -480,10 +516,9 @@ def export_receipt(
     golden: Optional[dict],
     client,
     priors: dict,
+    *,
+    verify_images: bool = True,
 ) -> Optional[dict]:
-    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
-    from receipt_upload.line_items.geometry import (extract_items,
-                                                    reconcile_detailed)
 
     image_id = fixture_receipt["image_id"]
     receipt_id = fixture_receipt["receipt_id"]
@@ -503,9 +538,7 @@ def export_receipt(
     items_filtered, _ = extract_items(words, zone, summary=summary)
     kept_keys = {item_key(i) for i in items_filtered}
     dropped = [i for i in items_raw if item_key(i) not in kept_keys]
-    reconcile = reconcile_detailed(
-        [i for i in items_filtered if not i.get("is_discount")], summary
-    )
+    reconcile = reconcile_extracted_items(items_filtered, summary)
 
     # ── live join: full geometry + CDN keys ──
     try:
@@ -526,7 +559,9 @@ def export_receipt(
         return None
     # Ids can be reused after OCR reprocessing — require matching text so
     # boxes land on the same tokens the fixture decoder annotated.
-    mismatched = [k for k in referenced if live_words[k].text != fixture_text.get(k)]
+    mismatched = [
+        k for k in referenced if live_words[k].text != fixture_text.get(k)
+    ]
     if mismatched:
         print(
             f"  SKIP {merchant}: {len(mismatched)} zone words "
@@ -540,13 +575,13 @@ def export_receipt(
         for k in receipt_dict
         if k.startswith("cdn_") and k.endswith("_key") and receipt_dict[k]
     }
-    image["width"] = receipt.width
-    image["height"] = receipt.height
+    image["width"] = receipt_dict["width"]
+    image["height"] = receipt_dict["height"]
     base_key = image.get("cdn_webp_s3_key") or image.get("cdn_s3_key")
     if not base_key:
         print(f"  SKIP {merchant}: no CDN image key on the receipt")
         return None
-    if not check_cdn(base_key):
+    if verify_images and not check_cdn(base_key):
         print(f"  SKIP {merchant}: image missing from a CDN")
         return None
 
@@ -583,7 +618,9 @@ def export_receipt(
         outcome = None
         for idx, it in enumerate(item_by_idx):
             qty_refs = {tuple(r) for r in it["qty_word_ids"] if r}
-            if band_refs & qty_refs or set(b["line_ids"]) <= set(it["line_ids"]):
+            if band_refs & qty_refs or set(b["line_ids"]) <= set(
+                it["line_ids"]
+            ):
                 absorbed_into = idx
                 outcome = "absorbed"
                 break
@@ -604,7 +641,10 @@ def export_receipt(
                 # price, an integer multiple of the accepted unit price.
                 if unit > 0:
                     ratio = amount / unit
-                    return 1 <= round(ratio) <= 12 and abs(ratio - round(ratio)) < 0.01
+                    return (
+                        1 <= round(ratio) <= 12
+                        and abs(ratio - round(ratio)) < 0.01
+                    )
                 return False
 
             candidates = [
@@ -636,7 +676,8 @@ def export_receipt(
             "bands": bands,
             "items": item_by_idx,
             "dropped_items": [
-                {**dump_item(i, y_lookup), "reason": "summary_figure"} for i in dropped
+                {**dump_item(i, y_lookup), "reason": "summary_figure"}
+                for i in dropped
             ],
             "summary": summary,
             "reconcile": {
@@ -644,10 +685,74 @@ def export_receipt(
                 "item_sum": reconcile.item_sum,
                 "baseline": reconcile.baseline,
                 "baseline_source": reconcile.baseline_source,
-                "baseline_figures_agreeing": (reconcile.baseline_figures_agreeing),
+                "baseline_figures_agreeing": (
+                    reconcile.baseline_figures_agreeing
+                ),
             },
         }
     )
+
+
+class RecordedGeometry:
+    """Read-only geometry already present in the committed public demo."""
+
+    def __init__(self, receipts: list[dict]) -> None:
+        self.receipts = {
+            (receipt["image_id"], receipt["receipt_id"]): receipt
+            for receipt in receipts
+        }
+
+    def get_receipt_details(self, image_id: str, receipt_id: int) -> Any:
+        source = self.receipts[(image_id, receipt_id)]
+        return SimpleNamespace(
+            receipt=source["image"],
+            words=[
+                SimpleNamespace(
+                    line_id=word["line_id"],
+                    word_id=word["word_id"],
+                    text=word["text"],
+                    bounding_box=word["bbox"],
+                )
+                for word in source["words"]
+            ],
+        )
+
+
+def refresh_recorded_export(
+    payload: dict, fixture: dict, golden: dict, priors: dict
+) -> dict:
+    """Replay today's decoder without fetching new receipt data or images."""
+    source = RecordedGeometry(payload["receipts"])
+    fixture_by_key = {
+        (r["image_id"], r["receipt_id"]): r for r in fixture["receipts"]
+    }
+    golden_by_key = {
+        (r["image_id"], r["receipt_id"]): r for r in golden["receipts"]
+    }
+    refreshed = []
+    for key in source.receipts:
+        if key not in fixture_by_key:
+            raise ValueError(
+                "Recorded demo receipt is missing from the OCR fixture"
+            )
+        result = export_receipt(
+            fixture_by_key[key],
+            golden_by_key.get(key),
+            source,
+            priors,
+            verify_images=False,
+        )
+        if result is None:
+            raise ValueError(
+                "Recorded geometry no longer matches the OCR fixture"
+            )
+        refreshed.append(result)
+    return {
+        **payload,
+        "source": "current golden OCR fixture + recorded public demo geometry",
+        "structure_source": "line geometry and fixture ITEMS zone overlays",
+        "receipts": refreshed,
+    }
 
 
 def main() -> int:
@@ -672,6 +777,11 @@ def main() -> int:
             "(no AWS). Reads --out and rewrites it."
         ),
     )
+    parser.add_argument(
+        "--refresh-offline",
+        action="store_true",
+        help="replay current decoder using the existing public export's geometry",
+    )
     args = parser.parse_args()
 
     if args.enrich_structure:
@@ -682,8 +792,6 @@ def main() -> int:
         print(f"Enriched {len(payload['receipts'])} receipts → {args.out}")
         return 0
 
-    from receipt_upload.line_items.blocks import load_default_priors
-
     fixture = json.loads(OCR_FIXTURE.read_text())
     golden_by_key = {
         (g["image_id"], g["receipt_id"]): g
@@ -691,22 +799,31 @@ def main() -> int:
     }
     priors = load_default_priors()
 
+    if args.refresh_offline:
+        payload = refresh_recorded_export(
+            json.loads(args.out.read_text()),
+            fixture,
+            json.loads(GOLDEN_FIXTURE.read_text()),
+            priors,
+        )
+        args.out.write_text(json.dumps(payload, separators=(",", ":")) + "\n")
+        print(f"Refreshed {len(payload['receipts'])} public examples offline")
+        return 0
+
     if args.analyze:
-        from receipt_upload.line_items.geometry import (extract_items,
-                                                        reconcile_detailed)
 
         for r in fixture["receipts"]:
             zone = set(r["items_line_ids"])
-            summary = build_summary(golden_by_key.get((r["image_id"], r["receipt_id"])))
+            summary = build_summary(
+                golden_by_key.get((r["image_id"], r["receipt_id"]))
+            )
             bands = annotate_bands(
                 {"words": r["words"], "items_line_ids": sorted(zone)},
                 priors,
             )
             items_raw, _ = extract_items(r["words"], zone)
             items, _ = extract_items(r["words"], zone, summary=summary)
-            rec = reconcile_detailed(
-                [i for i in items if not i.get("is_discount")], summary
-            )
+            rec = reconcile_extracted_items(items, summary)
             guards = [b["guard"] for b in bands if b["guard"]]
             print(
                 f"{r['image_id'][:8]} r{r['receipt_id']:<2} "
@@ -721,12 +838,13 @@ def main() -> int:
         return 0
 
     # Live geometry + CDN keys need Dynamo; analyze mode above is fixture-only.
-    from receipt_dynamo import DynamoClient
 
     client = DynamoClient(args.table)
 
     if args.all:
-        selection = [(r["image_id"], r["receipt_id"]) for r in fixture["receipts"]]
+        selection = [
+            (r["image_id"], r["receipt_id"]) for r in fixture["receipts"]
+        ]
     else:
         selection = []
         for prefix, rid, _why in SHOWCASE:
@@ -768,7 +886,9 @@ def main() -> int:
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, separators=(",", ":")) + "\n")
     size_kb = args.out.stat().st_size / 1024
-    print(f"\nwrote {args.out} ({size_kb:.0f} KB, {len(receipts_out)} receipts)")
+    print(
+        f"\nwrote {args.out} ({size_kb:.0f} KB, {len(receipts_out)} receipts)"
+    )
     return 0
 
 

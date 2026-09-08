@@ -541,26 +541,21 @@ M1LK 2%           1    $4.4g`}</code>
         </ClientOnly>
       </FigureBoundary>
 
-      <h2>Turning Labels into Line Items</h2>
+      <h2>Reading Line Items from Layout</h2>
 
       <p>
-        Labels tell me which words are prices. They don&apos;t tell me that
-        &quot;ORGANIC BANANAS&quot; and &quot;$1.69&quot; are the{" "}
-        <em>same purchase</em>. Before the decoder even runs, OCR lines that sit
-        on one printed row — name on the left, price on the right — get grouped
-        into the visual rows we embed, then those rows are assigned to
-        STOREFRONT / ITEMS / SUMMARY. Inside the ITEMS section the layout does
-        the rest: non-product rows get rejected by vocabulary, names pair with
-        prices, and printed quantities like &quot;6 @ $0.49&quot; are accepted
-        only when the arithmetic works out — even when OCR mangles &quot;@&quot;
-        into &quot;g&quot;, 6 × $0.49 still equals $2.94.
+        OCR gives me words and positions. It does not tell me that
+        &quot;ORGANIC BANANAS&quot; and &quot;$1.69&quot; are the same purchase.
+        Inside the ITEMS section, the decoder groups words by layout,
+        rejects non-product rows, and pairs names with prices.
       </p>
 
       <p>
-        The best part of doing it deterministically: the receipt grades its own
-        homework. If the items I found don&apos;t add up to the printed
-        subtotal, I know I got it wrong — and the visualization below is honest
-        about the receipts where that still happens.
+        Printed quantities are accepted only when their arithmetic works:
+        6 × $0.49 must equal $2.94. The walkthrough replays the current decoder
+        on saved examples, with layout overlays to show where it is looking.
+        Comparing the result with the printed subtotal checks whether the
+        extracted amounts reconcile.
       </p>
 
       <FigureBoundary
