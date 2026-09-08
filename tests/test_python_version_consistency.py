@@ -9,7 +9,7 @@ import scripts.check_python_version_consistency as checker
 
 
 def test_python_version_declarations_are_consistent() -> None:
-    """Every active package and deployment target should use Python 3.13."""
+    """Package tooling keeps its baseline while container docs may name 3.14."""
     assert checker.check_repository() == []
 
 
@@ -20,7 +20,7 @@ def test_python_version_declarations_are_consistent() -> None:
         "python-version: '3." + "12'",
         "Python 3." + "11 is required.",
         "Create the environment with python3." + "10.",
-        "Python 3." + "14 is required.",
+        "Python 3." + "15 is required.",
         "Python 2." + "7 is unsupported.",
     ],
 )
@@ -47,17 +47,19 @@ def test_maintained_documentation_is_scanned(
 
 
 @pytest.mark.parametrize("suffix", sorted(checker.DOCUMENT_SUFFIXES))
-def test_python_313_documentation_is_accepted(
+@pytest.mark.parametrize("version", checker.DOCUMENT_PYTHON_VERSIONS)
+def test_supported_runtime_documentation_is_accepted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     suffix: str,
+    version: str,
 ) -> None:
-    """The active Python 3.13 baseline is valid in every documentation form."""
+    """Baseline and tested container runtimes are valid documentation."""
     monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
     guide = tmp_path / "docs" / "development" / f"setup{suffix}"
     guide.parent.mkdir(parents=True)
     guide.write_text(
-        "Python 3.13+ is required; use python3.13 to create the venv.\n",
+        f"Python {version} is required; use python{version} for this target.\n",
         encoding="utf-8",
     )
 

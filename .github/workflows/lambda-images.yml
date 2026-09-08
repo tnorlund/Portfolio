@@ -52,7 +52,15 @@ jobs:
       - name: Build the deployed Dockerfile
         env:
           DOCKERFILE: ${{ matrix.dockerfile }}
-        run: docker build --platform linux/arm64 --file "$DOCKERFILE" --tag lambda-import-check .
+        run: |
+          # CodeBuild stages its context without the legacy root .dockerignore.
+          # Build the unchanged Dockerfile from tracked source, with no .git or credentials.
+          context_dir="$RUNNER_TEMP/lambda-image-context"
+          mkdir -p "$context_dir"
+          git archive HEAD | tar -x -C "$context_dir"
+          rm "$context_dir/.dockerignore"
+          docker build --platform linux/arm64 --file "$context_dir/$DOCKERFILE" \
+            --tag lambda-import-check "$context_dir"
       - name: Import installed packages and handler without network access
         env:
           IMAGE_NAME: ${{ matrix.name }}

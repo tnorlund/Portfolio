@@ -1,5 +1,5 @@
 #!/usr/bin/env python3.13
-"""Verify that active Python tooling and deployment targets use Python 3.13."""
+"""Verify the Python 3.13 baseline and documented secondary container runtime."""
 
 from __future__ import annotations
 
@@ -10,6 +10,8 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 PYTHON_VERSION = "3.13"
 PYTHON_TARGET = "py313"
+# Package/tooling baseline stays 3.13; deployed containers also test 3.14.
+DOCUMENT_PYTHON_VERSIONS = (PYTHON_VERSION, "3.14")
 
 SCAN_ROOTS = (
     ".github",
@@ -75,7 +77,8 @@ OLD_VERSION_DECLARATION = re.compile(
     re.IGNORECASE,
 )
 NON_BASELINE_DOCUMENT_VERSION_TOKEN = re.compile(
-    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?" + r"(?:2\.\d+|3\.(?!13\b)\d+)\b",
+    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?"
+    + r"(?:2\.\d+|3\.(?!(?:13|14)\b)\d+)\b",
     re.IGNORECASE,
 )
 PYTHON_CLASSIFIER = re.compile(r"^Programming Language :: Python :: (3\.\d+)$")
