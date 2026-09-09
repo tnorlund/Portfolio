@@ -167,7 +167,7 @@ conflicting purchase quantities, missing/unverified facts, unit incompatibility,
 invalid amounts, once-only money rounding and actual CLI overrides.
 The original synthetic contract remains 35 cases; this is not a real-model
 evaluation. The owner's input JSON and runnable Markdown/JSON output are
-private under `~/.local/share/portfolio-nutrition/lunch/`, outside git.
+private, in a local directory outside git.
 
 Source checks: the official TJ product page supplied the complete Tater
 Bites label; the official Kerrygold page supplied its per-tablespoon values;

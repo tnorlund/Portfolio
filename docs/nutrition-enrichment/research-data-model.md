@@ -10,11 +10,11 @@
 > cannot ensure consistency; use the revised generation/fencing contract.
 
 Companion research note for the nutrition-enrichment plan. Every path and line
-number below was verified against `/Users/tnorlund/Portfolio-nutrition-main`
+number below was verified against a clean `origin/main` worktree
 at commit `64058f299` (branch `claude/nutrition-enrichment-plan`, tracking
 `origin/main`). Paths are relative to that root.
 
-**Do not trust findings taken from `/Users/tnorlund/Portfolio`.** That checkout
+**Do not trust findings taken from a stale feature-branch checkout.** The one used earlier
 sits on `claude/rotoscope-pixel-story`, 141 commits behind main with a dirty
 worktree. It still contains `receipt_chroma/`, `infra/chromadb_compaction/`,
 and a `TargetQueue` with `LINES`/`WORDS` members. All three are deleted on main.
