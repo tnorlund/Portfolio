@@ -75,7 +75,10 @@ _SIZE = re.compile(
     r"ml|mL|l|liter|litre|gallon|gal|quart|qt|pint|pt)\b",
     re.IGNORECASE,
 )
-_COUNT = re.compile(r"(\d+(?:\.\d+)?)")
+_COUNT = re.compile(_BOUNDARY + r"(\d+(?:\.\d+)?)")
+# A digit joined to another digit by a slash or dash, with any spacing, is a
+# fraction or a range: never a complete number.
+_FRACTION_OR_RANGE = re.compile(r"\d\s*[/\-\u2013]\s*\d")
 _UNIT_ALIAS = {
     "gram": "g",
     "grams": "g",
@@ -120,6 +123,8 @@ def parse_serving(text: Any) -> Amount | None:
     text = str(text)
     inside = re.findall(r"\(([^)]*)\)", text)
     for candidate in inside + [text]:
+        if _FRACTION_OR_RANGE.search(candidate):
+            continue
         match = _MASS.search(candidate)
         if match:
             return _amount(match.group(1), match.group(2))
@@ -131,7 +136,7 @@ def parse_size(text: Any) -> Amount | None:
     if text is None:
         return None
     text = str(text)
-    if _MULTIPACK.search(text) or "/" in text:
+    if _MULTIPACK.search(text) or _FRACTION_OR_RANGE.search(text):
         return None
     if re.search(r"\b\d+\s*(?:ct|count|pk|pack)\b", text, re.IGNORECASE) and (
         "," in text or "x" in text.lower()
@@ -147,7 +152,7 @@ def parse_servings(text: Any) -> str | None:
         return None
     text = str(text)
     numbers = _COUNT.findall(text)
-    if len(numbers) != 1 or "/" in text:
+    if len(numbers) != 1 or _FRACTION_OR_RANGE.search(text):
         return None
     value = Decimal(numbers[0])
     return str(value) if value > 0 else None
@@ -166,9 +171,10 @@ def _nutrients(
             continue
         try:
             amount = Decimal(str(value))
+            if not amount.is_finite():
+                continue
+            amount = amount.quantize(Decimal("1e-9"))
         except InvalidOperation:
-            continue
-        if not amount.is_finite():
             continue
         canonical = NUTRIENT_UNITS[nbr]
         unit = unit.lower()
@@ -182,9 +188,8 @@ def _nutrients(
                 continue
         if amount < 0:
             continue
-        # Binary-float noise such as 0.30000000000000004 is quantised to the
-        # model's precision; anything the model still rejects is skipped.
-        amount = amount.quantize(Decimal("1e-9"))
+        # Binary-float noise such as 0.30000000000000004 was quantised above;
+        # anything the model still rejects is skipped.
         text = format(amount, "f")
         text = text.rstrip("0").rstrip(".") if "." in text else text
         try:
@@ -380,10 +385,21 @@ def seed(
 ) -> Counter:
     counts: Counter = Counter()
     now = datetime.now(timezone.utc)
+    seen_keys: set[tuple[str, str]] = set()
     for record in records:
         if not record.get("normalized"):
             counts["skipped_blank"] += 1
             continue
+        key = (
+            slugify_merchant(record["merchant"]),
+            normalize_product_text(record["normalized"]),
+        )
+        if key in seen_keys:
+            # Two input rows collapsing to one alias key would bump the
+            # alias revision on every run; keep the first, report the rest.
+            counts["alias_duplicate_key_skipped"] += 1
+            continue
+        seen_keys.add(key)
         try:
             product, note = build_product(record)
         except (ValueError, EntityValidationError) as error:

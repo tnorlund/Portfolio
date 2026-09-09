@@ -312,3 +312,41 @@ def test_float_noise_in_facts_is_quantised_not_fatal():
         record(serving_size="1/4 cup", nutrients=noisy)
     )
     assert identity is not None and identity.nutrients == ()
+
+
+@pytest.mark.parametrize("serving", ["1 /  2 g", "2-3 g", "2 \u2013 3 g"])
+def test_ranges_and_wide_fractions_abstain(serving):
+    product, note = seed.build_product(record(serving_size=serving))
+    assert note == "serving_unparsed_identity_only"
+    assert product is not None and product.serving is None
+
+
+def test_leading_decimal_servings_count_abstains():
+    product, _ = seed.build_product(record(servings_per_container=".5"))
+    assert product is not None and product.servings_per_container is None
+
+
+def test_exponent_nutrient_value_is_skipped_not_fatal():
+    product, _ = seed.build_product(
+        record(
+            serving_size="1/4 cup",
+            nutrients={"208": {"value": "1e100", "unit": "kcal"}},
+        )
+    )
+    assert product is not None and product.nutrients == ()
+
+
+def test_colliding_alias_keys_are_written_once(table):
+    client = DynamoClient(table)
+    rows = [
+        record(merchant="Trader Joe's"),
+        record(
+            merchant="Trader Joe s",
+            nutrients={"208": {"value": 300.0, "unit": "kcal"}},
+        ),
+    ]
+    first = seed.seed(rows, client, table)
+    assert first["alias_written"] == 1
+    assert first["alias_duplicate_key_skipped"] == 1
+    second = seed.seed(rows, client, table)
+    assert second["alias_unchanged"] == 1 and "alias_written" not in second
