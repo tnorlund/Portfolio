@@ -17,6 +17,10 @@ from receipt_dynamo.entities.coreml_export_job import (  # noqa: F401
     CoreMLExportJob,
     item_to_coreml_export_job,
 )
+from receipt_dynamo.entities.food_product import (
+    FoodProduct,
+    item_to_food_product,
+)
 from receipt_dynamo.entities.identifier_mixins import (
     ImageIdentifierMixin,
     ImageLineIdentifierMixin,
@@ -73,6 +77,10 @@ from receipt_dynamo.entities.ocr_routing_decision import (  # noqa: F401
 )
 from receipt_dynamo.entities.places_cache import PlacesCache  # noqa: F401
 from receipt_dynamo.entities.places_cache import item_to_places_cache
+from receipt_dynamo.entities.product_alias import (
+    ProductAlias,
+    item_to_product_alias,
+)
 from receipt_dynamo.entities.receipt import Receipt  # noqa: F401
 from receipt_dynamo.entities.receipt import item_to_receipt
 from receipt_dynamo.entities.receipt_barcode import (  # noqa: F401
@@ -182,6 +190,10 @@ __all__ = [
     "Point",
     "S3Location",
     # Core entities
+    "FoodProduct",
+    "ProductAlias",
+    "item_to_food_product",
+    "item_to_product_alias",
     "AIUsageMetric",
     "BatchSummary",
     "CoreMLExportJob",

@@ -133,7 +133,10 @@ changed_at, expires_at. Confirm with an expected revision. A stale model
 result cannot overwrite a user decision. Confirmations have no TTL but keep
 their applicability limits and can be explicitly superseded.
 Ambiguous size variants remain pending. Check expiry in application code;
-DynamoDB TTL is eventual cleanup. Expired automatic/negative decisions retry.
+Expired automatic/negative decisions retry using the existing revision.
+Retain alias records without the table TTL attribute; TTL deletion could reset
+revision numbering and let delayed work match a recreated alias. Key components
+are percent-escaped so merchant/text delimiters cannot collide.
 
 Alias changes create stream fan-out work. A correction is propagated only
 when all affected active observations, including negative/pending ones,

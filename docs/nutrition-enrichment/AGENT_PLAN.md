@@ -62,7 +62,9 @@ Commands once implemented:
 
 Add FoodProduct immutable revisions, conditional ProductAlias,
 generation-scoped ReceiptLineNutrition and summary/control manifest.
-Follow receipt-dynamo-integration-tests.
+Follow receipt-dynamo-integration-tests. Land B1 (catalog records, conditional
+aliases, exact domain translation) before B2 (receipt generations, publication,
+verified reads, reverse lookups and cleanup). Track B1 in CATALOG_STORAGE.md.
 
 Gate: CRUD/error mappings/pagination; immutable facts; expected-revision
 conflicts; confirmations protected from model races; active-generation

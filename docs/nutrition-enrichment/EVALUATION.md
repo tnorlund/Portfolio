@@ -7,8 +7,10 @@ Contract: [SPEC.md](SPEC.md). Tasks: [AGENT_PLAN.md](AGENT_PLAN.md).
 
 P revised contract passed full-diff re-review with no remaining HIGH/MEDIUM
 findings after two corrections. Implementation gates remain separate below.
-A passed full-diff review after adversarial corrections. B–G remain pending
-as implementation milestones; local B prototypes are evaluated separately.
+A passed full-diff review and is committed as d185bce01. B1 catalog storage
+passes local tests and three clean full-diff reviews.
+B2 has a tested local prototype, not yet integrated into DynamoClient or committed.
+C–G remain pending.
 Historical research counts are not current
 evaluation results. No live model, dev deployment, or public release claimed.
 
@@ -17,7 +19,8 @@ evaluation results. No live model, dev deployment, or public release claimed.
 | P contract review | PASS | two MEDIUM findings fixed; full-diff second pass found none |
 | A schema/≥30 dimensional cases | PASS | 92 Python 3.13 tests; 35 independent arithmetic cases |
 | A honest harness/fixture validation | PASS | synthetic labelled explicitly; offline/live return NOT RUN and exit 2 |
-| B persistence/generation/conditions | NOT RUN | moto tests |
+| B1 immutable catalog/conditional aliases | PASS (local) | 52 entity/moto tests + 1 domain roundtrip; review clean |
+| B2 generation/publication | IN PROGRESS | 15 prototype entity/moto tests; integration/review pending |
 | C 20–30 product pilot evidence | NOT RUN | independent label/package verification |
 | C ≥150-line grouped held-out fixture | NOT RUN | source/split/count validation |
 | C real imported catalog recall | NOT RUN | fixed-denominator retrieval |
@@ -88,3 +91,12 @@ fencing; REMOVE and bounded repair; live evaluation distinct from fake;
 product-family holdout; source permissions enforced before public
 aggregation; TJ bulk not required; main #1391, FDC April 2026, corrected token
 cost, fully qualified dev stack examples.
+
+### B1 local storage checkpoint
+
+See [CATALOG_STORAGE.md](CATALOG_STORAGE.md) for invariants and the revision/TTL
+refinement. Both full-diff review passes found no HIGH/MEDIUM correctness
+findings; the third clean pass includes package-required unused-in-production markers
+and this ledger update. Targeted mypy passes for four implementation modules.
+Explicit local checks run these tests; ordinary CI skips the temporary marker
+until the E consumer is wired. No live AWS writes or dev runtime claims.
