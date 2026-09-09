@@ -77,11 +77,15 @@ SUPPORTED_SOURCE_TYPES = {
 # Machine-derived, recomputable entity types (rows/sections/summaries/line
 # items are rebuilt by their own pipelines — ReceiptRow even self-heals via
 # the Dynamo stream within seconds of deletion). Their presence must not
-# block PLANNING: a plan is review-only and touches no receipt data. They
-# DO still block APPLY (see apply_plan) until an explicit migration policy
-# exists, because the commit/cleanup path does not migrate or delete them.
+# block planning or apply. The full receipt-prefix cleanup removes them;
+# derived output is regenerated separately and is never copied to a split.
 DERIVED_RECOMPUTED_TYPES = {
     "RECEIPT_LINE_ITEM",
+    # Nutrition rows: RECEIPT_NUTRITION_SUMMARY is the bounded document the
+    # receipt_dynamo nutrition DAL writes; RECEIPT_LINE_NUTRITION is reserved
+    # for a per-line variant and has no writer today.
+    "RECEIPT_LINE_NUTRITION",
+    "RECEIPT_NUTRITION_SUMMARY",
     "RECEIPT_ROW",
     "RECEIPT_SECTION",
     "RECEIPT_SUMMARY",

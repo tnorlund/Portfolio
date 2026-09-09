@@ -720,6 +720,58 @@ def _seed_two_line_receipt(table_name, raw_bucket, image_bucket):
 
 
 @mock_aws
+@pytest.mark.parametrize("bare_summary", [True, False])
+def test_nutrition_does_not_block_resegmentation_or_plan_apply_churn(
+    bare_summary,
+):
+    client, s3, image_id = _seed_two_line_receipt(
+        "NutritionResegment", "resegment-raw", "resegment-images"
+    )
+
+    def nutrition_row(suffix, entity_type):
+        client._client.put_item(
+            TableName=client.table_name,
+            Item={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {"S": f"RECEIPT#00001#{suffix}"},
+                "TYPE": {"S": entity_type},
+            },
+        )
+
+    nutrition_row("NUTRITION_SUMMARY", "RECEIPT_NUTRITION_SUMMARY")
+    if not bare_summary:
+        nutrition_row("NUTRITION#old#00000", "RECEIPT_LINE_NUTRITION")
+    plan = create_plan(
+        {
+            "image_id": image_id,
+            "source_receipt_id": 1,
+            "segments": [
+                {"segment_key": "left", "include_line_ids": [1]},
+                {"segment_key": "right", "include_line_ids": [2]},
+            ],
+        },
+        dynamo_client=client,
+        s3_client=s3,
+        raw_bucket="resegment-raw",
+    )
+    # A refresh adds derived rows after planning. It must not change the
+    # source fingerprint or be copied to the newly segmented receipts.
+    nutrition_row("NUTRITION#new#00000", "RECEIPT_LINE_NUTRITION")
+    result = apply_plan(
+        {"plan_id": plan["plan_id"], "plan_hash": plan["plan_hash"]},
+        dynamo_client=client,
+        s3_client=s3,
+        raw_bucket="resegment-raw",
+        site_bucket="resegment-site",
+    )
+    assert result["status"] == "APPLIED"
+    assert client.get_receipt_item_type_counts(image_id, 1) == {}
+    for receipt_id in result["output_receipt_ids"]:
+        counts = client.get_receipt_item_type_counts(image_id, receipt_id)
+        assert not any("NUTRITION" in entity_type for entity_type in counts)
+
+
+@mock_aws
 def test_apply_retries_after_transient_commit_failure(monkeypatch):
     """A failed commit transaction must not brick the plan: the status is
     reverted to PLANNED, the reservations are released idempotently, and a
