@@ -200,7 +200,10 @@ def portion_amount(
         return None
     if portion.unit == "package" and product.net_amount is not None:
         amount = exact_amount_in(product.net_amount, unit, product)
-        return amount * Fraction(portion.value) if amount is not None else None
+        if amount is not None:
+            return amount * Fraction(portion.value)
+        # The net amount cannot reach this basis (e.g. grams to "each");
+        # fall through to the declared serving count, which may.
     servings = serving_fraction(item, portion)
     amount = exact_amount_in(product.serving, unit, product)
     return (

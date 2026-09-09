@@ -392,3 +392,24 @@ def test_unverified_household_evidence_leaves_spoon_portions_unknown():
     (rendered_row,) = result["rows"]
     assert rendered_row["nutrients"] == {}
     assert rendered_row["cost"] is None
+
+
+def test_package_portion_falls_back_to_serving_count():
+    """Grams cannot reach an each basis; eight declared pieces can."""
+    row = item(portion="1", unit="package")
+    row["product"]["net_amount"] = {"value": "120", "unit": "g"}
+    row["product"]["serving"] = {"value": "1", "unit": "each"}
+    row["product"]["servings_per_container"] = "8"
+    row["product"]["nutrients"] = [
+        {
+            "nutrient_id": "208",
+            "amount": "90",
+            "unit": "kcal",
+            "basis": "each",
+            "source_ref": row["product"]["nutrients"][0]["source_ref"],
+        }
+    ]
+    row["household_serving"] = None
+    result = calculate_meal(meal(row))
+    (rendered_row,) = result["rows"]
+    assert rendered_row["nutrients"]["208"] == "720"
