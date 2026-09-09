@@ -79,6 +79,14 @@ _COUNT = re.compile(_BOUNDARY + r"(\d+(?:\.\d+)?)")
 # A digit joined to another digit by a slash or dash, with any spacing, is a
 # fraction or a range: never a complete number.
 _FRACTION_OR_RANGE = re.compile(r"\d\s*[/\-\u2013]\s*\d")
+_PARTIAL_BEFORE = re.compile(r"\d\s*[/\-\u2013]\s*$")
+
+
+def _complete_number(match: re.Match[str], text: str) -> bool:
+    """False when the matched number is the tail of a fraction or range."""
+    return _PARTIAL_BEFORE.search(text[: match.start()]) is None
+
+
 _UNIT_ALIAS = {
     "gram": "g",
     "grams": "g",
@@ -123,10 +131,8 @@ def parse_serving(text: Any) -> Amount | None:
     text = str(text)
     inside = re.findall(r"\(([^)]*)\)", text)
     for candidate in inside + [text]:
-        if _FRACTION_OR_RANGE.search(candidate):
-            continue
         match = _MASS.search(candidate)
-        if match:
+        if match and _complete_number(match, candidate):
             return _amount(match.group(1), match.group(2))
     return None
 
@@ -136,14 +142,16 @@ def parse_size(text: Any) -> Amount | None:
     if text is None:
         return None
     text = str(text)
-    if _MULTIPACK.search(text) or _FRACTION_OR_RANGE.search(text):
+    if _MULTIPACK.search(text):
         return None
     if re.search(r"\b\d+\s*(?:ct|count|pk|pack)\b", text, re.IGNORECASE) and (
         "," in text or "x" in text.lower()
     ):
         return None
     match = _SIZE.search(text)
-    return _amount(match.group(1), match.group(2)) if match else None
+    if match is None or not _complete_number(match, text):
+        return None
+    return _amount(match.group(1), match.group(2))
 
 
 def parse_servings(text: Any) -> str | None:

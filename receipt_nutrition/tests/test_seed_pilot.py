@@ -350,3 +350,17 @@ def test_colliding_alias_keys_are_written_once(table):
     assert first["alias_duplicate_key_skipped"] == 1
     second = seed.seed(rows, client, table)
     assert second["alias_unchanged"] == 1 and "alias_written" not in second
+
+
+@pytest.mark.parametrize(
+    ("serving", "grams"),
+    [
+        ("1/2 cup, 100g", "100"),
+        ("1 1/4 cup (140g)", "140"),
+        ("1/2 CUP 121 Gram", "121"),
+    ],
+)
+def test_household_fraction_does_not_block_explicit_grams(serving, grams):
+    product, note = seed.build_product(record(serving_size=serving))
+    assert note == "ok" and product is not None
+    assert product.serving is not None and str(product.serving.value) == grams
