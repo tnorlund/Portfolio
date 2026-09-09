@@ -825,3 +825,34 @@ def test_portion_and_containers_are_named_and_hashed():
         and "portion:eggs:6:each" in a["assumptions"]
     )
     assert a["input_hash"] != b["input_hash"]
+
+
+def test_generic_proxy_rescues_an_unaliased_line_but_not_a_user_decision():
+    client = FakeClient([a for a in _aliases() if a.text != "EGGS DOZEN"])
+    argv = [
+        "--as-of",
+        "2026-03-02",
+        "--format",
+        "json",
+        "--item",
+        f"e=line:{IMG}:1:3:3each",
+        "--quantity",
+        "e=12:each",
+        "--generic",
+        f"e={EGG.product_id}@{EGG.revision}",
+    ]
+    code, text = _run(client, argv)
+    report = json.loads(text)
+    assert code == meal_cli.EXIT_OK
+    assert report["items"][0]["row"]["cost"] == "0.75"
+    assert (
+        f"generic:e:{EGG.product_id}@{EGG.revision}" in report["assumptions"]
+    )
+    rejected = _alias(
+        SLUG, "TEXT", "EGGS DOZEN", EGG, method="user", status="rejected"
+    )
+    client = FakeClient(
+        [a for a in _aliases() if a.text != "EGGS DOZEN"] + [rejected]
+    )
+    code, _ = _run(client, argv)
+    assert code == meal_cli.EXIT_POINTER

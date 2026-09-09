@@ -1335,6 +1335,15 @@ def run(
                 else:
                     item.coverage = {"outcome": "not_checked"}
             if spec.key in overrides.generics and item.product is None:
+                # An explicit proxy stands in for a line nobody has aliased;
+                # it never overrides a pending or user-decided alias.
+                if item.error is not None and (
+                    item.resolution is None
+                    or item.resolution.status not in ("unaliased", "no_match")
+                    or item.resolution.decided_by == "user"
+                ):
+                    raise item.error
+                item.error = None
                 product_id, revision = overrides.generics[spec.key]
                 item.product = _load_product(client, product_id, revision)
                 item.product_revision = revision
