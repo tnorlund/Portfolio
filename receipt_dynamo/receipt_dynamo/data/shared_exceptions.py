@@ -59,6 +59,10 @@ class TransactionError(OperationError):
     """Raised when a transaction operation fails."""
 
 
+class NutritionConflictError(OperationError):
+    """A nutrition revision or lease condition changed; re-read before retry."""
+
+
 class ResilienceError(ReceiptDynamoError):
     """Base exception for retry and circuit-breaker failures."""
 
