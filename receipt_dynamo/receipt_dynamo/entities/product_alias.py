@@ -107,10 +107,9 @@ class ProductAlias(DynamoDBEntity):
         self.__post_init__()
         # Keep expired rows so revisions never reset after eventual TTL
         # removal. Expiry is application-enforced; this is not a TTL field.
-        return {
-            **self.key,
-            **nutrition_item({"TYPE": "PRODUCT_ALIAS", **self.to_dict()}),
-        }
+        return nutrition_item(
+            {"TYPE": "PRODUCT_ALIAS", **self.to_dict()}, key=self.key
+        )
 
 
 def item_to_product_alias(item: dict[str, Any]) -> ProductAlias:
