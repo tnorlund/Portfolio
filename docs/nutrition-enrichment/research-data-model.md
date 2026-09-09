@@ -282,6 +282,9 @@ Sampled across all 2,539 prod rows:
 | extractor `line-items-blocks-v2` | 2,517 |
 | extractor `swift-worker-v1+line-items-blocks-v2` | 22 |
 
+The figures below are aggregate counts and name shapes observed on the dev
+table; they carry no prices, timestamps, or receipt identifiers.
+
 Top merchants by row count: Sprouts Farmers Market 611, The Home Depot 238,
 Costco Wholesale 168, Vons 134, Target 101, Wild Fork 100. Note `TRADER JOE'S`
 (77) and `Trader Joe's` (77) are distinct raw merchant strings. The existing

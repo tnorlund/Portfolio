@@ -167,16 +167,17 @@ Complete a private pilot before UI expansion.
 
 Route line INSERT/MODIFY/REMOVE, parent REMOVE, and alias changes through
 existing fan-out. Parent-only deletion requests cache invalidation even when
-the nutrition manifest is already gone. Periodic full cache replacement
-removes all contributions from absent parents/manifests.
+the nutrition document is already gone. Periodic full cache replacement
+removes all contributions from absent parents/documents.
 Guard product/nutrition writes from loops. Add queue/DLQ, consumer/IAM,
 partial failures, metrics, fan-out pagination/checkpoints, and repair.
 Include receipt_nutrition in every relevant layer/import/source-hash path.
 
 Gate: existing stream regressions plus duplicates/reordering, simultaneous
-workers, lease expiry, cleanup races, zero/delete-only lines, parent-only
-deletion and merge cache removal,
-interrupted fan-out/staging and repair. Actual ARM64 artifact import/size/
+workers resolved by the document revision compare-and-swap, parent-timestamp
+mismatch on a recreated receipt, fingerprint-stale detection after a line
+rewrite, zero/delete-only lines, parent-only deletion and merge cache
+removal, interrupted fan-out and repair. Actual ARM64 artifact import/size/
 memory/startup measured separately from mocks.
 
 ## F — dev backfill and end-to-end
