@@ -249,8 +249,15 @@ def portion_cost(item: MealItem) -> tuple[Fraction | None, str]:
     return price * eaten_servings / bought_servings, "label_servings"
 
 
-def calculate_meal(meal: Meal) -> dict[str, Any]:
-    """Keep exact ratios until output; incomplete totals stay null."""
+def calculate_meal(meal: Meal, containers: int = 1) -> dict[str, Any]:
+    """Keep exact ratios until output; incomplete totals stay null.
+
+    ``containers`` divides every portion evenly; rows and totals are then per
+    container, still computed exactly and rounded once at the end.
+    """
+    if containers < 1:
+        raise ValueError("containers must be a positive count")
+    share = Fraction(1, containers)
     rows: list[dict[str, Any]] = []
     raw_costs: list[Fraction | None] = []
     raw_nutrients: list[dict[str, Fraction]] = []
@@ -279,8 +286,10 @@ def calculate_meal(meal: Meal) -> dict[str, Any]:
                 )
             if multiplier is not None:
                 nutrients[fact.nutrient_id] = (
-                    Fraction(fact.amount) * multiplier
+                    Fraction(fact.amount) * multiplier * share
                 )
+        if cost is not None:
+            cost = cost * share
         raw_costs.append(cost)
         raw_nutrients.append(nutrients)
         rows.append(
@@ -329,6 +338,7 @@ def calculate_meal(meal: Meal) -> dict[str, Any]:
         "title": meal.title,
         "input_hash": content_hash(meal.model_dump(mode="python")),
         "calculator_version": "portion-v1",
+        "containers": containers,
         "contains_generic_estimates": any(
             item.product.identity_kind == "generic" for item in meal.items
         ),
