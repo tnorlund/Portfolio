@@ -29,9 +29,11 @@ def ratio_money(value: Fraction) -> Decimal:
     cents = abs(value) * 100
     whole, remainder = divmod(cents.numerator, cents.denominator)
     rounded = whole + (2 * remainder >= cents.denominator)
-    # scaleb is exact at any magnitude; multiplying by CENT would round
-    # under the default 28-digit context for very large totals.
-    return Decimal(rounded if value >= 0 else -rounded).scaleb(-2)
+    # Build the Decimal from a string: every arithmetic route (× CENT,
+    # scaleb) rounds under the active context for very large totals, while
+    # construction from text is exact at any magnitude.
+    sign = "-" if value < 0 and rounded else ""
+    return Decimal(f"{sign}{rounded // 100}.{rounded % 100:02d}")
 
 
 def cost_purchase(product: Product, purchase: Purchase) -> CostingResult:
