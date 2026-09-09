@@ -63,7 +63,7 @@ class _ReceiptNutrition(_NutritionCatalog):
         return NutritionInput(
             image_id,
             receipt_id,
-            nutrition_json({"parent": parent, "lines": lines}),
+            nutrition_json({"parent": parent, "lines": lines}, limit=None),
         )
 
     @handle_dynamodb_errors("get_nutrition_input")

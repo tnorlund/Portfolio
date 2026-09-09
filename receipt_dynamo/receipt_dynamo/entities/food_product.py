@@ -49,17 +49,15 @@ class FoodProduct(DynamoDBEntity):
     def to_item(self) -> dict[str, Any]:
         # Revalidate mutable dataclass fields at the storage boundary.
         self.__post_init__()
-        return {
-            **self.key,
-            **nutrition_item(
-                {
-                    "TYPE": "FOOD_PRODUCT",
-                    "product_id": self.product_id,
-                    "revision": self.revision,
-                    "payload_json": self.payload_json,
-                }
-            ),
-        }
+        return nutrition_item(
+            {
+                "TYPE": "FOOD_PRODUCT",
+                "product_id": self.product_id,
+                "revision": self.revision,
+                "payload_json": self.payload_json,
+            },
+            key=self.key,
+        )
 
 
 def item_to_food_product(item: dict[str, Any]) -> FoodProduct:

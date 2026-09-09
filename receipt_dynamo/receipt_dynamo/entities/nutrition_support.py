@@ -14,9 +14,16 @@ from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
 
 from receipt_dynamo.data.shared_exceptions import EntityValidationError
 
+PAYLOAD_LIMIT = 300_000
+ITEM_LIMIT = 380_000
 
-def nutrition_json(value: Any) -> str:
-    """Canonical decimal strings; never round-trip facts through floats."""
+
+def nutrition_json(value: Any, *, limit: int | None = PAYLOAD_LIMIT) -> str:
+    """Canonical decimal strings; never round-trip facts through floats.
+
+    ``limit`` caps stored payloads. Pass ``None`` when canonicalising a
+    source observation for hashing, which is not stored and may be larger.
+    """
 
     def convert(item: Any) -> Any:
         if isinstance(item, Decimal):
@@ -41,16 +48,20 @@ def nutrition_json(value: Any) -> str:
         raise EntityValidationError("unsupported nutrition JSON value")
 
     result = json.dumps(convert(value), sort_keys=True, separators=(",", ":"))
-    if len(result.encode("utf-8")) > 300_000:
+    if limit is not None and len(result.encode("utf-8")) > limit:
         raise EntityValidationError("nutrition payload exceeds 300 KB")
     return result
 
 
-def nutrition_hash(value: Any) -> str:
-    return hashlib.sha256(nutrition_json(value).encode("utf-8")).hexdigest()
+def nutrition_hash(value: Any, *, limit: int | None = PAYLOAD_LIMIT) -> str:
+    return hashlib.sha256(
+        nutrition_json(value, limit=limit).encode("utf-8")
+    ).hexdigest()
 
 
-def read_nutrition_json(value: str) -> dict[str, Any]:
+def read_nutrition_json(
+    value: str, *, limit: int | None = PAYLOAD_LIMIT
+) -> dict[str, Any]:
     """Facts encode decimals as strings, not JSON binary-float numbers."""
     try:
         payload = json.loads(value)
@@ -58,7 +69,7 @@ def read_nutrition_json(value: str) -> dict[str, Any]:
         raise EntityValidationError("invalid nutrition JSON") from error
     if not isinstance(payload, dict):
         raise EntityValidationError("nutrition payload must be an object")
-    nutrition_json(payload)
+    nutrition_json(payload, limit=limit)
     return payload
 
 
@@ -82,10 +93,16 @@ def check_revision(value: int, *, minimum: int = 1) -> None:
         raise EntityValidationError("invalid nutrition revision")
 
 
-def nutrition_item(value: dict[str, Any]) -> dict[str, Any]:
+def nutrition_item(
+    value: dict[str, Any], *, key: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Serialise attributes and size-check the COMPLETE item, keys included."""
     serializer = TypeSerializer()
-    item = {key: serializer.serialize(val) for key, val in value.items()}
-    if len(json.dumps(item).encode("utf-8")) > 380_000:
+    item = {
+        **(key or {}),
+        **{name: serializer.serialize(val) for name, val in value.items()},
+    }
+    if len(json.dumps(item).encode("utf-8")) > ITEM_LIMIT:
         raise EntityValidationError("nutrition item exceeds safe item size")
     return item
 

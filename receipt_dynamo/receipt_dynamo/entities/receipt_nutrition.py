@@ -47,7 +47,7 @@ class NutritionInput:
 
     def __post_init__(self) -> None:
         nutrition_receipt_key(self.image_id, self.receipt_id)
-        source = read_nutrition_json(self.source_json)
+        source = read_nutrition_json(self.source_json, limit=None)
         parent = source.get("parent", {})
         key = nutrition_receipt_key(self.image_id, self.receipt_id)
         if (
@@ -56,15 +56,19 @@ class NutritionInput:
             or not isinstance(source.get("lines"), list)
         ):
             raise EntityValidationError("invalid nutrition source observation")
-        object.__setattr__(self, "source_json", nutrition_json(source))
+        object.__setattr__(
+            self, "source_json", nutrition_json(source, limit=None)
+        )
 
     @property
     def fingerprint(self) -> str:
-        return nutrition_hash(read_nutrition_json(self.source_json))
+        return nutrition_hash(
+            read_nutrition_json(self.source_json, limit=None), limit=None
+        )
 
     @property
     def parent(self) -> dict[str, Any]:
-        return read_nutrition_json(self.source_json)["parent"]
+        return read_nutrition_json(self.source_json, limit=None)["parent"]
 
 
 @dataclass(frozen=True)
@@ -89,18 +93,16 @@ class ReceiptNutritionSnapshot:
             payload.get("summary"), dict
         ):
             raise EntityValidationError("snapshot needs rows and summary")
-        return {
-            **nutrition_summary_key(self.image_id, self.receipt_id),
-            **nutrition_item(
-                {
-                    "TYPE": "RECEIPT_NUTRITION_SUMMARY",
-                    "revision": self.revision,
-                    "source_fingerprint": self.source_fingerprint,
-                    "context_hash": self.context_hash,
-                    "payload_json": nutrition_json(payload),
-                }
-            ),
-        }
+        return nutrition_item(
+            {
+                "TYPE": "RECEIPT_NUTRITION_SUMMARY",
+                "revision": self.revision,
+                "source_fingerprint": self.source_fingerprint,
+                "context_hash": self.context_hash,
+                "payload_json": nutrition_json(payload),
+            },
+            key=nutrition_summary_key(self.image_id, self.receipt_id),
+        )
 
 
 def item_to_receipt_nutrition_snapshot(
