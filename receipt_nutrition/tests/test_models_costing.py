@@ -1,6 +1,7 @@
 """Physical/source ambiguity must never silently become a computed fact."""
 
 from decimal import Decimal
+from fractions import Fraction
 
 import pytest
 from pydantic import ValidationError
@@ -252,7 +253,7 @@ def test_derived_amount_may_exceed_input_digit_cap(
     product = Product.model_validate(data)
     result = cost_purchase(product, purchase("package", "1.1234567890123"))
     assert result.purchased_amount is not None
-    assert result.purchased_amount.value == Decimal(
-        "123.45678901234567890123456789"
-    ) * Decimal("1.1234567890123")
+    assert Fraction(result.purchased_amount.value) == Fraction(
+        Decimal("123.45678901234567890123456789")
+    ) * Fraction(Decimal("1.1234567890123"))
     assert result.cost_per_100g is not None
