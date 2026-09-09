@@ -71,3 +71,12 @@ def test_unimplemented_evaluation_exits_nonzero(mode: str) -> None:
     payload = json.loads(result.stdout)
     assert payload["status"] == "NOT RUN"
     assert not payload["automatic_acceptance_enabled"]
+
+
+def test_expectations_accept_exact_output_precision() -> None:
+    from receipt_nutrition.evaluation import ExpectedCost
+
+    expected = ExpectedCost(
+        quantity_status="known", servings="0.13308088303125"
+    )
+    assert str(expected.servings) == "0.13308088303125"

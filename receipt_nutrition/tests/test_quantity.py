@@ -169,3 +169,9 @@ def test_wrapped_denominator_keeps_the_unit_check() -> None:
     assert wrapped.status == inline.status == "conflict"
     agreeing = resolve_explicit_quantity("2 oz @ 3.00\n/oz", "2", "3", "6")
     assert agreeing.status == "known"
+
+
+def test_parenthesised_wrapped_denominator_is_not_confirmed() -> None:
+    wrapped = resolve_explicit_quantity("2 oz @ 3.00\n/(fl oz)", "2", "3", "6")
+    inline = resolve_explicit_quantity("2 oz @ 3.00/(fl oz)", "2", "3", "6")
+    assert wrapped.status == inline.status == "unknown"

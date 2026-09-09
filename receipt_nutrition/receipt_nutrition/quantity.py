@@ -50,9 +50,9 @@ EXPLICIT_RATE = re.compile(
 PARTIAL_QUANTITY = re.compile(
     rf"\d[\d.,/\u2044\s]*$|\d\s*(?:{UNITS_PATTERN})\b", re.IGNORECASE
 )
-WRAPPED_DENOMINATOR = re.compile(
-    rf"^\s*/\s*(?:{UNITS_PATTERN}|[a-z]+)\s*$", re.IGNORECASE
-)
+# Any line that starts with "/" is a wrapped denominator; EXPLICIT_RATE's
+# full match decides afterwards whether the joined form is supported.
+WRAPPED_DENOMINATOR = re.compile(r"^\s*/.+$")
 
 
 def _join_wrapped_denominators(raw_text: str) -> str:

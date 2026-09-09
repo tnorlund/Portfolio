@@ -8,7 +8,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Annotated, Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import BeforeValidator, Field, model_validator
 
 from receipt_nutrition.costing import cost_purchase
 from receipt_nutrition.models import (
@@ -17,18 +17,24 @@ from receipt_nutrition.models import (
     Product,
     Purchase,
     Text,
+    decimal_input,
 )
+
+# Expectations are compared exactly against computed values, which can carry
+# more decimal places than a label input (e.g. 1.125 fl oz in millilitres),
+# so they are not capped at Number's 12 places.
+Expected = Annotated[Decimal, BeforeValidator(decimal_input)]
 
 
 class ExpectedCost(FrozenModel):
     quantity_status: Literal["known", "unknown", "conflict", "excluded"]
-    servings: Number | None = None
-    cost_per_serving: Number | None = None
-    cost_per_100g: Number | None = None
-    cost_per_100ml: Number | None = None
-    energy: Number | None = None
-    protein: Number | None = None
-    sodium: Number | None = None
+    servings: Expected | None = None
+    cost_per_serving: Expected | None = None
+    cost_per_100g: Expected | None = None
+    cost_per_100ml: Expected | None = None
+    energy: Expected | None = None
+    protein: Expected | None = None
+    sodium: Expected | None = None
 
 
 class ContractCase(FrozenModel):
