@@ -77,7 +77,8 @@ def resolve_explicit_quantity(
         line.strip()
         for line in raw_text.splitlines()
         if line not in lines
-        and re.fullmatch(r"[+-]?[\d./]+", line.strip())
+        and re.fullmatch(r"[+-]?[\d./\s]+", line.strip())
+        and re.search(r"\d", line)
         and not re.fullmatch(r"\$?[+-]?\d+\.\d{2}", line.strip())
     ]
     if fragments:

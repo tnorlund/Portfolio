@@ -105,3 +105,9 @@ def test_adjacent_numeric_fragment_abstains() -> None:
     result = resolve_explicit_quantity("1/\n2 lb @ 4.00/lb", "2", "4", "8")
     assert result.status == "unknown"
     assert result.reason == "adjacent_numeric_fragment"
+
+
+def test_spaced_fraction_fragment_abstains() -> None:
+    result = resolve_explicit_quantity("1 /\n2 lb @ 4.00/lb", "2", "4", "8")
+    assert result.status == "unknown"
+    assert result.reason == "adjacent_numeric_fragment"

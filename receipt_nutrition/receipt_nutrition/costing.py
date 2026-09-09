@@ -89,7 +89,9 @@ def _cost_purchase(product: Product, purchase: Purchase) -> CostingResult:
     servings_conflict = package_known and _declared_servings_conflict(product)
     if quantity.unit == "package":
         if package_known and product.net_amount is not None:
-            amount = Amount(
+            # Derived, not an input: the exact product may carry more digits
+            # than the input cap allows, so bypass the input validator.
+            amount = Amount.model_construct(
                 value=quantity.value * product.net_amount.value,
                 unit=product.net_amount.unit,
             )

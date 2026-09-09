@@ -238,3 +238,21 @@ def test_declared_servings_within_label_rounding_are_kept(
 def test_excess_precision_rejected_before_costing() -> None:
     with pytest.raises(ValidationError, match="significant digits"):
         purchase("package", "1." + "0" * 49 + "1")
+
+
+def test_derived_amount_may_exceed_input_digit_cap(
+    products: dict[str, Product],
+) -> None:
+    """Validated inputs never crash costing; the product is exact."""
+    data = products["grain"].model_dump(mode="json")
+    data["net_amount"] = {
+        "value": "123.45678901234567890123456789",
+        "unit": "g",
+    }
+    product = Product.model_validate(data)
+    result = cost_purchase(product, purchase("package", "1.1234567890123"))
+    assert result.purchased_amount is not None
+    assert result.purchased_amount.value == Decimal(
+        "123.45678901234567890123456789"
+    ) * Decimal("1.1234567890123")
+    assert result.cost_per_100g is not None
