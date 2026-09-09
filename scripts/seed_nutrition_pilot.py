@@ -24,6 +24,10 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
+# isort: off
+# The receipt_agent CI leg lints changed files with an environment that
+# classifies the local packages differently from repository-tests; fence
+# the local-package block so both legs accept one ordering.
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
@@ -44,6 +48,8 @@ from receipt_nutrition.models import (
 )
 from receipt_nutrition.persistence import product_record
 from receipt_nutrition.units import normalized_amount
+
+# isort: on
 
 PROD_TABLE_FRAGMENTS = ("d7ff76a",)
 MATCHED_TTL_DAYS = 180
