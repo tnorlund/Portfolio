@@ -47,6 +47,26 @@ EXPLICIT_RATE = re.compile(
 )
 
 
+PARTIAL_QUANTITY = re.compile(
+    rf"\d[\d.,/\u2044]*\s*$|\d\s*(?:{UNITS_PATTERN})\b", re.IGNORECASE
+)
+
+
+def _looks_like_partial_quantity(line: str) -> bool:
+    """A non-rate line that may carry the other half of a split quantity.
+
+    Letterless numeric lines ("1/", "1\u2044", "1,"), name lines ending in a
+    number or fraction symbol ("PEARS 1/", "PEARS 1"), and name lines with
+    a number-unit pair ("PEARS 1/2 lb") all qualify. A plain product name
+    does not.
+    """
+    if not re.search(r"\d", line):
+        return False
+    if not re.search(r"[A-Za-z]", line):
+        return True
+    return PARTIAL_QUANTITY.search(line.strip()) is not None
+
+
 def _unit(text: str) -> str | None:
     key = re.sub(r"\s+", " ", text.lower())
     if re.fullmatch(r"fl\.?\s*oz", key):
@@ -78,8 +98,7 @@ def resolve_explicit_quantity(
         line.strip()
         for line in raw_text.splitlines()
         if line not in lines
-        and re.search(r"\d", line)
-        and not re.search(r"[A-Za-z]", line)
+        and _looks_like_partial_quantity(line)
         and not re.fullmatch(r"\$?[+-]?\d+\.\d{2}", line.strip())
     ]
     if fragments:

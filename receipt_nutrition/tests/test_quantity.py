@@ -134,3 +134,22 @@ def test_decoder_agreement_is_exact_before_cents() -> None:
     wrong = resolve_explicit_quantity(raw, quantity, rate, "109852817429.30")
     assert exact.status == "known"
     assert wrong.status == "conflict"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "PEARS 1/\n2 lb @ 4.00/lb",
+        "PEARS 1\n2 lb @ 4.00/lb",
+        "PEARS 1/2 lb\n2 lb @ 4.00/lb",
+    ],
+)
+def test_name_lines_with_partial_quantities_abstain(raw: str) -> None:
+    result = resolve_explicit_quantity(raw, "2", "4", "8")
+    assert result.status == "unknown"
+    assert result.reason == "adjacent_numeric_fragment"
+
+
+def test_plain_name_line_still_resolves() -> None:
+    result = resolve_explicit_quantity("PEARS\n2 lb @ 4.00/lb", "2", "4", "8")
+    assert result.status == "known"
