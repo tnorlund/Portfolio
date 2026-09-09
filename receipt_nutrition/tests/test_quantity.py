@@ -153,3 +153,19 @@ def test_name_lines_with_partial_quantities_abstain(raw: str) -> None:
 def test_plain_name_line_still_resolves() -> None:
     result = resolve_explicit_quantity("PEARS\n2 lb @ 4.00/lb", "2", "4", "8")
     assert result.status == "known"
+
+
+def test_spaced_fragment_on_name_line_abstains() -> None:
+    result = resolve_explicit_quantity(
+        "PEARS 1 /\n2 lb @ 4.00/lb", "2", "4", "8"
+    )
+    assert result.status == "unknown"
+    assert result.reason == "adjacent_numeric_fragment"
+
+
+def test_wrapped_denominator_keeps_the_unit_check() -> None:
+    wrapped = resolve_explicit_quantity("2 oz @ 3.00\n/fl oz", "2", "3", "6")
+    inline = resolve_explicit_quantity("2 oz @ 3.00/fl oz", "2", "3", "6")
+    assert wrapped.status == inline.status == "conflict"
+    agreeing = resolve_explicit_quantity("2 oz @ 3.00\n/oz", "2", "3", "6")
+    assert agreeing.status == "known"

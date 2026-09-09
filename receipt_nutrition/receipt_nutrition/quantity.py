@@ -48,8 +48,26 @@ EXPLICIT_RATE = re.compile(
 
 
 PARTIAL_QUANTITY = re.compile(
-    rf"\d[\d.,/\u2044]*\s*$|\d\s*(?:{UNITS_PATTERN})\b", re.IGNORECASE
+    rf"\d[\d.,/\u2044\s]*$|\d\s*(?:{UNITS_PATTERN})\b", re.IGNORECASE
 )
+WRAPPED_DENOMINATOR = re.compile(
+    rf"^\s*/\s*(?:{UNITS_PATTERN}|[a-z]+)\s*$", re.IGNORECASE
+)
+
+
+def _join_wrapped_denominators(raw_text: str) -> str:
+    """Re-attach a rate denominator OCR wrapped onto its own line.
+
+    "2 oz @ 3.00" followed by "/fl oz" is one annotation; splitting it would
+    drop the unit the dimensional check needs.
+    """
+    joined: list[str] = []
+    for line in raw_text.splitlines():
+        if joined and WRAPPED_DENOMINATOR.fullmatch(line):
+            joined[-1] = f"{joined[-1].rstrip()} {line.strip()}"
+        else:
+            joined.append(line)
+    return "\n".join(joined)
 
 
 def _looks_like_partial_quantity(line: str) -> bool:
@@ -86,6 +104,7 @@ def resolve_explicit_quantity(
     The annotation may follow a product name on a separate line. This adapter
     does not attempt to reinterpret OCR tokens or guess missing package counts.
     """
+    raw_text = _join_wrapped_denominators(raw_text)
     hints = list(RATE_HINT.finditer(raw_text))
     if not hints:
         return QuantityResolution(status="unknown", reason="no_explicit_unit")
