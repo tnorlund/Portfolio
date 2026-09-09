@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from random import uniform
+from time import sleep
 from typing import TYPE_CHECKING, Any
 
 from botocore.exceptions import ClientError
@@ -11,6 +13,7 @@ from receipt_dynamo.data.base_operations.error_handling import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBThroughputError,
     EntityValidationError,
     NutritionConflictError,
 )
@@ -55,6 +58,45 @@ def raise_nutrition_conflict(error: ClientError) -> None:
 
 class _NutritionCatalog(FlattenedStandardMixin):
     """No product update/delete or alias delete that could reset revisions."""
+
+    def _nutrition_transact(self, actions: list[Any]) -> None:
+        """Retry AWS transaction contention, never retry failed conditions."""
+        for attempt in range(4):
+            try:
+                self._client.transact_write_items(TransactItems=actions)
+                return
+            except ClientError as error:
+                reasons = error.response.get("CancellationReasons", [])
+                code = error.response.get("Error", {}).get("Code")
+                retryable_reasons = {
+                    "TransactionConflict",
+                    "ThrottlingError",
+                    "ProvisionedThroughputExceeded",
+                }
+                transient = code in {
+                    "TransactionConflictException",
+                    "RequestLimitExceeded",
+                    "TransactionInProgressException",
+                    "ThrottlingException",
+                    "ProvisionedThroughputExceededException",
+                } or (
+                    code == "TransactionCanceledException"
+                    and any(
+                        r.get("Code") in retryable_reasons for r in reasons
+                    )
+                    and all(
+                        r.get("Code") in ({None, "None"} | retryable_reasons)
+                        for r in reasons
+                    )
+                )
+                if not transient:
+                    raise_nutrition_conflict(error)
+                    raise
+                if attempt == 3:
+                    raise DynamoDBThroughputError(
+                        "nutrition transaction contention exhausted retries"
+                    ) from error
+                sleep(uniform(0.025, 0.05) * 2**attempt)
 
     def _assert_nutrition_table(self, expected_table_name: str) -> None:
         if not expected_table_name or expected_table_name != self.table_name:
@@ -167,7 +209,7 @@ class _NutritionCatalog(FlattenedStandardMixin):
                 }
             )
         try:
-            self._client.transact_write_items(TransactItems=transaction)
+            self._nutrition_transact(transaction)
         except ClientError as error:
             raise_nutrition_conflict(error)
             raise

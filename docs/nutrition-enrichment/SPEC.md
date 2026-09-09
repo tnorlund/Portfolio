@@ -15,27 +15,34 @@ serving cost and purchased nutrients only when quantity, package size, and
 nutrient basis support the calculation. Show uncertainty and propagate
 corrections to past and future purchases.
 
-First useful milestone: a private MCP pilot over 20–30 recurring products,
-including Tater Bites, large eggs, and Costco Irish butter. The earlier lunch
-table is a case to verify, not fixture truth. Confirm the exact package,
-label, and units before accepting its arithmetic. Buying a dozen eggs and
-eating three eggs are different operations.
+First useful milestone, as explicitly narrowed by the owner on 2026-09-08:
+a private, runnable lunch calculation for the three named products using
+verified product labels, explicit purchase/portion overrides, and exact
+portion math. No automatic package-of-one rule. Consuming a portion can be
+calculated without building a consumption log. Report assumptions alongside
+results; do not turn an inferred carton count or butter amount into evidence.
 
-Then expand the harness, integrate the stream, evaluate on authorized dev,
-and add a reviewed public visualization. Resolved v1 decisions:
+Before any stream integration, reproduce and fix the devil's advocate
+compatibility/freshness findings and compare simpler persistence alternatives
+against the same failure cases. Recommend the smallest passing design.
+The prior lease/generation prototype is superseded by that comparison.
 
-- Exclude restaurants; labelled grocery prepared foods remain eligible.
-  Consumption logging and dietary advice are separate work.
-- USDA FoodData Central (FDC) is primary. Optional Open Food Facts (OFF)
-  enrichment stays private initially.
-- Start Trader Joe's with observed products and complete verified label
-  evidence. Bulk browser fetching is optional future work, not a dependency
-  or an action authorized by this plan.
-- Select a configurable model using real held-out evaluation. LLMs choose
-  candidates and never generate nutrient facts. Existing credentials do not
-  determine the model. Automatic acceptance stays off until its gate passes.
-- Use sanitized existing fixtures/dev examples and independently checked
-  product evidence. Do not query prod for evaluation.
+Broader catalog, backfill, and public UI work are **deferred by the owner**.
+They are not prerequisites for lunch and must not resume automatically when
+the lunch calculator works. The previously written "resolved v1 decisions"
+were proposed defaults, not five decisions confirmed by the owner:
+
+- Restaurant scope: proposed exclusion for a future grocery pilot; undecided.
+- Model: undecided; no LLM is needed for the three manually verified products.
+- Trader Joe's: read observed product pages/labels for lunch. Automated bulk
+  fetching and its terms-of-use judgment remain undecided and deferred.
+- OFF/public licensing: undecided and irrelevant to this private result.
+- Golden fixture origin: undecided. Use synthetic failure cases and the
+  owner's supplied lunch inputs now; no production export is required.
+
+Only portion size, label applicability, package count/weight and purchase
+price materially affect this result. Keep their provenance visible and allow
+explicit scenario overrides without pretending the owner confirmed them.
 
 Historical constraints: preserve deterministic Python/Swift decoders and
 their parity fixtures; external products do not belong in the observed
@@ -142,43 +149,47 @@ Alias changes create stream fan-out work. A correction is propagated only
 when all affected active observations, including negative/pending ones,
 reflect the new revision. Report pending propagation explicitly.
 
-### ReceiptLineNutrition: immutable generation rows
+### Receipt nutrition: bounded atomic document
 
-PK=IMAGE#{image_id},
-SK=RECEIPT#{receipt_id:05d}#NUTRITION#{generation}#{item_index:05d},
-TYPE=RECEIPT_LINE_NUTRITION.
-Include line fingerprint, alias key/revision, product ID/revision,
-catalog/matcher/costing versions, all three outcomes, quantity/calculation
-evidence, prices, and nullable derived nutrients and amounts.
+The current comparison is documented in [RECEIPT_PUBLICATION.md](RECEIPT_PUBLICATION.md).
+For bounded private receipt persistence, use one item at
+`IMAGE#{image_id}` / `RECEIPT#{receipt_id:05d}#NUTRITION_SUMMARY`.
+It holds rows and summary together, the source fingerprint, explicit context
+hash (facts/aliases/quantity overrides/calculator version), and an opaque
+revision for compare-and-swap. There are no staging rows, publication leases,
+reverse indexes, or cleanup jobs in this milestone. Validate size before I/O.
 
-GSI1 indexes matched product observations. GSI2 indexes alias observations
-for every status. These include staged/old rows: reverse lookup accessors
-must check parent existence, join each receipt's active summary generation,
-and discard inactive rows and observations whose parent no longer exists.
-Never total raw GSI hits. Every source line retains a status/reason.
+Read the current parent identity and line-item set, not stream counters, to
+check freshness. A different parent or source set means stale. A missing
+parent means absent. A changed context means stale even if receipt text is
+unchanged. Validate source again before writing; condition the write on the
+parent timestamp and expected document revision. On a race after the source
+check, read-time validation must detect the mismatch. A completed parent-only
+delete/recreate cannot inherit a fresh snapshot when its identity differs.
 
-### ReceiptNutritionSummary: control and publication manifest
+Existing line-item writers have no atomic source-generation marker. Two
+consistent observations detect observed churn, but cannot prove a multi-item
+source was never transiently partial between observations. Do not claim a
+linearizable source snapshot or enable automatic stream publication on that
+basis. The lunch calculation takes explicit local inputs and has no such
+source dependency. Stream design stays deferred.
 
-PK=IMAGE#{image_id}, SK=RECEIPT#{receipt_id:05d}#NUTRITION_SUMMARY,
-TYPE=RECEIPT_NUTRITION_SUMMARY.
-Fields: requested/committed revision, lease owner/deadline, active generation,
-input fingerprint, dependencies, outcome counts, product-line and calculable
-spend, adjustments, nutrient totals/completeness, content version, enriched_at.
+Resegmentation treats both prototype nutrition TYPEs as derived, ignores
+their churn in plan fingerprints, and sweeps them when deleting the source.
+It never copies old nutrition into newly segmented receipts.
 
-Stage generation rows, verify their count/hash, then atomically publish this
-manifest. Read only its generation; incomplete staging cannot expose partial
-committed results. Cleanup acquires the same receipt lease as publication:
-it cannot run while a publisher can still commit its staged generation, and
-never removes the active generation. Orphan cleanup verifies the parent is
-absent. Readers verify row count/hash and re-read the manifest; if a newer
-publication/cleanup raced their read, retry instead of returning partial data.
-Expose committed/stale/pending state. The dedicated get_receipt_nutrition
-accessor enforces generation/freshness semantics; generic get_receipt_details
-must not inadvertently include every old generation. GSI4 is optional.
-delete_receipt_items is the existing child-prefix sweep; singular
-delete_receipt does not perform that sweep.
+## 4. Deferred proposals: catalog and matching
 
-## 4. Catalog and matching
+The next proposed acquisition card is **M: one versioned Target adapter** in
+AGENT_PLAN.md, informed by research-merchant-lookup-methods.md. Record method
+ID/revision with source evidence, and validate identity, package variant,
+serving units and prepared/as-sold basis. Local script probes are not Lambda
+access proof. RedSky remains undocumented. Self-ranking registries, browser
+workers, weekly canaries and automatic rediscovery are deferred until a
+demonstrated need. Finish/evaluate the current lunch milestone first.
+
+The broader catalog/matching proposals below are later possibilities; they
+do not override the owner's one-adapter starting scope.
 
 Order: gate/reason → applicable confirmed alias → unexpired automatic alias →
 verified exact identifier mapping → lexical candidates → optional model →
@@ -207,127 +218,53 @@ cost. Treat receipt/catalog text as untrusted. Reject nonexistent candidates
 and incompatible variants. Self-reported confidence is not probability.
 Keep automatic LLM acceptance disabled until the held-out gate passes.
 
-## 5. Events, concurrency, and deletion
+## 5. Deferred proposals: events, concurrency, and deletion
 
-Extend the existing receipt_dynamo_stream fan-out without removing its two
-existing target queues. Add parser/model, relevant-field allowlist, INSERT
-handling, extractor routing, queue enum, and publisher together.
-Relevant fields include name, price, quantity, unit_price, raw_text,
-name_quality, is_discount, merchant_name, reconciliation_status, extracted_at.
-Line INSERT/MODIFY/REMOVE request receipt refresh. Receipt-parent REMOVE
-requests terminal cleanup and cache invalidation, including the existing
-parent-only MCP deletion path. Alias changes request fan-out.
-Nutrition/control and immutable product rows cannot create loops.
+Do not implement stream integration in the lunch milestone. Revisit queue
+ordering, source-generation visibility and bounded repair using the measured
+comparison, not the superseded lease design. FIFO serializes normal delivery
+for a receipt group but does not make several DynamoDB rows an atomic read.
+A summary row count alone cannot detect a mixed same-count rewrite.
 
-Consumer contract:
+## 6. Current private surface and future proposals
 
-1. Atomically mark dirty (increment requested revision) and acquire a bounded
-   lease with a unique owner token. Busy work retries rather than being
-   acknowledged complete. Batch-local deduplication is only an optimization.
-   Alias fan-out is paginated/checkpointed and includes negative observations.
-2. Strongly read parent and current line items. A missing parent forbids
-   publication. Capture input fingerprint and requested revision.
-3. Resolve dependencies, calculate, and re-read source before publication.
-   Changed input retries. Stage immutable rows and verify count/hash.
-   Transactionally publish only if parent exists, lease owner/deadline and
-   requested revision still match. Expired/superseded workers cannot publish.
-4. Zero-line receipts publish an empty generation retiring previous content.
-   In-flight work cannot recreate a deleted or merged-away receipt. Parent
-   deletion is terminal success only after child cleanup and a cache-refresh
-   request have been recorded/enqueued. Request cache refresh even when merge
-   cleanup already removed the manifest; use the event's receipt keys.
-5. Identical delivery changes zero business content; count coordination
-   writes separately. Content hashes exclude processing clocks/hit counters.
-   Partial batch failures retain original SQS message IDs.
+The first surface is a local CLI taking a validated input JSON document and
+returning a readable portion calculation plus machine-readable results.
+Inputs keep receipt prices, purchase quantities, portions, label references
+and assumptions separate. Actual lunch inputs/results stay outside git and
+public assets. There is no external send, deployment or model call.
 
-Upstream delete/insert writes are not atomic. Queue delay cannot prove final
-source state; the guarantee is convergence after writes quiesce, with
-freshness exposed. Reads compare input/dependencies before calling committed
-content current. A bounded periodic repair detects changed inputs/aliases
-and stranded work, including interrupted fan-out and delete-only changes.
-Periodic full cache regeneration replaces outputs from surviving parents and
-current manifests, removing contributions whose manifest/parent disappeared
-even if a deletion notification was lost. Do not rely solely on successful
-nutrition publication as the cache trigger.
+Both MCP servers, larger merchant catalogs, alias worklists, stream/queue
+fan-out, backfill and public projections are deferred. Earlier thresholds
+(150 lines, 0.98 precision over 100 acceptances, a 20–30-product pilot) are
+proposed future evaluation designs, not owner decisions or lunch gates.
 
-Defaults: delivery delay 60s, batch window ≤60s, function timeout 120s,
-visibility ≥780s (6*120+60), DLQ after ≥5 attempts, ReportBatchItemFailures,
-bounded concurrency, error/DLQ/staleness metrics. Tune catalog size, cold
-load, memory, and runtime against the actual ARM64 artifact.
+## 7. Current gates
 
-## 6. Private and public surfaces
+1. Reproduce the review's compatibility and freshness failures offline.
+2. Run actual resegmentation plan/apply with nutrition presence and churn.
+3. Compare parent recreation, source rewrites, mixed reads, interrupted
+   writes, stale workers, correction context and retry failures.
+4. Verify label facts and applicability; expose missing/current-carton
+   evidence instead of filling it from an LLM or generic product silently.
+5. Run explicit portion overrides through exact arithmetic. Calculate cost
+   directly from unrounded receipt price ratios; missing nutrients remain
+   missing. Report complete totals separately from available subtotals.
+6. Produce a private working lunch answer and a reproducible command, with
+   teaspoon/tablespoon sensitivity and carton-count assumptions visible.
+7. Independent full-diff review, then commit/push the tested milestone.
 
-Implement shared business logic with thin adapters in both MCP server copies:
-get_receipt_nutrition, search_food_products, validated manual import,
-list_nutrition_worklist, confirm/reject_product_match with expected revision,
-and nutrition_spend. Reads include evidence/freshness; mutations default to
-dev and refuse prod writes. Totals distinguish estimates and incompleteness.
+## 8. Done and deferred work
 
-Current main includes the line-item decoder visualization (#1391). Extend
-its explanation after private correctness. Static export can use reviewed
-static JSON or API Gateway reads; a cache is an aggregation choice, not a
-requirement imposed by Next.js itself.
+The owner's latest instruction narrows the active goal to the lunch result,
+review repair and measured persistence recommendation. Future expansion
+requires a new scope decision; do not treat a working lunch as authorization
+for catalog/backfill/public UI. Dev deployment and merges retain AGENTS.md's
+explicit authorization requirements.
 
-Public projection happens server-side before serialization: permitted
-sources only, selected examples, no private notes or excluded identifiers,
-and no OFF-derived facts or aggregates in v1. Recompute public totals from
-permitted rows. Browser hiding is not publication control. Test full response
-bytes, nested evidence, and monthly totals. Manual provenance requires its
-own explicit public permission.
-
-Dynamic caches use the cache bucket. Trigger generation after successful
-publication and provide a bounded repair schedule, idempotent generation,
-cache version/age, and invalidation. Corrections refresh receipt and monthly
-outputs. Frontend needs before/after screenshots and owner review before merge.
-
-## 7. Gates
-
-Record each milestone in EVALUATION.md. Run independent codex exec diff
-review before every commit/push. Distinguish fake/offline, source-backed,
-live-provider, dev-runtime, and browser results; unavailable means pending.
-
-| Gate | Acceptance |
-|---|---|
-| Pilot | 20–30 recurring products; exact/generic separated; motivating examples verified or explicitly pending |
-| Quantity/costing | ≥30 independent mass/volume/count/multipack/unknown/conflict/adjustment cases; cent-exact supported costs; no invented amounts |
-| Expanded fixture | ≥150 lines, ≥6 merchants, ≥20 adjustment/non-food cases; provenance and product-family grouping |
-| Real imported retrieval | recall@10 ≥0.85; counts and exact-size recall separately |
-| Real LLM automatic acceptance | ≥0.98 observed precision on ≥100 accepted held-out cases; per-merchant/variant counts; stays off until passed |
-| Abstention | absent size/unit/nutrients and out-of-catalog cases cannot become exact facts |
-| Coverage | exact identities, estimates and calculable spend separate; target ≥0.70 calculable eligible food spend with fixed denominator |
-| Corrections | all affected active purchases and receipt/monthly outputs update; stale automatic decisions cannot undo confirmations |
-| Concurrent/deletion behavior | duplicate/reordered events, lease expiry, staging crash, cleanup between verification/publication, delete-only, zero lines, parent-only deletion and merge recover correctly; deleted receipts disappear from caches |
-| Idempotency | second identical pass changes zero business rows; coordination separately counted |
-| Authorized dev | upload/refine/correct/delete → current reads/cache within five minutes after source quiescence |
-| Public/UI | excluded facts absent from bytes and totals; zero/partial/full/estimated/unknown states; lint/types/tests/screenshots/owner review |
-
-Split by product/alias family, not repeated receipt lines. Keep tuning
-examples outside held-out evaluation. Synthetic/FakeLLM tests exercise
-contracts only. No source or model labels its own predictions as truth.
-Report numerator/denominator and unknowns, not just percentages.
-
-## 8. Cost, rollout, and done
-
-2,500 calls * 1,500 input tokens = 3.75 million input tokens, $3.75 at standard
-Haiku 4.5 input pricing before output/retries/tooling. Deduplication/batching
-can reduce it but must be measured. Configure per-run call/cost caps and
-dry-run estimates. Memory/startup/monthly budget claims require measurements.
-
-Backfill is dev-only, dry-run by default, limit-required on apply, resumable,
-and version-aware; enqueue through the normal consumer without rewriting
-decoder rows. New packages enter package CI, repository installs, Lambda
-packaging/import gates, and changed-source hashing.
-
-After explicit dev authorization, verify AWS account 681647709217, then
-preview/up from infra with fully qualified tnorlund/portfolio/dev. Refuse
-unrelated deletes/replacements and never interrupt a shared update.
-Prepare draft PRs and evidence; merge/public release need authorization.
-
-Done means pilot, expanded real evaluation, persistence/stream/correction
-tests, authorized dev end-to-end, and reviewed public surface pass. Local
-implementation, PR, dev deployment, and production release are separate
-ledger entries. Missing truth, credentials, authorization, or visual review
-stay pending rather than being recorded as success.
+Record source URLs/observation dates, commands/counts, actual failures and
+fixes, and limits in EVALUATION.md. Local correctness, live provider quality,
+MCP deployment and public release are separate evidence levels.
 
 ## References checked during revision
 

@@ -58,24 +58,78 @@ Commands once implemented:
 .venv/bin/python -m isort --check-only --profile=black --line-length=79 receipt_nutrition
 ```
 
-## B — conditional persistence and atomic publication
+## B2/L — review repair and private lunch (current deliverable)
 
-Add FoodProduct immutable revisions, conditional ProductAlias,
-generation-scoped ReceiptLineNutrition and summary/control manifest.
-Follow receipt-dynamo-integration-tests. Land B1 (catalog records, conditional
-aliases, exact domain translation) before B2 (receipt generations, publication,
-verified reads, reverse lookups and cleanup). Track B1 in CATALOG_STORAGE.md.
+B1 catalog/alias primitives are committed. Replace the uncommitted B2
+lease/generation prototype only after reproducing its failures. Compare it
+with FIFO plus fixed rows/count and one bounded atomic document using the
+same parent recreation, source rewrite, partial-write, duplicate/stale writer,
+correction and deletion cases. Record limitations rather than adding
+mechanisms to pass unneeded future gates.
 
-Gate: CRUD/error mappings/pagination; immutable facts; expected-revision
-conflicts; confirmations protected from model races; active-generation
-reverse lookups with parent checks; lease fencing/parent existence; staging
-failure and cleanup-between-verification/publication; read/cleanup retry;
-empty receipt/idempotency. Every DynamoDB call stays in receipt_dynamo.
+Fix resegmentation compatibility with actual plan/apply tests. Check read
+freshness independently of stream arrival. Preserve B1 conditional user
+confirmations. No stream integration in this milestone.
 
-```sh
-.venv/bin/python -m pytest receipt_dynamo/tests/unit -k nutrition
-.venv/bin/python -m pytest receipt_dynamo/tests/integration -k nutrition
-```
+Ship a private local CLI and input document for the owner's lunch. Verify
+Tater Bites, egg and butter label evidence; keep any unverified current-carton
+match visible. Purchase quantities and portions are independent explicit
+inputs. Support egg counts, package fractions and household portions grounded
+in a label. Calculate costs with exact ratios and round only final cents.
+Keep the owner's actual input/output outside git and public site assets.
+
+Gate: reproduced failures fixed; same-case persistence comparison; label URLs
+and applicability notes; known/unknown quantities, label conflict/missing facts,
+teaspoon/tablespoon sensitivity, changed overrides and portion cost tests;
+actual local invocation producing a readable lunch answer. Independent full
+diff review, then commit/push. No dev deployment or model needed.
+
+## M — deferred acquisition: one versioned Target adapter
+
+Input: the owner's local `research-merchant-lookup-methods.md` research.
+The owner's narrowed card supersedes that research's registry/Lambda/canary
+recommendation. Finish and evaluate B2/L before starting acquisition. M is a
+proposal for later work, not an instruction to start fetching now.
+
+Start with one fixed, code-reviewed Target adapter, identified by a stable
+`acquisition_method_id` and an explicit `acquisition_method_revision`. Record
+both with each acquired source evidence record, alongside URL, observation
+time, raw response hash, receipt identifier, returned TCIN/GTIN where supplied,
+and the evidence supporting their mapping. No runtime method registry or
+ranked fallback framework is required for this first adapter.
+
+Validate before accepting facts:
+
+- DPCI-to-TCIN mapping and product identity; a search hit alone is insufficient.
+- Package size/count, brand, flavor/variant and identifier agreement; multiple
+  plausible variants remain pending rather than taking the first result.
+- Serving amount/unit, nutrient units, label basis and conversion evidence.
+- Prepared versus as-sold state. Preserve distinct panels; do not assume a
+  `value_prepared_list` path means its values are for the purchased food.
+  An ambiguous or incompatible preparation basis remains pending.
+
+Gate: pinned local fixtures test correct identity, wrong-size/variant hits,
+missing or incompatible serving units, prepared/as-sold alternatives, missing
+nutrients, and source schema changes. Replay one additional held-out Target
+product with the same adapter revision and zero model calls before claiming
+local applicability. On unsupported/changed payloads, preserve prior evidence
+and report pending with the failure reason; do not rediscover automatically.
+
+Research script probes are **local evidence only**. Lambda networking/access,
+IAM, packaging and runtime remain **unverified** until a separately authorized
+dev test. RedSky is **undocumented**, not a supported Target API or an
+availability promise. Record the execution environment with each live probe;
+do not carry a successful local probe into a Lambda PASS.
+
+Defer self-ranking method registries, browser workers, weekly canaries,
+automatic rediscovery and additional merchant adapters until demonstrated
+needs justify them. Keep raw payloads private and hashed; public licensing
+and broader acquisition policy remain proposed/unresolved.
+
+## Deferred cards
+
+The owner deferred acquisition M/C, expanded D, E, F and G. The following are proposals to
+revisit after lunch works, not approved scope or numeric quality thresholds.
 
 ## C — sources, retrieval, and independently verified pilot
 
