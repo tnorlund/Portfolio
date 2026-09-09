@@ -675,3 +675,153 @@ def test_latest_paginates_and_picks_the_newest():
     report = json.loads(text)
     assert report["items"][0]["pointer"] in (f"{IMG}:1:3", f"{IMG}:1:9")
     assert report["items"][0]["row"] is not None
+
+
+def test_user_decision_under_summary_merchant_wins_over_line_merchant_match():
+    # Line says "Synthetic", summary says "Synthetic Mart": both are read.
+    client = FakeClient(
+        _aliases()
+        + [_alias("synthetic", "TEXT", "EGGS DOZEN", EGG)]
+        + [
+            _alias(
+                SLUG,
+                "TEXT",
+                "EGGS DOZEN",
+                EGG,
+                method="user",
+                status="not_food",
+            )
+        ]
+    )
+    client.aliases.pop((SLUG, "TEXT", "EGGS DOZEN"))
+    client.aliases[(SLUG, "TEXT", "EGGS DOZEN")] = _alias(
+        SLUG, "TEXT", "EGGS DOZEN", EGG, method="user", status="not_food"
+    )
+    client.lines[(IMG, 1)][3].merchant_name = "Synthetic"
+    code, _ = _run(
+        client,
+        [
+            "--as-of",
+            "2026-03-02",
+            "--item",
+            f"e=line:{IMG}:1:3:3each",
+            "--quantity",
+            "e=12:each",
+        ],
+    )
+    assert code == meal_cli.EXIT_POINTER  # not_food is a user decision
+    observations, expectations = client.published[0]
+    slugs = {slug for slug, _, _, _ in expectations}
+    assert slugs == {"synthetic", SLUG}
+    assert {o.merchant_slug for o in observations} == {"synthetic", SLUG}
+
+
+def test_rates_come_from_derived_item_keys_without_an_alias_row():
+    aliases = [a for a in _aliases() if a.kind != "ITEM"] + [
+        _alias(SLUG, "TEXT", "BEEF STRIPS", BEEF)
+    ]
+    client = FakeClient(aliases, [_observation("5.00", "2026-02-10", 1)])
+    _, text = _run(
+        client,
+        [
+            "--as-of",
+            "2026-03-02",
+            "--coverage",
+            "off",
+            "--format",
+            "json",
+            "--item",
+            f"beef=line:{IMG}:1:0:all",
+        ],
+    )
+    report = json.loads(text)
+    assert (
+        report["items"][0]["quantity"]["reason"]
+        == "inferred_from_rate:tracker"
+    )
+
+
+def test_no_cost_items_means_no_subtotal():
+    client = FakeClient(_aliases())
+    _, text = _run(
+        client,
+        [
+            "--as-of",
+            "2026-03-02",
+            "--format",
+            "json",
+            "--item",
+            f"e=product:{EGG.product_id}@{EGG.revision}:3each",
+            "--quantity",
+            "e=12:each",
+        ],
+    )
+    report = json.loads(text)
+    assert (
+        report["available_cost_subtotal"] is None and report["cost_items"] == 0
+    )
+
+
+def test_bad_product_revision_exits_2():
+    client = FakeClient(_aliases())
+    code, _ = _run(client, ["--item", f"e=product:{EGG.product_id}@bad:3each"])
+    assert code == meal_cli.EXIT_POINTER
+
+
+def test_repeating_allowance_is_rounded_up_and_named():
+    thirds = _product(
+        "syn:thirds",
+        serving={"value": "33", "unit": "g"},
+        net_amount={"value": "100", "unit": "g"},
+        servings_per_container="3",
+        nutrients=[_fact("208", "100", "kcal")],
+    )
+    PRODUCTS[thirds.product_id] = thirds
+    client = FakeClient(_aliases())
+    _, text = _run(
+        client,
+        [
+            "--as-of",
+            "2026-03-02",
+            "--format",
+            "json",
+            "--allowance",
+            "auto",
+            "--item",
+            f"t=product:{thirds.product_id}@{thirds.revision}:1serving",
+            "--assume-package",
+            "t=1",
+            "--price",
+            "t=3",
+        ],
+    )
+    report = json.loads(text)
+    assert report["items"][0]["row"] is not None
+    assert any(
+        a.startswith("allowance:t:0.333333333334:auto")
+        for a in report["assumptions"]
+    )
+
+
+def test_portion_and_containers_are_named_and_hashed():
+    client = FakeClient(_aliases())
+    argv = [
+        "--as-of",
+        "2026-03-02",
+        "--format",
+        "json",
+        "--containers",
+        "2",
+        "--item",
+        f"eggs=line:{IMG}:1:3:6each",
+        "--quantity",
+        "eggs=12:each",
+    ]
+    _, one = _run(client, argv)
+    _, two = _run(client, argv[:5] + ["3"] + argv[6:])
+    a, b = json.loads(one), json.loads(two)
+    assert (
+        "containers:2" in a["assumptions"]
+        and "portion:eggs:6:each" in a["assumptions"]
+    )
+    assert a["input_hash"] != b["input_hash"]

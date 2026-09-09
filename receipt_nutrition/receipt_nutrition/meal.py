@@ -8,16 +8,19 @@ unknown. ``python -m receipt_nutrition.meal --help`` lists the flags.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
-from decimal import ROUND_DOWN, Decimal
+from decimal import ROUND_DOWN, ROUND_UP, Decimal
 from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable, Literal
 
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 from receipt_dynamo.entities.product_alias_observation import (
     ProductAliasObservation,
     product_alias_id,
@@ -69,10 +72,11 @@ EXIT_PENDING = 4
 REPORT_VERSION = "meal-v2"
 KG = Fraction(1000)
 # An inferred weight is an assumption. It is stored with this many decimal
-# places (a nanogram), truncated, so the value is representable in the
-# 40-significant-digit model and any cost rounding lands on the same cent
-# as the exact ratio would.
-INFERRED_GRAMS = Decimal("0.000000001")
+# places (well inside the 40-significant-digit model), truncated; the
+# residual is below 1e-24 g, far under any cent boundary a two-decimal price
+# and a 40-digit portion can produce.
+REVISION = re.compile(r"[0-9a-f]{64}")
+INFERRED_GRAMS = Decimal("1e-24")
 
 CoverageChecker = Callable[..., dict[str, Any]]
 
@@ -145,6 +149,7 @@ class ResolvedItem:
     raw_quantity: Any = None
     raw_unit_price: Any = None
     resolution: LineResolution | None = None
+    resolutions: list[tuple[str, LineResolution]] = field(default_factory=list)
     assumptions: list[str] = field(default_factory=list)
     band: list[Rate] = field(default_factory=list)
     coverage: dict[str, Any] | None = None
@@ -228,9 +233,10 @@ def parse_item(text: str) -> ItemSpec:
         )
     if kind == "product":
         product_id, _, revision = middle.rpartition("@")
-        if not product_id or not revision:
+        if not product_id or not REVISION.fullmatch(revision):
             raise MealError(
-                "product source needs <product_id>@<revision>", EXIT_POINTER
+                "product source needs <product_id>@<64-hex revision>",
+                EXIT_POINTER,
             )
         return ItemSpec(
             key,
@@ -304,9 +310,10 @@ def parse_overrides(args: argparse.Namespace) -> Overrides:
     for text in args.generic:
         key, value = _key_value("--generic", text)
         product_id, _, revision = value.rpartition("@")
-        if not product_id or not revision:
+        if not product_id or not REVISION.fullmatch(revision):
             raise MealError(
-                "--generic needs KEY=<product_id>@<revision>", EXIT_POINTER
+                "--generic needs KEY=<product_id>@<64-hex revision>",
+                EXIT_POINTER,
             )
         overrides.generics[key] = (product_id, revision)
     overrides.allowance_text = args.allowance
@@ -346,7 +353,12 @@ def _purchase_date(
 
 
 def _load_product(client: Any, product_id: str, revision: str) -> Product:
-    record = client.get_food_product(product_id, revision)
+    try:
+        record = client.get_food_product(product_id, revision)
+    except EntityValidationError as error:
+        raise MealError(
+            f"product pointer {product_id}@{revision}: {error}", EXIT_POINTER
+        ) from error
     if record is None:
         raise MealError(
             f"product {product_id}@{revision} does not exist", EXIT_POINTER
@@ -404,19 +416,23 @@ def _resolve_pointer(
     item.price = decimal_input(str(line.price))
     item.raw_quantity = _dal_number(getattr(line, "quantity", None))
     item.raw_unit_price = _dal_number(getattr(line, "unit_price", None))
-    resolution = None
-    for slug in candidates:
-        resolution = resolve_line(
-            client,
-            merchant_slug=slug,
-            line_text=line.name,
-            size_evidence=None,
-            as_of=as_of,
+    # Every candidate slug is read, so a user decision recorded under either
+    # merchant spelling is seen and every key read is published.
+    item.resolutions = [
+        (
+            slug,
+            resolve_line(
+                client,
+                merchant_slug=slug,
+                line_text=line.name,
+                size_evidence=None,
+                as_of=as_of,
+            ),
         )
-        item.merchant_slug = slug
-        if resolution.status != "unaliased":
-            break
-    assert resolution is not None
+        for slug in candidates
+    ]
+    slug, resolution = _choose_resolution(item.resolutions)
+    item.merchant_slug = slug
     item.resolution = resolution
     if resolution.status == "matched":
         assert resolution.product_id and resolution.product_revision
@@ -437,6 +453,37 @@ def _resolve_pointer(
             f"{line.name!r} ({resolution.status}: {resolution.reason})",
             EXIT_POINTER,
         )
+
+
+def _choose_resolution(
+    resolutions: list[tuple[str, LineResolution]],
+) -> tuple[str, LineResolution]:
+    """User decisions win across merchant spellings; then the first hit."""
+    user = [
+        (slug, resolution)
+        for slug, resolution in resolutions
+        if resolution.decided_by == "user"
+    ]
+    if user:
+        outcomes = {
+            (r.status, r.product_id, r.product_revision) for _, r in user
+        }
+        if len(outcomes) > 1:
+            slug, first = user[0]
+            return slug, LineResolution(
+                status="pending",
+                reason="user_conflict_across_merchants",
+                keys=first.keys,
+                product_id=None,
+                product_revision=None,
+                decided_by="user",
+                alias_refs=[ref for _, r in user for ref in r.alias_refs],
+            )
+        return user[0]
+    for slug, resolution in resolutions:
+        if resolution.status != "unaliased":
+            return slug, resolution
+    return resolutions[-1]
 
 
 def _merchant_lines(client: Any, merchant_slug: str) -> list[Any]:
@@ -584,11 +631,9 @@ def _select_weight_rate(
         return rate
     if item.resolution is None or item.merchant_slug is None:
         return None
-    for ref in item.resolution.alias_refs:
-        if ref.kind != "ITEM":
-            continue
+    for text in item.resolution.keys.item_keys:
         observations = client.list_price_observations(
-            item.merchant_slug, ref.kind, ref.text
+            item.merchant_slug, "ITEM", text
         )
         by_sk = {
             observation.sort_key: observation for observation in observations
@@ -630,10 +675,12 @@ def _portion(item: ResolvedItem) -> Portion | None:
         quantity = item.quantity.quantity if item.quantity else None
         if quantity is None:
             return None
+        item.assumptions.append(f"portion:{item.spec.key}:all")
         return Portion(
             value=quantity.value, unit=quantity.unit, reference="all purchased"
         )
     unit = "package" if spec.unit == "pkg" else spec.unit
+    item.assumptions.append(f"portion:{item.spec.key}:{spec.value}:{unit}")
     return Portion(value=spec.value, unit=unit, reference="--item portion")
 
 
@@ -689,11 +736,16 @@ def _allowance(item: ResolvedItem, overrides: Overrides) -> Fraction:
     cap = min(Fraction(1, 2), Fraction(product.serving.value) / 20)
     if product.serving.unit == "each":
         cap = Fraction()
-    if needed <= cap:
+    # Round up to a representable decimal; a slightly larger tolerance still
+    # reconciles and still has to sit under the cap.
+    rounded = Fraction(
+        as_decimal(needed).quantize(Decimal("1e-12"), rounding=ROUND_UP)
+    )
+    if rounded <= cap:
         item.assumptions.append(
-            f"allowance:{item.spec.key}:{as_decimal(needed)}:auto"
+            f"allowance:{item.spec.key}:{as_decimal(rounded)}:auto"
         )
-        return needed
+        return rounded
     return Fraction(0)
 
 
@@ -750,62 +802,14 @@ def _publish_pointers(client: Any, items: list[ResolvedItem]) -> None:
     seen: set[tuple[str, str, str, str, int, int]] = set()
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     for item in items:
-        resolution = item.resolution
         spec = item.spec
-        if resolution is None or item.merchant_slug is None:
+        if not item.resolutions:
             continue
         assert spec.image_id is not None and spec.receipt_id is not None
         assert spec.item_index is not None
-        read = {
-            (ref.kind, ref.text): ref.revision for ref in resolution.alias_refs
-        }
-        for kind, text in resolution.keys.lookups:
-            alias_key = (item.merchant_slug, kind, text)
-            revision = read.get((kind, text))
-            if (
-                alias_key in expectations
-                and expectations[alias_key] != revision
-            ):
-                raise MealError(
-                    f"{spec.key}: alias {kind}#{text} read at two revisions",
-                    EXIT_INTERNAL,
-                )
-            expectations[alias_key] = revision
-            pointer = (
-                *alias_key,
-                spec.image_id,
-                spec.receipt_id,
-                spec.item_index,
-            )
-            if pointer in seen:
-                continue
-            seen.add(pointer)
-            matched = resolution.status == "matched" and revision is not None
-            if matched:
-                status = "matched"
-            elif revision is None:
-                status = "no_match"
-            elif resolution.status in ("pending", "rejected", "not_food"):
-                status = resolution.status
-            else:
-                status = "no_match"
-            observations.append(
-                ProductAliasObservation(
-                    alias_id=product_alias_id(*alias_key),
-                    merchant_slug=item.merchant_slug,
-                    kind=kind,
-                    text=text,
-                    status=status,
-                    alias_revision=revision or 0,
-                    image_id=spec.image_id,
-                    receipt_id=spec.receipt_id,
-                    item_index=spec.item_index,
-                    observed_at=now,
-                    product_id=resolution.product_id if matched else None,
-                    product_revision=(
-                        resolution.product_revision if matched else None
-                    ),
-                )
+        for slug, resolution in item.resolutions:
+            _collect_pointers(
+                item, slug, resolution, observations, expectations, seen, now
             )
     if observations:
         client.publish_alias_observations(
@@ -815,6 +819,68 @@ def _publish_pointers(client: Any, items: list[ResolvedItem]) -> None:
                 for alias_key, revision in expectations.items()
             ],
             expected_table_name=client.table_name,
+        )
+
+
+def _collect_pointers(
+    item: ResolvedItem,
+    slug: str,
+    resolution: LineResolution,
+    observations: list[ProductAliasObservation],
+    expectations: dict[tuple[str, str, str], int | None],
+    seen: set[tuple[str, str, str, str, int, int]],
+    now: str,
+) -> None:
+    spec = item.spec
+    assert spec.image_id is not None and spec.receipt_id is not None
+    assert spec.item_index is not None
+    read = {
+        (ref.kind, ref.text): ref.revision for ref in resolution.alias_refs
+    }
+    for kind, text in resolution.keys.lookups:
+        alias_key = (slug, kind, text)
+        revision = read.get((kind, text))
+        if alias_key in expectations and expectations[alias_key] != revision:
+            raise MealError(
+                f"{spec.key}: alias {kind}#{text} read at two revisions",
+                EXIT_INTERNAL,
+            )
+        expectations[alias_key] = revision
+        pointer = (
+            *alias_key,
+            spec.image_id,
+            spec.receipt_id,
+            spec.item_index,
+        )
+        if pointer in seen:
+            continue
+        seen.add(pointer)
+        matched = resolution.status == "matched" and revision is not None
+        if matched:
+            status = "matched"
+        elif revision is None:
+            status = "no_match"
+        elif resolution.status in ("pending", "rejected", "not_food"):
+            status = resolution.status
+        else:
+            status = "no_match"
+        observations.append(
+            ProductAliasObservation(
+                alias_id=product_alias_id(*alias_key),
+                merchant_slug=slug,
+                kind=kind,
+                text=text,
+                status=status,
+                alias_revision=revision or 0,
+                image_id=spec.image_id,
+                receipt_id=spec.receipt_id,
+                item_index=spec.item_index,
+                observed_at=now,
+                product_id=resolution.product_id if matched else None,
+                product_revision=(
+                    resolution.product_revision if matched else None
+                ),
+            )
         )
 
 
@@ -887,7 +953,7 @@ def build_report(
             for key, total in result["nutrients"].items()
         }
     unknown: list[str] = []
-    assumptions: list[str] = []
+    assumptions: list[str] = [f"containers:{containers}"]
     per_item: list[dict[str, Any]] = []
     for item in items:
         row = rows_by_key.get(item.spec.key)
@@ -964,11 +1030,19 @@ def build_report(
         "totals": totals,
         "cost": result["cost"] if result and everything_rowed else None,
         "available_cost_subtotal": (
-            result["available_cost_subtotal"] if result else None
+            result["available_cost_subtotal"]
+            if result and result["cost_items"]
+            else None
         ),
         "cost_items": result["cost_items"] if result else 0,
         "item_count": len(items),
-        "input_hash": result["input_hash"] if result else None,
+        "input_hash": (
+            hashlib.sha256(
+                f"{result['input_hash']}:containers={containers}".encode()
+            ).hexdigest()
+            if result
+            else None
+        ),
         "contains_generic_estimates": (
             result["contains_generic_estimates"] if result else False
         ),
