@@ -345,3 +345,50 @@ def test_generic_estimates_remain_visible_in_readable_report():
     text = render_meal(result)
     assert "estimated; generic product" in text
     assert "includes generic product estimates" in text
+
+
+def test_missing_nutrients_never_become_zero_subtotals():
+    row = item()
+    row["product"]["nutrients"] = []
+    result = calculate_meal(meal(row))
+    calories = result["nutrients"]["208"]
+    assert calories["amount"] is None
+    assert calories["available_subtotal"] is None
+    assert calories["items_with_value"] == 0
+    rendered = render_meal(result)
+    assert "Calories: unknown" in rendered
+    assert "0.0 kcal" not in rendered
+
+
+def _with_unverified_household(row):
+    row["product"]["evidence"].append(
+        {
+            "evidence_id": "guess",
+            "source": "manual",
+            "record_id": "guess",
+            "reference": "synthetic:guess",
+            "observed_on": "2026-09-08",
+            "verification": "unverified",
+            "license": "unknown",
+        }
+    )
+    row["household_serving"]["source_ref"] = "guess"
+    return row
+
+
+def test_unused_unverified_household_evidence_is_ignored():
+    row = _with_unverified_household(item(portion="15", unit="g"))
+    result = calculate_meal(meal(row))
+    (rendered_row,) = result["rows"]
+    assert rendered_row["cost"] is not None
+    assert "208" in rendered_row["nutrients"]
+    assert any("ignored" in note for note in rendered_row["notes"])
+    assert "Calculator note" in render_meal(result)
+
+
+def test_unverified_household_evidence_leaves_spoon_portions_unknown():
+    row = _with_unverified_household(item(portion="1", unit="tsp"))
+    result = calculate_meal(meal(row))
+    (rendered_row,) = result["rows"]
+    assert rendered_row["nutrients"] == {}
+    assert rendered_row["cost"] is None

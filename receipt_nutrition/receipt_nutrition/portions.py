@@ -75,12 +75,26 @@ class MealItem(FrozenModel):
     assumptions: tuple[Text, ...] = ()
     serving_rounding_allowance: Nonnegative = Decimal("0")
 
-    @model_validator(mode="after")
-    def validate_household_evidence(self) -> Self:
-        if self.household_serving and not verified_source(
+    @property
+    def verified_household_serving(self) -> HouseholdServing | None:
+        """Unverified equivalence evidence is ignored, never used."""
+        if self.household_serving and verified_source(
             self.product, self.household_serving.source_ref
         ):
-            raise ValueError("household equivalence needs verified evidence")
+            return self.household_serving
+        return None
+
+    @property
+    def calculation_notes(self) -> tuple[str, ...]:
+        if self.household_serving and self.verified_household_serving is None:
+            return (
+                "Household equivalence cites unverified evidence and was "
+                "ignored; teaspoon/tablespoon portions stay unknown.",
+            )
+        return ()
+
+    @model_validator(mode="after")
+    def validate_package_consistency(self) -> Self:
         product = self.product
         if (
             product.net_amount
@@ -145,7 +159,7 @@ def serving_fraction(item: MealItem, portion: Portion) -> Fraction | None:
             else None
         )
     if portion.unit == "tsp" or portion.unit == "tbsp":
-        label = item.household_serving
+        label = item.verified_household_serving
         if label is None or product.serving is None:
             return None
         teaspoons = {"tsp": 1, "tbsp": 3}
@@ -290,6 +304,7 @@ def calculate_meal(meal: Meal) -> dict[str, Any]:
                 },
                 "purchase": item.purchase.model_dump(mode="json"),
                 "assumptions": list(item.assumptions),
+                "notes": list(item.calculation_notes),
                 "sources": [
                     source.model_dump(mode="json")
                     for source in product.evidence
@@ -306,7 +321,7 @@ def calculate_meal(meal: Meal) -> dict[str, Any]:
             "unit": unit,
             "complete": len(present) == len(rows),
             "amount": subtotal if len(present) == len(rows) else None,
-            "available_subtotal": subtotal,
+            "available_subtotal": subtotal if present else None,
             "items_with_value": len(present),
             "items": len(rows),
         }
@@ -366,6 +381,10 @@ def render_meal(result: dict[str, Any]) -> str:
         lines.append(
             f"Calories: {Decimal(calories['amount']):.1f} kcal (scaled source values)."
         )
+    elif calories["available_subtotal"] is None:
+        lines.append(
+            f"Calories: unknown. No item carries a calorie value (0/{calories['items']} items)."
+        )
     else:
         lines.append(
             f"Calories: incomplete. Available subtotal {Decimal(calories['available_subtotal']):.1f} kcal from {calories['items_with_value']}/{calories['items']} items."
@@ -415,6 +434,7 @@ def render_meal(result: dict[str, Any]) -> str:
                 "Base input notes (scenario overrides take precedence):"
             )
         lines += [f"- {note}" for note in row["assumptions"]]
+        lines += [f"- Calculator note: {note}" for note in row["notes"]]
         lines += [
             f"- Source ({s['verification']}): [{s['record_id']}]({s['reference']})"
             for s in row["sources"]
