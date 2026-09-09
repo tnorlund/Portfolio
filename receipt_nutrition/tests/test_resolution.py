@@ -156,6 +156,55 @@ def resolve(client: FakeClient, line: str, size: str | None = None):
             "1000 ISLAND DRESSING",
             AliasKeys((), "1000 ISLAND DRESSING"),
         ),
+        (
+            "target",
+            "002051115 Brightroon",
+            AliasKeys(("002-05-1115",), "BRIGHTROON", "002051115 BRIGHTROON"),
+        ),
+        (
+            "target",
+            "284030027 GG BROCCOLI NF",
+            AliasKeys(
+                ("284-03-0027",), "GG BROCCOLI NF", "284030027 GG BROCCOLI NF"
+            ),
+        ),
+        (
+            "sprouts",
+            "284030027 GG BROCCOLI NF",
+            AliasKeys((), "284030027 GG BROCCOLI NF"),
+        ),
+        (
+            "vons",
+            "7766117461 GNGRBRD CARAMEL S",
+            AliasKeys(
+                ("7766117461",),
+                "GNGRBRD CARAMEL S",
+                "7766117461 GNGRBRD CARAMEL S",
+            ),
+        ),
+        (
+            "vons",
+            "S CILANTRO ORGANIC 3338390419",
+            AliasKeys(
+                ("3338390419",),
+                "S CILANTRO ORGANIC",
+                "S CILANTRO ORGANIC 3338390419",
+            ),
+        ),
+        (
+            "albertsons",
+            "2113030691 GROCERY SIG RICE CRACKERS S",
+            AliasKeys(
+                ("2113030691",),
+                "GROCERY SIG RICE CRACKERS S",
+                "2113030691 GROCERY SIG RICE CRACKERS S",
+            ),
+        ),
+        (
+            "sprouts",
+            "7766117461 GNGRBRD CARAMEL S",
+            AliasKeys((), "7766117461 GNGRBRD CARAMEL S"),
+        ),
     ],
 )
 def test_derive_alias_keys(slug: str, line: str, expected: AliasKeys) -> None:
@@ -198,6 +247,8 @@ def test_lookup_order_is_item_text_legacy() -> None:
         ("0448", "0448"),
         ("071-05-0012", "071-05-0012"),
         ("000516221654", "000516221654"),
+        ("7766117461", "7766117461"),
+        ("284030027", "284030027"),
         ("123", None),
         ("36946 BEEF", None),
         ("", None),
@@ -206,6 +257,21 @@ def test_lookup_order_is_item_text_legacy() -> None:
 )
 def test_identifier_key_text(raw: str | None, expected: str | None) -> None:
     assert identifier_key_text(raw) == expected
+
+
+def test_identifier_key_text_dashes_target_dpci() -> None:
+    assert (
+        identifier_key_text("284030027", merchant_slug="target")
+        == "284-03-0027"
+    )
+    assert (
+        identifier_key_text("284-03-0027", merchant_slug="target")
+        == "284-03-0027"
+    )
+    assert (
+        identifier_key_text("284030027", merchant_slug="sprouts")
+        == "284030027"
+    )
 
 
 # --- merchant slug -----------------------------------------------------------

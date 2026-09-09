@@ -8,7 +8,8 @@ Resolution order (SPRINT_2 §2 MS), so an identifier alias can never bypass a
 person's decision:
 
 1. Derive the keys for the line: one ``ITEM#<identifier>`` per retailer item
-   number (Costco slugs only), Target DPCI, or UPC found on the line, and
+   number (Costco slugs), DPCI (Target slugs, stored dashed), or UPC (Vons
+   family: leading or trailing digit run; 11-13 digits anywhere) found, and
    ``TEXT#<normalized>`` with the Costco ``E `` flag and the identifier
    stripped. When stripping changed the text, the full-line
    ``TEXT#<normalize_product_text(line)>`` key is read as well, so a decision
@@ -63,11 +64,21 @@ DecidedBy = Literal["user", "automatic"]
 # rule applies to Costco slugs only; "1000 ISLAND DRESSING" elsewhere is text.
 _COSTCO_ITEM = re.compile(r"^(?:E\s+)?(\d{4,7})(?=\s|$)")
 _COSTCO_SLUGS = re.compile(r"^costco(?:-|$)")
-# Target DPCI: department-class-item, printed with dashes on every line.
+# Target DPCI: department-class-item. Receipts print it undashed as a
+# leading 9-digit run ("002051115 Brightroon"); the seed stores it dashed
+# (ITEM#002-05-1115), so the undashed form is dashed here. The undashed rule
+# is Target-only because Sprouts prints 9-digit internal codes.
 _DPCI = re.compile(r"(?<![\w-])(\d{3}-\d{2}-\d{4})(?![\w-])")
-# UPC-A / EAN-13 as printed (Vons, Home Depot): 11-13 digits, leading zeros
-# kept, because the retailer's own bridge decides how to pad them.
+_DPCI_UNDASHED = re.compile(r"(?<![\w-])(\d{3})(\d{2})(\d{4})(?![\w-])")
+_TARGET_SLUGS = re.compile(r"^target(?:-|$)")
+# UPC-A / EAN-13 as printed (Home Depot): 11-13 digits, leading zeros kept,
+# because the retailer's own bridge decides how to pad them.
 _UPC = re.compile(r"(?<![\w-])(\d{11,13})(?![\w-])")
+# Vons / Albertsons family prints the UPC as a leading or trailing run of
+# 4-13 digits, verbatim, no check digit ("7766117461 GNGRBRD CARAMEL S",
+# "S CILANTRO ORGANIC 3338390419"). Seed convention: digits as printed.
+_VONS_UPC = re.compile(r"^(\d{4,13})(?=\s|$)|(?<=\s)(\d{4,13})$")
+_VONS_SLUGS = re.compile(r"^(?:vons|albertsons|safeway|pavilions)(?:-|$)")
 _E_FLAG = re.compile(r"^E\s+(?=\S)")
 _WHITESPACE = re.compile(r"\s+")
 
@@ -179,24 +190,30 @@ def load_fleet_alias_map(
 # --- alias keys ---------------------------------------------------------------
 
 
-def identifier_key_text(raw: str | None) -> str | None:
+def identifier_key_text(
+    raw: str | None, *, merchant_slug: str | None = None
+) -> str | None:
     """Canonical ``ITEM`` alias text for a printed retailer identifier.
 
-    Convention shared with the seed script: the identifier exactly as printed,
-    whitespace-trimmed, Costco ``E `` flag removed, leading zeros kept, DPCI
-    dashes kept. The stored sort key is ``ITEM#<text>`` (``nutrition_key``
-    leaves digits and dashes untouched). Returns ``None`` when the string is
-    not one of: Costco item number (4-7 digits), Target DPCI
-    (``NNN-NN-NNNN``), or UPC/EAN (11-13 digits).
+    Convention shared with the seed script: the digits exactly as printed,
+    whitespace-trimmed, Costco ``E `` flag removed, leading zeros kept, no
+    check digit. Target DPCIs are stored dashed (``NNN-NN-NNNN``); a 9-digit
+    run under a Target slug is dashed here. The stored sort key is
+    ``ITEM#<text>`` (``nutrition_key`` leaves digits and dashes untouched).
+    Returns ``None`` unless the string is a dashed DPCI or a 4-13 digit run.
     """
     if raw is None:
         return None
     candidate = _E_FLAG.sub("", raw.strip())
     if re.fullmatch(r"\d{3}-\d{2}-\d{4}", candidate):
         return candidate
-    if re.fullmatch(r"\d{11,13}", candidate):
-        return candidate
-    if re.fullmatch(r"\d{4,7}", candidate):
+    if (
+        merchant_slug is not None
+        and _TARGET_SLUGS.match(merchant_slug)
+        and re.fullmatch(r"\d{9}", candidate)
+    ):
+        return f"{candidate[:3]}-{candidate[3:5]}-{candidate[5:]}"
+    if re.fullmatch(r"\d{4,13}", candidate):
         return candidate
     return None
 
@@ -215,6 +232,13 @@ def _find_identifiers(
     for pattern in (_DPCI, _UPC):
         for match in pattern.finditer(stripped):
             claim(match.start(1), match.end(1), match.group(1))
+    if _TARGET_SLUGS.match(merchant_slug):
+        for match in _DPCI_UNDASHED.finditer(stripped):
+            claim(match.start(), match.end(), "-".join(match.groups()))
+    if _VONS_SLUGS.match(merchant_slug):
+        for match in _VONS_UPC.finditer(stripped):
+            group = 1 if match.group(1) is not None else 2
+            claim(match.start(group), match.end(group), match.group(group))
     if _COSTCO_SLUGS.match(merchant_slug):
         match = _COSTCO_ITEM.match(stripped)
         if match is not None:
@@ -232,9 +256,11 @@ def _find_identifiers(
 def derive_alias_keys(line_text: str, *, merchant_slug: str) -> AliasKeys:
     """Derive the ``ITEM`` and ``TEXT`` alias key texts for one line.
 
-    The bare leading item-number rule is Costco-only (``costco`` and
-    ``costco-*`` slugs); DPCI and UPC formats are distinctive enough to apply
-    at every merchant. ``legacy_text_key`` is the unstripped line text when
+    Merchant-family rules: the bare leading 4-7 digit item number is
+    Costco-only; the undashed 9-digit DPCI is Target-only (stored dashed);
+    the leading-or-trailing 4-13 digit UPC run is Vons/Albertsons-only.
+    Dashed DPCIs and 11-13 digit UPCs are distinctive enough to apply at
+    every merchant. ``legacy_text_key`` is the unstripped line text when
     stripping changed it, so decisions keyed that way are still read.
     """
     identifiers, remainder = _find_identifiers(
@@ -244,7 +270,10 @@ def derive_alias_keys(line_text: str, *, merchant_slug: str) -> AliasKeys:
     text_key = normalize_product_text(remainder)
     item_keys = tuple(
         text
-        for text in (identifier_key_text(raw) for raw in identifiers)
+        for text in (
+            identifier_key_text(raw, merchant_slug=merchant_slug)
+            for raw in identifiers
+        )
         if text is not None
     )
     full_text = normalize_product_text(line_text) or "UNKNOWN"
