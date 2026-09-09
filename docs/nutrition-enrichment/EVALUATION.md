@@ -26,7 +26,7 @@ evaluation results. No live model, dev deployment, or public release claimed.
 | Gate | Status | Evidence / next action |
 |---|---|---|
 | P contract review | PASS | two MEDIUM findings fixed; full-diff second pass found none |
-| A schema/≥30 dimensional cases | PASS | 92 Python 3.13 tests; 35 independent arithmetic cases |
+| A schema/≥30 dimensional cases | PASS (local) | 92 Python 3.13 tests; 35 independent arithmetic cases |
 | A honest harness/fixture validation | PASS | synthetic labelled explicitly; offline/live return NOT RUN and exit 2 |
 | B1 immutable catalog/conditional aliases | PASS (local) | 52 entity/moto tests + 1 domain roundtrip; review clean |
 | B2 prototype | SUPERSEDED | initial tests missed reproduced compatibility/freshness failures |
@@ -67,7 +67,7 @@ their resolution before committing.
 
 ### A reviewed checkpoint
 
-- `.venv/bin/python -m pytest receipt_nutrition/tests -q`: 92 passed.
+- `.venv/bin/python -m pytest receipt_nutrition/tests -q`: 92 passed (local run, not CI).
 - `.venv/bin/python scripts/nutrition_harness/evaluate.py --mode contract`:
   35/35 cases passed. These are synthetic dimensional arithmetic examples,
   not real package labels or model-quality ground truth.
@@ -96,9 +96,11 @@ their resolution before committing.
 
 ## Review corrections incorporated
 
-Units/evidence required; identity/quantity/completeness separated; revisioned
-corrections update past purchases; atomic generation publication and lease
-fencing; REMOVE and bounded repair; live evaluation distinct from fake;
+Units/evidence required; identity/quantity/completeness separated;
+revisioned corrections updating past purchases (deferred: no propagation
+code yet, see SPEC §3); atomic generation publication and lease fencing
+(superseded by the single-document CAS design); REMOVE and bounded repair
+(deferred to the stream card); live evaluation distinct from fake;
 product-family holdout; source permissions enforced before public
 aggregation; TJ bulk not required; main #1391, FDC April 2026, corrected token
 cost, fully qualified dev stack examples.

@@ -7,7 +7,9 @@
 > is now incomplete. Reconciliation is not identity/quantity ground truth.
 > Quantity units are discarded by the current row shape; the enrichment
 > adapter must retain explicit evidence or abstain. A queue delay alone
-> cannot ensure consistency; use the revised generation/fencing contract.
+> cannot ensure consistency; the current SPEC uses one document per receipt
+> with compare-and-swap, a parent-timestamp condition, and read-time
+> fingerprint validation (the earlier generation/fencing draft is superseded).
 
 Companion research note for the nutrition-enrichment plan. Every path and line
 number below was verified against a clean `origin/main` worktree
@@ -285,19 +287,21 @@ Costco Wholesale 168, Vons 134, Target 101, Wild Fork 100. Note `TRADER JOE'S`
 (77) and `Trader Joe's` (77) are distinct raw merchant strings. The existing
 lowercase line-item slug already maps these case-only variants together.
 
-Representative names, verbatim:
+Representative name shapes, from real rows:
 
 ```
-BUR FLOUR TORTILLAS            6.79
-HOTHOUSE TOMATOES              1.79   qty 0.9  unit 1.99
-STO BABY ROMAINE               3.49
-GROUND BEEF KEBABS MIDDL       6.99
-271600043 Poppi TFP            2.29
-678885210687 SPRAY PAINT «A,U* 6.98
-Pro Xtra Preferred Pricing    -1.20
-SC YOU SAVED                   5.50
-Animal Fry                     4.75   qty 1
+BUR FLOUR TORTILLAS
+HOTHOUSE TOMATOES              (weighed: qty 0.9 lb with a unit rate)
+STO BABY ROMAINE
+GROUND BEEF KEBABS MIDDL
+271600043 Poppi TFP            (leading retailer item number)
+678885210687 SPRAY PAINT «A,U* (leading UPC, OCR noise)
+Pro Xtra Preferred Pricing     (discount line, negative price)
+SC YOU SAVED                   (not a product)
+Animal Fry                     (qty 1)
 ```
+
+Prices are omitted here; the shapes are what matter.
 
 So: abbreviated, sometimes SKU-prefixed, occasionally not a product at all
 (`SC YOU SAVED`, `NLP Savings`, `BAKERY`), and inconsistently cased.
