@@ -19,7 +19,6 @@ from receipt_dynamo.data._merchant_catalog_item import (
 from receipt_dynamo.data._merchant_font import _MerchantFont
 from receipt_dynamo.data._merchant_truth import _MerchantTruth
 from receipt_dynamo.data._merchant_truth_gate import _MerchantTruthGate
-from receipt_dynamo.data._nutrition_catalog import _NutritionCatalog
 from receipt_dynamo.data._ocr_job import _OCRJob
 from receipt_dynamo.data._ocr_routing_decision import _OCRRoutingDecision
 from receipt_dynamo.data._places_cache import _PlacesCache
@@ -30,6 +29,7 @@ from receipt_dynamo.data._receipt_letter import _ReceiptLetter
 from receipt_dynamo.data._receipt_line import _ReceiptLine
 from receipt_dynamo.data._receipt_line_item import _ReceiptLineItem
 from receipt_dynamo.data._receipt_metadata import _ReceiptMetadata
+from receipt_dynamo.data._receipt_nutrition import _ReceiptNutrition
 from receipt_dynamo.data._receipt_place import _ReceiptPlace
 from receipt_dynamo.data._receipt_row import _ReceiptRow
 from receipt_dynamo.data._receipt_section import _ReceiptSection
@@ -77,7 +77,7 @@ class DynamoClient(
     _MerchantFont,
     _MerchantTruth,
     _MerchantTruthGate,
-    _NutritionCatalog,
+    _ReceiptNutrition,
     _OCRJob,
     _ReceiptLineItem,
     _ReceiptRow,
