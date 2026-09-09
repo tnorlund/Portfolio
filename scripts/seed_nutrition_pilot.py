@@ -58,15 +58,20 @@ FALLBACK_SOURCE = {
     "fdc": ("fdc", "public domain (USDA FoodData Central)", True),
     "off": ("off", "ODbL (Open Food Facts)", False),
 }
+# A number is complete only when nothing numeric, a dot, or a slash sits
+# immediately before it (with or without a space): ".5 g", "1/2 g", "1 / 2 g"
+# all abstain rather than reading the last digits as the whole amount.
+_BOUNDARY = r"(?<![\d./])(?<![\d./]\s)"
 _MASS = re.compile(
-    r"(?<![\d./])(\d+(?:\.\d+)?)\s*"
+    _BOUNDARY + r"(\d+(?:\.\d+)?)\s*"
     r"(g|gram|grams|kg|ml|mL|milliliters?|l|liter|litre)\b",
     re.IGNORECASE,
 )
 _MULTIPACK = re.compile(r"\d+\s*[x×]\s*\d", re.IGNORECASE)
 PILOT_OBSERVED_ON = date(2026, 9, 8)
 _SIZE = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(fl\.?\s*oz|oz|ounce|ounces|lb|lbs|pound|pounds|kg|g|"
+    _BOUNDARY + r"(\d+(?:\.\d+)?)\s*"
+    r"(fl\.?\s*oz|oz|ounce|ounces|lb|lbs|pound|pounds|kg|g|"
     r"ml|mL|l|liter|litre|gallon|gal|quart|qt|pint|pt)\b",
     re.IGNORECASE,
 )
@@ -126,7 +131,7 @@ def parse_size(text: Any) -> Amount | None:
     if text is None:
         return None
     text = str(text)
-    if _MULTIPACK.search(text):
+    if _MULTIPACK.search(text) or "/" in text:
         return None
     if re.search(r"\b\d+\s*(?:ct|count|pk|pack)\b", text, re.IGNORECASE) and (
         "," in text or "x" in text.lower()
@@ -137,12 +142,14 @@ def parse_size(text: Any) -> Amount | None:
 
 
 def parse_servings(text: Any) -> str | None:
+    """One complete number; fractions and multiple numbers abstain."""
     if text is None:
         return None
-    match = _COUNT.search(str(text))
-    if not match:
+    text = str(text)
+    numbers = _COUNT.findall(text)
+    if len(numbers) != 1 or "/" in text:
         return None
-    value = Decimal(match.group(1))
+    value = Decimal(numbers[0])
     return str(value) if value > 0 else None
 
 
@@ -175,17 +182,23 @@ def _nutrients(
                 continue
         if amount < 0:
             continue
+        # Binary-float noise such as 0.30000000000000004 is quantised to the
+        # model's precision; anything the model still rejects is skipped.
+        amount = amount.quantize(Decimal("1e-9"))
         text = format(amount, "f")
         text = text.rstrip("0").rstrip(".") if "." in text else text
-        facts.append(
-            NutrientFact(
-                nutrient_id=nbr,
-                amount=text or "0",
-                unit=canonical,
-                basis=basis,
-                source_ref=source_ref,
+        try:
+            facts.append(
+                NutrientFact(
+                    nutrient_id=nbr,
+                    amount=text or "0",
+                    unit=canonical,
+                    basis=basis,
+                    source_ref=source_ref,
+                )
             )
-        )
+        except ValueError:
+            continue
     return facts
 
 

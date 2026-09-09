@@ -279,3 +279,36 @@ def test_changed_facts_repoint_existing_alias(table):
     assert before is not None and after is not None
     assert after.revision == before.revision + 1
     assert after.product_revision != before.product_revision
+
+
+@pytest.mark.parametrize("serving", ["1 / 2 g", "2 / 3 cup (1 / 2 g)"])
+def test_spaced_fraction_serving_abstains(serving):
+    product, note = seed.build_product(record(serving_size=serving))
+    assert note == "serving_unparsed_identity_only"
+    assert product is not None and product.serving is None
+
+
+@pytest.mark.parametrize("size", [".5 oz", "1/2 lb", "1 / 2 lb"])
+def test_partial_number_size_abstains(size):
+    product, _ = seed.build_product(record(size=size))
+    assert product is not None and product.net_amount is None
+
+
+@pytest.mark.parametrize("count", ["about 2 1/2", "2 1/2", "Serves 2 to 3"])
+def test_fractional_or_ranged_servings_abstain(count):
+    product, _ = seed.build_product(record(servings_per_container=count))
+    assert product is not None and product.servings_per_container is None
+    plain, _ = seed.build_product(record(servings_per_container="Serves 4"))
+    assert plain is not None and str(plain.servings_per_container) == "4"
+
+
+def test_float_noise_in_facts_is_quantised_not_fatal():
+    noisy = {"203": {"value": 0.30000000000000004, "unit": "g"}}
+    product, note = seed.build_product(record(nutrients=noisy))
+    assert note == "ok" and product is not None
+    (fact,) = product.nutrients
+    assert str(fact.amount) == "0.3"
+    identity, note = seed.build_product(
+        record(serving_size="1/4 cup", nutrients=noisy)
+    )
+    assert identity is not None and identity.nutrients == ()
