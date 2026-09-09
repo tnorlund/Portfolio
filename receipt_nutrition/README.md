@@ -76,3 +76,15 @@ claim about legal labelling tolerances. Decimal formatting does not change it.
 Measured portions use compatible physical purchase/net amounts for cost;
 household portions use the declared label-serving count. Generic matches remain
 labelled estimates in both the readable report and JSON.
+
+## Seeding from a pilot lookup file
+
+`scripts/seed_nutrition_pilot.py` writes `FoodProduct` revisions and
+`ProductAlias` rows from a merged lookup file. It is a dry run unless `--apply`
+and a dev `--table` are given, refuses the prod table, never overwrites a
+user-confirmed alias, and is idempotent: a second run over the same file
+changes nothing. Retailer panels and UPC matches become `matched`, name
+proxies stay `matched` at their capped confidence with the proxy note kept,
+ambiguous products become `pending` with candidates, non-food lines become
+`not_food`. A product whose serving text cannot be parsed keeps its identity
+and drops its per-serving facts rather than guessing.

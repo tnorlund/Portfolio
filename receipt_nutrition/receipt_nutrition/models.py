@@ -105,7 +105,16 @@ class Amount(FrozenModel):
 
 class SourceEvidence(FrozenModel):
     evidence_id: Text
-    source: Literal["fdc", "off", "tj", "manual", "synthetic"]
+    source: Literal[
+        "fdc",
+        "off",
+        "tj",
+        "target",
+        "instacart",
+        "costco",
+        "manual",
+        "synthetic",
+    ]
     record_id: Text
     reference: Text
     observed_on: date
