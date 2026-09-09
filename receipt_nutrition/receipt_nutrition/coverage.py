@@ -396,3 +396,19 @@ __all__ = [
     "coverage_window",
     "merchant_matches",
 ]
+
+
+def default_coverage_checker(
+    *, window_days: int = 14, limit: int = 200
+) -> Callable[..., dict[str, Any]] | None:
+    """The builder's default: the receipts-email backend when it is present.
+
+    A missing repository or database is an unavailable lookup, not an error,
+    so construction failures return ``None`` and the caller reports
+    ``lookup_unavailable``.
+    """
+    try:
+        backend = EmlrecBackend()
+    except (ImportError, FileNotFoundError, OSError):
+        return None
+    return coverage_checker(backend, window_days=window_days, limit=limit)

@@ -475,3 +475,10 @@ def test_emlrec_backend_missing_db_is_lookup_unavailable(
     assert result["outcome"] == OUTCOME_UNAVAILABLE
     assert result["reason"] == "backend_error:FileNotFoundError"
     assert not (fake_repo / "absent.db").exists()
+
+
+def test_default_checker_is_none_when_repo_missing(monkeypatch):
+    from receipt_nutrition import coverage as module
+
+    monkeypatch.setenv("RECEIPTS_EMAIL_REPO", "/does-not-exist")
+    assert module.default_coverage_checker() is None

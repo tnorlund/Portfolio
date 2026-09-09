@@ -26,6 +26,7 @@ from receipt_dynamo.entities.product_alias_observation import (
     product_alias_id,
 )
 
+from receipt_nutrition.coverage import default_coverage_checker
 from receipt_nutrition.models import (
     HouseholdServing,
     Product,
@@ -1302,6 +1303,8 @@ def run(
             client = DynamoClient(args.table)
         if fleet_map is None:
             fleet_map = load_fleet_alias_map()
+        if coverage_checker is None and args.coverage == "on":
+            coverage_checker = default_coverage_checker()
         items = [ResolvedItem(spec=spec) for spec in specs]
         for item in items:
             spec = item.spec
