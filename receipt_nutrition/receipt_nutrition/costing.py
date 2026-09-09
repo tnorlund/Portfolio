@@ -35,8 +35,34 @@ def ratio_money(value: Fraction) -> Decimal:
 def cost_purchase(product: Product, purchase: Purchase) -> CostingResult:
     """Compute supported totals, leaving missing facts explicitly absent."""
     with localcontext() as context:
-        context.prec = 50
+        # Inputs carry at most 40 significant digits, so products of two
+        # inputs are exact here and nothing rounds before ratio_money.
+        context.prec = 120
         return _cost_purchase(product, purchase)
+
+
+def _declared_servings_conflict(product: Product) -> bool:
+    """True when the label's servings/container contradicts its own sizes.
+
+    Labels round ("about 4.5 servings"), so a tolerance of one serving or
+    five percent, whichever is larger, is allowed; beyond that the label is
+    inconsistent and no serving-based total is supported.
+    """
+    if (
+        product.servings_per_container is None
+        or product.serving is None
+        or product.net_amount is None
+    ):
+        return False
+    per_package = exact_amount_in(
+        product.net_amount, product.serving.unit, product
+    )
+    if per_package is None:
+        return False
+    declared = Fraction(product.servings_per_container)
+    derived = per_package / Fraction(product.serving.value)
+    tolerance = max(Fraction(1), declared / 20)
+    return abs(derived - declared) > tolerance
 
 
 def _cost_purchase(product: Product, purchase: Purchase) -> CostingResult:
@@ -60,19 +86,29 @@ def _cost_purchase(product: Product, purchase: Purchase) -> CostingResult:
     amount: Amount | None = None
     servings: Fraction | None = None
     derived = False
+    servings_conflict = package_known and _declared_servings_conflict(product)
     if quantity.unit == "package":
         if package_known and product.net_amount is not None:
             amount = Amount(
                 value=quantity.value * product.net_amount.value,
                 unit=product.net_amount.unit,
             )
-        if package_known and product.servings_per_container is not None:
+        if (
+            package_known
+            and product.servings_per_container is not None
+            and not servings_conflict
+        ):
             servings = Fraction(quantity.value) * Fraction(
                 product.servings_per_container
             )
     else:
         amount = Amount(value=quantity.value, unit=quantity.unit)
-    if servings is None and package_known and product.serving is not None:
+    if (
+        servings is None
+        and package_known
+        and product.serving is not None
+        and not servings_conflict
+    ):
         serving_amount = exact_amount_in(amount, product.serving.unit, product)
         if serving_amount is not None:
             servings = serving_amount / Fraction(product.serving.value)
@@ -108,6 +144,8 @@ def _cost_purchase(product: Product, purchase: Purchase) -> CostingResult:
     reasons: list[str] = []
     if amount is None:
         reasons.append("unknown_package_amount")
+    if servings_conflict:
+        reasons.append("servings_per_container_conflict")
     if servings is None:
         reasons.append("unknown_or_incompatible_serving")
     if len(available) < len(NUTRIENT_UNITS):

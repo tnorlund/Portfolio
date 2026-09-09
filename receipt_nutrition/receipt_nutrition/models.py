@@ -16,6 +16,10 @@ from pydantic import (
     model_validator,
 )
 
+# Inputs are capped so that any product of two inputs stays exact inside the
+# 120-digit costing context; money is rounded once at the output boundary.
+MAX_SIGNIFICANT_DIGITS = 40
+
 
 def decimal_input(value: object) -> Decimal:
     """Reject binary float coercion, nonfinite values, and excess precision."""
@@ -33,6 +37,8 @@ def decimal_input(value: object) -> Decimal:
         number != 0 and abs(number) < Decimal("1e-12")
     ):
         raise ValueError("decimal value outside supported magnitude")
+    if len(number.as_tuple().digits) > MAX_SIGNIFICANT_DIGITS:
+        raise ValueError("decimal value has too many significant digits")
     return number
 
 

@@ -204,3 +204,37 @@ def test_money_uses_exact_ratios(products: dict[str, Product]) -> None:
         Product.model_validate(data), Purchase.model_validate(bought)
     )
     assert result.cost_per_serving == Decimal("2.93")
+
+
+def test_declared_servings_conflict_blocks_serving_totals(
+    products: dict[str, Product],
+) -> None:
+    """Servings/container contradicting net and serving sizes is rejected."""
+    data = products["grain"].model_dump(mode="json")
+    data["net_amount"] = {"value": "100", "unit": "g"}
+    data["serving"] = {"value": "25", "unit": "g"}
+    data["servings_per_container"] = "20"
+    product = Product.model_validate(data)
+    result = cost_purchase(product, purchase())
+    assert result.servings_purchased is None
+    assert result.cost_per_serving is None
+    assert "servings_per_container_conflict" in result.reasons
+    assert all(n.calculation_basis != "serving" for n in result.nutrients)
+
+
+def test_declared_servings_within_label_rounding_are_kept(
+    products: dict[str, Product],
+) -> None:
+    data = products["grain"].model_dump(mode="json")
+    data["net_amount"] = {"value": "907.18474", "unit": "g"}
+    data["serving"] = {"value": "14", "unit": "g"}
+    data["servings_per_container"] = "64"
+    product = Product.model_validate(data)
+    result = cost_purchase(product, purchase())
+    assert result.servings_purchased == Decimal("64")
+    assert "servings_per_container_conflict" not in result.reasons
+
+
+def test_excess_precision_rejected_before_costing() -> None:
+    with pytest.raises(ValidationError, match="significant digits"):
+        purchase("package", "1." + "0" * 49 + "1")

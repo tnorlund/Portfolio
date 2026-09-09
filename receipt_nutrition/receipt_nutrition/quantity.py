@@ -73,6 +73,20 @@ def resolve_explicit_quantity(
             status="conflict", reason="multiple_unit_rates"
         )
     lines = [line for line in raw_text.splitlines() if RATE_HINT.search(line)]
+    fragments = [
+        line.strip()
+        for line in raw_text.splitlines()
+        if line not in lines
+        and re.fullmatch(r"[+-]?[\d./]+", line.strip())
+        and not re.fullmatch(r"\$?[+-]?\d+\.\d{2}", line.strip())
+    ]
+    if fragments:
+        # A bare "1/" or "2" next to the rate line may be the other half of
+        # a split fraction or grouped number. Confirming the rate line alone
+        # would silently drop it, so abstain.
+        return QuantityResolution(
+            status="unknown", reason="adjacent_numeric_fragment"
+        )
     match = (
         EXPLICIT_RATE.fullmatch(lines[0].strip()) if len(lines) == 1 else None
     )
