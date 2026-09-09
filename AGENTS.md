@@ -13,6 +13,7 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 - `receipt_agent/` LangGraph agents (QA, validation) over receipt data.
 - `receipt_embeddings/` native DynamoDB vector storage and search (`SearchVectors`).
 - `receipt_places/` Google Places client with DynamoDB cache.
+- `receipt_nutrition/` source-backed product facts and dimensional purchase costing.
 - `receipt_layoutlm/` LayoutLM training, inference, CoreML export (heavy deps).
 - `receipt_langsmith/`, `receipt_logo/` trace analytics and logo MCP tools (heavy deps).
 - `receipt_ocr_swift/` Swift Mac worker: Apple Vision OCR + CoreML LayoutLM.
@@ -27,7 +28,7 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 - Python 3.13 venv at `.venv/` (created by `.cursor/install.sh`) with the same
   editable package set as CI's `repository-tests` job: `receipt_dynamo`,
   `receipt_embeddings`, `receipt_dynamo_stream`, `receipt_places`, `receipt_agent`,
-  `receipt_upload`. Activate with `source .venv/bin/activate`.
+  `receipt_upload`, `receipt_nutrition`. Activate with `source .venv/bin/activate`.
 - NOT installed (PySpark, torch, CoreML): `receipt_langsmith`, `receipt_layoutlm`,
   `receipt_logo`. Run `pip install -e "<package>[test]"` before working on those.
 - Node 22 with `portfolio/node_modules` installed via `npm ci`. Run every npm
