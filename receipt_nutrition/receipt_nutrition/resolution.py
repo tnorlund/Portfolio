@@ -7,8 +7,8 @@ run any number of times without minting revisions.
 Resolution order (SPRINT_2 §2 MS), so an identifier alias can never bypass a
 person's decision:
 
-1. Derive the keys for the line: ``ITEM#<identifier>`` when the line carries
-   a retailer item number (Costco slugs only), Target DPCI, or UPC, and
+1. Derive the keys for the line: one ``ITEM#<identifier>`` per retailer item
+   number (Costco slugs only), Target DPCI, or UPC found on the line, and
    ``TEXT#<normalized>`` with the Costco ``E `` flag and the identifier
    stripped. When stripping changed the text, the full-line
    ``TEXT#<normalize_product_text(line)>`` key is read as well, so a decision
@@ -36,6 +36,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
+from itertools import combinations
 from pathlib import Path
 from typing import Any, Literal, Mapping, Protocol
 
@@ -75,17 +76,18 @@ _WHITESPACE = re.compile(r"\s+")
 class AliasKeys:
     """The alias key texts derived from one line, before percent-escaping."""
 
-    item_key: str | None
+    item_keys: tuple[str, ...]
+    """Every identifier on the line, in the order printed; all are read."""
     text_key: str
     legacy_text_key: str | None = None
-    """Full-line TEXT key when it differs from ``text_key``; read second."""
+    """Full-line TEXT key when it differs from ``text_key``; read last."""
 
     @property
     def lookups(self) -> list[tuple[str, str]]:
-        """(kind, text) pairs in resolution order: ITEM, TEXT, legacy TEXT."""
-        pairs: list[tuple[str, str]] = []
-        if self.item_key is not None:
-            pairs.append(("ITEM", self.item_key))
+        """(kind, text) pairs in resolution order: ITEMs, TEXT, legacy TEXT."""
+        pairs: list[tuple[str, str]] = [
+            ("ITEM", text) for text in self.item_keys
+        ]
         pairs.append(("TEXT", self.text_key))
         if self.legacy_text_key is not None:
             pairs.append(("TEXT", self.legacy_text_key))
@@ -199,22 +201,32 @@ def identifier_key_text(raw: str | None) -> str | None:
     return None
 
 
-def _find_identifier(
+def _find_identifiers(
     line_text: str, *, merchant_slug: str
-) -> tuple[str | None, str]:
-    """Return (identifier text, line text with the identifier removed)."""
+) -> tuple[list[str], str]:
+    """Return (identifiers in printed order, line with them removed)."""
     stripped = line_text.strip()
-    match = _DPCI.search(stripped)
-    if match is None:
-        match = _UPC.search(stripped)
-    if match is not None:
-        remainder = stripped[: match.start()] + " " + stripped[match.end() :]
-        return match.group(1), remainder
+    spans: list[tuple[int, int, str]] = []
+
+    def claim(start: int, end: int, text: str) -> None:
+        if not any(s < end and start < e for s, e, _ in spans):
+            spans.append((start, end, text))
+
+    for pattern in (_DPCI, _UPC):
+        for match in pattern.finditer(stripped):
+            claim(match.start(1), match.end(1), match.group(1))
     if _COSTCO_SLUGS.match(merchant_slug):
         match = _COSTCO_ITEM.match(stripped)
         if match is not None:
-            return match.group(1), stripped[match.end() :]
-    return None, stripped
+            claim(match.start(), match.end(), match.group(1))
+    spans.sort()
+    pieces: list[str] = []
+    cursor = 0
+    for start, end, _ in spans:
+        pieces.append(stripped[cursor:start])
+        cursor = end
+    pieces.append(stripped[cursor:])
+    return [text for _, _, text in spans], " ".join(pieces)
 
 
 def derive_alias_keys(line_text: str, *, merchant_slug: str) -> AliasKeys:
@@ -225,12 +237,16 @@ def derive_alias_keys(line_text: str, *, merchant_slug: str) -> AliasKeys:
     at every merchant. ``legacy_text_key`` is the unstripped line text when
     stripping changed it, so decisions keyed that way are still read.
     """
-    identifier, remainder = _find_identifier(
+    identifiers, remainder = _find_identifiers(
         line_text, merchant_slug=merchant_slug
     )
     remainder = _E_FLAG.sub("", remainder.strip())
     text_key = normalize_product_text(remainder)
-    item_key = identifier_key_text(identifier)
+    item_keys = tuple(
+        text
+        for text in (identifier_key_text(raw) for raw in identifiers)
+        if text is not None
+    )
     full_text = normalize_product_text(line_text) or "UNKNOWN"
     if not text_key:
         # A bare identifier line still needs a stable TEXT key so the read
@@ -240,7 +256,7 @@ def derive_alias_keys(line_text: str, *, merchant_slug: str) -> AliasKeys:
             or full_text
         )
     return AliasKeys(
-        item_key=item_key,
+        item_keys=item_keys,
         text_key=text_key,
         legacy_text_key=full_text if full_text != text_key else None,
     )
@@ -352,7 +368,10 @@ def resolve_line(
         applicable.append(alias)
 
     user_decisions = [alias for alias in applicable if alias.method == "user"]
-    if len(user_decisions) > 1 and not _same_decision(*user_decisions[:2]):
+    if any(
+        not _same_decision(left, right)
+        for left, right in combinations(user_decisions, 2)
+    ):
         return LineResolution(
             status="pending",
             reason="user_conflict",
@@ -368,7 +387,7 @@ def resolve_line(
             keys=keys,
             refs=refs,
         )
-    # ``found`` preserves lookup order: ITEM, TEXT, then legacy TEXT.
+    # ``found`` preserves lookup order: ITEMs, TEXT, then legacy TEXT.
     for alias in applicable:
         return _decision(
             alias,

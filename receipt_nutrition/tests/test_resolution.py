@@ -99,63 +99,83 @@ def resolve(client: FakeClient, line: str, size: str | None = None):
         (
             SLUG,
             "E 36946 BEEF BULGOGI",
-            AliasKeys("36946", "BEEF BULGOGI", "E 36946 BEEF BULGOGI"),
+            AliasKeys(("36946",), "BEEF BULGOGI", "E 36946 BEEF BULGOGI"),
         ),
         (
             "costco",
             "36946 BEEF BULGOGI",
-            AliasKeys("36946", "BEEF BULGOGI", "36946 BEEF BULGOGI"),
+            AliasKeys(("36946",), "BEEF BULGOGI", "36946 BEEF BULGOGI"),
         ),
         (
             SLUG,
             "1055663 HNY RSTD MIX",
-            AliasKeys("1055663", "HNY RSTD MIX", "1055663 HNY RSTD MIX"),
+            AliasKeys(("1055663",), "HNY RSTD MIX", "1055663 HNY RSTD MIX"),
         ),
         (
             "target",
             "071-05-0012 GG BROCCOLI NF",
             AliasKeys(
-                "071-05-0012", "GG BROCCOLI NF", "071 05 0012 GG BROCCOLI NF"
+                ("071-05-0012",),
+                "GG BROCCOLI NF",
+                "071 05 0012 GG BROCCOLI NF",
             ),
         ),
         (
             "target",
             "GG BROCCOLI 071-05-0012 NF",
             AliasKeys(
-                "071-05-0012", "GG BROCCOLI NF", "GG BROCCOLI 071 05 0012 NF"
+                ("071-05-0012",),
+                "GG BROCCOLI NF",
+                "GG BROCCOLI 071 05 0012 NF",
             ),
         ),
         (
             "vons",
             "000516221654 20 FAST SET",
             AliasKeys(
-                "000516221654", "20 FAST SET", "000516221654 20 FAST SET"
+                ("000516221654",), "20 FAST SET", "000516221654 20 FAST SET"
             ),
         ),
-        (SLUG, "E EGGS LARGE", AliasKeys(None, "EGGS LARGE", "E EGGS LARGE")),
-        (SLUG, "Beef Bulgogi 2 LB", AliasKeys(None, "BEEF BULGOGI 2 LB")),
-        (SLUG, "12 EGGS", AliasKeys(None, "12 EGGS")),
-        (SLUG, "36946", AliasKeys("36946", "36946")),
-        (SLUG, "E 36946", AliasKeys("36946", "36946", "E 36946")),
+        (SLUG, "E EGGS LARGE", AliasKeys((), "EGGS LARGE", "E EGGS LARGE")),
+        (SLUG, "Beef Bulgogi 2 LB", AliasKeys((), "BEEF BULGOGI 2 LB")),
+        (SLUG, "12 EGGS", AliasKeys((), "12 EGGS")),
+        (SLUG, "36946", AliasKeys(("36946",), "36946")),
+        (SLUG, "E 36946", AliasKeys(("36946",), "36946", "E 36946")),
         (
             "sprouts",
             "36946 BEEF BULGOGI",
-            AliasKeys(None, "36946 BEEF BULGOGI"),
+            AliasKeys((), "36946 BEEF BULGOGI"),
         ),
         (
             "sprouts",
             "1000 ISLAND DRESSING",
-            AliasKeys(None, "1000 ISLAND DRESSING"),
+            AliasKeys((), "1000 ISLAND DRESSING"),
         ),
         (
             "costcoville",
             "1000 ISLAND DRESSING",
-            AliasKeys(None, "1000 ISLAND DRESSING"),
+            AliasKeys((), "1000 ISLAND DRESSING"),
         ),
     ],
 )
 def test_derive_alias_keys(slug: str, line: str, expected: AliasKeys) -> None:
     assert derive_alias_keys(line, merchant_slug=slug) == expected
+
+
+def test_all_identifiers_are_kept_in_printed_order() -> None:
+    keys = derive_alias_keys(
+        "E 36946 BEEF BULGOGI 000516221654", merchant_slug=SLUG
+    )
+    assert keys == AliasKeys(
+        ("36946", "000516221654"),
+        "BEEF BULGOGI",
+        "E 36946 BEEF BULGOGI 000516221654",
+    )
+    target = derive_alias_keys(
+        "000516221654 GG BROCCOLI 071-05-0012 NF", merchant_slug="target"
+    )
+    assert target.item_keys == ("000516221654", "071-05-0012")
+    assert target.text_key == "GG BROCCOLI NF"
 
 
 def test_lookup_order_is_item_text_legacy() -> None:
@@ -308,6 +328,36 @@ def test_costco_prefix_rule_is_costco_only() -> None:
         as_of=AS_OF,
     )
     assert client.calls == [("sprouts", "TEXT", "1000 ISLAND DRESSING")]
+
+
+def test_third_user_decision_still_conflicts() -> None:
+    client = FakeClient(
+        alias("ITEM", "36946", method="user"),
+        alias("TEXT", "BEEF BULGOGI", method="user"),
+        alias(
+            "TEXT", "E 36946 BEEF BULGOGI", method="user", status="rejected"
+        ),
+    )
+    result = resolve(client, "E 36946 BEEF BULGOGI")
+    assert (result.status, result.reason) == ("pending", "user_conflict")
+    assert result.decided_by is None and result.product_id is None
+    assert len(result.alias_refs) == 3
+
+
+def test_user_rejection_on_any_identifier_beats_automatic_other() -> None:
+    client = FakeClient(
+        alias("ITEM", "36946", method="user", status="rejected"),
+        alias("ITEM", "000516221654"),
+    )
+    result = resolve(client, "E 36946 BEEF BULGOGI 000516221654")
+    assert (result.status, result.decided_by) == ("rejected", "user")
+    assert result.product_id is None
+    assert client.calls == [
+        (SLUG, "ITEM", "36946"),
+        (SLUG, "ITEM", "000516221654"),
+        (SLUG, "TEXT", "BEEF BULGOGI"),
+        (SLUG, "TEXT", "E 36946 BEEF BULGOGI 000516221654"),
+    ]
 
 
 def test_user_confirmation_on_either_key_wins() -> None:
