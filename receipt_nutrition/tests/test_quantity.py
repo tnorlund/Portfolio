@@ -111,3 +111,26 @@ def test_spaced_fraction_fragment_abstains() -> None:
     result = resolve_explicit_quantity("1 /\n2 lb @ 4.00/lb", "2", "4", "8")
     assert result.status == "unknown"
     assert result.reason == "adjacent_numeric_fragment"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["1\u2044\n2 lb @ 4.00/lb", "1,\n234 g @ 1.00/g", "1 /\n2 lb @ 4.00/lb"],
+)
+def test_letterless_numeric_fragments_abstain(raw: str) -> None:
+    quantity, rate, price = (
+        ("2", "4", "8") if "lb" in raw else ("234", "1", "234")
+    )
+    result = resolve_explicit_quantity(raw, quantity, rate, price)
+    assert result.status == "unknown"
+    assert result.reason == "adjacent_numeric_fragment"
+
+
+def test_decoder_agreement_is_exact_before_cents() -> None:
+    quantity = "0.1098528174305033809917355371909090909091"
+    rate = "999999999989"
+    raw = f"{quantity} each @ {rate}"
+    exact = resolve_explicit_quantity(raw, quantity, rate, "109852817429.29")
+    wrong = resolve_explicit_quantity(raw, quantity, rate, "109852817429.30")
+    assert exact.status == "known"
+    assert wrong.status == "conflict"

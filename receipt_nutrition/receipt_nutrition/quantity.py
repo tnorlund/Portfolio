@@ -2,8 +2,9 @@
 
 import re
 from decimal import Decimal, localcontext
+from fractions import Fraction
 
-from receipt_nutrition.costing import money
+from receipt_nutrition.costing import money, ratio_money
 from receipt_nutrition.models import (
     QuantityEvidence,
     QuantityResolution,
@@ -77,14 +78,15 @@ def resolve_explicit_quantity(
         line.strip()
         for line in raw_text.splitlines()
         if line not in lines
-        and re.fullmatch(r"[+-]?[\d./\s]+", line.strip())
         and re.search(r"\d", line)
+        and not re.search(r"[A-Za-z]", line)
         and not re.fullmatch(r"\$?[+-]?\d+\.\d{2}", line.strip())
     ]
     if fragments:
-        # A bare "1/" or "2" next to the rate line may be the other half of
-        # a split fraction or grouped number. Confirming the rate line alone
-        # would silently drop it, so abstain.
+        # Any non-rate line made of digits and symbols but no letters ("1/",
+        # "1⁄", "1,", "2") may be the other half of a split fraction or
+        # grouped number. Confirming the rate line alone would silently drop
+        # it, so abstain. Bare prices are handled by other_totals below.
         return QuantityResolution(
             status="unknown", reason="adjacent_numeric_fragment"
         )
@@ -126,7 +128,8 @@ def resolve_explicit_quantity(
             and rate >= 0
             and count == decimal_input(quantity)
             and rate == decimal_input(unit_price)
-            and money(count * rate) == decimal_input(extended_price)
+            and ratio_money(Fraction(count) * Fraction(rate))
+            == decimal_input(extended_price)
         )
     if match["total"] and decimal_input(match["total"]) != decimal_input(
         extended_price
