@@ -202,3 +202,80 @@ def test_prod_table_is_refused(capsys):
     with pytest.raises(SystemExit):
         seed.main([str(SCRIPT), "--apply", "--table", "ReceiptsTable-d7ff76a"])
     assert "refusing to seed the prod table" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("serving", [".5 g", "1/2 g", "1/4 cup"])
+def test_partial_numbers_never_become_a_serving(serving):
+    product, note = seed.build_product(record(serving_size=serving))
+    assert note == "serving_unparsed_identity_only"
+    assert product is not None and product.serving is None
+
+
+def test_small_calories_unit_is_dropped_not_scaled():
+    product, _ = seed.build_product(
+        record(nutrients={"208": {"value": 1000, "unit": "cal"}})
+    )
+    assert product is not None and product.nutrients == ()
+
+
+def test_missing_fetched_at_is_stable_across_runs():
+    first, _ = seed.build_product(record(fetched_at=None))
+    second, _ = seed.build_product(record(fetched_at=None))
+    assert first is not None and second is not None
+    assert first.content_hash == second.content_hash
+    assert first.evidence[0].observed_on == seed.PILOT_OBSERVED_ON
+
+
+def test_numeric_size_still_yields_pending_alias():
+    from datetime import datetime, timezone
+
+    alias = seed.alias_for(
+        record(**{"class": "ambiguous", "size": 12.0}),
+        None,
+        None,
+        1,
+        datetime.now(timezone.utc),
+    )
+    assert alias.status == "pending"
+    assert '"size":"12.0"' in alias.applicability_json
+
+
+def test_multipack_size_abstains():
+    product, _ = seed.build_product(record(size="6 x 12 oz"))
+    assert product is not None and product.net_amount is None
+    single, _ = seed.build_product(record(size="12 oz"))
+    assert single is not None and single.net_amount is not None
+
+
+def test_unparseable_nutrient_value_is_skipped_not_fatal():
+    product, note = seed.build_product(
+        record(
+            serving_size="1/4 cup",
+            nutrients={"208": {"value": "unknown", "unit": "kcal"}},
+        )
+    )
+    assert note in ("ok", "serving_unparsed_identity_only")
+    assert product is not None and product.nutrients == ()
+
+
+def test_prod_table_is_refused_even_without_apply(capsys):
+    with pytest.raises(SystemExit):
+        seed.main([str(SCRIPT), "--table", "copy-d7ff76a-of-prod"])
+    assert "refusing to seed the prod table" in capsys.readouterr().err
+
+
+def test_changed_facts_repoint_existing_alias(table):
+    client = DynamoClient(table)
+    seed.seed([record()], client, table)
+    before = client.get_product_alias(
+        "trader-joe-s", "TEXT", "TATER BITES POTATO WITH"
+    )
+    changed = record(nutrients={"208": {"value": 300.0, "unit": "kcal"}})
+    counts = seed.seed([changed], client, table)
+    assert counts["product_written"] == 1 and counts["alias_written"] == 1
+    after = client.get_product_alias(
+        "trader-joe-s", "TEXT", "TATER BITES POTATO WITH"
+    )
+    assert before is not None and after is not None
+    assert after.revision == before.revision + 1
+    assert after.product_revision != before.product_revision

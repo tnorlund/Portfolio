@@ -20,7 +20,7 @@ import re
 import sys
 from collections import Counter
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -59,9 +59,12 @@ FALLBACK_SOURCE = {
     "off": ("off", "ODbL (Open Food Facts)", False),
 }
 _MASS = re.compile(
-    r"(\d+(?:\.\d+)?)\s*(g|gram|grams|kg|ml|mL|milliliters?|l|liter|litre)\b",
+    r"(?<![\d./])(\d+(?:\.\d+)?)\s*"
+    r"(g|gram|grams|kg|ml|mL|milliliters?|l|liter|litre)\b",
     re.IGNORECASE,
 )
+_MULTIPACK = re.compile(r"\d+\s*[x×]\s*\d", re.IGNORECASE)
+PILOT_OBSERVED_ON = date(2026, 9, 8)
 _SIZE = re.compile(
     r"(\d+(?:\.\d+)?)\s*(fl\.?\s*oz|oz|ounce|ounces|lb|lbs|pound|pounds|kg|g|"
     r"ml|mL|l|liter|litre|gallon|gal|quart|qt|pint|pt)\b",
@@ -123,6 +126,8 @@ def parse_size(text: Any) -> Amount | None:
     if text is None:
         return None
     text = str(text)
+    if _MULTIPACK.search(text):
+        return None
     if re.search(r"\b\d+\s*(?:ct|count|pk|pack)\b", text, re.IGNORECASE) and (
         "," in text or "x" in text.lower()
     ):
@@ -152,16 +157,20 @@ def _nutrients(
         unit = (entry.get("unit") if isinstance(entry, dict) else None) or ""
         if value is None:
             continue
-        amount = Decimal(str(value))
+        try:
+            amount = Decimal(str(value))
+        except InvalidOperation:
+            continue
+        if not amount.is_finite():
+            continue
         canonical = NUTRIENT_UNITS[nbr]
         unit = unit.lower()
         if unit and unit != canonical:
+            # "cal" is ambiguous between small calories and kcal; drop it.
             if unit == "g" and canonical == "mg":
                 amount *= 1000
             elif unit == "mg" and canonical == "g":
                 amount /= 1000
-            elif unit in ("cal", "calories") and canonical == "kcal":
-                pass
             else:
                 continue
         if amount < 0:
@@ -207,7 +216,9 @@ def build_product(record: dict[str, Any]) -> tuple[Product | None, str]:
             str(observed).replace("Z", "+00:00")
         ).date()
     except ValueError:
-        observed_on = date.today()
+        # A stable fallback keeps the evidence hash, and so the product
+        # revision, identical across re-runs.
+        observed_on = PILOT_OBSERVED_ON
     evidence = SourceEvidence(
         evidence_id="src",
         source=source,
@@ -333,11 +344,13 @@ def alias_for(
         method=method,
         changed_at=now.isoformat(timespec="milliseconds"),
         applicability_json=json.dumps(
-            {
-                "merchant": record["merchant"],
-                "text": text,
-                "size": record.get("size"),
-            }
+            _stringify_numbers(
+                {
+                    "merchant": record["merchant"],
+                    "text": text,
+                    "size": record.get("size"),
+                }
+            )
         ),
         decision_json=json.dumps(_stringify_numbers(decision), default=str),
         product_id=product_id if status == "matched" else None,
@@ -401,6 +414,8 @@ def seed(
                 existing is not None
                 and existing.status == alias.status
                 and existing.product_id == alias.product_id
+                and existing.product_revision == alias.product_revision
+                and existing.decision_json == alias.decision_json
             ):
                 counts["alias_unchanged"] += 1
                 continue
@@ -434,11 +449,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     client = None
-    if args.apply:
-        if not args.table:
-            parser.error("--apply requires --table")
-        if any(fragment in args.table for fragment in PROD_TABLE_FRAGMENTS):
-            parser.error("refusing to seed the prod table")
+    if args.table and any(
+        fragment in args.table for fragment in PROD_TABLE_FRAGMENTS
+    ):
+        parser.error("refusing to seed the prod table")
+    if args.apply and not args.table:
+        parser.error("--apply requires --table")
     records = json.loads(args.merged.read_text())
     if args.apply:
         client = DynamoClient(args.table)
