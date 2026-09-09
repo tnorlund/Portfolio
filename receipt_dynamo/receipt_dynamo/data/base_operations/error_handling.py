@@ -7,6 +7,7 @@ handling into a single cohesive module.
 
 import random
 import time
+from functools import wraps
 from typing import Any
 
 from botocore.exceptions import ClientError
@@ -310,6 +311,7 @@ def handle_dynamodb_errors(operation_name: str):
     """
 
     def decorator(func):
+        @wraps(func)
         def wrapper(self, *args, **kwargs):
             error_handler = ErrorHandler()
 
