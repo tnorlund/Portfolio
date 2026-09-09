@@ -630,6 +630,7 @@ def test_portion_per_container_is_divided():
     _, text = _run(client, argv)
     report = json.loads(text)
     assert report["items"][0]["portion_per_container"] == "3 each"
+    assert meal_cli._share("1814.36948", "g", 2) == "907.2"
     _, md = _run(client, argv[:-2])
     assert "| 3 each |" in md
 

@@ -834,9 +834,15 @@ def _unknown_fields(
     return unknown
 
 
-def _share(value: str, containers: int) -> str:
-    """A portion divided among containers, shown exactly."""
+def _share(value: str, unit: str, containers: int) -> str:
+    """A portion divided among containers.
+
+    Measured masses and volumes read as decimals to a tenth; counted units
+    (packages, servings, spoons, cups, each) keep exact fractions.
+    """
     share = Fraction(decimal_input(value)) / containers
+    if unit in ("g", "ml"):
+        return f"{as_decimal(share):.1f}"
     if share.denominator == 1:
         return str(share.numerator)
     whole, rest = divmod(share.numerator, share.denominator)
@@ -929,7 +935,8 @@ def build_report(
                     else None
                 ),
                 "portion_per_container": (
-                    f"{_share(portion['value'], containers)} {portion['unit']}"
+                    f"{_share(portion['value'], portion['unit'], containers)}"
+                    f" {portion['unit']}"
                     if portion
                     else None
                 ),
@@ -1086,6 +1093,11 @@ def render_report(report: dict[str, Any]) -> str:
                 else ""
             )
         )
+        for candidate in (item["coverage"] or {}).get("candidates") or []:
+            lines.append(
+                f"  - candidate card charge {candidate.get('date')} "
+                f"${candidate.get('amount')} {candidate.get('description')}"
+            )
     if report["contains_generic_estimates"]:
         lines += ["", "Includes generic product estimates."]
     lines += [
