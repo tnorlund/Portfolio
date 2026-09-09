@@ -678,6 +678,48 @@ def test_manual_evidence_rejects_floats_and_unknown_fields():
     assert entry.serving.amount == Decimal("145")
 
 
+def test_manual_nutrient_unit_mismatch_fails_at_load_time():
+    bad = manual_entry(nutrients={"307": {"amount": "1.2", "unit": "g"}})
+    with pytest.raises(ValidationError, match="307 must be in mg"):
+        seed.load_manual_evidence([bad])
+    kcal_as_g = manual_entry(nutrients={"208": {"amount": "1", "unit": "g"}})
+    with pytest.raises(ValidationError):
+        seed.load_manual_evidence([kcal_as_g])
+
+
+def test_manual_revision_clears_stale_household_unless_supplied():
+    base, _ = seed.build_product(costco_record(serving_size="1/4 cup (30 g)"))
+    assert base is not None and base.household is not None
+    drops = Counter()
+    (bigger,) = seed.load_manual_evidence(
+        [manual_entry(serving={"amount": "60", "unit": "g"})]
+    )
+    minted = seed.manual_product(base, bigger, drops)
+    assert minted.household is None
+    assert drops["manual_household_cleared"] == 1
+    (same,) = seed.load_manual_evidence(
+        [manual_entry(serving={"amount": "30", "unit": "g"})]
+    )
+    kept = seed.manual_product(base, same, Counter())
+    assert kept.household == base.household
+    (own,) = seed.load_manual_evidence(
+        [
+            manual_entry(
+                serving={"amount": "60", "unit": "g"},
+                household={"value": "0.5", "unit": "cup"},
+            )
+        ]
+    )
+    supplied = seed.manual_product(base, own, drops)
+    assert supplied.household is not None
+    assert (
+        str(supplied.household.value),
+        supplied.household.unit,
+        supplied.household.source_ref,
+    ) == ("0.5", "cup", "manual")
+    assert drops["manual_household_cleared"] == 1
+
+
 def test_manual_evidence_mints_revision_and_repins(table):
     client = DynamoClient(table)
     seed.seed([costco_record()], client, table, apply=True)

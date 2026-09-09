@@ -29,9 +29,9 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, localcontext
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self
 
-from pydantic import Field, ValidationError
+from pydantic import Field, ValidationError, model_validator
 
 # isort: off
 # The receipt_agent CI leg lints changed files with an environment that
@@ -520,6 +520,11 @@ class ManualNutrient(FrozenModel):
     unit: Literal["g", "mg", "ug", "kcal"]
 
 
+class ManualHousehold(FrozenModel):
+    value: Positive
+    unit: Literal["tsp", "tbsp", "cup", "each"]
+
+
 class ManualEvidence(FrozenModel):
     """One owner-typed label. Numbers are strings or integers, never floats."""
 
@@ -528,6 +533,7 @@ class ManualEvidence(FrozenModel):
     reference: Text
     serving: ManualServing
     servings_per_container: Positive | None = None
+    household: ManualHousehold | None = None
     nutrients: dict[
         Literal[
             "208",
@@ -550,6 +556,17 @@ class ManualEvidence(FrozenModel):
     ] = Field(min_length=1)
     notes: str | None = None
 
+    @model_validator(mode="after")
+    def validate_units(self) -> Self:
+        """A wrong unit fails at load time, before any write happens."""
+        for nutrient_id, fact in self.nutrients.items():
+            if fact.unit != NUTRIENT_UNITS[nutrient_id]:
+                raise ValueError(
+                    f"nutrient {nutrient_id} must be in "
+                    f"{NUTRIENT_UNITS[nutrient_id]}, not {fact.unit}"
+                )
+        return self
+
 
 def load_manual_evidence(payload: Any) -> list[ManualEvidence]:
     if not isinstance(payload, list):
@@ -561,14 +578,19 @@ def load_manual_evidence(payload: Any) -> list[ManualEvidence]:
     return entries
 
 
-def manual_product(base: Product, entry: ManualEvidence) -> Product:
+def manual_product(
+    base: Product, entry: ManualEvidence, drops: Counter | None = None
+) -> Product:
     """Mint the owner's label as a new revision of an already seeded product.
 
-    Identity, net contents, sold-by, and household equivalence keep their
-    storefront evidence; serving and facts come from the typed label under a
-    ``manual`` evidence record, so the storefront panel is superseded but
-    never rewritten.
+    Identity, net contents, and sold-by keep their storefront evidence;
+    serving and facts come from the typed label under a ``manual`` evidence
+    record, so the storefront panel is superseded but never rewritten. The
+    storefront household equivalence describes the storefront serving, so it
+    is cleared (and counted) when the label's serving differs, unless the
+    label supplies its own.
     """
+    drops = Counter() if drops is None else drops
     if entry.product_id != base.product_id:
         raise ValueError("manual evidence names a different product")
     evidence = SourceEvidence(
@@ -594,13 +616,30 @@ def manual_product(base: Product, entry: ManualEvidence) -> Product:
         for nutrient_id, fact in entry.nutrients.items()
     )
     kept = base.model_dump(mode="python")
-    kept.pop("evidence")
-    kept.pop("nutrients")
-    kept.pop("serving")
-    kept.pop("servings_per_container")
-    kept.pop("package_source_ref")
+    for field in (
+        "evidence",
+        "nutrients",
+        "serving",
+        "servings_per_container",
+        "package_source_ref",
+        "household",
+    ):
+        kept.pop(field)
+    household = base.household
+    if entry.household is not None:
+        household = HouseholdEquivalence(
+            value=entry.household.value,
+            unit=entry.household.unit,
+            source_ref=MANUAL_EVIDENCE_ID,
+            parser=HOUSEHOLD_PARSER,
+            raw=f"{entry.household.value} {entry.household.unit}",
+        )
+    elif household is not None and serving != base.serving:
+        household = None
+        drops["manual_household_cleared"] += 1
     return Product(
         **kept,
+        household=household,
         evidence=tuple(
             source
             for source in base.evidence
@@ -830,7 +869,7 @@ def seed(
                 if entry is not None:
                     # The storefront revision stays (append-only); the alias
                     # pins the owner's label.
-                    minted = manual_product(product, entry)
+                    minted = manual_product(product, entry, drops)
                     product_id, product_revision = put_product(minted)
                     if product.product_id not in manual_used:
                         counts["manual_revision"] += 1
