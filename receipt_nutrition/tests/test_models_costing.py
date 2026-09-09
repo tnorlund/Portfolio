@@ -257,3 +257,12 @@ def test_derived_amount_may_exceed_input_digit_cap(
         Decimal("123.45678901234567890123456789")
     ) * Fraction(Decimal("1.1234567890123"))
     assert result.cost_per_100g is not None
+
+
+def test_ratio_money_is_exact_at_large_magnitude() -> None:
+    from receipt_nutrition.costing import ratio_money
+
+    cents = Fraction(13714285714285714285714285714, 100)
+    assert ratio_money(cents) == Decimal("137142857142857142857142857.14")
+    assert ratio_money(Fraction(1, 200)) == Decimal("0.01")
+    assert ratio_money(Fraction(-1, 200)) == Decimal("-0.01")
