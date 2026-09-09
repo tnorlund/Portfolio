@@ -495,24 +495,42 @@ def test_invalid_arguments_write_nothing(server, client, arguments):
     "table_name", ["ReceiptsTable-d7ff76a", "copy-d7ff76a-of-prod"]
 )
 def test_prod_table_is_refused_before_any_write(server, table_name):
-    """The denylist has no override: the tools refuse before the DAL runs."""
+    """No nutrition row is ever seeded or written to a prod-named table.
+
+    The client is built against the prod name (the moto table is empty)
+    and the boto client is spied on: the tools must return a refusal (the
+    server's or the DAL's) without a single DynamoDB call.
+    """
     with mock_aws():
         prod_like = DynamoClient(create_table(table_name))
-        fact = product()
-        prod_like.add_food_product(
-            fact, expected_table_name=prod_like.table_name
-        )
-        with patch.object(server, "_dynamo_client", prod_like):
-            with patch.object(
-                prod_like,
-                "save_product_alias",
-                wraps=prod_like.save_product_alias,
-            ) as writes:
+        fact = product()  # never written anywhere
+        spied = {
+            method: patch.object(
+                prod_like._client,
+                method,
+                wraps=getattr(prod_like._client, method),
+            )
+            for method in (
+                "get_item",
+                "put_item",
+                "query",
+                "transact_write_items",
+            )
+        }
+        spies = {name: spy.start() for name, spy in spied.items()}
+        try:
+            with patch.object(server, "_dynamo_client", prod_like):
                 confirmed = confirm(server, fact, None)
                 rejected = reject(server, None, kind="ITEM", text="84621")
+        finally:
+            for spy in spied.values():
+                spy.stop()
         for result in (confirmed, rejected):
             assert "success" not in result
-            assert "refusing to write nutrition rows" in result["error"]
-            assert table_name in result["error"]
-        assert writes.call_count == 0
-        assert prod_like.list_product_aliases("trader-joes")[0] == []
+            assert (
+                "refusing to write nutrition rows" in result["error"]
+                or "prohibited" in result["error"]
+            )
+        assert {name: spy.call_count for name, spy in spies.items()} == {
+            name: 0 for name in spies
+        }
