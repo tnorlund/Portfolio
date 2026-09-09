@@ -413,3 +413,23 @@ def test_package_portion_falls_back_to_serving_count():
     result = calculate_meal(meal(row))
     (rendered_row,) = result["rows"]
     assert rendered_row["nutrients"]["208"] == "720"
+
+
+def test_cup_portions_use_the_exact_household_ladder():
+    from receipt_nutrition.portions import HouseholdServing
+
+    row = item(portion="1", unit="cup")
+    row["household_serving"] = {
+        "value": "0.25",
+        "unit": "cup",
+        "source_ref": "label",
+    }
+    assert HouseholdServing.model_validate(row["household_serving"])
+    result = calculate_meal(meal(row))
+    assert result["rows"][0]["label_servings"] == "4"
+    spoons = item(portion="4", unit="tbsp")
+    spoons["household_serving"] = row["household_serving"]
+    assert calculate_meal(meal(spoons))["rows"][0]["label_servings"] == "1"
+    teaspoons = item(portion="12", unit="tsp")
+    teaspoons["household_serving"] = row["household_serving"]
+    assert calculate_meal(meal(teaspoons))["rows"][0]["label_servings"] == "1"
