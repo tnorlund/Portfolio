@@ -23,6 +23,7 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 from .error_handling import ErrorMessageConfig, handle_dynamodb_errors
+from .nutrition_guard import refuse_prohibited_nutrition_write
 from .shared_utils import (
     build_get_item_key,
     build_query_params,
@@ -269,6 +270,7 @@ class FlattenedStandardMixin:
             "TableName": self.table_name,
             "Item": entity.to_item(),
         }
+        refuse_prohibited_nutrition_write(self.table_name, put_params)
         if condition_expression:
             put_params["ConditionExpression"] = condition_expression
 
@@ -322,6 +324,7 @@ class FlattenedStandardMixin:
             "TableName": self.table_name,
             "Item": entity.to_item(),
         }
+        refuse_prohibited_nutrition_write(self.table_name, put_params)
         if condition_expression:
             put_params["ConditionExpression"] = condition_expression
 
@@ -348,6 +351,7 @@ class FlattenedStandardMixin:
             "TableName": self.table_name,
             "Key": entity.key,
         }
+        refuse_prohibited_nutrition_write(self.table_name, delete_params)
         if condition_expression:
             delete_params["ConditionExpression"] = condition_expression
 
@@ -390,6 +394,7 @@ class FlattenedStandardMixin:
         self, request_items: list[WriteRequestTypeDef]
     ) -> None:
         """Execute batch write operations with retry logic."""
+        refuse_prohibited_nutrition_write(self.table_name, request_items)
         remaining_items = request_items
 
         while remaining_items:
@@ -465,6 +470,7 @@ class FlattenedStandardMixin:
         self, transact_items: list[TransactWriteItemTypeDef]
     ) -> None:
         """Execute transactional writes with chunking for large batches."""
+        refuse_prohibited_nutrition_write(self.table_name, transact_items)
         # Process in chunks of 25 (DynamoDB transact limit)
         for i in range(0, len(transact_items), 25):
             chunk = transact_items[i : i + 25]

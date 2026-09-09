@@ -12,6 +12,10 @@ from receipt_dynamo.data.base_operations import FlattenedStandardMixin
 from receipt_dynamo.data.base_operations.error_handling import (
     handle_dynamodb_errors,
 )
+from receipt_dynamo.data.base_operations.nutrition_guard import (
+    PROHIBITED_NUTRITION_WRITE_TABLES,
+    nutrition_table_is_prohibited,
+)
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
     EntityValidationError,
@@ -43,18 +47,13 @@ if TYPE_CHECKING:
         TransactWriteItemTypeDef,
     )
 
-# Nutrition rows never reach these tables. There is no override: no flag, no
-# environment variable, no constructor argument. Changing this set is a
-# reviewed code change, not a switch.
-PROHIBITED_NUTRITION_WRITE_TABLES = frozenset({"ReceiptsTable-d7ff76a"})
+# The denylist itself lives in base_operations.nutrition_guard so the generic
+# write chokepoints enforce it too; re-exported here for callers and tests.
+__all__ = [
+    "PROHIBITED_NUTRITION_WRITE_TABLES",
+    "nutrition_table_is_prohibited",
+]
 TRANSACT_ACTION_LIMIT = 100
-
-
-def nutrition_table_is_prohibited(table: Any) -> bool:
-    """DynamoDB accepts table ARNs as ``TableName``; match any spelling."""
-    return not isinstance(table, str) or any(
-        name in table for name in PROHIBITED_NUTRITION_WRITE_TABLES
-    )
 
 
 def raise_nutrition_conflict(error: ClientError) -> None:

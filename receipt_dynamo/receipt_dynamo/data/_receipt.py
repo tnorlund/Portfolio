@@ -455,6 +455,8 @@ class _Receipt(FlattenedStandardMixin):
             if not exclusive_start_key:
                 break
 
+        # A receipt cascade deletes its derived NUTRITION_SUMMARY row by
+        # design; the nutrition write guard only covers nutrition partitions.
         requests = []
         for item in items:
             if not include_parent and item["SK"]["S"] == parent_sk:
