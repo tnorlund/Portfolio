@@ -273,6 +273,8 @@ BASE = [
     "synthetic prep",
     "--containers",
     "2",
+    "--allowance",
+    "auto",
     "--as-of",
     "2026-03-02",
     "--item",
@@ -311,7 +313,7 @@ def test_owner_rate_case_is_exact_and_marks_unknowns():
     grain = rows["grain"]["row"]
     assert Decimal(grain["nutrients"]["208"]) == Decimal("320")
     assert grain["cost"] == "0.27"  # 4.00 * 4/30 / 2 = 0.2666..
-    assert "allowance:grain:0.35" in report["assumptions"]
+    assert "allowance:grain:0.35:auto" in report["assumptions"]
     oil = rows["oil"]["row"]
     assert Decimal(oil["nutrients"]["208"]) == Decimal("60")
     assert "oil.269" in report["unknown"]
@@ -432,3 +434,243 @@ def test_markdown_never_prints_zero_for_unknown():
     )
     assert greens_row.count("unknown") == 8
     assert "(4/4)" not in text and "3/4" in text
+
+
+def test_allowance_defaults_to_zero_and_reports_the_conflict():
+    client = FakeClient(_aliases())
+    argv = [
+        "--as-of",
+        "2026-03-02",
+        "--item",
+        f"grain=line:{IMG}:1:1:1cup",
+        "--assume-package",
+        "grain=1",
+        "--format",
+        "json",
+    ]
+    code, text = _run(client, argv)
+    report = json.loads(text)
+    assert code == meal_cli.EXIT_UNKNOWNS
+    grain = report["items"][0]
+    assert grain["row"] is None
+    assert grain["unknown_reason"].startswith("meal_item_invalid")
+    assert not any(a.startswith("allowance") for a in report["assumptions"])
+
+
+def test_receipt_quantity_evidence_with_dal_floats():
+    client = FakeClient(_aliases())
+    line = client.lines[(IMG, 1)][0]
+    line.raw_text = "111-22-3333 BEEF STRIPS\n2 lb @ 10.00\n20.00"
+    line.quantity = 2.0
+    line.unit_price = 10.0
+    argv = [
+        "--as-of",
+        "2026-03-02",
+        "--item",
+        f"beef=line:{IMG}:1:0:all",
+        "--rate",
+        "beef=99.00:lb",
+        "--format",
+        "json",
+    ]
+    code, text = _run(client, argv)
+    report = json.loads(text)
+    beef = report["items"][0]
+    assert beef["quantity"]["status"] == "known"
+    assert beef["quantity"]["quantity"]["method"] == "receipt"
+    # Receipt evidence wins; the owner rate was never used.
+    assert not any(a.startswith("rate:") for a in report["assumptions"])
+
+
+def test_publication_expects_every_key_read_including_absent_ones():
+    client = FakeClient(_aliases())
+    _run(
+        client,
+        [
+            "--as-of",
+            "2026-03-02",
+            "--item",
+            f"beef=line:{IMG}:1:0:all",
+            "--rate",
+            "beef=5:lb",
+        ],
+    )
+    observations, expectations = client.published[0]
+    kinds = {
+        (kind, text): revision for _, kind, text, revision in expectations
+    }
+    assert kinds[("ITEM", "111-22-3333")] == 1
+    assert ("TEXT", "BEEF STRIPS") in kinds and kinds[
+        ("TEXT", "BEEF STRIPS")
+    ] is None
+    statuses = {(o.kind, o.text): o.status for o in observations}
+    assert statuses[("ITEM", "111-22-3333")] == "matched"
+    assert statuses[("TEXT", "BEEF STRIPS")] == "no_match"
+
+
+def test_pending_alias_still_publishes_its_pointer():
+    pending = _alias(
+        SLUG, "TEXT", "GRAIN LONG", GRAIN, status="pending", method="lexical"
+    )
+    client = FakeClient([pending])
+    code, _ = _run(
+        client,
+        ["--as-of", "2026-03-02", "--item", f"grain=line:{IMG}:1:1:1cup"],
+    )
+    assert code == meal_cli.EXIT_PENDING
+    observations, _ = client.published[0]
+    assert {o.status for o in observations} == {"pending"}
+
+
+def test_two_lines_through_one_alias_both_get_pointers():
+    client = FakeClient(_aliases())
+    client.lines[(IMG, 1)].append(_line(4, "EGGS DOZEN", "3.00"))
+    _run(
+        client,
+        [
+            "--as-of",
+            "2026-03-02",
+            "--item",
+            f"a=line:{IMG}:1:3:1each",
+            "--quantity",
+            "a=12:each",
+            "--item",
+            f"b=line:{IMG}:1:4:1each",
+            "--quantity",
+            "b=12:each",
+        ],
+    )
+    observations, _ = client.published[0]
+    assert {o.item_index for o in observations} == {3, 4}
+
+
+def test_namespaced_product_source_and_owner_price():
+    client = FakeClient(_aliases())
+    argv = [
+        "--as-of",
+        "2026-03-02",
+        "--item",
+        f"e=product:{EGG.product_id}@{EGG.revision}:3each",
+        "--quantity",
+        "e=12:each",
+        "--price",
+        "e=3",
+        "--format",
+        "json",
+    ]
+    code, text = _run(client, argv)
+    report = json.loads(text)
+    assert code == meal_cli.EXIT_OK
+    assert report["items"][0]["row"]["cost"] == "0.75"
+    assert "price:e:3" in report["assumptions"]
+
+
+def test_missing_price_keeps_nutrients_and_marks_cost_unknown():
+    client = FakeClient(_aliases())
+    argv = [
+        "--as-of",
+        "2026-03-02",
+        "--item",
+        f"e=product:{EGG.product_id}@{EGG.revision}:3each",
+        "--quantity",
+        "e=12:each",
+        "--format",
+        "json",
+    ]
+    code, text = _run(client, argv)
+    report = json.loads(text)
+    assert code == meal_cli.EXIT_UNKNOWNS
+    row = report["items"][0]["row"]
+    assert row["cost"] is None
+    assert Decimal(row["nutrients"]["208"]) == Decimal("210")
+    assert report["unknown"] == ["e.cost"]
+
+
+def test_generic_with_none_source_uses_client_and_price():
+    client = FakeClient(_aliases())
+    argv = [
+        "--as-of",
+        "2026-03-02",
+        "--coverage",
+        "off",
+        "--item",
+        "e=none:synthetic-mart:2026-03-01:3each",
+        "--generic",
+        f"e={EGG.product_id}@{EGG.revision}",
+        "--quantity",
+        "e=12:each",
+        "--price",
+        "e=3",
+        "--format",
+        "json",
+    ]
+    code, text = _run(client, argv)
+    report = json.loads(text)
+    assert code == meal_cli.EXIT_OK
+    assert report["items"][0]["row"]["cost"] == "0.75"
+    assert (
+        f"generic:e:{EGG.product_id}@{EGG.revision}" in report["assumptions"]
+    )
+
+
+def test_portion_per_container_is_divided():
+    client = FakeClient(_aliases())
+    argv = [
+        "--as-of",
+        "2026-03-02",
+        "--containers",
+        "2",
+        "--item",
+        f"eggs=line:{IMG}:1:3:6each",
+        "--quantity",
+        "eggs=12:each",
+        "--format",
+        "json",
+    ]
+    _, text = _run(client, argv)
+    report = json.loads(text)
+    assert report["items"][0]["portion_per_container"] == "3 each"
+    _, md = _run(client, argv[:-2])
+    assert "| 3 each |" in md
+
+
+def test_malformed_pointer_exits_2():
+    client = FakeClient(_aliases())
+    code, _ = _run(client, ["--item", f"x=line:{IMG}:abc:0:1g"])
+    assert code == meal_cli.EXIT_POINTER
+
+
+def test_latest_paginates_and_picks_the_newest():
+    class Paged(FakeClient):
+        def list_receipt_line_items_by_merchant(
+            self, slug, *, last_evaluated_key=None
+        ):
+            first = [_line(3, "EGGS DOZEN", "3.00")]
+            second = [_line(9, "EGGS DOZEN", "3.50")]
+            if last_evaluated_key is None:
+                return first, {"page": 2}
+            return second, None
+
+        def get_receipt_summary(self, image_id, receipt_id):
+            return SimpleNamespace(
+                merchant_name="Synthetic Mart", date=date(2026, 3, 1)
+            )
+
+    client = Paged(_aliases())
+    client.lines[(IMG, 1)].append(_line(9, "EGGS DOZEN", "3.50"))
+    _, text = _run(
+        client,
+        [
+            "--as-of",
+            "2026-03-02",
+            "--item",
+            "e=latest:synthetic-mart:TEXT#EGGS DOZEN:1each",
+            "--quantity",
+            "e=12:each",
+            "--format",
+            "json",
+        ],
+    )
+    report = json.loads(text)
+    assert report["items"][0]["pointer"] in (f"{IMG}:1:3", f"{IMG}:1:9")
+    assert report["items"][0]["row"] is not None

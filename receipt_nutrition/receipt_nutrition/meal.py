@@ -12,21 +12,17 @@ import json
 import sys
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from fractions import Fraction
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Callable, Literal
 
-from receipt_dynamo.entities.nutrition_support import (
-    check_revision,
-    nutrition_json,
-)
+from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.product_alias_observation import (
     ProductAliasObservation,
     product_alias_id,
 )
 
-from receipt_nutrition.costing import ratio_money
 from receipt_nutrition.models import (
     HouseholdServing,
     Product,
@@ -41,7 +37,6 @@ from receipt_nutrition.portions import (
     MealItem,
     Portion,
     calculate_meal,
-    render_meal,
 )
 from receipt_nutrition.prices import (
     RateChoice,
@@ -55,8 +50,13 @@ from receipt_nutrition.resolution import (
     derive_alias_keys,
     load_fleet_alias_map,
     resolve_line,
+    resolve_merchant_slug,
 )
-from receipt_nutrition.units import UNIT_FACTORS, as_decimal
+from receipt_nutrition.units import (
+    as_decimal,
+    exact_amount_in,
+    verified_source,
+)
 
 CORE_NUTRIENTS = ("208", "203", "204", "205", "269", "307")
 PORTION_UNITS = ("pkg", "g", "ml", "cup", "tbsp", "tsp", "each", "serving")
@@ -68,18 +68,19 @@ EXIT_UNKNOWNS = 3
 EXIT_PENDING = 4
 REPORT_VERSION = "meal-v2"
 KG = Fraction(1000)
+# An inferred weight is an assumption. It is stored with this many decimal
+# places (a nanogram), truncated, so the value is representable in the
+# 40-significant-digit model and any cost rounding lands on the same cent
+# as the exact ratio would.
+INFERRED_GRAMS = Decimal("0.000000001")
+
+CoverageChecker = Callable[..., dict[str, Any]]
 
 
 class MealError(Exception):
     def __init__(self, message: str, exit_code: int) -> None:
         super().__init__(message)
         self.exit_code = exit_code
-
-
-class CoverageChecker(Protocol):
-    def __call__(
-        self, *, merchant_slug: str, on: date, as_of: date
-    ) -> dict[str, Any]: ...
 
 
 @dataclass(frozen=True)
@@ -111,6 +112,8 @@ class Overrides:
     quantities: dict[str, tuple[Decimal, str]] = field(default_factory=dict)
     prices: dict[str, Decimal] = field(default_factory=dict)
     generics: dict[str, tuple[str, str]] = field(default_factory=dict)
+    allowance: Decimal | None = None  # None = auto (explicit owner choice)
+    allowance_text: str = "0"
 
 
 @dataclass(frozen=True)
@@ -148,6 +151,7 @@ class ResolvedItem:
     quantity: QuantityResolution | None = None
     meal_item: MealItem | None = None
     unknown_reason: str | None = None
+    error: MealError | None = None
 
 
 # ---------------------------------------------------------------- parsing
@@ -161,10 +165,21 @@ def _parse_portion(text: str) -> PortionSpec:
             number = text[: -len(unit)].strip()
             if not number:
                 break
-            return PortionSpec(decimal_input(number), unit)
+            try:
+                return PortionSpec(decimal_input(number), unit)
+            except (ValueError, ArithmeticError) as error:
+                raise MealError(
+                    f"bad portion {text!r}: {error}", EXIT_POINTER
+                ) from error
     raise MealError(
         f"bad portion {text!r}; use <n><unit> or all", EXIT_POINTER
     )
+
+
+def _int(text: str, what: str) -> int:
+    if not text.isdigit():
+        raise MealError(f"{what} must be a non-negative integer", EXIT_POINTER)
+    return int(text)
 
 
 def parse_item(text: str) -> ItemSpec:
@@ -173,32 +188,46 @@ def parse_item(text: str) -> ItemSpec:
             f"--item needs KEY=SRC:PORTION, got {text!r}", EXIT_POINTER
         )
     key, rest = text.split("=", 1)
-    parts = rest.split(":")
-    kind = parts[0]
-    if kind == "line" and len(parts) == 5:
+    if not key:
+        raise MealError("--item key must not be empty", EXIT_POINTER)
+    kind, _, remainder = rest.partition(":")
+    middle, _, portion_text = remainder.rpartition(":")
+    if not portion_text:
+        raise MealError(f"bad --item source {rest!r}", EXIT_POINTER)
+    portion = _parse_portion(portion_text)
+    if kind == "line":
+        parts = middle.split(":")
+        if len(parts) != 3:
+            raise MealError(
+                "line source needs <image_id>:<receipt_id>:<item_index>",
+                EXIT_POINTER,
+            )
         return ItemSpec(
             key,
             "line",
-            _parse_portion(parts[4]),
-            image_id=parts[1],
-            receipt_id=int(parts[2]),
-            item_index=int(parts[3]),
+            portion,
+            image_id=parts[0],
+            receipt_id=_int(parts[1], "receipt_id"),
+            item_index=_int(parts[2], "item_index"),
         )
-    if kind == "latest" and len(parts) >= 4:
-        alias = ":".join(parts[2:-1])
+    if kind == "latest":
+        slug, _, alias = middle.partition(":")
         alias_kind, _, alias_text = alias.partition("#")
-        if alias_kind not in ("ITEM", "TEXT") or not alias_text:
-            raise MealError(f"bad latest alias {alias!r}", EXIT_POINTER)
+        if not slug or alias_kind not in ("ITEM", "TEXT") or not alias_text:
+            raise MealError(
+                "latest source needs <slug>:ITEM#<n> or <slug>:TEXT#<text>",
+                EXIT_POINTER,
+            )
         return ItemSpec(
             key,
             "latest",
-            _parse_portion(parts[-1]),
-            merchant_slug=parts[1],
+            portion,
+            merchant_slug=slug,
             alias_kind=alias_kind,
             alias_text=alias_text,
         )
-    if kind == "product" and len(parts) == 3:
-        product_id, _, revision = parts[1].rpartition("@")
+    if kind == "product":
+        product_id, _, revision = middle.rpartition("@")
         if not product_id or not revision:
             raise MealError(
                 "product source needs <product_id>@<revision>", EXIT_POINTER
@@ -206,18 +235,21 @@ def parse_item(text: str) -> ItemSpec:
         return ItemSpec(
             key,
             "product",
-            _parse_portion(parts[2]),
+            portion,
             product_id=product_id,
             product_revision=revision,
         )
-    if kind == "none" and len(parts) == 4:
-        return ItemSpec(
-            key,
-            "none",
-            _parse_portion(parts[3]),
-            merchant_slug=parts[1],
-            on=date.fromisoformat(parts[2]),
-        )
+    if kind == "none":
+        slug, _, on_text = middle.partition(":")
+        try:
+            on = date.fromisoformat(on_text)
+        except ValueError as error:
+            raise MealError(
+                "none source needs <merchant_slug>:<yyyy-mm-dd>", EXIT_POINTER
+            ) from error
+        if not slug:
+            raise MealError("none source needs a merchant slug", EXIT_POINTER)
+        return ItemSpec(key, "none", portion, merchant_slug=slug, on=on)
     raise MealError(f"bad --item source {rest!r}", EXIT_POINTER)
 
 
@@ -228,6 +260,16 @@ def _key_value(flag: str, text: str) -> tuple[str, str]:
     return key, value
 
 
+def _decimal(flag: str, text: str) -> Decimal:
+    try:
+        value = decimal_input(text)
+    except (ValueError, ArithmeticError) as error:
+        raise MealError(f"{flag}: {error}", EXIT_POINTER) from error
+    if value <= 0:
+        raise MealError(f"{flag} must be positive", EXIT_POINTER)
+    return value
+
+
 def parse_overrides(args: argparse.Namespace) -> Overrides:
     overrides = Overrides()
     for text in args.rate:
@@ -235,10 +277,10 @@ def parse_overrides(args: argparse.Namespace) -> Overrides:
         price, _, unit = value.rpartition(":")
         if unit not in RATE_UNITS or not price:
             raise MealError(
-                f"--rate needs KEY=<price>:<lb|kg|oz>", EXIT_POINTER
+                "--rate needs KEY=<price>:<lb|kg|oz>", EXIT_POINTER
             )
         overrides.rates.setdefault(key, []).append(
-            (decimal_input(price), unit)
+            (_decimal("--rate", price), unit)
         )
     for text in args.assume_package:
         key, value = _key_value("--assume-package", text)
@@ -255,10 +297,10 @@ def parse_overrides(args: argparse.Namespace) -> Overrides:
             raise MealError(
                 "--quantity needs KEY=<n>:<g|ml|each>", EXIT_POINTER
             )
-        overrides.quantities[key] = (decimal_input(number), unit)
+        overrides.quantities[key] = (_decimal("--quantity", number), unit)
     for text in args.price:
         key, value = _key_value("--price", text)
-        overrides.prices[key] = decimal_input(value)
+        overrides.prices[key] = _decimal("--price", value)
     for text in args.generic:
         key, value = _key_value("--generic", text)
         product_id, _, revision = value.rpartition("@")
@@ -267,6 +309,13 @@ def parse_overrides(args: argparse.Namespace) -> Overrides:
                 "--generic needs KEY=<product_id>@<revision>", EXIT_POINTER
             )
         overrides.generics[key] = (product_id, revision)
+    overrides.allowance_text = args.allowance
+    if args.allowance == "auto":
+        overrides.allowance = None
+    else:
+        overrides.allowance = Decimal(0)
+        if args.allowance != "0":
+            overrides.allowance = _decimal("--allowance", args.allowance)
     return overrides
 
 
@@ -305,6 +354,13 @@ def _load_product(client: Any, product_id: str, revision: str) -> Product:
     return product_from_record(record)
 
 
+def _dal_number(value: Any) -> str | None:
+    """DAL rows carry floats; the quantity adapter refuses floats by design."""
+    if value is None or value == "":
+        return None
+    return str(value)
+
+
 def _resolve_pointer(
     client: Any,
     item: ResolvedItem,
@@ -312,8 +368,6 @@ def _resolve_pointer(
     as_of: date,
     fleet_map: dict[str, str] | None,
 ) -> None:
-    from receipt_nutrition.resolution import resolve_merchant_slug
-
     spec = item.spec
     assert spec.image_id is not None and spec.receipt_id is not None
     lines = _line_items(client, spec.image_id, spec.receipt_id)
@@ -348,8 +402,8 @@ def _resolve_pointer(
     item.purchase_date = purchase_date
     item.line_text = getattr(line, "raw_text", "") or line.name
     item.price = decimal_input(str(line.price))
-    item.raw_quantity = getattr(line, "quantity", None)
-    item.raw_unit_price = getattr(line, "unit_price", None)
+    item.raw_quantity = _dal_number(getattr(line, "quantity", None))
+    item.raw_unit_price = _dal_number(getattr(line, "unit_price", None))
     resolution = None
     for slug in candidates:
         resolution = resolve_line(
@@ -371,18 +425,34 @@ def _resolve_pointer(
         )
         item.product_revision = resolution.product_revision
     elif resolution.status == "pending":
-        raise MealError(
-            f"{spec.key}: alias pending for {slug} "
-            f"{[ (r.kind, r.text) for r in resolution.alias_refs ]} "
+        item.error = MealError(
+            f"{spec.key}: alias pending for {item.merchant_slug} "
+            f"{[(r.kind, r.text) for r in resolution.alias_refs]} "
             f"({resolution.reason})",
             EXIT_PENDING,
         )
     else:
-        raise MealError(
-            f"{spec.key}: no usable alias for {slug!r} text "
-            f"{item.line_text!r} ({resolution.status}: {resolution.reason})",
+        item.error = MealError(
+            f"{spec.key}: no usable alias for {item.merchant_slug!r} text "
+            f"{line.name!r} ({resolution.status}: {resolution.reason})",
             EXIT_POINTER,
         )
+
+
+def _merchant_lines(client: Any, merchant_slug: str) -> list[Any]:
+    lines: list[Any] = []
+    cursor = None
+    while True:
+        result = client.list_receipt_line_items_by_merchant(
+            merchant_slug, last_evaluated_key=cursor
+        )
+        if isinstance(result, tuple):
+            page, cursor = result[0], result[1]
+        else:
+            page, cursor = result, None
+        lines.extend(page)
+        if not cursor:
+            return lines
 
 
 def _resolve_latest(
@@ -394,10 +464,8 @@ def _resolve_latest(
 ) -> None:
     spec = item.spec
     assert spec.merchant_slug and spec.alias_kind and spec.alias_text
-    result = client.list_receipt_line_items_by_merchant(spec.merchant_slug)
-    lines = list(result[0] if isinstance(result, tuple) else result)
     candidates = []
-    for line in lines:
+    for line in _merchant_lines(client, spec.merchant_slug):
         keys = derive_alias_keys(line.name, merchant_slug=spec.merchant_slug)
         if (spec.alias_kind, spec.alias_text) in keys.lookups:
             purchase_date, _ = _purchase_date(
@@ -428,27 +496,6 @@ def _resolve_latest(
 
 def _rate_to_grams(price: Decimal, rate: Rate) -> Fraction:
     return Fraction(price) / rate.choice.price_per_kg * KG
-
-
-def _needed_allowance(product: Product) -> Fraction | None:
-    """The smallest rounding allowance that reconciles net and servings."""
-    from receipt_nutrition.units import exact_amount_in, verified_source
-
-    if not (
-        product.net_amount
-        and product.serving
-        and product.servings_per_container is not None
-        and verified_source(product, product.package_source_ref)
-    ):
-        return None
-    net = exact_amount_in(product.net_amount, product.serving.unit, product)
-    if net is None:
-        return None
-    count = Fraction(product.servings_per_container)
-    declared = count * Fraction(product.serving.value)
-    if net == declared:
-        return None
-    return abs(net - declared) / count
 
 
 def _decide_quantity(
@@ -501,14 +548,14 @@ def _decide_quantity(
     if product.sold_by == "weight" and item.price is not None:
         rate = _select_weight_rate(client, item, overrides, as_of=as_of)
         if rate is not None:
-            grams = _rate_to_grams(item.price, rate)
-            # An inferred weight is an assumption; a milligram is far below
-            # the rate's own uncertainty and keeps the value representable.
+            grams = as_decimal(_rate_to_grams(item.price, rate)).quantize(
+                INFERRED_GRAMS, rounding=ROUND_DOWN
+            )
             item.quantity = QuantityResolution(
                 status="known",
                 reason=f"inferred_from_rate:{rate.source}",
                 quantity=QuantityEvidence(
-                    value=as_decimal(grams).quantize(Decimal("0.001")),
+                    value=grams,
                     unit="g",
                     method="user",
                     reference=(
@@ -587,7 +634,7 @@ def _portion(item: ResolvedItem) -> Portion | None:
             value=quantity.value, unit=quantity.unit, reference="all purchased"
         )
     unit = "package" if spec.unit == "pkg" else spec.unit
-    return Portion(value=spec.value, unit=unit, reference=f"--item portion")
+    return Portion(value=spec.value, unit=unit, reference="--item portion")
 
 
 def _household(item: ResolvedItem) -> HouseholdServing | None:
@@ -607,36 +654,77 @@ def _household(item: ResolvedItem) -> HouseholdServing | None:
     )
 
 
+def _needed_allowance(product: Product) -> Fraction | None:
+    """The smallest rounding allowance that reconciles net and servings."""
+    if not (
+        product.net_amount
+        and product.serving
+        and product.servings_per_container is not None
+        and verified_source(product, product.package_source_ref)
+    ):
+        return None
+    net = exact_amount_in(product.net_amount, product.serving.unit, product)
+    if net is None:
+        return None
+    count = Fraction(product.servings_per_container)
+    declared = count * Fraction(product.serving.value)
+    if net == declared:
+        return None
+    return abs(net - declared) / count
+
+
+def _allowance(item: ResolvedItem, overrides: Overrides) -> Fraction:
+    product = item.product
+    assert product is not None
+    if overrides.allowance is not None:
+        allowance = Fraction(overrides.allowance)
+        if allowance and _needed_allowance(product) is not None:
+            item.assumptions.append(
+                f"allowance:{item.spec.key}:{overrides.allowance}:owner"
+            )
+        return allowance
+    needed = _needed_allowance(product)
+    if needed is None or product.serving is None:
+        return Fraction(0)
+    cap = min(Fraction(1, 2), Fraction(product.serving.value) / 20)
+    if product.serving.unit == "each":
+        cap = Fraction()
+    if needed <= cap:
+        item.assumptions.append(
+            f"allowance:{item.spec.key}:{as_decimal(needed)}:auto"
+        )
+        return needed
+    return Fraction(0)
+
+
 def _build_meal_item(
-    item: ResolvedItem, allowance_mode: str
+    item: ResolvedItem, overrides: Overrides
 ) -> MealItem | None:
     product = item.product
-    if product is None or item.quantity is None or item.price is None:
+    if product is None or item.quantity is None:
         return None
     portion = _portion(item)
     if portion is None:
         item.unknown_reason = item.unknown_reason or "portion_needs_quantity"
         return None
-    allowance = Fraction(0)
-    if allowance_mode == "auto":
-        needed = _needed_allowance(product)
-        if needed is not None:
-            cap = min(Fraction(1, 2), Fraction(product.serving.value) / 20)
-            if product.serving.unit == "each":
-                cap = Fraction()
-            if needed <= cap:
-                allowance = needed
-                item.assumptions.append(
-                    f"allowance:{item.spec.key}:{as_decimal(needed)}"
-                )
+    if item.price is None:
+        # Nutrients depend only on the quantity; the cost stays unknown by
+        # marking the purchase excluded from costing.
+        purchase = Purchase(
+            extended_price=Decimal(0),
+            quantity=item.quantity,
+            is_adjustment=True,
+        )
+        item.unknown_reason = item.unknown_reason or "price_unknown"
+    else:
+        purchase = Purchase(extended_price=item.price, quantity=item.quantity)
+    allowance = _allowance(item, overrides)
     household = _household(item)
     try:
         return MealItem(
             key=item.spec.key,
             product=product,
-            purchase=Purchase(
-                extended_price=item.price, quantity=item.quantity
-            ),
+            purchase=purchase,
             portion=portion,
             household_serving=household,
             assumptions=tuple(item.assumptions),
@@ -651,9 +739,15 @@ def _build_meal_item(
 
 
 def _publish_pointers(client: Any, items: list[ResolvedItem]) -> None:
+    """One pointer per (alias key, receipt line) for every key that was read.
+
+    Every key the resolver looked up gets an expectation, including keys with
+    no row (revision None), so a decision written under any of them between
+    the read and this publish fails the transaction.
+    """
     observations: list[ProductAliasObservation] = []
-    expectations: list[tuple[str, str, str, int | None]] = []
-    seen: set[tuple[str, str, str]] = set()
+    expectations: dict[tuple[str, str, str], int | None] = {}
+    seen: set[tuple[str, str, str, str, int, int]] = set()
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     for item in items:
         resolution = item.resolution
@@ -662,32 +756,47 @@ def _publish_pointers(client: Any, items: list[ResolvedItem]) -> None:
             continue
         assert spec.image_id is not None and spec.receipt_id is not None
         assert spec.item_index is not None
-        for ref in resolution.alias_refs:
-            key = (item.merchant_slug, ref.kind, ref.text)
-            if key in seen:
-                continue
-            seen.add(key)
-            status = resolution.status if ref.revision else "no_match"
-            matched = (
-                resolution.status == "matched" and ref.revision is not None
+        read = {
+            (ref.kind, ref.text): ref.revision for ref in resolution.alias_refs
+        }
+        for kind, text in resolution.keys.lookups:
+            alias_key = (item.merchant_slug, kind, text)
+            revision = read.get((kind, text))
+            if (
+                alias_key in expectations
+                and expectations[alias_key] != revision
+            ):
+                raise MealError(
+                    f"{spec.key}: alias {kind}#{text} read at two revisions",
+                    EXIT_INTERNAL,
+                )
+            expectations[alias_key] = revision
+            pointer = (
+                *alias_key,
+                spec.image_id,
+                spec.receipt_id,
+                spec.item_index,
             )
+            if pointer in seen:
+                continue
+            seen.add(pointer)
+            matched = resolution.status == "matched" and revision is not None
+            if matched:
+                status = "matched"
+            elif revision is None:
+                status = "no_match"
+            elif resolution.status in ("pending", "rejected", "not_food"):
+                status = resolution.status
+            else:
+                status = "no_match"
             observations.append(
                 ProductAliasObservation(
-                    alias_id=product_alias_id(*key),
+                    alias_id=product_alias_id(*alias_key),
                     merchant_slug=item.merchant_slug,
-                    kind=ref.kind,
-                    text=ref.text,
-                    status=(
-                        "matched"
-                        if matched
-                        else (
-                            status
-                            if status
-                            in ("pending", "rejected", "not_food", "no_match")
-                            else "no_match"
-                        )
-                    ),
-                    alias_revision=ref.revision or 0,
+                    kind=kind,
+                    text=text,
+                    status=status,
+                    alias_revision=revision or 0,
                     image_id=spec.image_id,
                     receipt_id=spec.receipt_id,
                     item_index=spec.item_index,
@@ -698,11 +807,13 @@ def _publish_pointers(client: Any, items: list[ResolvedItem]) -> None:
                     ),
                 )
             )
-            expectations.append((*key, ref.revision or None))
     if observations:
         client.publish_alias_observations(
             observations,
-            alias_expectations=expectations,
+            alias_expectations=[
+                (*alias_key, revision)
+                for alias_key, revision in expectations.items()
+            ],
             expected_table_name=client.table_name,
         )
 
@@ -723,18 +834,28 @@ def _unknown_fields(
     return unknown
 
 
+def _share(value: str, containers: int) -> str:
+    """A portion divided among containers, shown exactly."""
+    share = Fraction(decimal_input(value)) / containers
+    if share.denominator == 1:
+        return str(share.numerator)
+    whole, rest = divmod(share.numerator, share.denominator)
+    fraction = f"{rest}/{share.denominator}"
+    return f"{whole} {fraction}" if whole else fraction
+
+
 def build_report(
     items: list[ResolvedItem],
     *,
     title: str,
     containers: int,
-    allowance_mode: str,
+    overrides: Overrides,
     as_of: date,
 ) -> dict[str, Any]:
     meal_items = []
     for item in items:
         if item.product is not None:
-            item.meal_item = _build_meal_item(item, allowance_mode)
+            item.meal_item = _build_meal_item(item, overrides)
         if item.meal_item is not None:
             meal_items.append(item.meal_item)
     result = (
@@ -780,12 +901,14 @@ def build_report(
                 assumptions.append(
                     f"coverage_window:{item.spec.key}:{start}:{end}"
                 )
+        portion = row["portion"] if row else None
         per_item.append(
             {
                 "key": item.spec.key,
                 "source": item.spec.source,
                 "pointer": (
-                    f"{item.spec.image_id}:{item.spec.receipt_id}:{item.spec.item_index}"
+                    f"{item.spec.image_id}:{item.spec.receipt_id}:"
+                    f"{item.spec.item_index}"
                     if item.spec.image_id
                     else None
                 ),
@@ -803,6 +926,11 @@ def build_report(
                 "quantity": (
                     item.quantity.model_dump(mode="json")
                     if item.quantity
+                    else None
+                ),
+                "portion_per_container": (
+                    f"{_share(portion['value'], containers)} {portion['unit']}"
+                    if portion
                     else None
                 ),
                 "band": [
@@ -824,6 +952,7 @@ def build_report(
         "report_version": REPORT_VERSION,
         "as_of": as_of.isoformat(),
         "containers": containers,
+        "allowance": overrides.allowance_text,
         "items": per_item,
         "totals": totals,
         "cost": result["cost"] if result and everything_rowed else None,
@@ -838,7 +967,9 @@ def build_report(
         ),
         "unknown": unknown,
         "assumptions": assumptions,
-        "calculator_version": result["calculator_version"] if result else None,
+        "calculator_version": (
+            result["calculator_version"] if result else None
+        ),
     }
 
 
@@ -850,9 +981,11 @@ def render_report(report: dict[str, Any]) -> str:
     lines = [
         f"# {report['title']}",
         "",
-        f"Per container, {report['containers']} containers, as of {report['as_of']}.",
+        f"Per container, {report['containers']} containers, "
+        f"as of {report['as_of']}.",
         "",
-        "| Item | Portion per container | Cost | kcal | Protein g | Fat g | Carb g | Sugar g | Sodium mg |",
+        "| Item | Portion per container | Cost | kcal | Protein g | Fat g "
+        "| Carb g | Sugar g | Sodium mg |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     n = report["item_count"]
@@ -862,7 +995,7 @@ def render_report(report: dict[str, Any]) -> str:
             portion = "unknown"
             cells = ["unknown"] * 7
         else:
-            portion = f"{row['portion']['value']} {row['portion']['unit']}"
+            portion = item["portion_per_container"]
             nutrients = row["nutrients"]
             cells = ["$" + row["cost"] if row["cost"] else "unknown"] + [
                 _fmt(nutrients.get(key)) for key in CORE_NUTRIENTS
@@ -877,7 +1010,8 @@ def render_report(report: dict[str, Any]) -> str:
         subtotal_cells.append("$" + report["cost"])
     elif report["cost_items"]:
         subtotal_cells.append(
-            f"${report['available_cost_subtotal']} ({report['cost_items']}/{n})"
+            f"${report['available_cost_subtotal']} "
+            f"({report['cost_items']}/{n})"
         )
     else:
         subtotal_cells.append("unknown")
@@ -889,7 +1023,8 @@ def render_report(report: dict[str, Any]) -> str:
             subtotal_cells.append(_fmt(total["amount"]))
         else:
             subtotal_cells.append(
-                f"{_fmt(total['available_subtotal'])} ({total['items_with_value']}/{n})"
+                f"{_fmt(total['available_subtotal'])} "
+                f"({total['items_with_value']}/{n})"
             )
     lines.append("| **subtotal** | | " + " | ".join(subtotal_cells) + " |")
     complete = report["cost"] is not None and all(
@@ -922,26 +1057,29 @@ def render_report(report: dict[str, Any]) -> str:
         for item in bands:
             for choice in item["band"]:
                 lines.append(
-                    f"| {item['key']} | {choice['price_per_unit']}/{choice['unit']} | {choice['source']} | {choice['effective_on']} |"
+                    f"| {item['key']} | {choice['price_per_unit']}/"
+                    f"{choice['unit']} | {choice['source']} | "
+                    f"{choice['effective_on']} |"
                 )
     lines += ["", "Cost basis:"]
     for item in report["items"]:
         row = item["row"]
         quantity = item["quantity"]
-        shown_quantity = (
-            f"{quantity['quantity']['value']} {quantity['quantity']['unit']} ({quantity['reason']})"
-            if quantity and quantity.get("quantity")
-            else (
-                quantity["status"] + ":" + quantity["reason"]
-                if quantity
-                else "unknown"
+        if quantity and quantity.get("quantity"):
+            shown_quantity = (
+                f"{quantity['quantity']['value']} "
+                f"{quantity['quantity']['unit']} ({quantity['reason']})"
             )
-        )
+        elif quantity:
+            shown_quantity = quantity["status"] + ":" + quantity["reason"]
+        else:
+            shown_quantity = "unknown"
         lines.append(
             f"- {item['key']}: pointer {item['pointer'] or item['source']}, "
             f"price {item['price'] or 'unknown'}, quantity {shown_quantity}, "
             f"cost basis {row['cost_basis'] if row else 'unknown'}, "
-            f"product {item['product_id'] or 'unknown'}@{item['product_revision'] or '-'}"
+            f"product {item['product_id'] or 'unknown'}@"
+            f"{item['product_revision'] or '-'}"
             + (
                 f", coverage {item['coverage']['outcome']}"
                 if item["coverage"]
@@ -952,7 +1090,9 @@ def render_report(report: dict[str, Any]) -> str:
         lines += ["", "Includes generic product estimates."]
     lines += [
         "",
-        f"Report `{report['report_version']}`; calculator `{report['calculator_version']}`; input hash `{report['input_hash']}`.",
+        f"Report `{report['report_version']}`; calculator "
+        f"`{report['calculator_version']}`; input hash "
+        f"`{report['input_hash']}`.",
     ]
     return "\n".join(lines) + "\n"
 
@@ -970,16 +1110,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--title", default="meal")
     parser.add_argument("--containers", type=int, default=1)
     parser.add_argument(
-        "--rate", action="append", default=[], metavar="KEY=<price>:<lb|kg|oz>"
+        "--rate",
+        action="append",
+        default=[],
+        metavar="KEY=<price>:<lb|kg|oz>",
+        help="owner-typed rate; source owner; no band",
     )
     parser.add_argument(
-        "--assume-package", action="append", default=[], metavar="KEY=N"
+        "--assume-package",
+        action="append",
+        default=[],
+        metavar="KEY=N",
+        help="N packages bought (explicit; marked estimated)",
     )
     parser.add_argument(
         "--quantity",
         action="append",
         default=[],
         metavar="KEY=<n>:<g|ml|each>",
+        help="dimensioned purchase quantity (explicit; marked estimated)",
     )
     parser.add_argument(
         "--price", action="append", default=[], metavar="KEY=<amount>"
@@ -990,9 +1139,27 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="KEY=<product_id>@<revision>",
     )
-    parser.add_argument("--allowance", choices=("auto", "0"), default="auto")
-    parser.add_argument("--coverage", choices=("on", "off"), default="on")
-    parser.add_argument("--as-of", type=date.fromisoformat, default=None)
+    parser.add_argument(
+        "--allowance",
+        default="0",
+        metavar="0|auto|<decimal>",
+        help=(
+            "servings-conflict tolerance per label serving; default 0; "
+            "auto derives the smallest reconciling value and names it"
+        ),
+    )
+    parser.add_argument(
+        "--coverage",
+        choices=("on", "off"),
+        default="on",
+        help="off records coverage:<key>:not_checked",
+    )
+    parser.add_argument(
+        "--as-of",
+        type=date.fromisoformat,
+        default=None,
+        help="bounds coverage windows and observation eligibility",
+    )
     parser.add_argument("--table", default=None)
     parser.add_argument("--format", choices=("md", "json"), default="md")
     parser.add_argument("--save", type=Path, default=None)
@@ -1002,6 +1169,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="skip alias-outcome pointer writes",
     )
     return parser
+
+
+def _first_error(items: list[ResolvedItem]) -> MealError | None:
+    errors = [item.error for item in items if item.error is not None]
+    if not errors:
+        return None
+    # A pending alias (4) is actionable; a missing one (2) is reported first
+    # only when nothing is pending.
+    for code in (EXIT_PENDING, EXIT_POINTER):
+        for error in errors:
+            if error.exit_code == code:
+                return error
+    return errors[0]
 
 
 def run(
@@ -1025,14 +1205,14 @@ def run(
         as_of = args.as_of or date.today()
         if args.containers < 1:
             raise MealError("--containers must be >= 1", EXIT_POINTER)
-        needs_client = any(spec.source != "none" for spec in specs)
+        needs_client = bool(overrides.generics) or any(
+            spec.source != "none" for spec in specs
+        )
         if client is None and needs_client:
             if not args.table:
                 raise MealError(
-                    "--table is required for receipt lookups", EXIT_POINTER
+                    "--table is required for catalog lookups", EXIT_POINTER
                 )
-            from receipt_dynamo import DynamoClient
-
             client = DynamoClient(args.table)
         if fleet_map is None:
             fleet_map = load_fleet_alias_map()
@@ -1051,16 +1231,13 @@ def run(
                     client, spec.product_id, spec.product_revision
                 )
                 item.product_revision = spec.product_revision
-                item.price = overrides.prices.get(spec.key)
-                if item.price is None:
-                    item.unknown_reason = "no_price"
             else:
                 item.unknown_reason = "no_receipt"
                 if args.coverage == "on":
                     if coverage_checker is None:
                         item.coverage = {
                             "outcome": "lookup_unavailable",
-                            "reason": "no_checker",
+                            "reason": "no_backend",
                         }
                     else:
                         assert spec.merchant_slug and spec.on
@@ -1078,23 +1255,25 @@ def run(
                 item.assumptions.append(
                     f"generic:{spec.key}:{product_id}@{revision}"
                 )
-            if item.product is not None and item.price is not None:
+            if item.price is None and spec.key in overrides.prices:
+                item.price = overrides.prices[spec.key]
+                item.assumptions.append(f"price:{spec.key}:{item.price}")
+            if item.product is not None:
                 _decide_quantity(client, item, overrides, as_of=as_of)
-            elif item.product is not None:
-                item.quantity = QuantityResolution(
-                    status="unknown", reason="no_price"
-                )
         if (
             client is not None
             and not args.no_publish
             and hasattr(client, "publish_alias_observations")
         ):
             _publish_pointers(client, items)
+        failure = _first_error(items)
+        if failure is not None:
+            raise failure
         report = build_report(
             items,
             title=args.title,
             containers=args.containers,
-            allowance_mode=args.allowance,
+            overrides=overrides,
             as_of=as_of,
         )
     except MealError as error:
