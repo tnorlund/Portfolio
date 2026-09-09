@@ -7,14 +7,16 @@ Contract: [SPEC.md](SPEC.md). Tasks: [AGENT_PLAN.md](AGENT_PLAN.md).
 
 P revised contract passed full-diff re-review with no remaining HIGH/MEDIUM
 findings after two corrections. Implementation gates remain separate below.
-A–G not implemented/evaluated yet. Historical research counts are not current
+A passed full-diff review after adversarial corrections. B–G remain pending
+as implementation milestones; local B prototypes are evaluated separately.
+Historical research counts are not current
 evaluation results. No live model, dev deployment, or public release claimed.
 
 | Gate | Status | Evidence / next action |
 |---|---|---|
 | P contract review | PASS | two MEDIUM findings fixed; full-diff second pass found none |
-| A schema/≥30 dimensional cases | NOT RUN | isolated Python 3.13 tests |
-| A honest harness/fixture validation | NOT RUN | synthetic vs source-backed modes |
+| A schema/≥30 dimensional cases | PASS | 92 Python 3.13 tests; 35 independent arithmetic cases |
+| A honest harness/fixture validation | PASS | synthetic labelled explicitly; offline/live return NOT RUN and exit 2 |
 | B persistence/generation/conditions | NOT RUN | moto tests |
 | C 20–30 product pilot evidence | NOT RUN | independent label/package verification |
 | C ≥150-line grouped held-out fixture | NOT RUN | source/split/count validation |
@@ -48,6 +50,35 @@ their resolution before committing.
   global CLI and model settings were not changed.
 - Second pass: no remaining actionable HIGH/MEDIUM findings across the full
   planning diff. `git diff --check` and Python version-consistency check pass.
+
+### A reviewed checkpoint
+
+- `.venv/bin/python -m pytest receipt_nutrition/tests -q`: 92 passed.
+- `.venv/bin/python scripts/nutrition_harness/evaluate.py --mode contract`:
+  35/35 cases passed. These are synthetic dimensional arithmetic examples,
+  not real package labels or model-quality ground truth.
+- Fixture SHA-256:
+  `fe60a6bd58626320bc08756b7e1b67d0142e9fc7cf67c76429c3d985447b4864`.
+- Missing units, incompatible dimensions, unverified source facts, negative
+  adjustments, absent nutrients, supplied/derived servings, Decimal rounding,
+  and decoder disagreement have explicit checks.
+- First diff review found and fixed fractional-token suffix matching and
+  precision loss from exact fluid-ounce conversion. Regression cases include
+  spaced fractions and grouped digits. The second review found a
+  repeating-decimal cent tie and grouped rate prefix; both are fixed. Cost
+  ratios now remain rational until final cent rounding. A third pass narrowed
+  the grouped-rate guard to preserve separate printed totals. The fourth
+  pass added mixed-fraction rate rejection; numeric rate tokens now must
+  terminate completely. A fifth pass added spaced-decimal prefix rejection;
+  apostrophe groupings and Unicode negative signs also abstain. The sixth
+  review exposed Unicode separators and discarded price denominators. The
+  adapter now full-matches a complete annotation line, eliminating numeric
+  suffix searching entirely. Mixed name/quantity lines remain unknown. Seventh-pass corrections reject
+  ambiguous integer-rate/total sequences and check separate printed totals.
+  Eighth full-diff pass: no remaining HIGH/MEDIUM findings.
+- Wheel builds successfully; this does not prove the later ARM64 Lambda runtime.
+- New package is wired into the Python 3.13 CI matrix and local/repository
+  installation lists. Provider/persistence/stream/UI are subsequent stages.
 
 ## Review corrections incorporated
 

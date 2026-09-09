@@ -103,6 +103,7 @@ jobs:
           - receipt_dynamo
           - receipt_dynamo_stream
           - receipt_places
+          - receipt_nutrition
           - receipt_langsmith
           - receipt_upload
           - receipt_agent
@@ -141,6 +142,10 @@ jobs:
 
           # Install based on package dependencies
           case "${{ matrix.package }}" in
+            receipt_nutrition)
+              pip install -e receipt_dynamo
+              pip install -e "receipt_nutrition[test]"
+              ;;
             receipt_embeddings)
               # Local receipt-dynamo dep is unpublished: install it editable
               # first so the [test]/[lint] resolves never reach for PyPI.
@@ -290,6 +295,7 @@ jobs:
           pip install --no-deps -e receipt_embeddings
           pip install --no-deps -e receipt_dynamo_stream
           pip install --no-deps -e receipt_places
+          pip install --no-deps -e receipt_nutrition
           pip install --no-deps -e receipt_agent
           pip install --no-deps -e receipt_upload
           pip install boto3 "openai>=2.8.1,<3.0.0" Pillow \
