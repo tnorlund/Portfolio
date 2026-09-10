@@ -1,10 +1,12 @@
 # Makefile for Portfolio project
 
-.PHONY: help format lint test test-fast test-integration test-e2e pre-push install-hooks clean
+.PHONY: help format lint lint-format lint-types lint-quality
+.PHONY: test test-fast test-integration test-e2e pre-push install-hooks clean
 .PHONY: export-sample-data analytics-cache analytics-cache-validate
 .PHONY: analytics-cache-invalidate analytics-cache-serve analytics-cache-stop
 
 ENV ?= dev
+PYTHON_FILES ?= .
 
 help:
 	@echo "Available commands:"
@@ -25,32 +27,30 @@ help:
 	@echo "  make analytics-cache-serve ENV=dev - Start cached DynamoDB Local"
 
 format:
-	@echo "Installing latest formatters to match CI..."
-	pip install --upgrade black isort
 	@echo "Running Black formatter..."
-	black .
+	black --line-length=79 $(PYTHON_FILES)
 	@echo "Running isort..."
-	isort .
+	isort --profile=black --line-length=79 $(PYTHON_FILES)
 
 lint-format:
 	@echo "Checking Black formatting..."
-	black --check .
+	black --check --line-length=79 $(PYTHON_FILES)
 	@echo "Checking import sorting..."
-	isort --check-only .
+	isort --check-only --profile=black --line-length=79 $(PYTHON_FILES)
 
 lint-types:
 	@echo "Running mypy type checking..."
-	cd receipt_dynamo && mypy . || true
+	cd receipt_dynamo && mypy .
 
 lint-quality:
 	@echo "Running pylint..."
-	cd receipt_dynamo && pylint receipt_dynamo || true
+	cd receipt_dynamo && pylint receipt_dynamo
 
 lint: lint-format lint-types lint-quality
 
 test-fast:
 	@echo "Running fast unit tests..."
-	cd receipt_dynamo && pytest -m "not integration and not end_to_end" --fail-fast -x
+	cd receipt_dynamo && pytest -m "not integration and not end_to_end" -x
 
 test:
 	@echo "Running all tests except e2e..."
