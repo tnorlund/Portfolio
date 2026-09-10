@@ -183,10 +183,15 @@ def update_receipt_line_items(
     if not dynamo_client.receipt_exists_consistent(image_id, receipt_id):
         dynamo_client.purge_receipt_children(image_id, receipt_id)
         return skipped
+    # Repair merchant-less rows BEFORE the recompute so the merchant index
+    # is complete for this receipt even when the recompute below aborts
+    # (SQS retries the message; the rows stay as they are meanwhile).
+    backfilled = backfill_line_item_merchants(image_id, receipt_id)
     try:
         result = _recompute_receipt_line_items(
             image_id, receipt_id, reocr_mechanism
         )
+        result["merchant_backfilled"] = backfilled
         item_count = result["items"]
         if not item_count:
             # Match the summary's legacy VALID LINE_TOTAL fallback when
@@ -219,6 +224,67 @@ def update_receipt_line_items(
         if not alive:
             dynamo_client.purge_receipt_children(image_id, receipt_id)
     return result if alive else skipped
+
+
+def backfill_line_item_merchants(image_id: str, receipt_id: int) -> int:
+    """Stamp the summary's merchant onto stored rows that carry none.
+
+    The merchant index (GSI1 ``MERCHANT#<slug>``) lists a row only when
+    its ``merchant_name`` is set, and every writer copies that value from
+    the summary at write time -- so rows written before the summary knew
+    its merchant (worker rows, or a recompute that ran ahead of place
+    resolution) stay invisible to the index until something rewrites
+    them. This runs each time this stage touches a receipt, ahead of the
+    recompute, so the repair does not depend on the recompute completing
+    or on its keep-worker / keep-recompute decision.
+
+    Changes ONLY ``merchant_name`` (plus the GSI1 keys derived from it):
+    only on rows whose value is empty, and only from this receipt's own
+    summary. Each row is a conditional field-only update through
+    ``DynamoClient.set_receipt_line_item_merchant_if_missing`` -- never a
+    whole-row put -- so a row rewritten or corrected between the read
+    and the write is left alone (the update's condition fails and the
+    row is skipped). Returns the number of rows stamped -- 0 when the
+    summary is missing, has no merchant, or every row already carries
+    one.
+    """
+    if dynamo_client is None:
+        raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+    try:
+        record = dynamo_client.get_receipt_summary(image_id, receipt_id)
+    except EntityNotFoundError:
+        return 0
+    merchant = getattr(getattr(record, "summary", None), "merchant_name", None)
+    if not isinstance(merchant, str) or not merchant.strip():
+        return 0
+    try:
+        stored = dynamo_client.get_receipt_line_items_from_receipt(
+            image_id, receipt_id
+        )
+    except EntityNotFoundError:
+        stored = []
+    missing = [
+        row
+        for row in stored
+        if not str(getattr(row, "merchant_name", None) or "").strip()
+    ]
+    if not missing:
+        return 0
+    stamped = sum(
+        dynamo_client.set_receipt_line_item_merchant_if_missing(row, merchant)
+        for row in missing
+    )
+    logger.info(
+        "backfilled merchant %r onto %d of %d line items for %s:%d "
+        "(%d skipped: changed concurrently)",
+        merchant,
+        stamped,
+        len(stored),
+        image_id[:8],
+        receipt_id,
+        len(missing) - stamped,
+    )
+    return stamped
 
 
 def _recompute_receipt_line_items(
