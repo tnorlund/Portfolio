@@ -5,6 +5,7 @@ boundary, then retry the public handler. They deliberately avoid depending on
 the operation journal's representation or its internal stage names.
 """
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -72,7 +73,12 @@ def test_native_failure_retries_same_output_with_reversed_sources(
 
 
 @pytest.mark.parametrize(
-    "method", ["delete_receipt", "purge_receipt_children", "update_image"]
+    "method",
+    [
+        "delete_receipt",
+        "purge_receipt_children",
+        "update_receipt_merge_image",
+    ],
 )
 def test_cleanup_failure_resumes_without_rebuilding_output(
     merge_case: Any, monkeypatch: pytest.MonkeyPatch, method: str
@@ -209,3 +215,46 @@ def test_completed_output_can_be_used_in_a_later_merge(
     } == {output_id}
     assert env.db.get_image(IMAGE_ID).receipt_count == 1
     assert env.native.call_count == 2
+
+
+def test_disjoint_merges_serialize_image_count_updates(
+    merge_case: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A stale count from one merge must not overwrite another merge's count."""
+    env = merge_case
+    env.db.add_receipt(replace(env.sources[1], receipt_id=4))
+    for line in env.db.list_receipt_lines_from_receipt(IMAGE_ID, 1):
+        env.db.add_receipt_line(replace(line, receipt_id=4))
+    for word in env.db.list_receipt_words_from_receipt(IMAGE_ID, 1):
+        env.db.add_receipt_word(replace(word, receipt_id=4))
+    env.db.update_image(replace(env.image, receipt_count=4))
+    update_image = env.db.update_receipt_merge_image
+    other_event = {**EVENT, "receipt_ids": [3, 4]}
+    nested_results = []
+    entered = False
+
+    def update_after_another_merge(operation: Any, image: Any) -> Any:
+        nonlocal entered
+        if not entered:
+            entered = True
+            nested_results.append(merge.handler(other_event, None))
+        return update_image(operation, image)
+
+    monkeypatch.setattr(
+        env.db, "update_receipt_merge_image", update_after_another_merge
+    )
+    first = merge.handler(EVENT, None)
+    assert first["status"] == "success", first
+    survivors = env.db.get_receipts_from_image_consistent(IMAGE_ID)
+    assert env.db.get_image(IMAGE_ID).receipt_count == len(survivors)
+    assert len(nested_results) == 1
+    assert nested_results[0]["status"] == "error", nested_results
+
+    second = merge.handler(other_event, None)
+    assert second["status"] == "success", second
+    survivors = env.db.get_receipts_from_image_consistent(IMAGE_ID)
+    assert {receipt.receipt_id for receipt in survivors} == {
+        first["new_receipt_id"],
+        second["new_receipt_id"],
+    }
+    assert env.db.get_image(IMAGE_ID).receipt_count == len(survivors) == 2
