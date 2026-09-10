@@ -2083,6 +2083,116 @@ extend_items_section to repair the boundary.""",
             },
         ),
         Tool(
+            name="confirm_product_alias",
+            description="""Record the owner's decision that a merchant alias maps to one product revision.
+
+Writes PRODUCT_ALIAS#{merchant_slug} / {kind}#{text} as status "matched",
+method "user", confirmed_by_user true, no expiry, pinned to
+FOOD_PRODUCT#{product_id} / REV#{product_revision}. That product revision
+must already exist: the tool checks first and refuses (writing nothing)
+when it does not.
+
+The write is a compare-and-swap on the alias revision. Pass the revision
+you read as expected_alias_revision (null when the alias does not exist
+yet). A stale revision returns {"conflict": true, "current_revision": N}
+with the current row; re-read, decide again, and call again with N. The
+tool never retries on its own. Automatic resolvers can never overwrite a
+user decision afterwards.
+
+`text` is the exact alias key text: for TEXT the normalized line text as
+stored on the pending alias, for ITEM the merchant's item identifier.
+
+WARNING: this WRITES to DynamoDB (the configured table).""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "merchant_slug": {
+                        "type": "string",
+                        "description": "Merchant slug the alias is scoped to (e.g. costco-wholesale)",
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["TEXT", "ITEM"],
+                        "description": "Alias key kind: TEXT (normalized line text) or ITEM (merchant item identifier)",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Exact alias key text",
+                    },
+                    "product_id": {
+                        "type": "string",
+                        "description": "Product identity to pin (e.g. tj:084621, fdc:171287)",
+                    },
+                    "product_revision": {
+                        "type": "string",
+                        "description": "Content-hash revision (64 hex chars) of the product; must already exist",
+                    },
+                    "expected_alias_revision": {
+                        "type": ["integer", "null"],
+                        "description": "Alias revision you read before deciding; null when the alias must not exist yet",
+                    },
+                },
+                "required": [
+                    "merchant_slug",
+                    "kind",
+                    "text",
+                    "product_id",
+                    "product_revision",
+                    "expected_alias_revision",
+                ],
+            },
+        ),
+        Tool(
+            name="reject_product_alias",
+            description="""Record the owner's decision that a merchant alias must NOT resolve to a product.
+
+Writes PRODUCT_ALIAS#{merchant_slug} / {kind}#{text} as status "rejected"
+(or "not_food" for lines that are not food at all), method "user",
+confirmed_by_user true, no expiry, and no product pin (only matched
+aliases carry product_id / product_revision).
+
+Same compare-and-swap as confirm_product_alias: expected_alias_revision
+must equal the revision you read (null when the alias does not exist
+yet); a stale revision returns {"conflict": true, "current_revision": N}
+and nothing is written. Automatic resolvers can never overwrite a user
+decision afterwards.
+
+WARNING: this WRITES to DynamoDB (the configured table).""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "merchant_slug": {
+                        "type": "string",
+                        "description": "Merchant slug the alias is scoped to (e.g. costco-wholesale)",
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["TEXT", "ITEM"],
+                        "description": "Alias key kind: TEXT (normalized line text) or ITEM (merchant item identifier)",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Exact alias key text",
+                    },
+                    "expected_alias_revision": {
+                        "type": ["integer", "null"],
+                        "description": "Alias revision you read before deciding; null when the alias must not exist yet",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["rejected", "not_food"],
+                        "description": "rejected (default): the proposed product is wrong; not_food: the line is not a food item",
+                    },
+                },
+                "required": [
+                    "merchant_slug",
+                    "kind",
+                    "text",
+                    "expected_alias_revision",
+                ],
+            },
+        ),
+        Tool(
             name="extend_items_section",
             description="""Arithmetic-VERIFIED extension of the ITEMS section.
 
@@ -2452,6 +2562,29 @@ async def call_tool(
                 dynamo_client,
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
+            )
+        elif name == "confirm_product_alias":
+            result = await confirm_product_alias_impl(
+                dynamo_client,
+                merchant_slug=arguments["merchant_slug"],
+                kind=arguments["kind"],
+                text=arguments["text"],
+                product_id=arguments["product_id"],
+                product_revision=arguments["product_revision"],
+                expected_alias_revision=arguments.get(
+                    "expected_alias_revision"
+                ),
+            )
+        elif name == "reject_product_alias":
+            result = await reject_product_alias_impl(
+                dynamo_client,
+                merchant_slug=arguments["merchant_slug"],
+                kind=arguments["kind"],
+                text=arguments["text"],
+                expected_alias_revision=arguments.get(
+                    "expected_alias_revision"
+                ),
+                status=arguments.get("status", "rejected"),
             )
         elif name == "extend_items_section":
             result = await extend_items_section_impl(
@@ -5276,6 +5409,256 @@ def _reconcile_stored_items(items: list[dict], summary: Optional[dict]):
     from receipt_upload.line_items.geometry import reconcile_extracted_items
 
     return reconcile_extracted_items(items, summary)
+
+
+USER_REJECT_STATUSES = ("rejected", "not_food")
+# Nutrition rows are never written to production this sprint: no flag, no
+# environment variable, no deployed-caller exception. Lifting this is a
+# reviewed change to this tuple, not a switch. Same fragment test as
+# scripts/seed_nutrition_pilot.py.
+PROD_TABLE_FRAGMENTS = ("d7ff76a",)
+
+
+def _product_alias_payload(alias) -> dict:
+    """JSON view of a saved alias row: revision, status, method, pin."""
+    return {
+        "merchant_slug": alias.merchant_slug,
+        "kind": alias.kind,
+        "text": alias.text,
+        "alias_id": alias.alias_id,
+        "revision": alias.revision,
+        "status": alias.status,
+        "method": alias.method,
+        "confirmed_by_user": alias.confirmed_by_user,
+        "expires_at": alias.expires_at,
+        "product_id": alias.product_id,
+        "product_revision": alias.product_revision,
+        "changed_at": alias.changed_at,
+    }
+
+
+def _product_alias_conflict(message: str, current) -> dict:
+    """Stale-revision result: names the current revision, never retries."""
+    result = {
+        "error": message,
+        "conflict": True,
+        "current_revision": current.revision if current else 0,
+    }
+    if current is not None:
+        result["current"] = _product_alias_payload(current)
+    return result
+
+
+def _save_user_alias_decision(
+    dynamo_client,
+    *,
+    tool: str,
+    merchant_slug: str,
+    kind: str,
+    text: str,
+    status: str,
+    product_id: Optional[str],
+    product_revision: Optional[str],
+    expected_alias_revision: Optional[int],
+) -> dict:
+    """Shared confirm/reject path: user method, no expiry, CAS on revision.
+
+    Reads go through the DynamoClient accessors and the single write is
+    ``save_product_alias`` with the client's own table name, so the DAL's
+    table guard and its conditions (revision compare-and-swap, product
+    revision must exist, automatic writes never replace a user decision)
+    are the authority. The pre-reads only turn the most common failures
+    into messages that say what to do next.
+    """
+    from datetime import datetime, timezone
+
+    from receipt_dynamo.data.shared_exceptions import (
+        EntityValidationError,
+        NutritionConflictError,
+    )
+    from receipt_dynamo.entities.product_alias import (
+        ProductAlias,
+        product_alias_key,
+    )
+
+    table_name = getattr(dynamo_client, "table_name", None)
+    if not isinstance(table_name, str) or any(
+        fragment in table_name for fragment in PROD_TABLE_FRAGMENTS
+    ):
+        return {
+            "error": (
+                f"refusing to write nutrition rows to table {table_name!r}: "
+                "user alias decisions are dev-only this sprint"
+            )
+        }
+    if kind not in ("TEXT", "ITEM"):
+        return {"error": f"kind must be TEXT or ITEM, got {kind!r}"}
+    if expected_alias_revision is None:
+        expected = 0
+    elif type(expected_alias_revision) is int and expected_alias_revision >= 0:
+        expected = expected_alias_revision
+    else:
+        return {
+            "error": (
+                "expected_alias_revision must be a non-negative integer "
+                "(the revision you read) or null (alias must not exist yet)"
+            )
+        }
+    try:
+        product_alias_key(merchant_slug, kind, text)
+    except EntityValidationError as error:
+        return {"error": f"invalid alias key: {error}"}
+
+    if status == "matched":
+        pin = f"FOOD_PRODUCT#{product_id} / REV#{product_revision}"
+        try:
+            product = dynamo_client.get_food_product(
+                product_id, product_revision
+            )
+        except EntityValidationError as error:
+            return {"error": f"invalid product pin {pin}: {error}"}
+        if product is None:
+            return {
+                "error": (
+                    f"{pin} does not exist; confirm only pins an existing "
+                    "product revision. List the product's revisions and "
+                    "pass one of them as product_revision."
+                ),
+                "product_id": product_id,
+                "product_revision": product_revision,
+            }
+
+    existing = dynamo_client.get_product_alias(merchant_slug, kind, text)
+    current_revision = existing.revision if existing else 0
+    if current_revision != expected:
+        return _product_alias_conflict(
+            f"alias revision is {current_revision}, not {expected}; "
+            "re-read the alias and call again with "
+            f"expected_alias_revision={current_revision}",
+            existing,
+        )
+
+    now = datetime.now(timezone.utc)
+    if existing is not None:
+        applicability_json = existing.applicability_json
+    else:
+        applicability_json = json.dumps(
+            {"merchant_slug": merchant_slug, "kind": kind, "text": text}
+        )
+    decision = {
+        "tool": tool,
+        "decided_by": "user",
+        "previous_revision": current_revision,
+        "previous_status": existing.status if existing else None,
+        "previous_method": existing.method if existing else None,
+        "previous_product_id": existing.product_id if existing else None,
+        "previous_product_revision": (
+            existing.product_revision if existing else None
+        ),
+    }
+    try:
+        alias = ProductAlias(
+            merchant_slug=merchant_slug,
+            kind=kind,
+            text=text,
+            revision=expected + 1,
+            status=status,
+            method="user",
+            changed_at=now.isoformat(timespec="milliseconds"),
+            applicability_json=applicability_json,
+            decision_json=json.dumps(decision),
+            product_id=product_id if status == "matched" else None,
+            product_revision=(
+                product_revision if status == "matched" else None
+            ),
+            confirmed_by_user=True,
+            expires_at=None,
+        )
+    except EntityValidationError as error:
+        return {"error": f"invalid alias decision: {error}"}
+
+    try:
+        saved = dynamo_client.save_product_alias(
+            alias,
+            expected_revision=expected,
+            expected_table_name=dynamo_client.table_name,
+        )
+    except NutritionConflictError:
+        current = dynamo_client.get_product_alias(merchant_slug, kind, text)
+        now_revision = current.revision if current else 0
+        return _product_alias_conflict(
+            "alias changed between read and write: revision is now "
+            f"{now_revision} (expected {expected}); re-read the alias and "
+            f"call again with expected_alias_revision={now_revision}",
+            current,
+        )
+    return {
+        "success": True,
+        "tool": tool,
+        "previous_revision": current_revision,
+        "previous_status": existing.status if existing else None,
+        "alias": _product_alias_payload(saved),
+    }
+
+
+async def confirm_product_alias_impl(
+    dynamo_client,
+    merchant_slug: str,
+    kind: str,
+    text: str,
+    product_id: str,
+    product_revision: str,
+    expected_alias_revision: Optional[int],
+) -> dict:
+    """Pin an alias to an existing product revision as a user decision."""
+    try:
+        return _save_user_alias_decision(
+            dynamo_client,
+            tool="confirm_product_alias",
+            merchant_slug=merchant_slug,
+            kind=kind,
+            text=text,
+            status="matched",
+            product_id=product_id,
+            product_revision=product_revision,
+            expected_alias_revision=expected_alias_revision,
+        )
+    except Exception as e:
+        logger.exception("Error confirming product alias")
+        return {"error": str(e)}
+
+
+async def reject_product_alias_impl(
+    dynamo_client,
+    merchant_slug: str,
+    kind: str,
+    text: str,
+    expected_alias_revision: Optional[int],
+    status: str = "rejected",
+) -> dict:
+    """Mark an alias rejected / not_food as a user decision (no pin)."""
+    if status not in USER_REJECT_STATUSES:
+        return {
+            "error": (
+                f"status must be one of {list(USER_REJECT_STATUSES)}, "
+                f"got {status!r}"
+            )
+        }
+    try:
+        return _save_user_alias_decision(
+            dynamo_client,
+            tool="reject_product_alias",
+            merchant_slug=merchant_slug,
+            kind=kind,
+            text=text,
+            status=status,
+            product_id=None,
+            product_revision=None,
+            expected_alias_revision=expected_alias_revision,
+        )
+    except Exception as e:
+        logger.exception("Error rejecting product alias")
+        return {"error": str(e)}
 
 
 async def get_receipt_line_items_impl(
