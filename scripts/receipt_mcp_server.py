@@ -552,6 +552,59 @@ Common categories: grocery_store, supermarket, restaurant, gas_station, pharmacy
             },
         ),
         Tool(
+            name="list_receipts_missing_fields",
+            description="""List receipts whose summary lacks a date or merchant, or whose line items lack a merchant.
+
+A read-only worklist over the receipt summaries. Each page examines
+`limit` summaries (in DynamoDB order) and reports only those missing at
+least one of the requested fields:
+- "date": the summary has no receipt date
+- "merchant_name": the summary has no merchant
+- "line_merchant": one or more RECEIPT_LINE_ITEM rows carry no
+  merchant_name (so they are absent from the MERCHANT#<slug> index);
+  the report says how many
+
+Pagination is by the summary listing's own cursor, so a page may report
+zero receipts. Keep calling with cursor = the previous next_cursor until
+it is null. `scanned` is how many summaries the page examined.
+
+Per receipt: image_id, receipt_id, merchant_name, date, grand_total,
+item_count, missing_fields, and (when "line_merchant" is requested)
+line_count and lines_missing_merchant.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "fields": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["date", "merchant_name", "line_merchant"],
+                        },
+                        "minItems": 1,
+                        "description": "Which gaps to report",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "description": (
+                            "Summaries examined per page (not receipts "
+                            "reported)"
+                        ),
+                    },
+                    "cursor": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "next_cursor from the previous page; omit or "
+                            "null to start from the beginning"
+                        ),
+                    },
+                },
+                "required": ["fields"],
+            },
+        ),
+        Tool(
             name="list_categories",
             description="""List all merchant categories with receipt counts.
 
@@ -2454,6 +2507,13 @@ async def call_tool(
                 end_date=arguments.get("end_date"),
                 limit=arguments.get("limit", 1000),
             )
+        elif name == "list_receipts_missing_fields":
+            result = await list_receipts_missing_fields_impl(
+                dynamo_client,
+                fields=arguments.get("fields"),
+                limit=arguments.get("limit", 50),
+                cursor=arguments.get("cursor"),
+            )
         elif name == "list_categories":
             result = await list_categories_impl(dynamo_client)
         elif name == "label_validation_summary":
@@ -3388,6 +3448,144 @@ async def get_receipt_summaries_impl(
 
     except Exception as e:
         logger.exception("Error getting receipt summaries")
+        return {"error": str(e)}
+
+
+MISSING_FIELD_CHOICES = ("date", "merchant_name", "line_merchant")
+
+
+def _encode_summary_cursor(
+    last_evaluated_key: Optional[dict],
+) -> Optional[str]:
+    """Opaque page token wrapping the summary listing's own cursor."""
+    if not last_evaluated_key:
+        return None
+    payload = json.dumps(last_evaluated_key, sort_keys=True).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii")
+
+
+def _decode_summary_cursor(cursor: Optional[str]) -> Optional[dict]:
+    """Inverse of _encode_summary_cursor; ValueError on a foreign token."""
+    if cursor is None or cursor == "":
+        return None
+    if not isinstance(cursor, str):
+        raise ValueError("cursor must be a string")
+    try:
+        key = json.loads(base64.urlsafe_b64decode(cursor.encode("ascii")))
+    except ValueError as exc:
+        raise ValueError(
+            "cursor is not a next_cursor token from this tool"
+        ) from exc
+    if not isinstance(key, dict) or not key:
+        raise ValueError("cursor is not a next_cursor token from this tool")
+    return key
+
+
+async def list_receipts_missing_fields_impl(
+    dynamo_client,
+    fields: Optional[list[str]],
+    limit: int = 50,
+    cursor: Optional[str] = None,
+) -> dict:
+    """Read-only worklist of receipts missing a date, a merchant, or line
+    merchants.
+
+    Walks ReceiptSummaryRecord pages through
+    ``DynamoClient.list_receipt_summaries`` and carries its
+    ``last_evaluated_key`` as the page token, so no receipt is skipped or
+    repeated across pages. ``limit`` bounds the summaries examined per
+    page, not the receipts reported. Never writes.
+    """
+    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+    try:
+        if isinstance(fields, str):
+            fields = [fields]
+        if not isinstance(fields, list) or not fields:
+            return {
+                "error": (
+                    "fields must be a non-empty list drawn from "
+                    f"{list(MISSING_FIELD_CHOICES)}"
+                )
+            }
+        unknown = [f for f in fields if f not in MISSING_FIELD_CHOICES]
+        if unknown:
+            return {
+                "error": (
+                    f"Unknown fields {unknown}; choose from "
+                    f"{list(MISSING_FIELD_CHOICES)}"
+                )
+            }
+        wanted = [f for f in MISSING_FIELD_CHOICES if f in fields]
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= 1000
+        ):
+            return {"error": "limit must be an integer between 1 and 1000"}
+        try:
+            start_key = _decode_summary_cursor(cursor)
+        except ValueError as exc:
+            return {"error": str(exc)}
+
+        records, last_key = dynamo_client.list_receipt_summaries(
+            limit=limit, last_evaluated_key=start_key
+        )
+
+        receipts = []
+        for record in records:
+            merchant = record.merchant_name
+            has_merchant = isinstance(merchant, str) and bool(merchant.strip())
+            missing = []
+            if "date" in wanted and record.date is None:
+                missing.append("date")
+            if "merchant_name" in wanted and not has_merchant:
+                missing.append("merchant_name")
+            line_count = None
+            lines_missing_merchant = None
+            if "line_merchant" in wanted:
+                try:
+                    rows = dynamo_client.get_receipt_line_items_from_receipt(
+                        record.image_id, record.receipt_id
+                    )
+                except EntityNotFoundError:
+                    rows = []
+                line_count = len(rows)
+                lines_missing_merchant = sum(
+                    1
+                    for row in rows
+                    if not str(
+                        getattr(row, "merchant_name", None) or ""
+                    ).strip()
+                )
+                if lines_missing_merchant:
+                    missing.append("line_merchant")
+            if not missing:
+                continue
+            entry = {
+                "image_id": record.image_id,
+                "receipt_id": record.receipt_id,
+                "merchant_name": merchant,
+                "date": record.date.isoformat() if record.date else None,
+                "grand_total": record.grand_total,
+                "item_count": record.item_count,
+                "missing_fields": missing,
+            }
+            if "line_merchant" in wanted:
+                entry["line_count"] = line_count
+                entry["lines_missing_merchant"] = lines_missing_merchant
+            receipts.append(entry)
+
+        return {
+            "fields": wanted,
+            "scanned": len(records),
+            "count": len(receipts),
+            "receipts": receipts,
+            "next_cursor": _encode_summary_cursor(last_key),
+        }
+
+    except Exception as e:
+        logger.exception("Error listing receipts missing fields")
         return {"error": str(e)}
 
 

@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
@@ -159,6 +161,62 @@ class _ReceiptLineItem(FlattenedStandardMixin):
                 "Could not delete ReceiptLineItems from the database"
             ) from e
         return len(existing)
+
+    @handle_dynamodb_errors("set_receipt_line_item_merchant_if_missing")
+    def set_receipt_line_item_merchant_if_missing(
+        self, line_item: ReceiptLineItem, merchant_name: str
+    ) -> bool:
+        """Stamp ``merchant_name`` (and its GSI1 keys) onto ONE stored row
+        that currently carries none, without touching any other field.
+
+        A field-only conditional update, not a put: it applies only while
+        the row still has no merchant AND still has the ``name`` /
+        ``name_quality`` this ``line_item`` was read with (the GSI1 sort
+        key is derived from them). Returns False when the condition fails
+        -- the row was rewritten, corrected or stamped concurrently -- so
+        a stale read can never overwrite a newer row.
+        """
+        self._validate_entity(line_item, ReceiptLineItem, "line_item")
+        if not isinstance(merchant_name, str) or not merchant_name.strip():
+            raise EntityValidationError(
+                "merchant_name must be a non-empty string"
+            )
+        stamped = replace(line_item, merchant_name=merchant_name)
+        names = {"#name": "name"}
+        values: dict[str, dict[str, str]] = {
+            ":merchant": {"S": merchant_name},
+            ":empty": {"S": ""},
+            ":name": {"S": line_item.name},
+            ":quality": {"S": line_item.name_quality},
+        }
+        assignments = ["merchant_name = :merchant"]
+        gsi = stamped.gsi1_key
+        if gsi:
+            values[":gsi1pk"] = gsi["GSI1PK"]
+            values[":gsi1sk"] = gsi["GSI1SK"]
+            assignments += ["GSI1PK = :gsi1pk", "GSI1SK = :gsi1sk"]
+        try:
+            self._client.update_item(
+                TableName=self.table_name,
+                Key=line_item.key,
+                UpdateExpression="SET " + ", ".join(assignments),
+                ConditionExpression=(
+                    "attribute_exists(PK) AND "
+                    "(attribute_not_exists(merchant_name) OR "
+                    "merchant_name = :empty) AND "
+                    "#name = :name AND name_quality = :quality"
+                ),
+                ExpressionAttributeNames=names,
+                ExpressionAttributeValues=values,
+            )
+        except ClientError as exc:
+            if (
+                exc.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                return False
+            raise
+        return True
 
     @handle_dynamodb_errors("list_receipt_line_items_by_merchant")
     def list_receipt_line_items_by_merchant(
