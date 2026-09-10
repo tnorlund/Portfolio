@@ -10,7 +10,7 @@ Full-stack applications demonstrating modern web development, machine learning, 
 
 ```bash
 # Required
-node >= 18.0.0
+node 22 (matches CI)
 python >= 3.13
 aws-cli (configured)
 
@@ -23,7 +23,7 @@ swift >= 5.9 (for OCR processing)
 
 ```bash
 cd portfolio
-npm install
+npm ci
 npm run dev
 # Visit http://localhost:3000
 ```
@@ -37,7 +37,7 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
 # Install packages (same set CI's repository-tests job uses)
 pip install -e receipt_dynamo -e receipt_dynamo_stream -e receipt_embeddings \
-  -e receipt_places -e receipt_agent -e receipt_upload
+  -e receipt_places -e receipt_nutrition -e receipt_agent -e receipt_upload
 
 # Run tests for a package
 pip install -e "receipt_dynamo[test]"
@@ -46,10 +46,13 @@ pytest receipt_dynamo/tests -m unit
 
 ### Infrastructure Deployment
 
+For an explicitly requested dev deployment, verify AWS account `681647709217`
+and review the preview before applying. See [the infrastructure instructions](infra/AGENTS.md).
+
 ```bash
 cd infra
-pulumi stack select dev
-pulumi up
+pulumi preview --stack tnorlund/portfolio/dev
+pulumi up --stack tnorlund/portfolio/dev
 ```
 
 ## 📁 Project Structure
@@ -89,7 +92,7 @@ pulumi up
 
 ## 🛠 Tech Stack
 
-**Frontend**: Next.js 14, React, TypeScript, Tailwind CSS  
+**Frontend**: Next.js 16, React 19, TypeScript, CSS Modules
 **Backend**: Python 3.13, API Gateway, AWS Lambda
 **Database**: DynamoDB (including native vector indexes), S3  
 **Infrastructure**: AWS (CloudFront, Lambda, API Gateway, Step Functions), Pulumi  
@@ -139,9 +142,21 @@ swift receipt_upload/receipt_upload/OCRSwift.swift /tmp/output image.png
 
 ### Code Formatting
 
+Install the pinned formatters and analysis tools in the active virtual environment:
+
 ```bash
-make format  # Runs black and isort
+pip install -e "receipt_dynamo[dev]"
 ```
+
+Format only the files being changed; formatting does not upgrade dependencies.
+
+```bash
+make format PYTHON_FILES="path/to/changed.py"  # Black + isort, 79 columns
+```
+
+`make lint-format PYTHON_FILES="path/to/changed.py"` checks formatting without
+rewriting files. `make lint-types` and `make lint-quality` run mypy and pylint
+for `receipt_dynamo`; either command fails when its checker reports errors.
 
 ### Testing
 
@@ -164,7 +179,7 @@ cd portfolio && npm test
 
 **Format code:**
 ```bash
-make format  # Runs black and isort
+make format PYTHON_FILES="path/to/changed.py"  # Black + isort, 79 columns
 ```
 
 **Run tests:**
@@ -174,7 +189,9 @@ make format  # Runs black and isort
 
 **Deploy infrastructure:**
 ```bash
-cd infra && pulumi up
+cd infra
+pulumi preview --stack tnorlund/portfolio/dev
+pulumi up --stack tnorlund/portfolio/dev
 ```
 
 ### Agent instruction files
@@ -218,18 +235,14 @@ Infrastructure is managed with Pulumi (Python). Key components:
 ```bash
 cd infra
 
-# Preview changes
-pulumi preview
+# Preview changes on the explicitly selected dev stack
+pulumi preview --stack tnorlund/portfolio/dev
 
-# Deploy changes
-pulumi up
+# Deploy only after reviewing the preview
+pulumi up --stack tnorlund/portfolio/dev
 
-# View stack outputs
-pulumi stack output
-
-# Switch stacks
-pulumi stack select dev
-pulumi stack select prod
+# View dev stack outputs
+pulumi stack output --stack tnorlund/portfolio/dev
 ```
 
 ## 🔧 Configuration

@@ -16,13 +16,14 @@ receipt_agent/
 │   ├── receipt_grouping/
 │   └── validation/
 └── subagents/
-    ├── financial_validation/
     ├── place_finder/
     └── table_columns/
 ```
 
 ## Cleanup Completed
 
+- The unused `subagents/financial_validation/` graphs were retired in favor of
+  the financial checks in `agents/label_evaluator/`.
 - Deprecated `graph/*_workflow.py` shims were removed in an earlier cleanup.
 - Legacy label harmonizer and label suggestion agents were retired in favor of
   the current label evaluator and LayoutLM flows.
