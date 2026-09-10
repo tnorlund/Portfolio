@@ -25,6 +25,7 @@ from receipt_dynamo.data._places_cache import _PlacesCache
 from receipt_dynamo.data._receipt import _Receipt
 from receipt_dynamo.data._receipt_barcode import _ReceiptBarcode
 from receipt_dynamo.data._receipt_embedding import _ReceiptEmbedding
+from receipt_dynamo.data._receipt_fact_override import _ReceiptFactOverride
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
 from receipt_dynamo.data._receipt_line import _ReceiptLine
 from receipt_dynamo.data._receipt_line_item import _ReceiptLineItem
@@ -86,6 +87,7 @@ class DynamoClient(
     _AIUsageMetric,
     _CoreMLExportJob,
     _ReceiptSummary,
+    _ReceiptFactOverride,
 ):
     """A class used to represent a DynamoDB client."""
 

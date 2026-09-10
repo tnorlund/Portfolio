@@ -110,6 +110,10 @@ from receipt_dynamo.entities.receipt_embedding import (
     ReceiptWordEmbedding,
     item_to_receipt_embedding,
 )
+from receipt_dynamo.entities.receipt_fact_override import (
+    ReceiptFactOverride,
+    item_to_receipt_fact_override,
+)
 from receipt_dynamo.entities.receipt_letter import (  # noqa: F401
     ReceiptLetter,
     item_to_receipt_letter,
@@ -236,6 +240,7 @@ __all__ = [
     "ReceiptBundlePage",
     "MonetaryTotals",
     "ReceiptSummary",
+    "ReceiptFactOverride",
     "ReceiptSummaryRecord",
     "ReceiptDetails",
     "ReceiptEmbedding",
@@ -269,6 +274,7 @@ __all__ = [
     "item_to_places_cache",
     "item_to_receipt",
     "item_to_receipt_barcode",
+    "item_to_receipt_fact_override",
     "item_to_receipt_summary_record",
     "item_to_receipt_embedding",
     "item_to_receipt_letter",

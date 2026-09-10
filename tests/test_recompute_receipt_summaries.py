@@ -8,14 +8,17 @@ shows up in the dry-run preview exactly as the Lambda would store it.
 import importlib.util
 import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 # isort: off
 # receipt_dynamo is first-party to isort in jobs that do not install the
 # rest of the stack and third-party in repository tests; pin the block.
 import boto3
 import pytest
+from botocore.client import BaseClient
 from moto import mock_aws
 
 from receipt_dynamo import (
@@ -25,6 +28,9 @@ from receipt_dynamo import (
     ReceiptWordLabel,
 )
 from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities.receipt_fact_override import (
+    ReceiptFactOverride,
+)
 from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 from receipt_dynamo.entities.receipt_summary import (
     MonetaryTotals,
@@ -334,8 +340,12 @@ def test_consecutive_computes_agree(table):
             for i in range(3)
         ]
     )
-    first, _ = summary_processor.compute_receipt_summary(IMAGE_ID, 1, client)
-    second, _ = summary_processor.compute_receipt_summary(IMAGE_ID, 1, client)
+    first, _, _ = summary_processor.compute_receipt_summary(
+        IMAGE_ID, 1, client
+    )
+    second, _, _ = summary_processor.compute_receipt_summary(
+        IMAGE_ID, 1, client
+    )
     assert first.to_dict() == second.to_dict()
     assert first.item_count == 3  # rows win over the 25 LINE_TOTAL labels
 
@@ -466,6 +476,63 @@ def test_date_dropping_to_none_shows_date_label_statuses(table, capsys):
     )
 
 
+def test_owner_fact_override_wins_and_is_attributed(table, capsys):
+    """A receipt with no usable printed date recomputes with the owner's
+    date, and the rewrite records that the date came from the owner."""
+    client = DynamoClient(table)
+    _seed_dateless_receipt(client)
+    client.add_receipt_fact_override(
+        ReceiptFactOverride(
+            image_id=IMAGE_ID,
+            receipt_id=1,
+            date="2026-09-01",
+            date_reference="Chase statement 2026-09-01 $47.18",
+        )
+    )
+
+    assert recompute.main(["--table", table, "--apply"]) == 0
+
+    out = capsys.readouterr().out
+    assert (
+        f"{IMAGE_ID}#1 UPDATED: date=None total=47.18 items=0 -> "
+        "date=2026-09-01 total=47.18 items=0 owner=date" in out
+    )
+    stored = client.get_receipt_summary(IMAGE_ID, 1)
+    assert stored.date == datetime(2026, 9, 1)  # owner beats "May 6. 2025"
+    assert stored.overrides_applied == ["date"]
+    assert stored.to_item()["overrides_applied"] == {"L": [{"S": "date"}]}
+
+    # Once written, a second run sees no difference (attribution included).
+    assert recompute.main(["--table", table]) == 0
+    assert f"{IMAGE_ID}#1 unchanged: date=2026-09-01" in (
+        capsys.readouterr().out
+    )
+
+
+def test_missing_attribution_alone_triggers_a_rewrite(table, capsys):
+    """A summary computed before the override was stated carries the same
+    date but no attribution; the comparison must include overrides_applied
+    so the recompute rewrites it instead of reporting it unchanged."""
+    client = DynamoClient(table)
+    _seed_dated_receipt(client)
+    client.add_receipt_fact_override(
+        ReceiptFactOverride(
+            image_id=OTHER_IMAGE_ID,
+            receipt_id=2,
+            date="2026-01-02",
+            date_reference="calendar",
+        )
+    )
+
+    assert recompute.main(["--table", table, "--apply"]) == 0
+
+    out = capsys.readouterr().out
+    assert f"{OTHER_IMAGE_ID}#2 UPDATED" in out
+    assert client.get_receipt_summary(OTHER_IMAGE_ID, 2).overrides_applied == [
+        "date"
+    ]
+
+
 def test_orphan_summary_is_skipped_not_recomputed(table, capsys):
     client = DynamoClient(table)
     client.add_receipt_summary(_stored_summary(IMAGE_ID, 3))
@@ -528,3 +595,92 @@ def test_table_is_required(capsys):
     with pytest.raises(SystemExit):
         recompute.main([])
     assert "--table" in capsys.readouterr().err
+
+
+DYNAMODB_WRITE_OPERATIONS = frozenset(
+    {
+        "PutItem",
+        "UpdateItem",
+        "DeleteItem",
+        "BatchWriteItem",
+        "TransactWriteItems",
+    }
+)
+
+
+@contextmanager
+def _dynamodb_write_spy():
+    """Record every DynamoDB write any boto3 client performs.
+
+    Spying at the botocore level covers the client the script builds
+    itself from --table, not just one handed in by the test.
+    """
+    original = BaseClient._make_api_call
+    writes: list[str] = []
+
+    def spy(self, operation_name, api_params):
+        if (
+            self.meta.service_model.service_name == "dynamodb"
+            and operation_name in DYNAMODB_WRITE_OPERATIONS
+        ):
+            writes.append(operation_name)
+        return original(self, operation_name, api_params)
+
+    with patch.object(BaseClient, "_make_api_call", spy):
+        yield writes
+
+
+def _seed_overridden_receipt(client: DynamoClient) -> None:
+    """A dated receipt whose owner also stated the date (no attribution
+    stored yet, so a dry run reports it as WOULD UPDATE)."""
+    _seed_dated_receipt(client)
+    client.add_receipt_fact_override(
+        ReceiptFactOverride(
+            image_id=OTHER_IMAGE_ID,
+            receipt_id=2,
+            date="2026-01-02",
+            date_reference="calendar",
+        )
+    )
+
+
+def test_dry_run_performs_zero_dynamodb_writes(table, capsys):
+    client = DynamoClient(table)
+    _seed_dateless_receipt(client)
+    _seed_overridden_receipt(client)
+    before = {
+        (r.image_id, r.receipt_id): r.to_item()
+        for r in recompute.iter_summaries(client)
+    }
+
+    with _dynamodb_write_spy() as writes:
+        assert recompute.main(["--table", table]) == 0
+
+    out = capsys.readouterr().out
+    assert f"{IMAGE_ID}#1 WOULD UPDATE" in out
+    assert f"{OTHER_IMAGE_ID}#2 WOULD UPDATE" in out
+    assert writes == []
+    after = {
+        (r.image_id, r.receipt_id): r.to_item()
+        for r in recompute.iter_summaries(client)
+    }
+    assert after == before
+
+
+def test_compute_receipt_summary_performs_zero_writes(table):
+    client = DynamoClient(table)
+    _seed_dateless_receipt(client)
+    _seed_overridden_receipt(client)
+
+    with _dynamodb_write_spy() as writes:
+        computed = summary_processor.compute_receipt_summary(
+            IMAGE_ID, 1, client
+        )
+        overridden = summary_processor.compute_receipt_summary(
+            OTHER_IMAGE_ID, 2, client
+        )
+
+    assert writes == []
+    assert computed.overrides_applied == []
+    assert overridden.overrides_applied == ["date"]
+    assert client.get_receipt_summary(IMAGE_ID, 1).date is None

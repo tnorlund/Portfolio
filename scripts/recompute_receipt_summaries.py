@@ -69,11 +69,15 @@ def _describe(
     date: datetime | None,
     grand_total: float | None,
     item_count: int,
+    overrides_applied: list[str] | None = None,
 ) -> str:
-    return (
+    text = (
         f"date={_fmt_date(date)} total={_fmt_amount(grand_total)} "
         f"items={item_count}"
     )
+    if overrides_applied:
+        text += f" owner={','.join(overrides_applied)}"
+    return text
 
 
 def iter_summaries(client: DynamoClient) -> list[ReceiptSummaryRecord]:
@@ -89,9 +93,15 @@ def iter_summaries(client: DynamoClient) -> list[ReceiptSummaryRecord]:
             return records
 
 
-def _fields_without_item_count(summary: ReceiptSummary) -> dict[str, Any]:
+def _comparable_fields(
+    summary: ReceiptSummary, overrides_applied: list[str]
+) -> dict[str, Any]:
+    """Every field that decides a rewrite: all but item_count, plus the
+    owner-fact attribution (a stored summary computed before an override
+    was stated differs only there, and must be rewritten)."""
     fields = summary.to_dict()
     fields.pop("item_count", None)
+    fields["overrides_applied"] = list(overrides_applied)
     return fields
 
 
@@ -172,7 +182,12 @@ def recompute(
             continue
         counts["examined"] += 1
         key = f"{stored.image_id}#{stored.receipt_id}"
-        before = _describe(stored.date, stored.grand_total, stored.item_count)
+        before = _describe(
+            stored.date,
+            stored.grand_total,
+            stored.item_count,
+            stored.overrides_applied,
+        )
 
         try:
             client.get_receipt(stored.image_id, stored.receipt_id)
@@ -180,11 +195,16 @@ def recompute(
             counts["skipped_parent_deleted"] += 1
             print(f"{key} SKIPPED (parent receipt deleted)", file=out)
             continue
-        computed, _category = summary_processor.compute_receipt_summary(
-            stored.image_id, stored.receipt_id, client
+        computed, _category, overrides_applied = (
+            summary_processor.compute_receipt_summary(
+                stored.image_id, stored.receipt_id, client
+            )
         )
         after = _describe(
-            computed.date, computed.grand_total, computed.item_count
+            computed.date,
+            computed.grand_total,
+            computed.item_count,
+            overrides_applied,
         )
         if stored.date is not None and computed.date is None:
             after += " DATE labels: " + _date_label_statuses(
@@ -195,8 +215,8 @@ def recompute(
             counts["unchanged"] += 1
             print(f"{key} unchanged: {before}", file=out)
             continue
-        if _fields_without_item_count(computed) == _fields_without_item_count(
-            stored.summary
+        if _comparable_fields(computed, overrides_applied) == (
+            _comparable_fields(stored.summary, stored.overrides_applied)
         ):
             counts["item_count_drift"] += 1
             print(

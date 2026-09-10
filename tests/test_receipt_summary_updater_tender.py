@@ -18,6 +18,9 @@ import pytest
 from infra.receipt_summary_updater import summary_processor
 
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.receipt_fact_override import (
+    ReceiptFactOverride,
+)
 from receipt_dynamo.entities.receipt_summary import (
     MonetaryTotals,
     ReceiptSummary,
@@ -76,6 +79,9 @@ class FakeClient:
         # fallback). Default to none so these tender tests exercise the
         # fallback path unchanged.
         self.line_items = []
+        # Owner-stated facts (ReceiptFactOverride); None = none stated.
+        self.fact_override = None
+        self.fact_override_reads = 0
 
     def receipt_exists_consistent(self, image_id, receipt_id):
         return self.receipt_exists
@@ -113,6 +119,10 @@ class FakeClient:
         if self.existing_summary is None:
             raise EntityNotFoundError("no summary")
         return ReceiptSummaryRecord.from_summary(self.existing_summary)
+
+    def get_receipt_fact_override(self, image_id, receipt_id):
+        self.fact_override_reads += 1
+        return self.fact_override
 
     def upsert_receipt_summary(self, record):
         self.upserted.append(record)
@@ -256,3 +266,106 @@ def test_item_count_falls_back_to_labels_without_rows(monkeypatch):
     summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
 
     assert client.upserted[0].item_count == 2
+
+
+def _override(**facts):
+    references = {
+        f"{name}_reference": "owner remembers the trip" for name in facts
+    }
+    return ReceiptFactOverride(
+        image_id=IMAGE_ID,
+        receipt_id=RECEIPT_ID,
+        revision=3,
+        **facts,
+        **references,
+    )
+
+
+def test_no_override_leaves_summary_and_provenance_empty(fake_client):
+    result = summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    record = fake_client.upserted[0]
+    assert fake_client.fact_override_reads == 1
+    assert record.overrides_applied == []
+    assert "overrides_applied" not in record.to_item()
+    assert result["overrides_applied"] == []
+
+
+def test_owner_date_beats_missing_extracted_date(fake_client):
+    fake_client.fact_override = _override(date="2026-09-01")
+
+    result = summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    record = fake_client.upserted[0]
+    assert record.date == datetime(2026, 9, 1)
+    assert record.overrides_applied == ["date"]
+    assert record.to_item()["overrides_applied"] == {"L": [{"S": "date"}]}
+    assert result["date"] == "2026-09-01T00:00:00"
+    assert result["overrides_applied"] == ["date"]
+    # Extracted fields the owner did not state are untouched.
+    assert record.grand_total == 47.18
+    assert record.merchant_name is None
+
+
+def test_owner_date_beats_printed_date(fake_client):
+    fake_client.words.append(_word(4, 1, "08/30/2026"))
+    fake_client.word_labels.append(_label(4, 1, "DATE"))
+    fake_client.fact_override = _override(date="2026-09-01")
+
+    summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    assert fake_client.upserted[0].date == datetime(2026, 9, 1)
+
+
+def test_owner_merchant_beats_place_merchant(monkeypatch):
+    client = FakeClient()
+    client.get_receipt_place = lambda image_id, receipt_id: SimpleNamespace(
+        merchant_name="Academy LA", merchant_category="gym"
+    )
+    client.fact_override = _override(merchant_name="Trader Joe's")
+    monkeypatch.setattr(summary_processor, "dynamo_client", client)
+
+    result = summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    record = client.upserted[0]
+    assert record.merchant_name == "Trader Joe's"
+    assert record.date is None
+    assert record.overrides_applied == ["merchant_name"]
+    assert result["merchant_name"] == "Trader Joe's"
+    assert result["merchant_category"] == "gym"
+
+
+def test_override_is_applied_identically_on_every_recompute(fake_client):
+    fake_client.fact_override = _override(
+        date="2026-09-01", merchant_name="Trader Joe's"
+    )
+
+    summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+    summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    first, second = fake_client.upserted
+    assert first.overrides_applied == ["date", "merchant_name"]
+    assert first.summary == second.summary
+    assert first.overrides_applied == second.overrides_applied
+
+
+def test_retracted_override_changes_nothing(fake_client):
+    fake_client.fact_override = _override(date="2026-09-01").with_fact(
+        "date", None, None, revision=4
+    )
+
+    result = summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    record = fake_client.upserted[0]
+    assert record.date is None
+    assert record.overrides_applied == []
+    assert result["overrides_applied"] == []
+
+
+def test_processor_uses_the_shared_apply_helper():
+    summary = ReceiptSummary(image_id=IMAGE_ID, receipt_id=RECEIPT_ID)
+
+    assert summary_processor.apply_fact_override(summary, None) == (
+        summary,
+        [],
+    )
