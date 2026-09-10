@@ -6,12 +6,18 @@ This script iterates through all receipts in the database, computes
 ReceiptSummary from their word labels, and persists ReceiptSummaryRecord
 to DynamoDB.
 
+Dry run is the default: the script prints what it would write and
+performs no DynamoDB write. Pass ``--apply`` to write. Any environment
+or table name carrying the prod marker is refused before a client is
+built.
+
 Usage:
-    python scripts/backfill_receipt_summaries.py [--env dev|prod] [--dry-run]
+    python scripts/backfill_receipt_summaries.py [--env dev] [--apply]
 """
 
 import argparse
 import logging
+import sys
 
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
@@ -31,18 +37,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Environment / table-name fragments this script refuses to touch.
+PROD_TABLE_FRAGMENTS = ("d7ff76a",)
+
 
 def backfill_summaries(
     client: DynamoClient,
     batch_size: int = 25,
-    dry_run: bool = False,
+    dry_run: bool = True,
 ) -> dict:
     """Backfill ReceiptSummaryRecord for all receipts.
 
     Args:
         client: DynamoDB client
         batch_size: Number of records to upsert in each batch
-        dry_run: If True, don't write to DynamoDB
+        dry_run: When True (the default) nothing is written; the counts
+            report what an ``--apply`` run would upsert.
 
     Returns:
         Stats dictionary with counts
@@ -244,21 +254,23 @@ def backfill_summaries(
     return stats
 
 
-def main() -> None:
-    """Run the backfill script with CLI arguments."""
+def main(argv: list[str] | None = None) -> int:
+    """Run the backfill script with CLI arguments (dry run by default)."""
     parser = argparse.ArgumentParser(
-        description="Backfill ReceiptSummaryRecord for all receipts"
+        description=(
+            "Backfill ReceiptSummaryRecord for all receipts. Dry run by "
+            "default; pass --apply to write."
+        )
     )
     parser.add_argument(
         "--env",
-        choices=["dev", "prod"],
         default="dev",
         help="Environment to run against (default: dev)",
     )
     parser.add_argument(
-        "--dry-run",
+        "--apply",
         action="store_true",
-        help="Don't write to DynamoDB, just compute summaries",
+        help="Write the recomputed summaries (default: dry run, no writes)",
     )
     parser.add_argument(
         "--batch-size",
@@ -266,32 +278,43 @@ def main() -> None:
         default=25,
         help="Number of records to upsert in each batch (default: 25)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    logger.info("Starting backfill for %s environment...", args.env)
-    if args.dry_run:
-        logger.info("DRY RUN - no changes will be written")
-
-    # Load config and create client
+    if any(fragment in args.env for fragment in PROD_TABLE_FRAGMENTS):
+        parser.error(f"refusing environment {args.env!r}")
     config = load_env(env=args.env)
-    client = DynamoClient(table_name=config["dynamodb_table_name"])
+    table_name = str(config["dynamodb_table_name"])
+    if any(fragment in table_name for fragment in PROD_TABLE_FRAGMENTS):
+        parser.error(f"refusing table {table_name!r}")
 
-    # Run backfill
+    dry_run = not args.apply
+    logger.info("Starting backfill for %s environment...", args.env)
+    if dry_run:
+        logger.info("DRY RUN - no changes will be written (pass --apply)")
+
+    client = DynamoClient(table_name=table_name)
     stats = backfill_summaries(
         client,
         batch_size=args.batch_size,
-        dry_run=args.dry_run,
+        dry_run=dry_run,
     )
 
     # Print summary
+    mode = "APPLIED" if args.apply else "DRY RUN"
     logger.info("=" * 50)
-    logger.info("Backfill complete!")
+    logger.info("Backfill complete (%s)!", mode)
     logger.info("  Receipts processed: %d", stats["receipts_processed"])
-    logger.info("  Summaries created:  %d", stats["summaries_created"])
+    logger.info(
+        "  Summaries %s: %d",
+        "written" if args.apply else "that would be written",
+        stats["summaries_created"],
+    )
     logger.info("  With grand_total:   %d", stats["summaries_with_total"])
     logger.info("  With date:          %d", stats["summaries_with_date"])
+    logger.info("  With owner fact:    %d", stats["summaries_with_override"])
     logger.info("  Errors:             %d", stats["errors"])
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
