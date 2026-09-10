@@ -2,6 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
@@ -18,6 +19,11 @@ from receipt_dynamo.entities.nutrition_support import (
 from receipt_dynamo.entities.product_alias import (
     ProductAlias,
     item_to_product_alias,
+)
+from receipt_dynamo.entities.product_alias_observation import (
+    ProductAliasObservation,
+    item_to_product_alias_observation,
+    product_alias_id,
 )
 
 pytestmark = [pytest.mark.unit]
@@ -102,3 +108,86 @@ def test_nutrition_alias_roundtrip_and_expiry() -> None:
 def test_nutrition_alias_rejects_invalid_decisions(changes: dict) -> None:
     with pytest.raises(EntityValidationError):
         user_alias(**changes)
+
+
+IMAGE_ID = "3f2504e0-4f89-41d3-9a0c-0305e82c3301"
+
+
+def observation(**changes: object) -> ProductAliasObservation:
+    fields: dict[str, Any] = dict(
+        alias_id=product_alias_id("test", "TEXT", "milk"),
+        merchant_slug="test",
+        kind="TEXT",
+        text="milk",
+        status="pending",
+        alias_revision=1,
+        image_id=IMAGE_ID,
+        receipt_id=1,
+        item_index=0,
+        observed_at="2026-09-09T00:00:00+00:00",
+    )
+    fields.update(changes)
+    return ProductAliasObservation(**fields)
+
+
+def test_nutrition_observation_roundtrip_and_keys() -> None:
+    pointer = observation()
+    assert pointer.alias_id == user_alias().alias_id
+    item = pointer.to_item()
+    assert item["TYPE"] == {"S": "PRODUCT_ALIAS_OBSERVATION"}
+    assert item["PK"] == {"S": f"ALIAS_OBS#{pointer.alias_id}"}
+    assert item["SK"] == {"S": f"RECEIPT#{IMAGE_ID}#00001#00000"}
+    assert not {"GSI1PK", "GSI2PK", "GSI3PK"} & set(item)
+    assert item_to_product_alias_observation(item) == pointer
+    matched = observation(
+        status="matched",
+        product_id="fdc:1",
+        product_revision="b" * 64,
+        alias_revision=0,
+        item_index=99999,
+        receipt_id=99999,
+    )
+    assert item_to_product_alias_observation(matched.to_item()) == matched
+    assert pointer.alias_key == user_alias(text="milk").key
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"alias_id": "a" * 64},
+        {"text": "cream"},
+        {"status": "unknown"},
+        {"alias_revision": -1},
+        {"alias_revision": True},
+        {"status": "matched"},
+        {"product_id": "fdc:1"},
+        {"product_revision": "b" * 64},
+        {"image_id": "not-a-uuid"},
+        {"receipt_id": 0},
+        {"item_index": -1},
+        {"item_index": 100000},
+        {"item_index": False},
+        {"observed_at": "2026-09-09T00:00:00Z"},
+        {"observed_at": "yesterday"},
+    ],
+)
+def test_nutrition_observation_rejects_invalid(changes: dict) -> None:
+    with pytest.raises(EntityValidationError):
+        observation(**changes)
+
+
+def test_nutrition_observation_record_integrity() -> None:
+    item = observation().to_item()
+    tampered = {**item, "SK": {"S": f"RECEIPT#{IMAGE_ID}#00001#00001"}}
+    with pytest.raises(EntityValidationError, match="integrity"):
+        item_to_product_alias_observation(tampered)
+    with pytest.raises(EntityValidationError, match="integrity"):
+        item_to_product_alias_observation(
+            {**item, "TYPE": {"S": "PRODUCT_ALIAS"}}
+        )
+    with pytest.raises(EntityValidationError, match="noninteger"):
+        item_to_product_alias_observation(
+            {**item, "alias_revision": {"N": "1.5"}}
+        )
+    with pytest.raises(EntityValidationError, match="invalid"):
+        item_to_product_alias_observation({"PK": item["PK"]})

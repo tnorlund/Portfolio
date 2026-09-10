@@ -81,6 +81,10 @@ from receipt_dynamo.entities.product_alias import (
     ProductAlias,
     item_to_product_alias,
 )
+from receipt_dynamo.entities.product_alias_observation import (
+    ProductAliasObservation,
+    item_to_product_alias_observation,
+)
 from receipt_dynamo.entities.receipt import Receipt  # noqa: F401
 from receipt_dynamo.entities.receipt import item_to_receipt
 from receipt_dynamo.entities.receipt_barcode import (  # noqa: F401
@@ -192,8 +196,10 @@ __all__ = [
     # Core entities
     "FoodProduct",
     "ProductAlias",
+    "ProductAliasObservation",
     "item_to_food_product",
     "item_to_product_alias",
+    "item_to_product_alias_observation",
     "AIUsageMetric",
     "BatchSummary",
     "CoreMLExportJob",
