@@ -18,6 +18,7 @@ from receipt_dynamo.data.base_operations.nutrition_guard import (
 )
 from receipt_dynamo.data.shared_exceptions import (
     DynamoDBThroughputError,
+    EntityAlreadyExistsError,
     EntityValidationError,
     NutritionConflictError,
 )
@@ -30,6 +31,11 @@ from receipt_dynamo.entities.nutrition_support import (
     check_nutrition_hash,
     check_revision,
     nutrition_key,
+)
+from receipt_dynamo.entities.price_observation import (
+    PriceObservation,
+    item_to_price_observation,
+    price_observation_partition,
 )
 from receipt_dynamo.entities.product_alias import (
     ProductAlias,
@@ -54,6 +60,9 @@ __all__ = [
     "nutrition_table_is_prohibited",
 ]
 TRANSACT_ACTION_LIMIT = 100
+PRICE_OBSERVATION_APPEND_ONLY = (
+    "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+)
 
 
 def raise_nutrition_conflict(error: ClientError) -> None:
@@ -365,6 +374,93 @@ class _NutritionCatalog(FlattenedStandardMixin):
         return [
             item_to_product_alias_observation(item) for item in items
         ], cursor
+
+    @handle_dynamodb_errors("add_price_observation")
+    def add_price_observation(
+        self, observation: PriceObservation, *, expected_table_name: str
+    ) -> PriceObservation:
+        """Append one observation; an existing row is never overwritten.
+
+        A correction must name a row that exists in the same partition, so
+        a dangling ``supersedes`` cannot hide a live price from readers.
+        """
+        self._assert_nutrition_table(expected_table_name)
+        if not isinstance(observation, PriceObservation):
+            raise EntityValidationError("item must be a PriceObservation")
+        item = observation.to_item()
+        if observation.supersedes is None:
+            self._client.put_item(
+                TableName=self.table_name,
+                Item=item,
+                ConditionExpression=PRICE_OBSERVATION_APPEND_ONLY,
+            )
+            return observation
+        transaction: list[TransactWriteItemTypeDef] = [
+            {
+                "Put": {
+                    "TableName": self.table_name,
+                    "Item": item,
+                    "ConditionExpression": PRICE_OBSERVATION_APPEND_ONLY,
+                }
+            },
+            {
+                "ConditionCheck": {
+                    "TableName": self.table_name,
+                    "Key": {
+                        "PK": {"S": observation.partition},
+                        "SK": {"S": observation.supersedes},
+                    },
+                    "ConditionExpression": "attribute_exists(PK)",
+                }
+            },
+        ]
+        try:
+            self._nutrition_transact(transaction)
+        except NutritionConflictError as conflict:
+            # The Put is the first action: its failed condition means the
+            # row exists; only the ConditionCheck failing is a conflict.
+            cause = conflict.__cause__
+            reasons = (
+                cause.response.get("CancellationReasons", [])
+                if isinstance(cause, ClientError)
+                else []
+            )
+            if reasons and reasons[0].get("Code") == "ConditionalCheckFailed":
+                raise EntityAlreadyExistsError(
+                    "price observation already recorded"
+                ) from conflict
+            raise
+        return observation
+
+    @handle_dynamodb_errors("list_price_observations")
+    def list_price_observations(
+        self, merchant_slug: str, key_kind: str, key_text: str
+    ) -> list[PriceObservation]:
+        """Every row of the partition, oldest SK first, paginated to the end.
+
+        Readers must see every correction, including ones recorded after a
+        purchase, so there is no SK bound and no page limit here.
+        """
+        partition = price_observation_partition(
+            merchant_slug, key_kind, key_text
+        )
+        query: dict[str, Any] = {
+            "TableName": self.table_name,
+            "KeyConditionExpression": "PK = :pk",
+            "ExpressionAttributeValues": {":pk": {"S": partition}},
+            "ConsistentRead": True,
+        }
+        rows: list[PriceObservation] = []
+        while True:
+            response = self._client.query(**query)
+            rows.extend(
+                item_to_price_observation(item)
+                for item in response.get("Items", [])
+            )
+            cursor = response.get("LastEvaluatedKey")
+            if not cursor:
+                return rows
+            query["ExclusiveStartKey"] = cursor
 
     def _nutrition_catalog_page(
         self,

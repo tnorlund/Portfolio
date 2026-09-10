@@ -13,12 +13,13 @@ from pydantic import Field, model_validator
 
 from receipt_nutrition.costing import ratio_money
 from receipt_nutrition.models import (
+    HOUSEHOLD_TEASPOONS,
     NUTRIENT_UNITS,
     Amount,
     FrozenModel,
+    HouseholdServing,
     Nonnegative,
     PhysicalPositive,
-    Positive,
     Product,
     Purchase,
     Text,
@@ -49,21 +50,17 @@ NUTRIENT_NAMES = {
     "328": "Vitamin D",
 }
 
-PortionUnit = Literal["serving", "package", "each", "g", "ml", "tsp", "tbsp"]
+PortionUnit = Literal[
+    "serving", "package", "each", "g", "ml", "tsp", "tbsp", "cup"
+]
+# ``HouseholdServing`` lives in ``models``; it stays importable from here.
+__all__ = ["HouseholdServing", "Meal", "MealItem", "Portion", "calculate_meal"]
 
 
 class Portion(FrozenModel):
     value: PhysicalPositive
     unit: PortionUnit
     reference: Text
-
-
-class HouseholdServing(FrozenModel):
-    """The household amount equivalent to ONE labelled serving."""
-
-    value: Positive
-    unit: Literal["tsp", "tbsp"]
-    source_ref: Text
 
 
 class MealItem(FrozenModel):
@@ -138,7 +135,7 @@ class Meal(FrozenModel):
 
 
 def serving_fraction(item: MealItem, portion: Portion) -> Fraction | None:
-    """Convert only on an evidenced label basis; tsp:tbsp is exactly 3:1."""
+    """Convert only on an evidenced label basis; tsp:tbsp:cup is 1:3:48."""
     product = item.product
     if not verified_source(product, product.package_source_ref):
         return None
@@ -158,15 +155,14 @@ def serving_fraction(item: MealItem, portion: Portion) -> Fraction | None:
             if amount is not None
             else None
         )
-    if portion.unit == "tsp" or portion.unit == "tbsp":
+    if portion.unit in HOUSEHOLD_TEASPOONS:
         label = item.verified_household_serving
         if label is None or product.serving is None:
             return None
-        teaspoons = {"tsp": 1, "tbsp": 3}
         return (
             value
-            * teaspoons[portion.unit]
-            / (Fraction(label.value) * teaspoons[label.unit])
+            * HOUSEHOLD_TEASPOONS[portion.unit]
+            / (Fraction(label.value) * HOUSEHOLD_TEASPOONS[label.unit])
         )
     if product.serving is None:
         return None
@@ -253,8 +249,15 @@ def portion_cost(item: MealItem) -> tuple[Fraction | None, str]:
     return price * eaten_servings / bought_servings, "label_servings"
 
 
-def calculate_meal(meal: Meal) -> dict[str, Any]:
-    """Keep exact ratios until output; incomplete totals stay null."""
+def calculate_meal(meal: Meal, containers: int = 1) -> dict[str, Any]:
+    """Keep exact ratios until output; incomplete totals stay null.
+
+    ``containers`` divides every portion evenly; rows and totals are then per
+    container, still computed exactly and rounded once at the end.
+    """
+    if containers < 1:
+        raise ValueError("containers must be a positive count")
+    share = Fraction(1, containers)
     rows: list[dict[str, Any]] = []
     raw_costs: list[Fraction | None] = []
     raw_nutrients: list[dict[str, Fraction]] = []
@@ -283,8 +286,10 @@ def calculate_meal(meal: Meal) -> dict[str, Any]:
                 )
             if multiplier is not None:
                 nutrients[fact.nutrient_id] = (
-                    Fraction(fact.amount) * multiplier
+                    Fraction(fact.amount) * multiplier * share
                 )
+        if cost is not None:
+            cost = cost * share
         raw_costs.append(cost)
         raw_nutrients.append(nutrients)
         rows.append(
@@ -333,6 +338,7 @@ def calculate_meal(meal: Meal) -> dict[str, Any]:
         "title": meal.title,
         "input_hash": content_hash(meal.model_dump(mode="python")),
         "calculator_version": "portion-v1",
+        "containers": containers,
         "contains_generic_estimates": any(
             item.product.identity_kind == "generic" for item in meal.items
         ),
