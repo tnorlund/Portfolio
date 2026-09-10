@@ -153,19 +153,28 @@ def test_completed_redelivery_returns_result_without_writing_again(
         assert not queue_messages(env, queue)
 
 
+@pytest.mark.parametrize(
+    "dependent", [False, True], ids=["same-operation", "unfinished-output"]
+)
 def test_overlapping_delivery_cannot_enter_cleanup_while_owner_embeds(
     merge_case: Any,
+    dependent: bool,
 ) -> None:
-    """A second invocation cannot mutate a currently owned output."""
+    """A second invocation cannot retry or consume an unfinished output."""
     env = merge_case
     nested_results = []
     entered = False
 
-    def embed(**_kwargs: Any) -> dict[str, int]:
+    def embed(**kwargs: Any) -> dict[str, int]:
         nonlocal entered
         if not entered:
             entered = True
-            nested = merge.handler(EVENT, None)
+            nested_event = (
+                {**EVENT, "receipt_ids": [3, kwargs["receipt_id"]]}
+                if dependent
+                else EVENT
+            )
+            nested = merge.handler(nested_event, None)
             nested_results.append(nested)
             assert nested["status"] == "error", nested
             assert all(
@@ -179,3 +188,24 @@ def test_overlapping_delivery_cannot_enter_cleanup_while_owner_embeds(
     assert len(nested_results) == 1
     _assert_settled(env, result)
     assert env.native.call_count == 1
+
+
+def test_completed_output_can_be_used_in_a_later_merge(
+    merge_case: Any,
+) -> None:
+    """Reserving unfinished outputs must still allow completed merge chains."""
+    env = merge_case
+    first = merge.handler(EVENT, None)
+    _assert_settled(env, first)
+    result = merge.handler(
+        {**EVENT, "receipt_ids": [3, first["new_receipt_id"]]}, None
+    )
+    assert result["status"] == "success", result
+    output_id = result["new_receipt_id"]
+    assert output_id != first["new_receipt_id"]
+    assert {
+        record.receipt_id
+        for record in env.db.get_receipts_from_image_consistent(IMAGE_ID)
+    } == {output_id}
+    assert env.db.get_image(IMAGE_ID).receipt_count == 1
+    assert env.native.call_count == 2
