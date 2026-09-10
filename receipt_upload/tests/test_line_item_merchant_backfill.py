@@ -253,6 +253,48 @@ def test_backfill_skips_a_row_corrected_between_read_and_write(
     assert stored(client)[0].to_item() == corrected.to_item()
 
 
+def test_whitespace_only_merchant_is_repaired(client):
+    """Codex pass-2 input: merchant_name="   " on an ok-quality MILK row."""
+    client.upsert_receipt_summary(summary("Sprouts"))
+    client.add_receipt_line_items(
+        [row(0, merchant_name="   ", name="MILK", name_quality="ok")]
+    )
+
+    stamped = line_item_processor.backfill_line_item_merchants(
+        IMAGE_ID, RECEIPT_ID
+    )
+
+    assert stamped == 1
+    after = stored(client)[0]
+    assert after.merchant_name == "Sprouts"
+    assert after.to_item()["GSI1PK"] == {"S": "MERCHANT#sprouts"}
+
+
+def test_row_without_stored_name_quality_is_repaired(client):
+    """Codex pass-2 input: merchant_name and name_quality both absent."""
+    client.upsert_receipt_summary(summary("Sprouts"))
+    item = row(0, merchant_name=None, name="MILK").to_item()
+    del item["name_quality"]
+    boto3.client("dynamodb", region_name="us-east-1").put_item(
+        TableName=client.table_name, Item=item
+    )
+    assert stored(client)[0].name_quality == "ok"
+
+    stamped = line_item_processor.backfill_line_item_merchants(
+        IMAGE_ID, RECEIPT_ID
+    )
+
+    assert stamped == 1
+    after = stored(client)[0]
+    assert after.merchant_name == "Sprouts"
+    assert after.to_item()["GSI1SK"]["S"].startswith("LINE_ITEM#MILK#")
+    # Repeated backfills are a no-op, not a silent failure loop.
+    assert (
+        line_item_processor.backfill_line_item_merchants(IMAGE_ID, RECEIPT_ID)
+        == 0
+    )
+
+
 def test_accessor_is_a_conditional_field_update(client):
     client.add_receipt_line_items(
         [row(0, merchant_name=None), row(1, merchant_name="Kept")]

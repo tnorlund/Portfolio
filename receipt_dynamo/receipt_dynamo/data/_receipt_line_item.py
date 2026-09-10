@@ -170,25 +170,35 @@ class _ReceiptLineItem(FlattenedStandardMixin):
         that currently carries none, without touching any other field.
 
         A field-only conditional update, not a put: it applies only while
-        the row still has no merchant AND still has the ``name`` /
-        ``name_quality`` this ``line_item`` was read with (the GSI1 sort
-        key is derived from them). Returns False when the condition fails
-        -- the row was rewritten, corrected or stamped concurrently -- so
-        a stale read can never overwrite a newer row.
+        the row's merchant is still the blank value ``line_item`` was read
+        with (absent, empty, or whitespace-only) AND the row still has the
+        ``name`` / ``name_quality`` it was read with (the GSI1 sort key is
+        derived from them; an absent ``name_quality`` deserializes as
+        "ok" and is accepted as such). Returns False without writing when
+        ``line_item`` already carries a merchant, and when the condition
+        fails -- the row was rewritten, corrected or stamped concurrently
+        -- so a stale read can never overwrite a newer row.
         """
         self._validate_entity(line_item, ReceiptLineItem, "line_item")
         if not isinstance(merchant_name, str) or not merchant_name.strip():
             raise EntityValidationError(
                 "merchant_name must be a non-empty string"
             )
+        observed = line_item.merchant_name
+        if observed is not None and observed.strip():
+            return False
         stamped = replace(line_item, merchant_name=merchant_name)
         names = {"#name": "name"}
         values: dict[str, dict[str, str]] = {
             ":merchant": {"S": merchant_name},
-            ":empty": {"S": ""},
             ":name": {"S": line_item.name},
             ":quality": {"S": line_item.name_quality},
         }
+        if observed is None:
+            merchant_condition = "attribute_not_exists(merchant_name)"
+        else:
+            values[":observed"] = {"S": observed}
+            merchant_condition = "merchant_name = :observed"
         assignments = ["merchant_name = :merchant"]
         gsi = stamped.gsi1_key
         if gsi:
@@ -201,10 +211,9 @@ class _ReceiptLineItem(FlattenedStandardMixin):
                 Key=line_item.key,
                 UpdateExpression="SET " + ", ".join(assignments),
                 ConditionExpression=(
-                    "attribute_exists(PK) AND "
-                    "(attribute_not_exists(merchant_name) OR "
-                    "merchant_name = :empty) AND "
-                    "#name = :name AND name_quality = :quality"
+                    f"attribute_exists(PK) AND {merchant_condition} AND "
+                    "#name = :name AND (attribute_not_exists(name_quality) "
+                    "OR name_quality = :quality)"
                 ),
                 ExpressionAttributeNames=names,
                 ExpressionAttributeValues=values,
