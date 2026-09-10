@@ -151,6 +151,9 @@ class _FakeDynamo:
     def add_receipt_line_items(self, line_items):
         self.written.extend(line_items)
 
+    def set_receipt_line_item_merchant_if_missing(self, _row, _merchant):
+        return True
+
 
 @pytest.fixture
 def run(monkeypatch):
