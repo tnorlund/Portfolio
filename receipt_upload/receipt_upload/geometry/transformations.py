@@ -32,41 +32,45 @@ def invert_affine(a, b, c, d, e, f):
     return (a_inv, b_inv, c_inv, d_inv, e_inv, f_inv)
 
 
-def invert_warp(a, b, c, d, e, f, g, h):
+def invert_warp(
+    a: float,
+    b: float,
+    c: float,
+    d: float,
+    e: float,
+    f: float,
+    g: float,
+    h: float,
+) -> list[float]:
     """
-    Given the 8 perspective coefficients (a, b, c, d, e, f, g, h) for the mapping
+    Given 8 perspective coefficients (a, b, c, d, e, f, g, h) for the mapping
       x_new = (a*x + b*y + c) / (1 + g*x + h*y)
       y_new = (d*x + e*y + f) / (1 + g*x + h*y)
     returns a new list of 8 coefficients [a2, b2, c2, d2, e2, f2, g2, h2]
     that perform the inverse mapping (x_new, y_new) -> (x, y).
+
+    Raises ValueError if the matrix is singular or its inverse cannot be
+    represented with a constant denominator term of 1.
     """
-    # Form the 3x3 matrix
-    # pylint: disable=invalid-name
-    M = [
+    matrix = [
         [a, b, c],
         [d, e, f],
         [g, h, 1],
     ]
-    # Invert it
-    M_inv = _invert_3x3(M)
-    # Extract the top-left 8 elements
-    # M_inv = [[A, B, C],
-    #          [D, E, F],
-    #          [G, H, I]]
-    A = M_inv[0][0]
-    B = M_inv[0][1]
-    C = M_inv[0][2]
-    D = M_inv[1][0]
-    E = M_inv[1][1]
-    F = M_inv[1][2]
-    G = M_inv[2][0]
-    H = M_inv[2][1]
-    # pylint: enable=invalid-name
-    # The last element M_inv[2][2] would be 1 if not degenerate
-    return [A, B, C, D, E, F, G, H]
+    inverse = _invert_3x3(matrix)
+    scale = inverse[2][2]
+    if scale == 0:
+        raise ValueError(
+            "Inverse perspective matrix cannot use a constant term of 1."
+        )
+    # Homogeneous matrices are equivalent up to scale. Normalize all entries
+    # before omitting the final constant used by the eight-coefficient form.
+    return [value / scale for row in inverse for value in row][:8]
 
 
-def _invert_3x3(M):  # pylint: disable=invalid-name
+def _invert_3x3(
+    M: list[list[float]],  # pylint: disable=invalid-name
+) -> list[list[float]]:
     """Inverts a 3x3 matrix M using standard formula (or your own method)."""
     determinant = (
         M[0][0] * (M[1][1] * M[2][2] - M[1][2] * M[2][1])
