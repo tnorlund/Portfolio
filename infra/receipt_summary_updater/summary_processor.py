@@ -7,7 +7,7 @@ a new ReceiptSummary from ReceiptWordLabel and ReceiptWord records.
 import json
 import logging
 import os
-from typing import Any
+from typing import Any, NamedTuple
 
 # receipt_dynamo ships in the Lambda layer; receipt_upload.tender is
 # bundled into this Lambda's archive as a FileAsset referencing the
@@ -46,81 +46,55 @@ def _total_line_ids(sections: list[Any] | None) -> list[int]:
     return ids
 
 
-def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
-    """Recompute and upsert ReceiptSummary for a receipt.
+class ComputedSummary(NamedTuple):
+    """A freshly computed summary plus the merchant category it was read with."""
 
-    Fetches ReceiptWordLabel and ReceiptWord records, optionally
-    ReceiptPlace for merchant name, then computes and upserts
-    the summary.
+    summary: ReceiptSummary
+    merchant_category: str | None
+
+
+def compute_receipt_summary(
+    image_id: str, receipt_id: int, client: DynamoClient | None = None
+) -> ComputedSummary:
+    """Fetch a receipt's rows and compute its ReceiptSummary without writing.
+
+    This is the single computation path: the Lambda's
+    :func:`update_receipt_summary` calls it and then upserts, and the
+    offline recompute script (``scripts/recompute_receipt_summaries.py``)
+    calls it for dry runs so previews and writes never diverge.
 
     Args:
         image_id: UUID of the image containing the receipt.
         receipt_id: ID of the receipt within the image.
+        client: DynamoClient to read from; defaults to the Lambda's
+            environment-configured client.
 
     Returns:
-        Dictionary with summary details for logging.
+        The computed summary and the ReceiptPlace merchant category.
 
     Raises:
-        ValueError: If DYNAMODB_TABLE_NAME environment variable is not set.
+        ValueError: If no client is given and DYNAMODB_TABLE_NAME is unset.
     """
-    if dynamo_client is None:
+    dynamo = client if client is not None else dynamo_client
+    if dynamo is None:
         raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
-
-    # Tombstone guard: the parent receipt must still exist. The Dynamo
-    # stream fires on child-row deletions too, so when a re-segmentation
-    # apply deletes a source receipt, the deletion events for its labels
-    # would otherwise resurrect an orphan RECEIPT#N#SUMMARY row minutes
-    # after the receipt is gone. Skip the recompute and clear any freshly
-    # re-created orphan summary instead (self-healing: a later event for
-    # the same deleted receipt sweeps whatever an earlier race left).
-    #
-    # A parent row that exists but does not parse as a Receipt (e.g. a
-    # RESEGMENT_RESERVATION placeholder) raises OperationError, which
-    # propagates so the SQS message is retried after the apply commits.
-    try:
-        dynamo_client.get_receipt(image_id, receipt_id)
-    except EntityNotFoundError:
-        orphan_summary_deleted = False
-        try:
-            orphan = dynamo_client.get_receipt_summary(image_id, receipt_id)
-            dynamo_client.delete_receipt_summary(orphan)
-            orphan_summary_deleted = True
-        except EntityNotFoundError:
-            pass
-        logger.info(
-            "Skipping summary regen for %s:%d: parent receipt no longer "
-            "exists (orphan summary deleted: %s)",
-            image_id[:8],
-            receipt_id,
-            orphan_summary_deleted,
-        )
-        return {
-            "image_id": image_id,
-            "receipt_id": receipt_id,
-            "skipped": "parent receipt deleted",
-            "orphan_summary_deleted": orphan_summary_deleted,
-        }
 
     # Fetch all word labels with pagination
     word_labels = []
     last_key = None
     while True:
-        page_labels, last_key = (
-            dynamo_client.list_receipt_word_labels_for_receipt(
-                image_id, receipt_id, last_evaluated_key=last_key
-            )
+        page_labels, last_key = dynamo.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id, last_evaluated_key=last_key
         )
         word_labels.extend(page_labels)
         if last_key is None:
             break
 
-    words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
+    words = dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
 
     # Lines + sections feed the tender classifier's payment zone
-    lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
-    sections = dynamo_client.get_receipt_sections_from_receipt(
-        image_id, receipt_id
-    )
+    lines = dynamo.list_receipt_lines_from_receipt(image_id, receipt_id)
+    sections = dynamo.get_receipt_sections_from_receipt(image_id, receipt_id)
     tender = classify_tender_for_receipt(lines, sections, word_labels, words)
     total_line_ids = _total_line_ids(sections)
 
@@ -129,7 +103,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     # so a label-change recompute does not clobber them.
     ledger = bank_amount = bank_match_confidence = bank_date = None
     try:
-        existing = dynamo_client.get_receipt_summary(image_id, receipt_id)
+        existing = dynamo.get_receipt_summary(image_id, receipt_id)
         ledger = existing.ledger
         bank_amount = existing.bank_amount
         bank_match_confidence = existing.bank_match_confidence
@@ -141,7 +115,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     merchant_name: str | None = None
     merchant_category: str | None = None
     try:
-        place = dynamo_client.get_receipt_place(image_id, receipt_id)
+        place = dynamo.get_receipt_place(image_id, receipt_id)
         merchant_name = place.merchant_name
         merchant_category = getattr(place, "merchant_category", None)
     except EntityNotFoundError:
@@ -163,9 +137,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     # timestamp so that finalization does not trigger another extraction.
     try:
         line_item_count = len(
-            dynamo_client.get_receipt_line_items_from_receipt(
-                image_id, receipt_id
-            )
+            dynamo.get_receipt_line_items_from_receipt(image_id, receipt_id)
         )
     except EntityNotFoundError:
         line_item_count = 0
@@ -187,19 +159,84 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         line_item_count=line_item_count,
         total_line_ids=total_line_ids,
     )
+    return ComputedSummary(summary, merchant_category)
+
+
+def update_receipt_summary(
+    image_id: str, receipt_id: int, client: DynamoClient | None = None
+) -> dict[str, Any]:
+    """Recompute and upsert ReceiptSummary for a receipt.
+
+    Guards against a deleted parent receipt, computes the summary via
+    :func:`compute_receipt_summary`, then upserts it.
+
+    Args:
+        image_id: UUID of the image containing the receipt.
+        receipt_id: ID of the receipt within the image.
+        client: DynamoClient to use; defaults to the Lambda's
+            environment-configured client.
+
+    Returns:
+        Dictionary with summary details for logging.
+
+    Raises:
+        ValueError: If no client is given and DYNAMODB_TABLE_NAME is unset.
+    """
+    dynamo = client if client is not None else dynamo_client
+    if dynamo is None:
+        raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+
+    # Tombstone guard: the parent receipt must still exist. The Dynamo
+    # stream fires on child-row deletions too, so when a re-segmentation
+    # apply deletes a source receipt, the deletion events for its labels
+    # would otherwise resurrect an orphan RECEIPT#N#SUMMARY row minutes
+    # after the receipt is gone. Skip the recompute and clear any freshly
+    # re-created orphan summary instead (self-healing: a later event for
+    # the same deleted receipt sweeps whatever an earlier race left).
+    #
+    # A parent row that exists but does not parse as a Receipt (e.g. a
+    # RESEGMENT_RESERVATION placeholder) raises OperationError, which
+    # propagates so the SQS message is retried after the apply commits.
+    try:
+        dynamo.get_receipt(image_id, receipt_id)
+    except EntityNotFoundError:
+        orphan_summary_deleted = False
+        try:
+            orphan = dynamo.get_receipt_summary(image_id, receipt_id)
+            dynamo.delete_receipt_summary(orphan)
+            orphan_summary_deleted = True
+        except EntityNotFoundError:
+            pass
+        logger.info(
+            "Skipping summary regen for %s:%d: parent receipt no longer "
+            "exists (orphan summary deleted: %s)",
+            image_id[:8],
+            receipt_id,
+            orphan_summary_deleted,
+        )
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "skipped": "parent receipt deleted",
+            "orphan_summary_deleted": orphan_summary_deleted,
+        }
+
+    summary, merchant_category = compute_receipt_summary(
+        image_id, receipt_id, dynamo
+    )
 
     # Convert to record and upsert
     record = ReceiptSummaryRecord.from_summary(summary)
-    dynamo_client.upsert_receipt_summary(record)
+    dynamo.upsert_receipt_summary(record)
 
     # Close the race with a merge deleting the parent after our initial
     # guard. Parent-first deletion + a consistent child sweep handles writes
     # before deletion; this consistent POST-write read handles writes after
     # deletion, even when the sweep already finished. Errors propagate for
     # SQS retry, whose initial guard also removes an orphan summary.
-    if not dynamo_client.receipt_exists_consistent(image_id, receipt_id):
+    if not dynamo.receipt_exists_consistent(image_id, receipt_id):
         try:
-            dynamo_client.delete_receipt_summary(record)
+            dynamo.delete_receipt_summary(record)
         except EntityNotFoundError:
             pass  # The merge sweep or another worker already removed it.
         logger.info(
@@ -217,7 +254,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     result = {
         "image_id": image_id,
         "receipt_id": receipt_id,
-        "merchant_name": merchant_name,
+        "merchant_name": summary.merchant_name,
         "merchant_category": merchant_category,
         "grand_total": summary.grand_total,
         "tax": summary.tax,
