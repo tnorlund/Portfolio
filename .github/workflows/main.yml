@@ -251,18 +251,20 @@ jobs:
           LANGCHAIN_TRACING_V2: "false"
         run: |
           # Both correction Lambdas ship the same local stack as this job.
-          # Separate invocations isolate the OCR handler package/conftest
-          # from root tests while exercising both Python matrix runtimes.
+          # Separate invocations isolate each suite's pytest configuration
+          # and fixtures while exercising both Python matrix runtimes.
           source .venv-receipt_agent/bin/activate
           python -m pytest -q --confcutdir=tests \
             tests/test_merge_receipt_lambda.py \
             tests/test_merge_receipt_recovery.py \
             tests/test_correction_retry_acceptance.py \
-            infra/tests/test_ocr_results_redrive_mapping.py \
             --timeout=120 --tb=short --maxfail=5
           python -m pytest -q --import-mode=importlib \
             --confcutdir=infra/upload_images/container_ocr/handler/tests \
             infra/upload_images/container_ocr/handler/tests \
+            --timeout=120 --tb=short --maxfail=5
+          python -m pytest -q --confcutdir=infra/tests \
+            infra/tests/test_ocr_results_redrive_mapping.py \
             --timeout=120 --tb=short --maxfail=5
 
       - name: Test Glyph Studio on the selected runtime
