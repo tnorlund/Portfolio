@@ -631,6 +631,7 @@ class UploadImages(ComponentResource):
             function_name=process_ocr_lambda.name,
             batch_size=10,
             enabled=True,
+            function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(
                 parent=self,
                 import_=(

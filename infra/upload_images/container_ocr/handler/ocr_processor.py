@@ -16,8 +16,10 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import atan2, degrees
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Mapping, Optional, Union, cast
+from uuid import uuid4
 
+import boto3
 from botocore.exceptions import ClientError
 from PIL import Image as PIL_Image
 from PIL import UnidentifiedImageError
@@ -42,6 +44,7 @@ from receipt_dynamo.entities import (
     ReceiptWord,
     Word,
 )
+from receipt_embeddings import report_incomplete
 from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.line_items.geometry import extract_items
 from receipt_upload.line_items.provenance import (
@@ -50,6 +53,7 @@ from receipt_upload.line_items.provenance import (
     is_worker_extractor_version,
     is_worker_model_source,
 )
+from receipt_upload.merchant_resolution import dynamo_embedding_write
 from receipt_upload.ocr import process_ocr_dict_as_image
 from receipt_upload.receipt_processing.native import process_native
 from receipt_upload.receipt_processing.photo import process_photo
@@ -67,6 +71,9 @@ from receipt_upload.utils import (
 )
 
 from .metrics import emf_metrics
+
+if TYPE_CHECKING:
+    from receipt_embeddings.protocols import EmbeddingTableHandle
 
 logger = logging.getLogger(__name__)
 
@@ -752,23 +759,19 @@ class OCRProcessor:
     def _process_regional_reocr_job(
         self, ocr_job: Any, ocr_routing_decision: Any
     ) -> Dict[str, Any]:
-        """Overlay regional re-OCR words onto existing receipt words."""
-        logger.info("Regional re-OCR overlay for receipt %s", ocr_job.image_id)
+        """Serialize duplicate deliveries of one regional correction job.
 
-        if ocr_job.receipt_id is None:
-            self._update_routing_decision_with_error(ocr_routing_decision)
-            return {"success": False, "error": "Receipt ID is None"}
-        if not ocr_job.reocr_region:
-            self._update_routing_decision_with_error(ocr_routing_decision)
-            return {"success": False, "error": "reocr_region is missing"}
-
-        # Guard 1: Skip if this routing decision has already been completed
-        if ocr_routing_decision.status == OCRStatus.COMPLETED.value:
-            logger.info(
-                "Regional re-OCR already completed for %s#%s, skipping",
-                ocr_job.image_id,
-                ocr_job.receipt_id,
-            )
+        The claim exceeds Lambda's 900-second absolute runtime limit. A busy
+        delivery must retry; it cannot acknowledge another attempt's work.
+        """
+        owner = str(uuid4())
+        claim = self.dynamo.claim_ocr_routing_decision(
+            ocr_job.image_id,
+            ocr_job.job_id,
+            owner,
+            now=datetime.now(timezone.utc),
+        )
+        if claim == "completed":
             return {
                 "success": True,
                 "skipped": True,
@@ -776,6 +779,31 @@ class OCRProcessor:
                 "image_id": ocr_job.image_id,
                 "receipt_id": ocr_job.receipt_id,
             }
+        if claim != "claimed":
+            raise RuntimeError("Regional re-OCR is already being processed")
+
+        completed = False
+        try:
+            result = self._apply_regional_reocr_overlay(
+                ocr_job, ocr_routing_decision, owner
+            )
+            completed = bool(result.get("success"))
+            return result
+        finally:
+            if not completed:
+                self.dynamo.release_ocr_routing_decision(
+                    ocr_job.image_id, ocr_job.job_id, owner
+                )
+
+    def _apply_regional_reocr_overlay(
+        self, ocr_job: Any, ocr_routing_decision: Any, owner: str
+    ) -> Dict[str, Any]:
+        """Apply an overlay while this invocation owns the routing claim."""
+        logger.info("Regional re-OCR overlay for receipt %s", ocr_job.image_id)
+        if ocr_job.receipt_id is None:
+            return {"success": False, "error": "Receipt ID is None"}
+        if not ocr_job.reocr_region:
+            return {"success": False, "error": "reocr_region is missing"}
 
         region = {
             "x": float(ocr_job.reocr_region.get("x", 0.70)),
@@ -819,7 +847,12 @@ class OCRProcessor:
         # must be in the same space for matching and storage.
         # Use the same projective (homography) transform that the
         # FIRST_PASS warp used, so coordinates are exactly consistent.
-        receipt = self.dynamo.get_receipt(ocr_job.image_id, ocr_job.receipt_id)
+        # Replays must see writes from prior attempts, including letters and
+        # label invalidations. GSI reads may still show the original OCR.
+        details = self.dynamo.get_receipt_details(
+            ocr_job.image_id, ocr_job.receipt_id, consistent_read=True
+        )
+        receipt = details.receipt
         image = self.dynamo.get_image(ocr_job.image_id)
         coeffs = self._get_perspective_coeffs(
             receipt, image.width, image.height
@@ -886,28 +919,21 @@ class OCRProcessor:
         region_x1, region_x2 = min(r_xs), max(r_xs)
         region_y1, region_y2 = min(r_ys), max(r_ys)
 
-        existing_words = self.dynamo.list_receipt_words_from_receipt(
-            ocr_job.image_id, ocr_job.receipt_id
-        )
-        if not existing_words:
-            self._update_routing_decision_with_error(ocr_routing_decision)
+        existing_words = details.words
+        if not existing_words and not details.lines:
             return {
                 "success": False,
                 "error": "No existing receipt words found for overlay",
             }
 
-        labels: list[Any] = []
-        page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
-            image_id=ocr_job.image_id, receipt_id=ocr_job.receipt_id
-        )
-        labels.extend(page or [])
-        while lek:
-            page, lek = self.dynamo.list_receipt_word_labels_for_receipt(
-                image_id=ocr_job.image_id,
-                receipt_id=ocr_job.receipt_id,
-                last_evaluated_key=lek,
-            )
-            labels.extend(page or [])
+        labels = details.labels
+        existing_letters_by_word: dict[
+            tuple[int, int], list[ReceiptLetter]
+        ] = {}
+        for letter in details.letters:
+            existing_letters_by_word.setdefault(
+                (letter.line_id, letter.word_id), []
+            ).append(letter)
 
         # SMART re-OCR completion metrics: measure the items-zone delta
         # against the printed subtotal BEFORE any word mutation. Null
@@ -1061,11 +1087,8 @@ class OCRProcessor:
             existing_word.is_noise = is_noise_text(new_word.text)
             words_to_update.append(existing_word)
 
-            old_letters = self.dynamo.list_receipt_letters_from_word(
-                image_id=ocr_job.image_id,
-                receipt_id=ocr_job.receipt_id,
-                line_id=existing_word.line_id,
-                word_id=existing_word.word_id,
+            old_letters = existing_letters_by_word.get(
+                (existing_word.line_id, existing_word.word_id), []
             )
             letters_to_delete.extend(old_letters)
 
@@ -1218,11 +1241,8 @@ class OCRProcessor:
         # matched by any new word).  Their letters are collected first
         # so we can remove them in the correct order.
         for orphan in orphaned_words:
-            orphan_letters = self.dynamo.list_receipt_letters_from_word(
-                image_id=ocr_job.image_id,
-                receipt_id=ocr_job.receipt_id,
-                line_id=orphan.line_id,
-                word_id=orphan.word_id,
+            orphan_letters = existing_letters_by_word.get(
+                (orphan.line_id, orphan.word_id), []
             )
             letters_to_delete.extend(orphan_letters)
             words_to_delete.append(orphan)
@@ -1261,14 +1281,17 @@ class OCRProcessor:
             if (label.line_id, label.word_id) not in deleted_word_ids
         ]
 
-        if words_to_update:
-            self.dynamo.update_receipt_words(words_to_update)
-        if words_to_add:
-            self.dynamo.add_receipt_words(words_to_add)
+        # Invalidate labels before changing their word text. Otherwise a
+        # failed label write followed by a replay sees identical text and
+        # can leave the old label VALID indefinitely.
         if labels_to_revalidate:
             self.dynamo.update_receipt_word_labels(labels_to_revalidate)
         if labels_to_delete:
             self.dynamo.delete_receipt_word_labels(labels_to_delete)
+        if words_to_update:
+            self.dynamo.update_receipt_words(words_to_update)
+        if words_to_add:
+            self.dynamo.add_receipt_words(words_to_add)
         # Delete old letters BEFORE adding replacements. The old letters
         # and new letters can share the same (line_id, word_id, letter_id)
         # keys, so adding first then deleting would clobber the new data.
@@ -1281,102 +1304,36 @@ class OCRProcessor:
         if words_to_delete:
             self.dynamo.delete_receipt_words(words_to_delete)
 
-        # Rebuild ReceiptLine.text for lines with overlaid, added, or
-        # deleted words so downstream consumers (native embeddings,
-        # merchant resolution, agents, cache generators) see the
-        # corrected text.
-        lines_to_update: list[ReceiptLine] = []
-        affected_line_ids = (
-            {w.line_id for w in words_to_update}
-            | {w.line_id for w in words_to_add}
-            | {w.line_id for w in words_to_delete}
-        )
-        if affected_line_ids:
-            existing_lines = self.dynamo.list_receipt_lines_from_receipt(
-                ocr_job.image_id, ocr_job.receipt_id
-            )
-            # Build a word lookup with updated words taking precedence.
-            updated_lookup = {
-                (w.line_id, w.word_id): w for w in words_to_update
-            }
-            deleted_ids = {(w.line_id, w.word_id) for w in words_to_delete}
-            added_by_line: dict[int, list[ReceiptWord]] = {}
-            for w in words_to_add:
-                added_by_line.setdefault(w.line_id, []).append(w)
-            for line in existing_lines:
-                if line.line_id not in affected_line_ids:
-                    continue
-                # Exclude deleted (orphaned) words from the rebuild.
-                line_words = [
-                    updated_lookup.get((w.line_id, w.word_id), w)
-                    for w in existing_words
-                    if w.line_id == line.line_id
-                    and (w.line_id, w.word_id) not in deleted_ids
-                ]
-                line_words.extend(added_by_line.get(line.line_id, []))
-                line_words.sort(key=lambda w: w.word_id)
-                line.text = " ".join(w.text for w in line_words)
-                lines_to_update.append(line)
-            if lines_to_update:
-                self.dynamo.update_receipt_lines(lines_to_update)
-
-        # SMART re-OCR completion metrics: post-overlay delta from the
-        # in-memory word set (matched words were mutated in place;
-        # orphans removed; unmatched additions appended).
+        # Rebuild every line from the final word set, including lines whose
+        # only word was deleted by a previous interrupted attempt. Restricting
+        # this to this attempt's changed IDs leaves those lines stale forever.
         post_overlay_words = [
-            w
-            for w in existing_words
-            if (w.line_id, w.word_id) not in deleted_word_ids
+            word
+            for word in existing_words
+            if (word.line_id, word.word_id) not in deleted_word_ids
         ] + words_to_add
+        words_by_line: dict[int, list[ReceiptWord]] = {}
+        for word in post_overlay_words:
+            words_by_line.setdefault(word.line_id, []).append(word)
+        lines_to_update: list[ReceiptLine] = []
+        for line in details.lines:
+            line_words = sorted(
+                words_by_line.get(line.line_id, []),
+                key=lambda word: word.word_id,
+            )
+            rebuilt_text = " ".join(word.text for word in line_words)
+            if line.text != rebuilt_text:
+                line.text = rebuilt_text
+                lines_to_update.append(line)
+        if lines_to_update:
+            self.dynamo.update_receipt_lines(lines_to_update)
+
+        # Use the same in-memory entities for native refresh. Reading GSI3
+        # immediately after the writes can regenerate vectors from stale OCR.
         reocr_delta_after = self._items_zone_delta(
             post_overlay_words, zone_baseline
         )
         words_accepted = len(words_to_update) + len(words_to_add)
-        self._record_reocr_completion_metrics(
-            ocr_job,
-            words_accepted=words_accepted,
-            words_rejected=words_rejected,
-            delta_before=reocr_delta_before,
-            delta_after=reocr_delta_after,
-        )
-
-        ocr_routing_decision.status = OCRStatus.COMPLETED.value
-        ocr_routing_decision.receipt_count = 1
-        ocr_routing_decision.updated_at = datetime.now(timezone.utc)
-        self.dynamo.update_ocr_routing_decision(ocr_routing_decision)
-
-        # Close the correction loop: recompute the receipt summary so its
-        # timestamp_computed changes, which fires the summary stream and
-        # regenerates RECEIPT_LINE_ITEM rows from the corrected words.
-        # Label revalidation above only covers LABELED words; items-zone
-        # digits are usually unlabeled, so without this the re-OCR'd text
-        # never reaches line items.
-        summary_queue_url = os.environ.get("RECEIPT_SUMMARY_QUEUE_URL")
-        if summary_queue_url:
-            try:
-                import boto3 as _boto3
-
-                _boto3.client("sqs").send_message(
-                    QueueUrl=summary_queue_url,
-                    MessageBody=json.dumps(
-                        {
-                            "entity_data": {
-                                "image_id": ocr_job.image_id,
-                                "receipt_id": ocr_job.receipt_id,
-                            }
-                        }
-                    ),
-                )
-                logger.info(
-                    "Enqueued summary recompute for %s#%s after re-OCR",
-                    ocr_job.image_id,
-                    ocr_job.receipt_id,
-                )
-            except Exception:  # pylint: disable=broad-exception-caught
-                logger.exception(
-                    "Failed to enqueue summary recompute (non-fatal)"
-                )
-
         # Re-embed the full receipt so the native DynamoDB vector corpus
         # reflects corrected text: write_native_embeddings
         # sweeps the stale *_EMBEDDING items (with UnprocessedItems retries)
@@ -1386,46 +1343,16 @@ class OCRProcessor:
         # instead of acknowledging success with a partial native corpus.
         native_refresh_error = None
         try:
-            from receipt_dynamo.data.shared_exceptions import (  # noqa: E501  pylint: disable=import-outside-toplevel
-                EntityNotFoundError,
-            )
 
-            # pylint: disable-next=import-outside-toplevel
-            from receipt_embeddings import report_incomplete
-
-            # pylint: disable-next=line-too-long,import-outside-toplevel
-            from receipt_upload.merchant_resolution.dynamo_embedding_write import (  # noqa: E501
-                write_native_embeddings,
-            )
-
-            all_lines = self.dynamo.list_receipt_lines_from_receipt(
-                ocr_job.image_id, ocr_job.receipt_id
-            )
-
-            try:
-                reocr_place = self.dynamo.get_receipt_place(
-                    ocr_job.image_id, ocr_job.receipt_id
-                )
-            except EntityNotFoundError:
-                # Genuinely no place yet — blank metadata is correct; the
-                # freshener fills it when a PLACE row lands.
-                reocr_place = None
-            # Any other lookup failure (throttles, network) must NOT
-            # rewrite every vector with blank merchant/place (no later
-            # PLACE event would heal it) — it propagates into the outer
-            # native_refresh_error handler and fails retryably (codex P2).
-
-            def _write_native():
-                return write_native_embeddings(
-                    self.dynamo,
+            def _write_native() -> dict[str, object]:
+                return dynamo_embedding_write.write_native_embeddings(
+                    cast("EmbeddingTableHandle", self.dynamo),
                     image_id=ocr_job.image_id,
                     receipt_id=ocr_job.receipt_id,
-                    lines=all_lines,
-                    words=self.dynamo.list_receipt_words_from_receipt(
-                        ocr_job.image_id, ocr_job.receipt_id
-                    ),
-                    word_labels=labels_for_embedding or [],
-                    receipt_place=reocr_place,
+                    lines=details.lines,
+                    words=post_overlay_words,
+                    word_labels=labels_for_embedding,
+                    receipt_place=details.place,
                     sweep_existing=True,
                 )
 
@@ -1474,7 +1401,6 @@ class OCRProcessor:
             native_refresh_error = str(native_exc)
 
         if native_refresh_error is not None:
-            self._update_routing_decision_with_error(ocr_routing_decision)
             return {
                 "success": False,
                 "error": (
@@ -1485,6 +1411,42 @@ class OCRProcessor:
                 "receipt_id": ocr_job.receipt_id,
                 "image_type": "REGIONAL_REOCR",
             }
+
+        # Queue acceptance is part of correction completion: downstream
+        # summary/line-item consumers must observe corrected unlabeled digits.
+        # A failed send raises through process_ocr_job and is redriven by SQS.
+        summary_queue_url = os.environ.get("RECEIPT_SUMMARY_QUEUE_URL")
+        if summary_queue_url:
+            boto3.client("sqs").send_message(
+                QueueUrl=summary_queue_url,
+                MessageBody=json.dumps(
+                    {
+                        "entity_data": {
+                            "image_id": ocr_job.image_id,
+                            "receipt_id": ocr_job.receipt_id,
+                        }
+                    }
+                ),
+            )
+            logger.info(
+                "Enqueued summary recompute for %s#%s after re-OCR",
+                ocr_job.image_id,
+                ocr_job.receipt_id,
+            )
+
+        # The durable routing marker is last. A failed or interrupted native
+        # refresh/send cannot make the next delivery skip unfinished work.
+        self._record_reocr_completion_metrics(
+            ocr_job,
+            words_accepted=words_accepted,
+            words_rejected=words_rejected,
+            delta_before=reocr_delta_before,
+            delta_after=reocr_delta_after,
+        )
+        ocr_routing_decision.status = OCRStatus.COMPLETED.value
+        ocr_routing_decision.receipt_count = 1
+        ocr_routing_decision.updated_at = datetime.now(timezone.utc)
+        self.dynamo.complete_ocr_routing_decision(ocr_routing_decision, owner)
 
         return {
             "success": True,
