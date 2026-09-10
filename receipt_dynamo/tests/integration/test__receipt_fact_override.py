@@ -49,7 +49,7 @@ def test_get_returns_none_when_nothing_stated(client: DynamoClient):
 def test_add_then_get_round_trips(client: DynamoClient):
     stated = override()
 
-    assert client.add_receipt_fact_override(stated) is stated
+    assert client.add_receipt_fact_override(stated) == stated
     assert client.get_receipt_fact_override(IMAGE_ID, 1) == stated
 
 
@@ -153,6 +153,26 @@ def test_delete_with_stale_revision_is_a_conflict(client: DynamoClient):
 def test_delete_of_a_missing_override_is_a_conflict(client: DynamoClient):
     with pytest.raises(FactOverrideConflictError):
         client.delete_receipt_fact_override(IMAGE_ID, 1, expected_revision=1)
+
+
+def test_mutated_entity_without_provenance_is_refused(
+    client: DynamoClient,
+):
+    """A fact assigned after construction has no reference; the write
+    must re-validate rather than persist a row later reads reject."""
+    mutated = ReceiptFactOverride(image_id=IMAGE_ID, receipt_id=1)
+    mutated.date = "2026-09-01"
+
+    with pytest.raises(EntityValidationError, match="date_reference"):
+        client.add_receipt_fact_override(mutated)
+    assert client.get_receipt_fact_override(IMAGE_ID, 1) is None
+
+    client.add_receipt_fact_override(override())
+    stale = override(revision=2)
+    stale.merchant_name = "Costco"  # no merchant_name_reference
+    with pytest.raises(EntityValidationError, match="merchant_name_reference"):
+        client.update_receipt_fact_override(stale, expected_revision=1)
+    assert client.get_receipt_fact_override(IMAGE_ID, 1) == override()
 
 
 def test_override_does_not_shadow_the_summary_row(client: DynamoClient):

@@ -25,6 +25,9 @@ from receipt_dynamo import (
     ReceiptWordLabel,
 )
 from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities.receipt_fact_override import (
+    ReceiptFactOverride,
+)
 from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 from receipt_dynamo.entities.receipt_summary import (
     MonetaryTotals,
@@ -334,8 +337,12 @@ def test_consecutive_computes_agree(table):
             for i in range(3)
         ]
     )
-    first, _ = summary_processor.compute_receipt_summary(IMAGE_ID, 1, client)
-    second, _ = summary_processor.compute_receipt_summary(IMAGE_ID, 1, client)
+    first, _, _ = summary_processor.compute_receipt_summary(
+        IMAGE_ID, 1, client
+    )
+    second, _, _ = summary_processor.compute_receipt_summary(
+        IMAGE_ID, 1, client
+    )
     assert first.to_dict() == second.to_dict()
     assert first.item_count == 3  # rows win over the 25 LINE_TOTAL labels
 
@@ -464,6 +471,63 @@ def test_date_dropping_to_none_shows_date_label_statuses(table, capsys):
         "items=0 -> date=None total=47.18 items=0 "
         "DATE labels: 4:1 '01/02/2026' INVALID" in out
     )
+
+
+def test_owner_fact_override_wins_and_is_attributed(table, capsys):
+    """A receipt with no usable printed date recomputes with the owner's
+    date, and the rewrite records that the date came from the owner."""
+    client = DynamoClient(table)
+    _seed_dateless_receipt(client)
+    client.add_receipt_fact_override(
+        ReceiptFactOverride(
+            image_id=IMAGE_ID,
+            receipt_id=1,
+            date="2026-09-01",
+            date_reference="Chase statement 2026-09-01 $47.18",
+        )
+    )
+
+    assert recompute.main(["--table", table, "--apply"]) == 0
+
+    out = capsys.readouterr().out
+    assert (
+        f"{IMAGE_ID}#1 UPDATED: date=None total=47.18 items=0 -> "
+        "date=2026-09-01 total=47.18 items=0 owner=date" in out
+    )
+    stored = client.get_receipt_summary(IMAGE_ID, 1)
+    assert stored.date == datetime(2026, 9, 1)  # owner beats "May 6. 2025"
+    assert stored.overrides_applied == ["date"]
+    assert stored.to_item()["overrides_applied"] == {"L": [{"S": "date"}]}
+
+    # Once written, a second run sees no difference (attribution included).
+    assert recompute.main(["--table", table]) == 0
+    assert f"{IMAGE_ID}#1 unchanged: date=2026-09-01" in (
+        capsys.readouterr().out
+    )
+
+
+def test_missing_attribution_alone_triggers_a_rewrite(table, capsys):
+    """A summary computed before the override was stated carries the same
+    date but no attribution; the comparison must include overrides_applied
+    so the recompute rewrites it instead of reporting it unchanged."""
+    client = DynamoClient(table)
+    _seed_dated_receipt(client)
+    client.add_receipt_fact_override(
+        ReceiptFactOverride(
+            image_id=OTHER_IMAGE_ID,
+            receipt_id=2,
+            date="2026-01-02",
+            date_reference="calendar",
+        )
+    )
+
+    assert recompute.main(["--table", table, "--apply"]) == 0
+
+    out = capsys.readouterr().out
+    assert f"{OTHER_IMAGE_ID}#2 UPDATED" in out
+    assert client.get_receipt_summary(OTHER_IMAGE_ID, 2).overrides_applied == [
+        "date"
+    ]
 
 
 def test_orphan_summary_is_skipped_not_recomputed(table, capsys):

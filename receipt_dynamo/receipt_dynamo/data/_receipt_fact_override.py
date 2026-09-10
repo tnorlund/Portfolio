@@ -7,6 +7,8 @@ each other's statement of fact.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.base_operations import (
@@ -58,6 +60,18 @@ class _ReceiptFactOverride(FlattenedStandardMixin):
                 "owner facts are stated on the dev table only"
             )
 
+    def _validated_override(
+        self, override: ReceiptFactOverride
+    ) -> ReceiptFactOverride:
+        """Re-run the entity's validation right before it is written.
+
+        Dataclass fields are mutable, so a caller can assign a fact after
+        construction without its reference; replace() re-runs
+        __post_init__ so such an entity is refused instead of stored.
+        """
+        self._validate_entity(override, ReceiptFactOverride, "override")
+        return replace(override)
+
     @handle_dynamodb_errors("add_receipt_fact_override")
     def add_receipt_fact_override(
         self, override: ReceiptFactOverride
@@ -68,7 +82,7 @@ class _ReceiptFactOverride(FlattenedStandardMixin):
             EntityAlreadyExistsError: an override already exists.
         """
         self._assert_fact_override_writable()
-        self._validate_entity(override, ReceiptFactOverride, "override")
+        override = self._validated_override(override)
         if override.revision != 1:
             raise EntityValidationError(
                 "a new override must start at revision 1"
@@ -94,7 +108,7 @@ class _ReceiptFactOverride(FlattenedStandardMixin):
                 no longer equals ``expected_revision``.
         """
         self._assert_fact_override_writable()
-        self._validate_entity(override, ReceiptFactOverride, "override")
+        override = self._validated_override(override)
         check_fact_revision(expected_revision)
         if override.revision != expected_revision + 1:
             raise EntityValidationError(
