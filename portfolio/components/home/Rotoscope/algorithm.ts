@@ -55,6 +55,7 @@ export interface RotoscopeOptions {
 
 export interface DifferenceStage {
   gray: Uint8Array;
+  blurred: Uint8Array;
   difference: Uint8Array;
 }
 
@@ -284,7 +285,7 @@ export const grayscaleAndDifference = (
   for (let index = 0; index < count; index += 1) {
     difference[index] = Math.abs(gray[index] - blurred[index]);
   }
-  return { gray, difference };
+  return { gray, blurred, difference };
 };
 
 export const sobelGradient = (

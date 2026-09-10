@@ -28,6 +28,15 @@ background: 0.06}` with spacing `{face: 1, body: 4, background: 8}`. Engine
 defaults in `algorithm.ts` stay `{face: 0.5, body: 0.3, background: 0.2}` for
 the explainer and lab.
 
+Regenerate the `/rotoscope` article stills and the homepage basin fallback after
+changing homepage size or quotas:
+
+```sh
+npx tsx scripts/generate-rotoscope-explainer-stills.ts
+```
+
+`generate-rotoscope-basins.ts` still rebuilds only `rotoscope-basins.webp`.
+
 `public/rotoscope-basins.webp` is the no-JavaScript / worker-unavailable
 fallback: a 960×720 watershed outline of the same homepage pass. JavaScript
 keeps that image out of the frame during idle, processing, and Replay so the
@@ -39,12 +48,6 @@ background finishes the sequence. Each basin grows radially from its own stable
 interior point over ~1100ms. The homepage figure itself is the Replay
 control; there is no caption overlay. Paper and source notes live on
 `/rotoscope`. `/rotoscope-lab` stays unlinked.
-
-Regenerate the fallback outline after changing homepage size or quotas:
-
-```sh
-npx tsx scripts/generate-rotoscope-basins.ts
-```
 
 Production keeps all computation off the main thread. The versioned worker
 decodes and resizes the source once, caches the authored focus map, and runs the
