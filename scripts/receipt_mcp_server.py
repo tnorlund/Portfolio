@@ -558,7 +558,8 @@ Common categories: grocery_store, supermarket, restaurant, gas_station, pharmacy
 A read-only worklist over the receipt summaries. Each page examines
 `limit` summaries (in DynamoDB order) and reports only those missing at
 least one of the requested fields:
-- "date": the summary has no receipt date
+- "date": the summary has no effective date (no printed/owner date and
+  no eligible bank date)
 - "merchant_name": the summary has no merchant
 - "line_merchant": one or more RECEIPT_LINE_ITEM rows carry no
   merchant_name (so they are absent from the MERCHANT#<slug> index);
@@ -568,9 +569,9 @@ Pagination is by the summary listing's own cursor, so a page may report
 zero receipts. Keep calling with cursor = the previous next_cursor until
 it is null. `scanned` is how many summaries the page examined.
 
-Per receipt: image_id, receipt_id, merchant_name, date, grand_total,
-item_count, missing_fields, and (when "line_merchant" is requested)
-line_count and lines_missing_merchant.""",
+Per receipt: image_id, receipt_id, merchant_name, date (the effective
+date), date_source, grand_total, item_count, missing_fields, and (when
+"line_merchant" is requested) line_count and lines_missing_merchant.""",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -3537,7 +3538,8 @@ async def list_receipts_missing_fields_impl(
             merchant = record.merchant_name
             has_merchant = isinstance(merchant, str) and bool(merchant.strip())
             missing = []
-            if "date" in wanted and record.date is None:
+            effective_date = record.effective_date
+            if "date" in wanted and effective_date is None:
                 missing.append("date")
             if "merchant_name" in wanted and not has_merchant:
                 missing.append("merchant_name")
@@ -3566,7 +3568,10 @@ async def list_receipts_missing_fields_impl(
                 "image_id": record.image_id,
                 "receipt_id": record.receipt_id,
                 "merchant_name": merchant,
-                "date": record.date.isoformat() if record.date else None,
+                "date": (
+                    effective_date.isoformat() if effective_date else None
+                ),
+                "date_source": record.date_source,
                 "grand_total": record.grand_total,
                 "item_count": record.item_count,
                 "missing_fields": missing,

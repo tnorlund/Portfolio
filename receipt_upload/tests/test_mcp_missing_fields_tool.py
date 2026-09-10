@@ -173,7 +173,7 @@ def image_id(n: int) -> str:
 DATE = datetime(2026, 9, 1, tzinfo=timezone.utc)
 
 
-def summary(n, merchant_name, date=DATE, item_count=0):
+def summary(n, merchant_name, date=DATE, item_count=0, **bank):
     return ReceiptSummaryRecord(
         summary=ReceiptSummary(
             image_id=image_id(n),
@@ -182,6 +182,7 @@ def summary(n, merchant_name, date=DATE, item_count=0):
             date=date,
             totals=MonetaryTotals(grand_total=float(n), subtotal=float(n)),
             item_count=item_count,
+            **bank,
         ),
         timestamp_computed="2026-09-01T00:00:00+00:00",
     )
@@ -321,6 +322,7 @@ def test_reports_each_requested_gap_with_line_counts(server, client):
         by_number[4]["lines_missing_merchant"],
     ) == (3, 2)
     assert by_number[4]["date"] == DATE.isoformat()
+    assert by_number[4]["date_source"] == "label"
     assert by_number[4]["grand_total"] == 4.0
     assert by_number[4]["item_count"] == 3
     assert by_number[5]["missing_fields"] == ["date", "merchant_name"]
@@ -366,6 +368,32 @@ def test_pagination_is_exact_across_pages(server, client, limit):
     assert scanned == len(CORPUS)
     assert sorted(seen) == sorted({2, 3, 4, 5})
     assert pages >= -(-len(CORPUS) // limit)
+
+
+def test_date_means_effective_date(server, client):
+    """An eligible bank date (or an owner override folded into ``date``)
+    is a date; a low-confidence bank match is not."""
+    bank = datetime(2026, 9, 3, tzinfo=timezone.utc)
+    client.upsert_receipt_summary(
+        summary(
+            1, "Costco", date=None, bank_date=bank, bank_match_confidence=0.9
+        )
+    )
+    client.upsert_receipt_summary(
+        summary(
+            2, "Costco", date=None, bank_date=bank, bank_match_confidence=0.5
+        )
+    )
+    client.upsert_receipt_summary(summary(3, "Costco", date=None))
+
+    result = call(server, fields=["date"], limit=1000)
+
+    by_number = {int(r["image_id"][:8]): r for r in result["receipts"]}
+    assert set(by_number) == {2, 3}
+    assert by_number[2]["date"] is None
+    assert by_number[2]["date_source"] is None
+    full = call(server, fields=ALL_FIELDS, limit=1000)
+    assert 1 not in {int(r["image_id"][:8]) for r in full["receipts"]}
 
 
 def test_tool_never_writes(server, client):
