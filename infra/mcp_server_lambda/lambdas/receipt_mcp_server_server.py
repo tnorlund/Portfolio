@@ -2198,6 +2198,105 @@ WARNING: this WRITES to DynamoDB (the configured table).""",
             },
         ),
         Tool(
+            name="set_receipt_fact",
+            description="""State an owner-known receipt fact the image cannot supply.
+
+Some receipts have no date (or merchant line) on the photographed part.
+The summary is recomputed from word labels whenever a label changes, so
+a hand-edited summary field is lost. This tool instead writes a
+RECEIPT_FACT_OVERRIDE row (one per receipt). Every stated fact carries
+its own reference (how you know it), the row carries source=owner,
+changed_at and a revision; every summary recompute (the Lambda updater
+and scripts/backfill_receipt_summaries.py) applies the stated facts on
+top of the extracted summary and records them in overrides_applied.
+
+Compare-and-swap: pass expected_revision=null to create the receipt's
+first override, or the revision returned by get_receipt_fact_override
+to change it. A stale revision is refused; re-read and retry. Passing
+value=null retracts that fact; the row (and its revision) is kept even
+when no fact remains, so a stale revision never becomes valid again.
+Setting one fact leaves the other fact and its reference untouched.
+
+Writes go to the server's configured table only; tables whose name
+marks them as protected are refused before any read or write. The
+summary is not recomputed by this call: trigger a recompute (any label
+change on the receipt, or the backfill script) to see the fact land on
+the summary.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "field": {
+                        "type": "string",
+                        "enum": ["date", "merchant_name"],
+                        "description": "Which summary fact to state",
+                    },
+                    "value": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "The fact: an ISO date (YYYY-MM-DD) for "
+                            "field=date, or the merchant name. null "
+                            "retracts the fact."
+                        ),
+                    },
+                    "reference": {
+                        "type": "string",
+                        "description": (
+                            "Why the owner knows this fact (e.g. 'Chase "
+                            "statement 2026-09-01 $47.18'); stored with "
+                            "the fact. Ignored when retracting."
+                        ),
+                    },
+                    "expected_revision": {
+                        "type": ["integer", "null"],
+                        "description": (
+                            "null to create; otherwise the current "
+                            "revision from get_receipt_fact_override"
+                        ),
+                    },
+                },
+                "required": [
+                    "image_id",
+                    "receipt_id",
+                    "field",
+                    "value",
+                    "reference",
+                    "expected_revision",
+                ],
+            },
+        ),
+        Tool(
+            name="get_receipt_fact_override",
+            description="""Read the owner-stated fact override for a receipt.
+
+Returns the RECEIPT_FACT_OVERRIDE row (date, date_reference,
+merchant_name, merchant_name_reference, source, changed_at, revision)
+or override=null when the owner has never stated a fact. A row whose
+facts are all null is a retracted override. Use the returned revision
+as expected_revision when calling set_receipt_fact.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                },
+                "required": ["image_id", "receipt_id"],
+            },
+        ),
+        Tool(
             name="extend_items_section",
             description="""Arithmetic-VERIFIED extension of the ITEMS section.
 
@@ -2587,6 +2686,22 @@ async def call_tool(
                     "expected_alias_revision"
                 ),
                 status=arguments.get("status", "rejected"),
+            )
+        elif name == "set_receipt_fact":
+            result = await set_receipt_fact_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                field=arguments["field"],
+                value=arguments["value"],
+                reference=arguments["reference"],
+                expected_revision=arguments["expected_revision"],
+            )
+        elif name == "get_receipt_fact_override":
+            result = await get_receipt_fact_override_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
             )
         elif name == "extend_items_section":
             result = await extend_items_section_impl(
@@ -5767,6 +5882,165 @@ async def get_receipt_line_items_impl(
     except Exception as e:
         logger.exception("Error getting receipt line items")
         return {"error": str(e)}
+
+
+# Table-name markers that set_receipt_fact refuses before any read or
+# write. Mirrors receipt_dynamo's PROTECTED_FACT_TABLE_MARKERS (the
+# accessors refuse the write as well); owner fact overrides are stated on
+# the dev table only.
+FACT_OVERRIDE_TABLE_DENYLIST = ("d7ff76a",)
+
+_FACT_NEXT_STEP = (
+    "The summary updater applies this on its next recompute of the "
+    "receipt (any label change, or scripts/backfill_receipt_summaries.py); "
+    "the summary then lists the field in overrides_applied."
+)
+
+
+def _refuse_protected_fact_table(dynamo_client) -> str | None:
+    """Return a refusal message when the client's table is protected."""
+    table_name = str(getattr(dynamo_client, "table_name", "") or "")
+    for marker in FACT_OVERRIDE_TABLE_DENYLIST:
+        if marker in table_name:
+            return (
+                "set_receipt_fact refuses the configured table: owner "
+                "fact overrides are written to the dev table only"
+            )
+    return None
+
+
+def _fact_override_payload(override) -> dict:
+    return {
+        **override.to_dict(),
+        "facts": override.facts,
+        "references": override.references,
+    }
+
+
+async def set_receipt_fact_impl(
+    dynamo_client,
+    *,
+    image_id: str,
+    receipt_id: int,
+    field: str,
+    value: str | None,
+    reference: str | None,
+    expected_revision: int | None,
+) -> dict:
+    """State or retract one owner fact with a revision compare-and-swap."""
+    from receipt_dynamo.data.shared_exceptions import (
+        EntityAlreadyExistsError,
+        EntityValidationError,
+        FactOverrideConflictError,
+    )
+    from receipt_dynamo.entities.receipt_fact_override import (
+        OVERRIDABLE_FACT_FIELDS,
+        ReceiptFactOverride,
+    )
+
+    refusal = _refuse_protected_fact_table(dynamo_client)
+    if refusal:
+        return {"error": refusal}
+    if field not in OVERRIDABLE_FACT_FIELDS:
+        return {
+            "error": (
+                f"field must be one of {list(OVERRIDABLE_FACT_FIELDS)}, "
+                f"got {field!r}"
+            )
+        }
+    if value is not None and not isinstance(value, str):
+        return {"error": "value must be a string or null"}
+    if expected_revision is not None and (
+        type(expected_revision) is not int or expected_revision < 1
+    ):
+        return {"error": "expected_revision must be null or a positive int"}
+
+    try:
+        if expected_revision is None:
+            if value is None:
+                return {
+                    "error": (
+                        "value is required when creating an override "
+                        "(expected_revision=null)"
+                    )
+                }
+            override = ReceiptFactOverride(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                revision=1,
+                **{field: value, f"{field}_reference": reference},
+            )
+            dynamo_client.add_receipt_fact_override(override)
+            action = "created"
+        else:
+            existing = dynamo_client.get_receipt_fact_override(
+                image_id, receipt_id
+            )
+            if existing is None:
+                return {
+                    "error": (
+                        "no override exists for this receipt; pass "
+                        "expected_revision=null to create one"
+                    )
+                }
+            if existing.revision != expected_revision:
+                return {
+                    "error": (
+                        f"revision conflict: expected {expected_revision}, "
+                        f"stored {existing.revision}; re-read with "
+                        "get_receipt_fact_override and retry"
+                    ),
+                    "current_revision": existing.revision,
+                    "override": _fact_override_payload(existing),
+                }
+            # Only the named fact (and its reference) changes; the row is
+            # kept even when no fact remains so the revision never resets.
+            override = existing.with_fact(
+                field, value, reference, revision=expected_revision + 1
+            )
+            dynamo_client.update_receipt_fact_override(
+                override, expected_revision=expected_revision
+            )
+            action = "retracted" if value is None else "updated"
+    except EntityValidationError as exc:
+        return {"error": f"invalid fact: {exc}"}
+    except EntityAlreadyExistsError:
+        return {
+            "error": (
+                "an override already exists for this receipt; read it "
+                "with get_receipt_fact_override and pass its revision as "
+                "expected_revision"
+            )
+        }
+    except FactOverrideConflictError as exc:
+        return {"error": str(exc)}
+
+    return {
+        "action": action,
+        "override": _fact_override_payload(override),
+        "next_step": _FACT_NEXT_STEP,
+    }
+
+
+async def get_receipt_fact_override_impl(
+    dynamo_client, *, image_id: str, receipt_id: int
+) -> dict:
+    """Read the receipt's owner-stated fact override, if any."""
+    from receipt_dynamo.data.shared_exceptions import EntityValidationError
+
+    try:
+        override = dynamo_client.get_receipt_fact_override(
+            image_id, receipt_id
+        )
+    except EntityValidationError as exc:
+        return {"error": str(exc)}
+    return {
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "override": (
+            _fact_override_payload(override) if override is not None else None
+        ),
+    }
 
 
 async def extend_items_section_impl(
