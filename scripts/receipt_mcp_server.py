@@ -3092,12 +3092,13 @@ async def get_receipt_summaries_impl(
                 if not category_match:
                     continue
 
-            # Date filters use the receipt's calendar date, inclusively.
+            # Date filters use the receipt's calendar date, inclusively:
+            # the printed date, else the matched bank transaction date.
             # Unknown dates cannot establish membership in a requested range.
             if start_dt or end_dt:
-                if record.date is None:
+                if record.effective_date is None:
                     continue
-                receipt_date = record.date.date()
+                receipt_date = record.effective_date.date()
                 if start_dt and receipt_date < start_dt:
                     continue
                 if end_dt and receipt_date > end_dt:

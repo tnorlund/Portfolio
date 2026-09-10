@@ -875,6 +875,10 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             ``chase``, ``apple`` or ``none`` (None when unknown).
         bank_amount: Settled amount from the matched bank transaction.
         bank_match_confidence: Confidence of the bank match in [0, 1].
+        bank_date: Transaction date of the matched bank transaction.
+            Offline like the other bank fields. The fallback date for
+            receipts whose printed date is missing, illegible, or cut
+            off; see ``effective_date``.
     """
 
     image_id: str
@@ -889,6 +893,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
     ledger: str | None = None
     bank_amount: float | None = None
     bank_match_confidence: float | None = None
+    bank_date: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate identifiers and computed summary fields."""
@@ -946,6 +951,32 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             raise ValueError(
                 "bank_match_confidence must be within [0, 1] or None"
             )
+        if self.bank_date is not None and not isinstance(
+            self.bank_date, datetime
+        ):
+            raise ValueError("bank_date must be a datetime or None")
+
+    @property
+    def effective_date(self) -> datetime | None:
+        """Printed (label-derived) date, else the matched bank date.
+
+        ``date`` is recomputed from VALID DATE labels on every stream
+        recompute and is None when the receipt has no legible printed
+        date. ``bank_date`` comes from the offline bank match and
+        survives recomputes, so it is the fallback -- never the other
+        way round: a printed date is the purchase date, a bank date can
+        lag it by a day.
+        """
+        return self.date if self.date is not None else self.bank_date
+
+    @property
+    def date_source(self) -> str | None:
+        """Where ``effective_date`` came from: 'label', 'bank', or None."""
+        if self.date is not None:
+            return "label"
+        if self.bank_date is not None:
+            return "bank"
+        return None
 
     # Convenience properties for backwards compatibility
     @property
@@ -1040,6 +1071,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         ledger: str | None = None,
         bank_amount: float | None = None,
         bank_match_confidence: float | None = None,
+        bank_date: datetime | None = None,
         line_item_count: int | None = None,
         total_line_ids: Collection[int] | None = None,
     ) -> "ReceiptSummary":
@@ -1060,6 +1092,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             ledger: Optional bank ledger (chase/apple/none).
             bank_amount: Optional matched bank transaction amount.
             bank_match_confidence: Optional match confidence in [0, 1].
+            bank_date: Optional matched bank transaction date.
             line_item_count: Number of ``ReceiptLineItem`` rows the
                 receipt currently holds. Preferred over the LINE_TOTAL
                 label count when non-zero (see :func:`resolve_item_count`).
@@ -1098,6 +1131,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             ledger=ledger,
             bank_amount=bank_amount,
             bank_match_confidence=bank_match_confidence,
+            bank_date=bank_date,
         )
 
     def to_dict(self) -> dict:
@@ -1118,6 +1152,15 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             "ledger": self.ledger,
             "bank_amount": self.bank_amount,
             "bank_match_confidence": self.bank_match_confidence,
+            "bank_date": (
+                self.bank_date.isoformat() if self.bank_date else None
+            ),
+            "effective_date": (
+                self.effective_date.isoformat()
+                if self.effective_date
+                else None
+            ),
+            "date_source": self.date_source,
         }
         result.update(self.totals.to_dict())
         return result

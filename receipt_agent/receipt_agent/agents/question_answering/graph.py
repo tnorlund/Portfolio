@@ -486,7 +486,8 @@ def create_shape_node(state_holder: dict) -> Callable:
                     grand_total=grand_total,
                     tax=tax,
                     tip=summary_data.get("tip"),
-                    date=summary_data.get("date"),
+                    date=summary_data.get("effective_date")
+                    or summary_data.get("date"),
                     item_count=summary_data.get("item_count"),
                     line_items=line_items,
                     labels_found=list(labels_found),

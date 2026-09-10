@@ -1213,15 +1213,19 @@ def create_qa_tools(
                 # receipts was the largest wrong-number source in the
                 # 2026-07-29 scorecard. They are counted and reported
                 # separately instead of silently included.
-                if (start_dt or end_dt) and not record.date:
+                # The printed date wins; a receipt whose printed date is
+                # missing or illegible falls back to its matched bank
+                # transaction date (ReceiptSummary.effective_date).
+                receipt_date = record.effective_date
+                if (start_dt or end_dt) and not receipt_date:
                     undated_excluded += 1
                     undated_spending += record.grand_total or 0
                     continue
-                if start_dt and record.date:
-                    if record.date < start_dt:
+                if start_dt and receipt_date:
+                    if receipt_date < start_dt:
                         continue
-                if end_dt and record.date:
-                    if record.date > end_dt:
+                if end_dt and receipt_date:
+                    if receipt_date > end_dt:
                         continue
 
                 summary_dict = record.to_dict()

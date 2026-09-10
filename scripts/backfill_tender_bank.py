@@ -25,8 +25,13 @@ For every receipt in the target table this script:
      settle above the printed total; a grocery "match" 30% above the
      receipt is a different shopping trip, not a tip.
 4. Writes tender_class / card_network / card_last4 / ledger /
-   bank_amount / bank_match_confidence onto the stored
-   ReceiptSummaryRecord.
+   bank_amount / bank_match_confidence / bank_date onto the stored
+   ReceiptSummaryRecord. bank_date is the matched transaction's date
+   and is the summary's fallback date (``effective_date``) for receipts
+   whose printed date is missing, illegible, or cut off -- the stream
+   recompute derives ``date`` from DATE labels only and would clobber
+   any hand-written value, so the bank date rides with the other
+   offline fields instead.
 
 Match confidence:
     chase curated confirmed 1.0 | chase curated auto 0.9
@@ -363,13 +368,24 @@ def match_ledger(
             "confidence": round(confidence, 2),
             "exact": exact,
             "txn_id": txn.get("txn_id"),
+            "date": txn["date"],
         }
     return None
 
 
-def _chase_result(chase: dict[str, Any]) -> tuple[float, float]:
-    """Amount + confidence for a curated Chase match."""
-    return chase["amount"], 1.0 if chase["status"] == "confirmed" else 0.9
+def _chase_result(
+    chase: dict[str, Any],
+) -> tuple[float, float, datetime.date | None]:
+    """Amount + confidence + txn date for a curated Chase match."""
+    confidence = 1.0 if chase["status"] == "confirmed" else 0.9
+    return chase["amount"], confidence, chase.get("date")
+
+
+def _bank_datetime(day: datetime.date | None) -> datetime.datetime | None:
+    """Ledger dates are calendar days; the summary stores datetimes."""
+    if day is None:
+        return None
+    return datetime.datetime(day.year, day.month, day.day)
 
 
 def load_chase_ledger(
@@ -494,16 +510,22 @@ def run(args: argparse.Namespace) -> None:
         snapshot[(image_id, receipt_id)] = (date, cents, category)
     chase_matches = {}
     claimed_txns = set()
-    for ref, status, txn_id, account, amount_cents in con.execute(
-        """SELECT m.ref, m.status, m.txn_id, c.account, c.amount_cents
+    for ref, status, txn_id, account, amount_cents, txn_date in con.execute(
+        """SELECT m.ref, m.status, m.txn_id, c.account, c.amount_cents,
+                  c.txn_date
            FROM matches m JOIN chase_transactions c USING(txn_id)
            WHERE m.ref_kind='paper' AND m.status != 'rejected'"""
     ):
         image_id, receipt_id = ref.rsplit(":", 1)
+        try:
+            match_date = datetime.date.fromisoformat((txn_date or "")[:10])
+        except ValueError:
+            match_date = None
         chase_matches[(image_id, int(receipt_id))] = {
             "status": status,
             "account": account,
             "amount": abs(amount_cents) / 100.0,
+            "date": match_date,
         }
         claimed_txns.add(txn_id)
     # Live-matcher candidate pools, one per account, EXCLUDING every
@@ -619,7 +641,7 @@ def run(args: argparse.Namespace) -> None:
         # Every ledger value is handled explicitly; the trailing ``else``
         # makes an unhandled value loud instead of silently dropping a
         # match that was already fetched.
-        bank_amount = confidence = None
+        bank_amount = confidence = bank_date = None
         chase = chase_matches.get(receipt_key)
 
         def _match_chase_live(account: str | None):
@@ -639,12 +661,13 @@ def run(args: argparse.Namespace) -> None:
 
         if ledger == LEDGER_CHASE:
             if chase:
-                bank_amount, confidence = _chase_result(chase)
+                bank_amount, confidence, bank_date = _chase_result(chase)
             else:
                 live = _match_chase_live(chase_account_for(last4))
                 if live:
                     bank_amount = live["amount"]
                     confidence = live["confidence"]
+                    bank_date = live["date"]
                     stats["chase_live_matched"] += 1
                     if not live["exact"]:
                         stats["chase_live_tip_band"] += 1
@@ -656,6 +679,7 @@ def run(args: argparse.Namespace) -> None:
             if apple:
                 bank_amount = apple["amount"]
                 confidence = apple["confidence"]
+                bank_date = apple["date"]
         elif ledger == LEDGER_UNKNOWN:
             # No attributable card: curated Chase wins outright, then
             # whichever LIVE ledger matched with higher confidence
@@ -664,7 +688,7 @@ def run(args: argparse.Namespace) -> None:
                 apple_by_amount, date, total, merchant, category
             )
             if chase:
-                bank_amount, confidence = _chase_result(chase)
+                bank_amount, confidence, bank_date = _chase_result(chase)
                 ledger = LEDGER_CHASE
             else:
                 live = _match_chase_live(None)
@@ -673,6 +697,7 @@ def run(args: argparse.Namespace) -> None:
                 ):
                     bank_amount = live["amount"]
                     confidence = live["confidence"]
+                    bank_date = live["date"]
                     ledger = LEDGER_CHASE
                     stats["chase_live_matched"] += 1
                     if not live["exact"]:
@@ -681,6 +706,7 @@ def run(args: argparse.Namespace) -> None:
                 elif apple:
                     bank_amount = apple["amount"]
                     confidence = apple["confidence"]
+                    bank_date = apple["date"]
                     ledger = LEDGER_APPLE
         elif ledger == LEDGER_NONE:
             # Deliberate: this card has no held ledger, so any curated
@@ -694,6 +720,10 @@ def run(args: argparse.Namespace) -> None:
 
         if bank_amount is not None:
             stats["bank_matched"] += 1
+            if bank_date is not None:
+                stats["bank_dated"] += 1
+                if date is None:
+                    stats["bank_date_fills_missing_date"] += 1
         ledger_dist[ledger or "(unset)"] += 1
 
         if stored is None:
@@ -713,6 +743,7 @@ def run(args: argparse.Namespace) -> None:
             ledger=ledger,
             bank_amount=bank_amount,
             bank_match_confidence=confidence,
+            bank_date=_bank_datetime(bank_date),
         )
         old = stored.summary
         if updated == old:
@@ -729,6 +760,11 @@ def run(args: argparse.Namespace) -> None:
     print(f"already up to date:      {stats['unchanged']}")
     print(f"records to write:        {len(to_write)}")
     print(f"bank-matched:            {stats['bank_matched']}")
+    print(
+        f"bank-dated:              {stats['bank_dated']}"
+        f" ({stats['bank_date_fills_missing_date']} fill a missing"
+        " printed date)"
+    )
     print(
         f"chase live-matched:      {stats['chase_live_matched']}"
         f" ({stats['chase_live_tip_band']} tip-band)"
