@@ -11,12 +11,22 @@ import pytest
 from test_merge_receipt_lambda import (
     EVENT,
     IMAGE_ID,
+    db,
     keys,
+    lifecycle_env,
     merge,
+    mock_aws_services,
     queue_messages,
 )
 
-pytest_plugins = ("test_merge_receipt_lambda",)
+# Re-export fixtures locally; a pytest plugin would affect unrelated tests.
+__all__ = ["db", "lifecycle_env", "mock_aws_services"]
+
+
+@pytest.fixture(name="merge_case")
+def _merge_case(request: pytest.FixtureRequest) -> Any:
+    """Use the shared fixture without shadowing its imported Python name."""
+    return request.getfixturevalue("lifecycle_env")
 
 
 def _assert_settled(env: Any, result: dict[str, Any]) -> None:
@@ -39,10 +49,10 @@ def _assert_settled(env: Any, result: dict[str, Any]) -> None:
 
 @pytest.mark.parametrize("failure", [{"failed": 1}, RuntimeError("offline")])
 def test_native_failure_retries_same_output_with_reversed_sources(
-    lifecycle_env: Any, failure: Any
+    merge_case: Any, failure: Any
 ) -> None:
     """A persisted output must not force retry to allocate another receipt."""
-    env = lifecycle_env
+    env = merge_case
     env.native.side_effect = [failure, {"written": 6, "failed": 0}]
     failed = merge.handler(EVENT, None)
     assert failed["status"] == "error", failed
@@ -65,10 +75,10 @@ def test_native_failure_retries_same_output_with_reversed_sources(
     "method", ["delete_receipt", "purge_receipt_children", "update_image"]
 )
 def test_cleanup_failure_resumes_without_rebuilding_output(
-    lifecycle_env: Any, monkeypatch: pytest.MonkeyPatch, method: str
+    merge_case: Any, monkeypatch: pytest.MonkeyPatch, method: str
 ) -> None:
     """Fail once before/after source deletion, then finish the saved output."""
-    env = lifecycle_env
+    env = merge_case
     original = getattr(env.db, method)
     failed_once = False
 
@@ -93,10 +103,10 @@ def test_cleanup_failure_resumes_without_rebuilding_output(
 
 
 def test_queue_failure_after_source_deletion_resumes_same_output(
-    lifecycle_env: Any, monkeypatch: pytest.MonkeyPatch
+    merge_case: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A missing downstream recompute must stay retryable after source removal."""
-    env = lifecycle_env
+    env = merge_case
     sqs_client = env.sqs
     original = sqs_client.send_message
     failed_once = False
@@ -128,10 +138,10 @@ def test_queue_failure_after_source_deletion_resumes_same_output(
 
 
 def test_completed_redelivery_returns_result_without_writing_again(
-    lifecycle_env: Any,
+    merge_case: Any,
 ) -> None:
     """A duplicate succeeds even though the original receipts are gone."""
-    env = lifecycle_env
+    env = merge_case
     first = merge.handler(EVENT, None)
     _assert_settled(env, first)
     before = keys(env.db)
@@ -144,10 +154,10 @@ def test_completed_redelivery_returns_result_without_writing_again(
 
 
 def test_overlapping_delivery_cannot_enter_cleanup_while_owner_embeds(
-    lifecycle_env: Any,
+    merge_case: Any,
 ) -> None:
     """A second invocation cannot mutate a currently owned output."""
-    env = lifecycle_env
+    env = merge_case
     nested_results = []
     entered = False
 
