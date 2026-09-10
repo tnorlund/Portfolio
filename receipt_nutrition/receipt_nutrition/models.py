@@ -150,6 +150,29 @@ class NutrientFact(FrozenModel):
         return self
 
 
+HouseholdUnit = Literal["tsp", "tbsp", "cup"]
+# Exact US customary household equivalences: 1 tbsp = 3 tsp, 1 cup = 16 tbsp.
+HOUSEHOLD_TEASPOONS: dict[str, int] = {"tsp": 1, "tbsp": 3, "cup": 48}
+
+
+class HouseholdServing(FrozenModel):
+    """The household amount equivalent to ONE labelled serving."""
+
+    value: Positive
+    unit: HouseholdUnit
+    source_ref: Text
+
+
+class HouseholdEquivalence(FrozenModel):
+    """Structured household serving text, kept with the parser that read it."""
+
+    value: Positive
+    unit: Literal["tsp", "tbsp", "cup", "each"]
+    source_ref: Text
+    parser: Text = "household-v1"
+    raw: Text
+
+
 class Product(FrozenModel):
     product_id: Text
     name: Text
@@ -165,6 +188,9 @@ class Product(FrozenModel):
     mass_per_each_g: Positive | None = None
     density_g_per_ml: Positive | None = None
     conversion_source_ref: Text | None = None
+    sold_by: Literal["each", "weight"] | None = None
+    sold_by_source_ref: Text | None = None
+    household: HouseholdEquivalence | None = None
 
     @model_validator(mode="after")
     def validate_evidence(self) -> Self:
@@ -194,6 +220,12 @@ class Product(FrozenModel):
             raise ValueError("unknown physical conversion source")
         if self.servings_per_container is not None and self.serving is None:
             raise ValueError("container servings require a declared serving")
+        if (self.sold_by is None) != (self.sold_by_source_ref is None):
+            raise ValueError("sold_by and its source reference come together")
+        if self.sold_by_source_ref and self.sold_by_source_ref not in sources:
+            raise ValueError("sold_by requires source evidence")
+        if self.household and self.household.source_ref not in sources:
+            raise ValueError("household equivalence requires source evidence")
         return self
 
     @property

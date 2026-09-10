@@ -77,6 +77,11 @@ from receipt_dynamo.entities.ocr_routing_decision import (  # noqa: F401
 )
 from receipt_dynamo.entities.places_cache import PlacesCache  # noqa: F401
 from receipt_dynamo.entities.places_cache import item_to_places_cache
+from receipt_dynamo.entities.price_observation import (
+    PriceEvidence,
+    PriceObservation,
+    item_to_price_observation,
+)
 from receipt_dynamo.entities.product_alias import (
     ProductAlias,
     item_to_product_alias,
@@ -195,9 +200,12 @@ __all__ = [
     "S3Location",
     # Core entities
     "FoodProduct",
+    "PriceEvidence",
+    "PriceObservation",
     "ProductAlias",
     "ProductAliasObservation",
     "item_to_food_product",
+    "item_to_price_observation",
     "item_to_product_alias",
     "item_to_product_alias_observation",
     "AIUsageMetric",
