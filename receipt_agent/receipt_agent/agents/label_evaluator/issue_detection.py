@@ -505,8 +505,12 @@ def check_missing_constellation_member(
 
             if training_present_dx:
                 # Training centroid offset of present labels
-                training_present_offset_x = sum(training_present_dx) / len(training_present_dx)
-                training_present_offset_y = sum(training_present_dy) / len(training_present_dy)
+                training_present_offset_x = sum(training_present_dx) / len(
+                    training_present_dx
+                )
+                training_present_offset_y = sum(training_present_dy) / len(
+                    training_present_dy
+                )
 
                 # Estimate the full constellation centroid from present labels
                 constellation_centroid = (
@@ -588,6 +592,11 @@ def evaluate_word_contexts(
         List of EvaluationIssue objects for all detected issues
     """
     issues: List[EvaluationIssue] = []
+    # Only matching text can conflict; retain receipt order within each group.
+    contexts_by_text: dict[str, list[WordContext]] = defaultdict(list)
+    for ctx in word_contexts:
+        if ctx.current_label is not None:
+            contexts_by_text[ctx.word.text.lower()].append(ctx)
 
     for ctx in word_contexts:
         if ctx.current_label:
@@ -600,7 +609,9 @@ def evaluate_word_contexts(
             # - check_unexpected_label_multiplicity (89% FP, inside check_unexpected_label_pair)
 
             # Keep text-label conflict check (catches same text with different labels)
-            issue = check_text_label_conflict(ctx, word_contexts, patterns)
+            issue = check_text_label_conflict(
+                ctx, contexts_by_text[ctx.word.text.lower()], patterns
+            )
             if issue:
                 issues.append(issue)
                 continue
