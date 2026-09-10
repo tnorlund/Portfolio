@@ -30,13 +30,18 @@ format:
 	@echo "Running Black formatter..."
 	black --line-length=79 $(PYTHON_FILES)
 	@echo "Running isort..."
-	isort --profile=black --line-length=79 $(PYTHON_FILES)
+	@for python_file in $(PYTHON_FILES); do \
+		isort --profile=black --line-length=79 "$$python_file" || exit $$?; \
+	done
 
 lint-format:
 	@echo "Checking Black formatting..."
 	black --check --line-length=79 $(PYTHON_FILES)
 	@echo "Checking import sorting..."
-	isort --check-only --profile=black --line-length=79 $(PYTHON_FILES)
+	@for python_file in $(PYTHON_FILES); do \
+		isort --check-only --profile=black --line-length=79 \
+			"$$python_file" || exit $$?; \
+	done
 
 lint-types:
 	@echo "Running mypy type checking..."

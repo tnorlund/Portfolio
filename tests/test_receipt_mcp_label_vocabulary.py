@@ -6,10 +6,9 @@ string a caller passes becomes a new pseudo-label-type. Production carries
 parser (#758); the MCP ``create_word_label`` tool was the remaining
 structurally-open writer.
 
-These tests exercise the real tool path on BOTH server copies -- the stdio
-``scripts/receipt_mcp_server.py`` and the deployed Lambda
-the package staged by the Lambda Dockerfile -- which
-must stay identical. They assert:
+These tests exercise the real tool path through both entry points: the local
+``scripts/receipt_mcp_server.py`` and the package staged by the Lambda
+Dockerfile. Both must expose the same tool behavior. They assert:
 
 * the published ``inputSchema`` declares the allowed values as an ``enum``,
 * ``create_word_label_impl`` refuses free text *before* touching DynamoDB,
@@ -24,8 +23,9 @@ import types
 from types import SimpleNamespace
 
 import pytest
-from receipt_dynamo.constants import CORE_LABELS
 from receipt_mcp_test_support import SERVER_FILES, load_server_module
+
+from receipt_dynamo.constants import CORE_LABELS
 
 VALID_IMAGE_ID = "344f4a1b-1476-442e-bb01-7eed30934285"
 
