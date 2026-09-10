@@ -189,7 +189,11 @@ class ReceiptSummaryRecord:
 
     @property
     def date_source(self) -> str | None:
-        """Get date_source from summary."""
+        """Where ``effective_date`` came from: 'owner' when the owner's
+        ReceiptFactOverride supplied ``date`` (``overrides_applied``
+        lists it), else the summary's own 'label' / 'bank' / None."""
+        if "date" in self.overrides_applied:
+            return "owner"
         return self.summary.date_source
 
     @property
@@ -406,6 +410,7 @@ class ReceiptSummaryRecord:
         """Convert to dictionary for JSON serialization."""
         return {
             **self.summary.to_dict(),
+            "date_source": self.date_source,
             "overrides_applied": list(self.overrides_applied),
         }
 

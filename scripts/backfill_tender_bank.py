@@ -67,6 +67,9 @@ from pathlib import Path
 from typing import Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities.receipt_fact_override import (
+    apply_fact_override,
+)
 from receipt_dynamo.entities.receipt_summary import (
     MonetaryTotals,
     ReceiptSummary,
@@ -479,6 +482,33 @@ def fetch_all(client: DynamoClient) -> dict[str, Any]:
     }
 
 
+def rebuild_summary_record(
+    client: DynamoClient,
+    stored: ReceiptSummaryRecord,
+    updated: ReceiptSummary,
+) -> ReceiptSummaryRecord | None:
+    """The record to write for ``updated``, or None when nothing changed.
+
+    Owner-stated facts (ReceiptFactOverride) are applied through the
+    same helper every other summary writer uses, so a re-run of this
+    script never drops an owner date or its ``overrides_applied``
+    attribution, and a stored summary that predates the override is
+    rewritten with it.
+    """
+    override = client.get_receipt_fact_override(
+        stored.image_id, stored.receipt_id
+    )
+    updated, overrides_applied = apply_fact_override(updated, override)
+    if (
+        updated == stored.summary
+        and overrides_applied == stored.overrides_applied
+    ):
+        return None
+    return ReceiptSummaryRecord.from_summary(
+        updated, overrides_applied=overrides_applied
+    )
+
+
 def run(args: argparse.Namespace) -> None:
     if args.table_name:
         client = DynamoClient(table_name=args.table_name)
@@ -776,11 +806,11 @@ def run(args: argparse.Namespace) -> None:
             # printed date; count what effective_date will actually use.
             if updated.date is None and updated.bank_date_eligible:
                 stats["bank_date_fills_missing_date"] += 1
-        old = stored.summary
-        if updated == old:
+        record = rebuild_summary_record(client, stored, updated)
+        if record is None:
             stats["unchanged"] += 1
             continue
-        to_write.append(ReceiptSummaryRecord.from_summary(updated))
+        to_write.append(record)
 
     # ------------------------------------------------------------ report
     print("=" * 64)

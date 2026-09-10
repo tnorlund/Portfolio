@@ -339,3 +339,48 @@ def test_summary_record_from_summary_copies_the_list():
     applied.append("merchant_name")
 
     assert record.overrides_applied == ["date"]
+
+
+def test_date_source_reports_owner_when_the_date_was_overridden():
+    owner = ReceiptSummaryRecord(
+        summary=ReceiptSummary(
+            image_id=IMAGE_ID, receipt_id=1, date=datetime(2026, 9, 1)
+        ),
+        timestamp_computed="2026-09-10T00:00:00+00:00",
+        overrides_applied=["date"],
+    )
+
+    assert owner.date_source == "owner"
+    assert owner.effective_date == datetime(2026, 9, 1)
+    assert owner.to_dict()["date_source"] == "owner"
+    assert ReceiptSummaryRecord.from_item(owner.to_item()).date_source == (
+        "owner"
+    )
+
+
+def test_date_source_keeps_label_and_bank_without_a_date_override():
+    label = ReceiptSummaryRecord(
+        summary=ReceiptSummary(
+            image_id=IMAGE_ID,
+            receipt_id=1,
+            merchant_name="Costco",
+            date=datetime(2026, 9, 1),
+        ),
+        timestamp_computed="2026-09-10T00:00:00+00:00",
+        overrides_applied=["merchant_name"],
+    )
+    bank = ReceiptSummaryRecord(
+        summary=ReceiptSummary(
+            image_id=IMAGE_ID,
+            receipt_id=1,
+            bank_date=datetime(2026, 9, 2),
+            bank_match_confidence=0.95,
+        ),
+        timestamp_computed="2026-09-10T00:00:00+00:00",
+    )
+    none = summary_record()
+
+    assert label.date_source == "label"
+    assert label.to_dict()["date_source"] == "label"
+    assert bank.date_source == "bank"
+    assert none.date_source is None
