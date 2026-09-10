@@ -128,22 +128,53 @@ _MONTHS = {
     "dec": 12,
 }
 
-# Month-name dates ("JUL 25, 2026", "25 Jul '26", "July 25 2026").
+# Month-name dates ("JUL 25, 2026", "25 Jul '26", "July 25 2026",
+# "01-Mar-2025", "May 6. 2025", "Mar 10,2026", "April 1: 2024").
 # Receipts print these at least as often as numeric forms, and they
 # arrive split across multiple OCR words — parse_date accepts joined
 # line text as well as single words.
+#
+# The year must be separated from the day by whitespace, by a comma
+# (with or without a space: "Mar 10,2026"), or by a period / colon plus
+# whitespace ("May 6. 2025", "April 1: 2024" — OCR reads the comma
+# after the day as any of these). A bare run of digits never splits
+# into day + year ("MAR 1234" stays None), a price never splits into
+# day + year ("MAYO 5.99" stays None),
+# a "-" after the day is a range or weekday suffix ("June 16 - 22",
+# "June 18-Tuesday,") and is refused, and a two-digit year must not be
+# the integer part of a price ("Jan 21, 32.99" stays None). A month
+# name with no year on the line never parses: the year is not guessed.
+# Year group shared by the month-name patterns: four digits, or two
+# digits that are not the integer part of a price ("32.99"; a following
+# colon time like "'26:10:15" is fine); neither may run into a weekday
+# ("2026-Tuesday", "2026- Tuesday").
+_MONTH_NAME = r"(?P<month>jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)"
+_YEAR_PATTERN = r"(?P<year>\d{4}\b|\d{2}\b(?!\.\d))(?!-\s*[A-Za-z])"
+
 _MONTH_NAME_PATTERNS = [
-    # Month first: JUL 25, 2026 / July 25 '26
+    # Month first: JUL 25, 2026 / July 25 '26 / May 6. 2025 / Mar 10,2026
     re.compile(
-        r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+"
-        r"(\d{1,2})(?:st|nd|rd|th)?,?\s+'?(\d{4}|\d{2})\b",
+        r"\b" + _MONTH_NAME + r"[a-z]*\.?\s+"
+        r"(?P<day>\d{1,2})(?:st|nd|rd|th)?(?:,\s*|[.:]\s+|\s+)'?"
+        + _YEAR_PATTERN,
         re.IGNORECASE,
     ),
-    # Day first: 25 JUL 2026 / 25 July '26
+    # Day first, spaced: 25 JUL 2026 / 25 July '26 / 25. Jul 2026
     re.compile(
-        r"\b(\d{1,2})(?:st|nd|rd|th)?\.?\s+"
-        r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+"
-        r"'?(\d{4}|\d{2})\b",
+        r"\b(?P<day>\d{1,2})(?:st|nd|rd|th)?\.?\s+"
+        + _MONTH_NAME
+        + r"[a-z]*\.?,?\s+'?"
+        + _YEAR_PATTERN,
+        re.IGNORECASE,
+    ),
+    # Day first, punctuated: 01-Mar-2025 / 01.Mar.2025 / 01/Mar/2025. The
+    # same separator must appear on both sides of the month, so a range
+    # ("June 16-June 22") never reads its last day as a year.
+    re.compile(
+        r"\b(?P<day>\d{1,2})(?P<sep>[-./])"
+        + _MONTH_NAME
+        + r"[a-z]*(?P=sep)'?"
+        + _YEAR_PATTERN,
         re.IGNORECASE,
     ),
 ]
@@ -192,6 +223,14 @@ def extract_amount(text: str) -> float | None:
 def parse_date(text: str) -> datetime | None:
     """Parse a date from text.
 
+    Accepts numeric forms ("01/15/2024", "01-15-24", "2024-01-15") and
+    month-name forms in either order ("JUL 25, 2026", "May 6. 2025",
+    "Mar 10,2026", "April 1: 2024", "01-Mar-2025", "25 July '26"),
+    with or without trailing punctuation. Nothing is guessed: a month
+    name with no year, a range ("June 16 - 22"), a weekday-suffixed
+    promo string ("June 18-Tuesday,") and OCR junk ("1/14,23",
+    "6728/25", "3.22") all return None.
+
     Args:
         text: Text that may contain a date (e.g., "01/15/2024", "2024-01-15")
 
@@ -239,15 +278,10 @@ def parse_date(text: str) -> datetime | None:
         match = pattern.search(text)
         if not match:
             continue
-        groups = match.groups()
         try:
-            if groups[0].isdigit():
-                day = int(groups[0])
-                month = _MONTHS[groups[1][:3].lower()]
-            else:
-                month = _MONTHS[groups[0][:3].lower()]
-                day = int(groups[1])
-            year = _expand_year(int(groups[2]))
+            day = int(match.group("day"))
+            month = _MONTHS[match.group("month")[:3].lower()]
+            year = _expand_year(int(match.group("year")))
             return datetime(year, month, day)
         except (ValueError, KeyError):
             continue
@@ -367,9 +401,12 @@ def _extract_summary_fields(
                     (label.word_id, text)
                 )
 
-    # OCR splits dates across words ("JUL" "25" "2026"), so no single
-    # word parses on its own. When per-word parsing found nothing, join
-    # each line's DATE words in word order and parse the whole phrase.
+    # OCR splits dates across words ("JUL" "25" "2026", "May" "6." "2025",
+    # "Mar" "10,2026"), so no single word parses on its own. When
+    # per-word parsing found nothing, join each line's DATE words in
+    # word order and parse the whole phrase; parse_date handles the
+    # punctuation OCR leaves on the day token. A line whose DATE words
+    # carry no year ("Jan" "21,") stays unparsed rather than guessed.
     if state.date is None:
         for _line_id, entries in sorted(date_words_by_line.items()):
             joined = " ".join(t for _, t in sorted(entries) if t)
