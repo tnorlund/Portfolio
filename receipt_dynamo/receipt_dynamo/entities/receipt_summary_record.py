@@ -14,10 +14,13 @@ and adds DynamoDB-specific persistence fields and methods.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, ClassVar
 
+from receipt_dynamo.entities.receipt_fact_override import (
+    OVERRIDABLE_FACT_FIELDS,
+)
 from receipt_dynamo.entities.receipt_summary import (
     MonetaryTotals,
     ReceiptSummary,
@@ -52,6 +55,9 @@ class ReceiptSummaryRecord:
     Attributes:
         summary: The underlying ReceiptSummary with core receipt data.
         timestamp_computed: When this summary was computed.
+        overrides_applied: Summary fields whose value came from the
+            receipt's ReceiptFactOverride (an owner-stated fact) rather
+            than from the extracted labels. Empty when none applied.
     """
 
     REQUIRED_KEYS: ClassVar[set[str]] = {
@@ -66,11 +72,22 @@ class ReceiptSummaryRecord:
 
     # Metadata for persistence
     timestamp_computed: str | datetime | None = None
+    overrides_applied: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
         if not isinstance(self.summary, ReceiptSummary):
             raise ValueError("summary must be a ReceiptSummary object")
+        if not isinstance(self.overrides_applied, list) or any(
+            name not in OVERRIDABLE_FACT_FIELDS
+            for name in self.overrides_applied
+        ):
+            raise ValueError(
+                "overrides_applied must be a list drawn from "
+                f"{list(OVERRIDABLE_FACT_FIELDS)}"
+            )
+        if len(set(self.overrides_applied)) != len(self.overrides_applied):
+            raise ValueError("overrides_applied must not repeat a field")
         # Set timestamp if not provided
         if self.timestamp_computed is None:
             self.timestamp_computed = datetime.now(timezone.utc).isoformat()
@@ -251,6 +268,13 @@ class ReceiptSummaryRecord:
         if self.summary.bank_date is not None:
             item["bank_date"] = {"S": self.summary.bank_date.isoformat()}
 
+        # Provenance of owner-stated facts. Written only when non-empty so
+        # summaries without an override stay byte-identical.
+        if self.overrides_applied:
+            item["overrides_applied"] = {
+                "L": [{"S": name} for name in self.overrides_applied]
+            }
+
         return item
 
     @classmethod
@@ -348,18 +372,31 @@ class ReceiptSummaryRecord:
             bank_date=bank_date,
         )
 
+        overrides_applied: list[str] = []
+        if "overrides_applied" in item and "L" in item["overrides_applied"]:
+            for entry in item["overrides_applied"]["L"]:
+                if not isinstance(entry, dict) or "S" not in entry:
+                    raise ValueError(
+                        "overrides_applied must be a list of strings"
+                    )
+                overrides_applied.append(entry["S"])
+
         return cls(
             summary=summary,
             timestamp_computed=item["timestamp_computed"]["S"],
+            overrides_applied=overrides_applied,
         )
 
     @classmethod
     def from_summary(
         cls,
         summary: ReceiptSummary,
+        overrides_applied: list[str] | None = None,
     ) -> "ReceiptSummaryRecord":
         """Create a persisted record from a computed summary."""
-        return cls(summary=summary)
+        return cls(
+            summary=summary, overrides_applied=list(overrides_applied or [])
+        )
 
     def to_summary(self) -> ReceiptSummary:
         """Return the underlying ReceiptSummary."""
@@ -367,7 +404,10 @@ class ReceiptSummaryRecord:
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        return self.summary.to_dict()
+        return {
+            **self.summary.to_dict(),
+            "overrides_applied": list(self.overrides_applied),
+        }
 
     def __repr__(self) -> str:
         """Return string representation."""

@@ -21,6 +21,9 @@ from receipt_dynamo.data.shared_exceptions import (
     OperationError,
 )
 from receipt_dynamo.entities import ReceiptSummary, ReceiptSummaryRecord
+from receipt_dynamo.entities.receipt_fact_override import (
+    apply_fact_override,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,6 +52,7 @@ def backfill_summaries(
         "summaries_created": 0,
         "summaries_with_total": 0,
         "summaries_with_date": 0,
+        "summaries_with_override": 0,
         "errors": 0,
     }
 
@@ -130,11 +134,25 @@ def backfill_summaries(
                     bank_date=existing.bank_date if existing else None,
                 )
 
+                # Owner-stated facts (ReceiptFactOverride) beat extracted
+                # ones on every recompute, exactly as in the Lambda
+                # updater; read through the accessor per receipt.
+                override = client.get_receipt_fact_override(
+                    bundle.receipt.image_id, bundle.receipt.receipt_id
+                )
+                summary, overrides_applied = apply_fact_override(
+                    summary, override
+                )
+
                 # Create record for persistence
-                record = ReceiptSummaryRecord.from_summary(summary)
+                record = ReceiptSummaryRecord.from_summary(
+                    summary, overrides_applied=overrides_applied
+                )
                 pending_records.append(record)
 
                 stats["receipts_processed"] += 1
+                if overrides_applied:
+                    stats["summaries_with_override"] += 1
                 if summary.grand_total is not None:
                     stats["summaries_with_total"] += 1
                 if summary.date is not None:

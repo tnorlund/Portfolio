@@ -15,6 +15,9 @@ from typing import Any, NamedTuple
 # updater's band-block decoder).
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.receipt_fact_override import (
+    apply_fact_override,
+)
 from receipt_dynamo.entities.receipt_summary import ReceiptSummary
 from receipt_dynamo.entities.receipt_summary_record import ReceiptSummaryRecord
 from receipt_upload.tender import classify_tender_for_receipt
@@ -47,10 +50,12 @@ def _total_line_ids(sections: list[Any] | None) -> list[int]:
 
 
 class ComputedSummary(NamedTuple):
-    """A freshly computed summary plus the merchant category it was read with."""
+    """A freshly computed summary, the merchant category it was read with,
+    and the summary fields the owner's ReceiptFactOverride supplied."""
 
     summary: ReceiptSummary
     merchant_category: str | None
+    overrides_applied: list[str]
 
 
 def compute_receipt_summary(
@@ -70,7 +75,8 @@ def compute_receipt_summary(
             environment-configured client.
 
     Returns:
-        The computed summary and the ReceiptPlace merchant category.
+        The computed summary (owner facts already applied), the
+        ReceiptPlace merchant category, and the overridden field names.
 
     Raises:
         ValueError: If no client is given and DYNAMODB_TABLE_NAME is unset.
@@ -159,7 +165,22 @@ def compute_receipt_summary(
         line_item_count=line_item_count,
         total_line_ids=total_line_ids,
     )
-    return ComputedSummary(summary, merchant_category)
+
+    # An owner-stated fact (ReceiptFactOverride) beats an extracted one.
+    # Applied here, in the single computation path, so the Lambda, the
+    # recompute script and any other caller get owner facts from one
+    # place on every recompute; a label change can never drop them.
+    override = dynamo.get_receipt_fact_override(image_id, receipt_id)
+    summary, overrides_applied = apply_fact_override(summary, override)
+    if overrides_applied:
+        logger.info(
+            "Applied owner fact override %s (revision %d) to %s:%d",
+            overrides_applied,
+            override.revision,
+            image_id[:8],
+            receipt_id,
+        )
+    return ComputedSummary(summary, merchant_category, overrides_applied)
 
 
 def update_receipt_summary(
@@ -221,12 +242,14 @@ def update_receipt_summary(
             "orphan_summary_deleted": orphan_summary_deleted,
         }
 
-    summary, merchant_category = compute_receipt_summary(
+    summary, merchant_category, overrides_applied = compute_receipt_summary(
         image_id, receipt_id, dynamo
     )
 
     # Convert to record and upsert
-    record = ReceiptSummaryRecord.from_summary(summary)
+    record = ReceiptSummaryRecord.from_summary(
+        summary, overrides_applied=overrides_applied
+    )
     dynamo.upsert_receipt_summary(record)
 
     # Close the race with a merge deleting the parent after our initial
@@ -271,6 +294,7 @@ def update_receipt_summary(
         "tender_class": summary.tender_class,
         "card_network": summary.card_network,
         "card_last4": summary.card_last4,
+        "overrides_applied": overrides_applied,
     }
 
     logger.info(
