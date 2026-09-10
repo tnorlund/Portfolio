@@ -124,6 +124,10 @@ from receipt_dynamo.entities.receipt_line_item import (
     ReceiptLineItem,
     item_to_receipt_line_item,
 )
+from receipt_dynamo.entities.receipt_merge import (
+    ReceiptMerge,
+    item_to_receipt_merge,
+)
 from receipt_dynamo.entities.receipt_metadata import (
     ReceiptMetadata,
     item_to_receipt_metadata,
@@ -248,6 +252,7 @@ __all__ = [
     "ReceiptLine",
     "ReceiptLineEmbedding",
     "ReceiptLineItem",
+    "ReceiptMerge",
     "ReceiptMetadata",
     "ReceiptPlace",
     "ReceiptRow",
@@ -280,6 +285,7 @@ __all__ = [
     "item_to_receipt_letter",
     "item_to_receipt_line",
     "item_to_receipt_line_item",
+    "item_to_receipt_merge",
     "item_to_receipt_metadata",
     "item_to_receipt_place",
     "item_to_receipt_row",

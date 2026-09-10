@@ -5,9 +5,11 @@ from copy import deepcopy
 from dataclasses import replace
 from datetime import datetime, timezone
 from math import atan2, degrees
+from typing import Mapping
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities.receipt_barcode import ReceiptBarcode
+from receipt_dynamo.entities.receipt_details import ReceiptDetails
 from receipt_dynamo.entities.receipt_section import ReceiptSection
 
 from receipt_upload.combine.geometry_utils import (
@@ -27,6 +29,8 @@ def migrate_receipt_sections(
     receipt_ids: list[int],
     new_receipt_id: int,
     line_id_map: dict[tuple[int, int], set[int]],
+    *,
+    source_details: Mapping[int, ReceiptDetails] | None = None,
 ) -> list[ReceiptSection]:
     """Union source sections by type using retained and deduplicated line IDs.
 
@@ -36,7 +40,12 @@ def migrate_receipt_sections(
     """
     groups = defaultdict(list)
     for rid in receipt_ids:
-        for section in client.get_receipt_sections_from_receipt(image_id, rid):
+        sections = (
+            source_details[rid].sections
+            if source_details is not None
+            else client.get_receipt_sections_from_receipt(image_id, rid)
+        )
+        for section in sections:
             mapped = set()
             for line_id in section.line_ids:
                 targets = line_id_map.get((line_id, rid))
@@ -75,6 +84,8 @@ def receipt_barcodes_in_image_space(
     receipt_ids: list[int],
     image_width: int,
     image_height: int,
+    *,
+    source_details: Mapping[int, ReceiptDetails] | None = None,
 ) -> list[ReceiptBarcode]:
     """Read barcodes consistently and map source OCR coordinates to the image.
 
@@ -83,16 +94,28 @@ def receipt_barcodes_in_image_space(
     """
     result = []
     for rid in receipt_ids:
-        source = client.get_receipt(image_id, rid)
+        details = source_details[rid] if source_details is not None else None
+        source = (
+            details.receipt
+            if details is not None
+            else client.get_receipt(image_id, rid)
+        )
         coeffs, width, height = _get_receipt_to_image_transform(
             source, image_width, image_height
         )
-        for barcode in client.list_receipt_barcodes_from_receipt_consistent(
-            image_id, rid
-        ):
+        barcodes = (
+            details.barcodes
+            if details is not None
+            else client.list_receipt_barcodes_from_receipt_consistent(
+                image_id, rid
+            )
+        )
+        a, b, c, d, e, f, g, h = invert_warp(*coeffs)
+        forward_coeffs = (a, b, c, d, e, f, g, h)
+        for barcode in barcodes:
             transformed = deepcopy(barcode)
             transformed.warp_transform(
-                *invert_warp(*coeffs),
+                *forward_coeffs,
                 src_width=image_width,
                 src_height=image_height,
                 dst_width=width,

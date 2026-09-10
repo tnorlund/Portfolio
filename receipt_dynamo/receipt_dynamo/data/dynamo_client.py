@@ -29,6 +29,7 @@ from receipt_dynamo.data._receipt_fact_override import _ReceiptFactOverride
 from receipt_dynamo.data._receipt_letter import _ReceiptLetter
 from receipt_dynamo.data._receipt_line import _ReceiptLine
 from receipt_dynamo.data._receipt_line_item import _ReceiptLineItem
+from receipt_dynamo.data._receipt_merge import _ReceiptMerge
 from receipt_dynamo.data._receipt_metadata import _ReceiptMetadata
 from receipt_dynamo.data._receipt_nutrition import _ReceiptNutrition
 from receipt_dynamo.data._receipt_place import _ReceiptPlace
@@ -60,6 +61,7 @@ class DynamoClient(
     _Word,
     _Letter,
     _Receipt,
+    _ReceiptMerge,
     _ReceiptBarcode,
     _ReceiptEmbedding,
     _ReceiptLine,
