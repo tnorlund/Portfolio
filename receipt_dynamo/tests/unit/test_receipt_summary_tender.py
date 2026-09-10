@@ -219,6 +219,63 @@ def test_effective_date_falls_back_to_bank_date():
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    ("confidence", "eligible"),
+    [
+        (1.0, True),  # curated confirmed
+        (0.9, True),  # curated auto
+        (0.85, True),  # exact-amount live, amount-only
+        (0.8, False),  # best possible tip-band live match
+        (0.6, False),  # tip-band floor
+        (None, False),  # legacy item: bank_date without a confidence
+    ],
+)
+def test_effective_date_fails_closed_below_min_confidence(
+    confidence, eligible
+):
+    from receipt_dynamo.entities.receipt_summary import (
+        BANK_DATE_MIN_CONFIDENCE,
+    )
+
+    summary = ReceiptSummary(
+        image_id=IMAGE_ID,
+        receipt_id=8,
+        ledger="chase",
+        bank_amount=24.0,
+        bank_match_confidence=confidence,
+        bank_date=datetime(2026, 8, 1),
+    )
+    assert BANK_DATE_MIN_CONFIDENCE == 0.85
+    assert summary.bank_date_eligible is eligible
+    # the raw evidence is always kept ...
+    assert summary.bank_date == datetime(2026, 8, 1)
+    assert summary.to_dict()["bank_date"] == "2026-08-01T00:00:00"
+    # ... but only an eligible match becomes the receipt's date
+    if eligible:
+        assert summary.effective_date == datetime(2026, 8, 1)
+        assert summary.date_source == "bank"
+    else:
+        assert summary.effective_date is None
+        assert summary.date_source is None
+        assert summary.to_dict()["effective_date"] is None
+
+
+@pytest.mark.unit
+def test_printed_date_wins_over_any_bank_date():
+    summary = ReceiptSummary(
+        image_id=IMAGE_ID,
+        receipt_id=9,
+        date=datetime(2026, 8, 31),
+        ledger="chase",
+        bank_amount=24.0,
+        bank_match_confidence=1.0,
+        bank_date=datetime(2026, 9, 2),  # posted two days later
+    )
+    assert summary.effective_date == datetime(2026, 8, 31)
+    assert summary.date_source == "label"
+
+
+@pytest.mark.unit
 def test_bank_date_is_an_offline_field():
     from receipt_dynamo.entities.receipt_summary_record import (
         OFFLINE_BANK_FIELDS,

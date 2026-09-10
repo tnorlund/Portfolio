@@ -488,6 +488,7 @@ def create_shape_node(state_holder: dict) -> Callable:
                     tip=summary_data.get("tip"),
                     date=summary_data.get("effective_date")
                     or summary_data.get("date"),
+                    date_source=summary_data.get("date_source"),
                     item_count=summary_data.get("item_count"),
                     line_items=line_items,
                     labels_found=list(labels_found),
@@ -509,7 +510,8 @@ def create_shape_node(state_holder: dict) -> Callable:
                     grand_total=s.get("grand_total"),
                     tax=s.get("tax"),
                     tip=s.get("tip"),
-                    date=s.get("date"),
+                    date=s.get("effective_date") or s.get("date"),
+                    date_source=s.get("date_source"),
                     item_count=s.get("item_count"),
                     line_items=[],
                     labels_found=[],
@@ -670,6 +672,8 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
             )
             if summary.date:
                 receipt_info += f"\n  Date: {summary.date}"
+                if summary.date_source == "bank":
+                    receipt_info += " (from the matched card transaction)"
             if summary.grand_total is not None:
                 receipt_info += f"\n  Total: ${summary.grand_total:.2f}"
             if summary.tax is not None:

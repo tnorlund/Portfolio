@@ -847,6 +847,15 @@ def resolve_item_count(
 # ReceiptSummary dataclass
 # =============================================================================
 
+# Minimum bank_match_confidence for bank_date to stand in for a missing
+# printed date (ReceiptSummary.effective_date). Curated Chase matches
+# carry 1.0 (confirmed) / 0.9 (auto) and exact-amount live matches
+# 0.95 / 0.85; tip-band live matches top out at 0.8 and are excluded on
+# purpose -- they pick one of several nearby charges by merchant-name
+# similarity, and a wrong purchase date silently moves spend between
+# months.
+BANK_DATE_MIN_CONFIDENCE = 0.85
+
 
 @dataclass
 class ReceiptSummary(ReceiptIdentifierMixin):
@@ -957,24 +966,44 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             raise ValueError("bank_date must be a datetime or None")
 
     @property
+    def bank_date_eligible(self) -> bool:
+        """Whether ``bank_date`` is trustworthy enough to stand in for
+        a missing printed date.
+
+        Fails closed: no bank date, no confidence, or a confidence below
+        ``BANK_DATE_MIN_CONFIDENCE`` all mean *no* fallback. Tip-band
+        matches are a guess about which of several nearby charges a
+        receipt is; a guessed date inside a spending total is worse
+        than an honestly undated receipt.
+        """
+        return (
+            self.bank_date is not None
+            and self.bank_match_confidence is not None
+            and self.bank_match_confidence >= BANK_DATE_MIN_CONFIDENCE
+        )
+
+    @property
     def effective_date(self) -> datetime | None:
-        """Printed (label-derived) date, else the matched bank date.
+        """Printed (label-derived) date, else an eligible bank date.
 
         ``date`` is recomputed from VALID DATE labels on every stream
         recompute and is None when the receipt has no legible printed
         date. ``bank_date`` comes from the offline bank match and
         survives recomputes, so it is the fallback -- never the other
         way round: a printed date is the purchase date, a bank date can
-        lag it by a day.
+        lag it by a day. The fallback only applies when
+        ``bank_date_eligible`` (see ``BANK_DATE_MIN_CONFIDENCE``).
         """
-        return self.date if self.date is not None else self.bank_date
+        if self.date is not None:
+            return self.date
+        return self.bank_date if self.bank_date_eligible else None
 
     @property
     def date_source(self) -> str | None:
         """Where ``effective_date`` came from: 'label', 'bank', or None."""
         if self.date is not None:
             return "label"
-        if self.bank_date is not None:
+        if self.bank_date_eligible:
             return "bank"
         return None
 

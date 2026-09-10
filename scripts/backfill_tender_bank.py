@@ -722,7 +722,11 @@ def run(args: argparse.Namespace) -> None:
             stats["bank_matched"] += 1
             if bank_date is not None:
                 stats["bank_dated"] += 1
-                if date is None:
+                # The receipt's own printed (label-derived) date, not the
+                # ``date`` anchor above -- that one falls back to the paper
+                # snapshot and a raw OCR scan, so it is non-None for
+                # receipts whose summary still has no date.
+                if stored is not None and stored.date is None:
                     stats["bank_date_fills_missing_date"] += 1
         ledger_dist[ledger or "(unset)"] += 1
 

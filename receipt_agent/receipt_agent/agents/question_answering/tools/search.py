@@ -1216,17 +1216,20 @@ def create_qa_tools(
                 # The printed date wins; a receipt whose printed date is
                 # missing or illegible falls back to its matched bank
                 # transaction date (ReceiptSummary.effective_date).
+                # Compare calendar days, like the MCP summaries tool:
+                # stored dates are naive midnights while a filter parsed
+                # from "...Z" is offset-aware, and datetime ordering
+                # across that boundary raises.
                 receipt_date = record.effective_date
                 if (start_dt or end_dt) and not receipt_date:
                     undated_excluded += 1
                     undated_spending += record.grand_total or 0
                     continue
-                if start_dt and receipt_date:
-                    if receipt_date < start_dt:
-                        continue
-                if end_dt and receipt_date:
-                    if receipt_date > end_dt:
-                        continue
+                receipt_day = receipt_date.date() if receipt_date else None
+                if start_dt and receipt_day and receipt_day < start_dt.date():
+                    continue
+                if end_dt and receipt_day and receipt_day > end_dt.date():
+                    continue
 
                 summary_dict = record.to_dict()
                 summary_dict["merchant_category"] = merchant_category
