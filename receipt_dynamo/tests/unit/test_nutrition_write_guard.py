@@ -39,6 +39,7 @@ SPELLINGS = [
 ]
 KNOWN_MUTATORS = {
     "add_food_product",
+    "add_price_observation",
     "save_product_alias",
     "publish_alias_observations",
     "save_receipt_nutrition",

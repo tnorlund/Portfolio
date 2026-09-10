@@ -255,7 +255,7 @@ def batch_write_with_retry(
         response = client.batch_write_item(RequestItems=formatted_items)
 
         unprocessed_items = response.get("UnprocessedItems", {})
-        if not unprocessed_items:
+        if not any(unprocessed_items.values()):
             break
 
         if attempt < max_retries:
