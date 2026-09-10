@@ -161,6 +161,21 @@ class ReceiptSummaryRecord:
         return self.summary.bank_match_confidence
 
     @property
+    def bank_date(self) -> datetime | None:
+        """Get bank_date from summary."""
+        return self.summary.bank_date
+
+    @property
+    def effective_date(self) -> datetime | None:
+        """Printed date, else bank date (see ReceiptSummary)."""
+        return self.summary.effective_date
+
+    @property
+    def date_source(self) -> str | None:
+        """Get date_source from summary."""
+        return self.summary.date_source
+
+    @property
     def key(self) -> dict[str, Any]:
         """Generate the primary key for this summary."""
         return {
@@ -233,6 +248,8 @@ class ReceiptSummaryRecord:
             value = getattr(self.summary, field_name)
             if value is not None:
                 item[field_name] = {"N": str(value)}
+        if self.summary.bank_date is not None:
+            item["bank_date"] = {"S": self.summary.bank_date.isoformat()}
 
         return item
 
@@ -306,6 +323,15 @@ class ReceiptSummaryRecord:
                 return item[field_name]["S"]
             return None
 
+        bank_date = None
+        if "bank_date" in item and "S" in item["bank_date"]:
+            try:
+                bank_date = datetime.fromisoformat(item["bank_date"]["S"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "bank_date must contain a valid ISO timestamp"
+                ) from exc
+
         summary = ReceiptSummary(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -319,6 +345,7 @@ class ReceiptSummaryRecord:
             ledger=parse_string("ledger"),
             bank_amount=parse_number("bank_amount"),
             bank_match_confidence=parse_number("bank_match_confidence"),
+            bank_date=bank_date,
         )
 
         return cls(
@@ -372,7 +399,14 @@ def item_to_receipt_summary_record(
 # that nulls them destroys data that only a laptop can restore. The
 # 2026-08-04 dev incident: a summary backfill without carry-over wiped
 # bank_amount on 422 receipts and collapsed dev PROVEN 281 -> 2.
-OFFLINE_BANK_FIELDS = ("ledger", "bank_amount", "bank_match_confidence")
+# bank_date is the same class of data: the matched transaction's date,
+# and the only date a receipt with no legible printed date will ever have.
+OFFLINE_BANK_FIELDS = (
+    "ledger",
+    "bank_amount",
+    "bank_match_confidence",
+    "bank_date",
+)
 
 
 def offline_fields_cleared(

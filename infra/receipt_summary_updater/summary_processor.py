@@ -127,12 +127,13 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     # Bank-match fields are computed OFFLINE (scripts/
     # backfill_tender_bank.py); carry them over from the stored summary
     # so a label-change recompute does not clobber them.
-    ledger = bank_amount = bank_match_confidence = None
+    ledger = bank_amount = bank_match_confidence = bank_date = None
     try:
         existing = dynamo_client.get_receipt_summary(image_id, receipt_id)
         ledger = existing.ledger
         bank_amount = existing.bank_amount
         bank_match_confidence = existing.bank_match_confidence
+        bank_date = existing.bank_date
     except EntityNotFoundError:
         pass
 
@@ -182,6 +183,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         ledger=ledger,
         bank_amount=bank_amount,
         bank_match_confidence=bank_match_confidence,
+        bank_date=bank_date,
         line_item_count=line_item_count,
         total_line_ids=total_line_ids,
     )
@@ -221,6 +223,14 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         "tax": summary.tax,
         "item_count": summary.item_count,
         "date": summary.date.isoformat() if summary.date else None,
+        "bank_date": (
+            summary.bank_date.isoformat() if summary.bank_date else None
+        ),
+        "effective_date": (
+            summary.effective_date.isoformat()
+            if summary.effective_date
+            else None
+        ),
         "tender_class": summary.tender_class,
         "card_network": summary.card_network,
         "card_last4": summary.card_last4,

@@ -70,9 +70,10 @@ def backfill_summaries(
 
     # Load the stored summaries so tender + offline bank fields survive the
     # recompute. tender is classified elsewhere (this script never runs the
-    # classifier), and ledger / bank_amount / bank_match_confidence come
-    # from the LOCAL Chase + Apple ledgers and cannot be re-derived here —
-    # writing without this carry-over wiped them table-wide on 2026-08-04
+    # classifier), and ledger / bank_amount / bank_match_confidence /
+    # bank_date come from the LOCAL Chase + Apple ledgers and cannot be
+    # re-derived here — writing without this carry-over wiped them
+    # table-wide on 2026-08-04
     # and collapsed dev PROVEN 281 -> 2.
     logger.info("Loading existing summaries for field carry-over...")
     existing_by_key = {}
@@ -126,6 +127,7 @@ def backfill_summaries(
                     bank_match_confidence=(
                         existing.bank_match_confidence if existing else None
                     ),
+                    bank_date=existing.bank_date if existing else None,
                 )
 
                 # Create record for persistence
