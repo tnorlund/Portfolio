@@ -590,8 +590,14 @@ def run(args: argparse.Namespace) -> None:
         place = place_by.get(receipt_key)
         snap = snapshot.get(receipt_key)
 
-        # date: stored summary -> snapshot -> raw line scan
+        # date anchor for the LIVE matchers: stored summary -> snapshot ->
+        # raw line scan. The source matters below: a raw scan can latch
+        # onto "Offer expires 07/31" or a coupon window, and a live match
+        # anchored on that is not evidence of the purchase date.
+        anchor_source = None
         date = stored.date.date() if stored and stored.date else None
+        if date is not None:
+            anchor_source = "summary"
         if date is None and snap and snap[0]:
             try:
                 date = datetime.date.fromisoformat(snap[0][:10])
@@ -599,6 +605,8 @@ def run(args: argparse.Namespace) -> None:
                     date = None
             except ValueError:
                 date = None
+            if date is not None:
+                anchor_source = "snapshot"
         if date is None:
             text = "\n".join(
                 l.text
@@ -607,6 +615,8 @@ def run(args: argparse.Namespace) -> None:
                 )
             )
             date = scan_date(text)
+            if date is not None:
+                anchor_source = "scan"
 
         # total: stored summary -> snapshot cents
         total = stored.grand_total if stored else None
@@ -642,6 +652,7 @@ def run(args: argparse.Namespace) -> None:
         # makes an unhandled value loud instead of silently dropping a
         # match that was already fetched.
         bank_amount = confidence = bank_date = None
+        curated_date = False  # bank_date came from a curated Chase match
         chase = chase_matches.get(receipt_key)
 
         def _match_chase_live(account: str | None):
@@ -662,6 +673,7 @@ def run(args: argparse.Namespace) -> None:
         if ledger == LEDGER_CHASE:
             if chase:
                 bank_amount, confidence, bank_date = _chase_result(chase)
+                curated_date = True
             else:
                 live = _match_chase_live(chase_account_for(last4))
                 if live:
@@ -689,6 +701,7 @@ def run(args: argparse.Namespace) -> None:
             )
             if chase:
                 bank_amount, confidence, bank_date = _chase_result(chase)
+                curated_date = True
                 ledger = LEDGER_CHASE
             else:
                 live = _match_chase_live(None)
@@ -718,16 +731,23 @@ def run(args: argparse.Namespace) -> None:
         else:
             raise ValueError(f"unhandled ledger value: {ledger!r}")
 
+        # A live match is found by amount within +-3 days of the anchor.
+        # When the anchor itself came from a raw OCR scan, the match may
+        # be a same-amount charge near a promotional date rather than the
+        # purchase -- keep the amount evidence, withhold the date. Curated
+        # matches carry their own transaction date and are unaffected;
+        # so are receipts whose summary already has a printed date (the
+        # printed date wins in effective_date regardless).
+        if (
+            bank_date is not None
+            and not curated_date
+            and anchor_source == "scan"
+        ):
+            stats["bank_date_withheld_scan_anchor"] += 1
+            bank_date = None
+
         if bank_amount is not None:
             stats["bank_matched"] += 1
-            if bank_date is not None:
-                stats["bank_dated"] += 1
-                # The receipt's own printed (label-derived) date, not the
-                # ``date`` anchor above -- that one falls back to the paper
-                # snapshot and a raw OCR scan, so it is non-None for
-                # receipts whose summary still has no date.
-                if stored is not None and stored.date is None:
-                    stats["bank_date_fills_missing_date"] += 1
         ledger_dist[ledger or "(unset)"] += 1
 
         if stored is None:
@@ -749,6 +769,13 @@ def run(args: argparse.Namespace) -> None:
             bank_match_confidence=confidence,
             bank_date=_bank_datetime(bank_date),
         )
+        if updated.bank_date is not None:
+            stats["bank_dated"] += 1
+            # Only an ELIGIBLE bank date (confidence gate in
+            # ReceiptSummary.bank_date_eligible) stands in for a missing
+            # printed date; count what effective_date will actually use.
+            if updated.date is None and updated.bank_date_eligible:
+                stats["bank_date_fills_missing_date"] += 1
         old = stored.summary
         if updated == old:
             stats["unchanged"] += 1
@@ -766,8 +793,12 @@ def run(args: argparse.Namespace) -> None:
     print(f"bank-matched:            {stats['bank_matched']}")
     print(
         f"bank-dated:              {stats['bank_dated']}"
-        f" ({stats['bank_date_fills_missing_date']} fill a missing"
-        " printed date)"
+        f" ({stats['bank_date_fills_missing_date']} eligible to fill a"
+        " missing printed date)"
+    )
+    print(
+        "bank date withheld (live match on raw-OCR anchor): "
+        f"{stats['bank_date_withheld_scan_anchor']}"
     )
     print(
         f"chase live-matched:      {stats['chase_live_matched']}"
