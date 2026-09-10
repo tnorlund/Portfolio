@@ -376,6 +376,96 @@ def test_item_count_only_drift_is_reported_never_written(table, capsys):
     assert after.timestamp_computed == before.timestamp_computed
 
 
+def test_receipt_filter_restricts_examination(table, capsys):
+    client = DynamoClient(table)
+    _seed_dateless_receipt(client)
+    _seed_dated_receipt(client)
+
+    assert (
+        recompute.main(
+            [
+                "--table",
+                table,
+                "--receipt",
+                f"{OTHER_IMAGE_ID}:2",
+                "--receipt",
+                f"{IMAGE_ID}:9",
+            ]
+        )
+        == 0
+    )
+
+    out = capsys.readouterr().out
+    assert f"{OTHER_IMAGE_ID}#2 unchanged" in out
+    assert f"{IMAGE_ID}#1" not in out
+    assert f"{IMAGE_ID}#9 NOT FOUND (no stored summary)" in out
+    assert "DRY RUN: 1 receipts examined" in out
+    assert "skipped_not_selected     1" in out
+    assert "not_found                1" in out
+
+
+def test_receipt_filter_composes_with_only_missing_date(table, capsys):
+    client = DynamoClient(table)
+    _seed_dateless_receipt(client)
+    _seed_dated_receipt(client)
+
+    assert (
+        recompute.main(
+            [
+                "--table",
+                table,
+                "--only-missing-date",
+                "--receipt",
+                f"{OTHER_IMAGE_ID}:2",
+                "--apply",
+            ]
+        )
+        == 0
+    )
+
+    out = capsys.readouterr().out
+    assert "APPLIED: 0 receipts examined" in out
+    assert "skipped_has_date         1" in out
+    # the unselected dateless receipt was neither examined nor written
+    assert client.get_receipt_summary(IMAGE_ID, 1).date is None
+
+
+@pytest.mark.parametrize("value", ["no-colon", ":1", "abc:", "abc:x"])
+def test_malformed_receipt_filter_is_rejected(value, capsys):
+    with pytest.raises(SystemExit):
+        recompute.main(["--table", "t", "--receipt", value])
+    assert "expected <image_id>:<receipt_id>" in capsys.readouterr().err
+
+
+def test_date_dropping_to_none_shows_date_label_statuses(table, capsys):
+    """A stored date that recomputes to None names the DATE labels."""
+    client = DynamoClient(table)
+    client.add_receipt(_receipt(OTHER_IMAGE_ID, 2))
+    client.add_receipt_words(
+        [
+            _word(OTHER_IMAGE_ID, 2, 4, 1, "01/02/2026"),
+            _word(OTHER_IMAGE_ID, 2, 9, 2, "47.18"),
+        ]
+    )
+    rejected = _label(OTHER_IMAGE_ID, 2, 4, 1, "DATE")
+    rejected.validation_status = ValidationStatus.INVALID
+    client.add_receipt_word_labels(
+        [rejected, _label(OTHER_IMAGE_ID, 2, 9, 2, "GRAND_TOTAL")]
+    )
+    client.add_receipt_summary(
+        _stored_summary(OTHER_IMAGE_ID, 2, date=datetime(2026, 1, 2))
+    )
+
+    assert recompute.main(["--table", table]) == 0
+
+    out = capsys.readouterr().out
+    assert (
+        f"{OTHER_IMAGE_ID}#2 WOULD UPDATE: date=2026-01-02 total=47.18 "
+        "items=0 -> date=None total=47.18 items=0 "
+        "DATE labels: 4:1 '01/02/2026' INVALID" in out
+    )
+
+
 def test_orphan_summary_is_skipped_not_recomputed(table, capsys):
     client = DynamoClient(table)
     client.add_receipt_summary(_stored_summary(IMAGE_ID, 3))

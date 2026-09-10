@@ -14,6 +14,10 @@ Typical use after a parser fix::
         --table ReceiptsTable-dc5be22 --only-missing-date
     python scripts/recompute_receipt_summaries.py \\
         --table ReceiptsTable-dc5be22 --only-missing-date --apply
+
+``--receipt <image_id>:<receipt_id>`` (repeatable) restricts the run to
+those receipts. When a stored date would drop to None, the receipt's
+DATE labels are printed with their validation status.
 """
 
 from __future__ import annotations
@@ -91,11 +95,53 @@ def _fields_without_item_count(summary: ReceiptSummary) -> dict[str, Any]:
     return fields
 
 
+def parse_receipt_key(value: str) -> tuple[str, int]:
+    """``<image_id>:<receipt_id>`` -> (image_id, receipt_id)."""
+    image_id, sep, receipt_id = value.rpartition(":")
+    if not sep or not image_id or not receipt_id.isdigit():
+        raise argparse.ArgumentTypeError(
+            f"expected <image_id>:<receipt_id>, got {value!r}"
+        )
+    return image_id, int(receipt_id)
+
+
+def _date_label_statuses(
+    client: DynamoClient, image_id: str, receipt_id: int
+) -> str:
+    """Every DATE label on the receipt with its text and validation status.
+
+    Printed when a stored date would drop to None so the reason (labels
+    rejected by the evaluator, or text the parser refuses) is visible.
+    """
+    text_by_key = {
+        (w.line_id, w.word_id): w.text
+        for w in client.list_receipt_words_from_receipt(image_id, receipt_id)
+    }
+    entries: list[str] = []
+    last_key = None
+    while True:
+        labels, last_key = client.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id, last_evaluated_key=last_key
+        )
+        for label in labels:
+            if label.label != "DATE":
+                continue
+            text = text_by_key.get((label.line_id, label.word_id), "")
+            entries.append(
+                f"{label.line_id}:{label.word_id} {text!r} "
+                f"{label.validation_status}"
+            )
+        if last_key is None:
+            break
+    return "; ".join(sorted(entries)) if entries else "none"
+
+
 def recompute(
     client: DynamoClient,
     *,
     only_missing_date: bool,
     apply: bool,
+    receipts: set[tuple[str, int]] | None = None,
     out: TextIO | None = None,
 ) -> Counter:
     """Print before/after per receipt; write only when ``apply`` is True.
@@ -112,9 +158,15 @@ def recompute(
     """
     out = out if out is not None else sys.stdout
     counts: Counter = Counter()
+    unseen = set(receipts) if receipts else set()
     for stored in sorted(
         iter_summaries(client), key=lambda r: (r.image_id, r.receipt_id)
     ):
+        if receipts is not None:
+            if (stored.image_id, stored.receipt_id) not in receipts:
+                counts["skipped_not_selected"] += 1
+                continue
+            unseen.discard((stored.image_id, stored.receipt_id))
         if only_missing_date and stored.date is not None:
             counts["skipped_has_date"] += 1
             continue
@@ -134,6 +186,10 @@ def recompute(
         after = _describe(
             computed.date, computed.grand_total, computed.item_count
         )
+        if stored.date is not None and computed.date is None:
+            after += " DATE labels: " + _date_label_statuses(
+                client, stored.image_id, stored.receipt_id
+            )
 
         if after == before:
             counts["unchanged"] += 1
@@ -165,6 +221,11 @@ def recompute(
                 continue
             tag = "UPDATED"
         print(f"{key} {tag}: {before} -> {after}", file=out)
+    for image_id, receipt_id in sorted(unseen):
+        counts["not_found"] += 1
+        print(
+            f"{image_id}#{receipt_id} NOT FOUND (no stored summary)", file=out
+        )
     return counts
 
 
@@ -179,6 +240,13 @@ def main(argv: list[str] | None = None) -> int:
         help="only receipts whose stored summary has no date",
     )
     parser.add_argument(
+        "--receipt",
+        action="append",
+        type=parse_receipt_key,
+        metavar="IMAGE_ID:RECEIPT_ID",
+        help="examine only this receipt (repeatable)",
+    )
+    parser.add_argument(
         "--apply", action="store_true", help="write (default: dry run)"
     )
     args = parser.parse_args(argv)
@@ -190,6 +258,7 @@ def main(argv: list[str] | None = None) -> int:
         client,
         only_missing_date=args.only_missing_date,
         apply=args.apply,
+        receipts=set(args.receipt) if args.receipt else None,
     )
     mode = "APPLIED" if args.apply else "DRY RUN"
     print(f"{mode}: {counts['examined']} receipts examined")
