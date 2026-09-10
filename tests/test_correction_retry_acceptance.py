@@ -74,6 +74,8 @@ def test_cleanup_failure_resumes_without_rebuilding_output(
 
     def fail_once(*args: Any, **kwargs: Any) -> Any:
         nonlocal failed_once
+        if method == "purge_receipt_children" and args[1] not in (1, 2):
+            return original(*args, **kwargs)
         if not failed_once:
             failed_once = True
             raise RuntimeError(f"offline {method} interruption")
