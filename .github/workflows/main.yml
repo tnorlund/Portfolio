@@ -256,6 +256,7 @@ jobs:
           source .venv-receipt_agent/bin/activate
           python -m pytest -q --confcutdir=tests \
             tests/test_merge_receipt_lambda.py \
+            tests/test_merge_receipt_recovery.py \
             tests/test_correction_retry_acceptance.py \
             infra/tests/test_ocr_results_redrive_mapping.py \
             --timeout=120 --tb=short --maxfail=5
