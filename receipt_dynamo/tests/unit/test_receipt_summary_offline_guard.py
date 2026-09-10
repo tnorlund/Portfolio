@@ -34,6 +34,7 @@ def make_record(
     ledger: str | None = None,
     bank_amount: float | None = None,
     bank_match_confidence: float | None = None,
+    bank_date: datetime | None = None,
 ) -> ReceiptSummaryRecord:
     summary = ReceiptSummary(
         image_id=IMAGE_ID,
@@ -45,11 +46,17 @@ def make_record(
         ledger=ledger,
         bank_amount=bank_amount,
         bank_match_confidence=bank_match_confidence,
+        bank_date=bank_date,
     )
     return ReceiptSummaryRecord.from_summary(summary)
 
 
-BANKED = dict(ledger="apple", bank_amount=47.18, bank_match_confidence=0.95)
+BANKED = dict(
+    ledger="apple",
+    bank_amount=47.18,
+    bank_match_confidence=0.95,
+    bank_date=datetime(2025, 5, 29),
+)
 
 
 # === offline_fields_cleared (pure detector) ===
@@ -76,9 +83,20 @@ def test_never_populated_clears_nothing():
 
 @pytest.mark.unit
 def test_partial_clear_names_only_the_cleared_fields():
-    new = make_record(ledger="apple")  # bank_amount + confidence nulled
+    new = make_record(ledger="apple")  # amount, confidence, date nulled
     cleared = offline_fields_cleared(new, make_record(**BANKED))
-    assert cleared == ["bank_amount", "bank_match_confidence"]
+    assert cleared == ["bank_amount", "bank_match_confidence", "bank_date"]
+
+
+@pytest.mark.unit
+def test_bank_date_alone_is_guarded():
+    """A recompute that keeps the amount but drops the date is still a
+    clear: for receipts with no printed date the bank date IS the date."""
+    new = make_record(
+        ledger="apple", bank_amount=47.18, bank_match_confidence=0.95
+    )
+    cleared = offline_fields_cleared(new, make_record(**BANKED))
+    assert cleared == ["bank_date"]
 
 
 # === upsert guard wiring ===

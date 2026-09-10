@@ -86,6 +86,13 @@ class ReceiptSummary(BaseModel):
         default=None,
         description="Receipt date as ISO string",
     )
+    date_source: Optional[str] = Field(
+        default=None,
+        description=(
+            "'label' when the date was printed on the receipt, 'bank' when"
+            " it comes from the matched card transaction"
+        ),
+    )
     item_count: Optional[int] = Field(
         default=None,
         description="Number of items on the receipt",

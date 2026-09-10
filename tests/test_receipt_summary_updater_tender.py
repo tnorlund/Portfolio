@@ -6,6 +6,7 @@ fields (ledger, bank_amount, bank_match_confidence) from the stored
 summary instead of clobbering them.
 """
 
+from datetime import datetime
 from types import SimpleNamespace
 
 # isort: off
@@ -136,6 +137,7 @@ def test_recompute_classifies_tender(fake_client):
     assert record.ledger is None
     assert record.bank_amount is None
     assert record.bank_match_confidence is None
+    assert record.bank_date is None
     assert result["tender_class"] == "card"
     assert result["card_last4"] == "1454"
 
@@ -151,11 +153,12 @@ def test_recompute_preserves_offline_bank_fields(monkeypatch):
         ledger="chase",
         bank_amount=47.18,
         bank_match_confidence=0.95,
+        bank_date=datetime(2025, 5, 29),
     )
     client = FakeClient(existing_summary=existing)
     monkeypatch.setattr(summary_processor, "dynamo_client", client)
 
-    summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+    result = summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
 
     record = client.upserted[0]
     # tender is recomputed fresh from the payment zone
@@ -166,6 +169,8 @@ def test_recompute_preserves_offline_bank_fields(monkeypatch):
     assert record.ledger == "chase"
     assert record.bank_amount == 47.18
     assert record.bank_match_confidence == 0.95
+    assert record.bank_date == datetime(2025, 5, 29)
+    assert result["bank_date"] == "2025-05-29T00:00:00"
 
 
 def test_skips_regen_and_sweeps_orphan_when_parent_deleted(monkeypatch):
