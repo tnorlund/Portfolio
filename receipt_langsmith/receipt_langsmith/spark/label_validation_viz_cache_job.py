@@ -2,7 +2,7 @@
 """EMR Serverless job for Label Validation visualization cache generation.
 
 This script generates visualization cache files from:
-1. LangSmith Parquet exports from receipt-label-validation project
+1. Native receipt NDJSON (or archived LangSmith Parquet exports)
 2. Receipt lookup JSON from S3 (CDN keys from DynamoDB, pre-exported by Lambda)
 
 The Label Validation pipeline has a two-tier structure:
@@ -63,6 +63,12 @@ def parse_args() -> argparse.Namespace:
             "Parquet prefix for a specific export, e.g. "
             "'traces/export_id=<export-id>/'"
         ),
+    )
+    parser.add_argument(
+        "--trace-format",
+        choices=["parquet", "native"],
+        default="parquet",
+        help="Read archived LangSmith Parquet or native receipt NDJSON",
     )
     add_cache_bucket_arg(parser)
     add_receipts_json_arg(parser)

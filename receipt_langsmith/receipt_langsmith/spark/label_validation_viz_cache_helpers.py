@@ -7,12 +7,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
-
 from receipt_langsmith.spark.cli import run_spark_job
 from receipt_langsmith.spark.s3_io import (
     ReceiptsCachePointer,
@@ -89,7 +89,9 @@ def load_receipts_from_s3(
 # --- Spark Processing ---
 
 
-def read_traces(spark: SparkSession, parquet_path: str) -> Any:
+def read_traces(
+    spark: SparkSession, parquet_path: str, trace_format: str = "parquet"
+) -> Any:
     """Read traces from a parquet path.
 
     Returns DataFrame with columns needed for label validation analysis.
@@ -98,7 +100,31 @@ def read_traces(spark: SparkSession, parquet_path: str) -> Any:
     logger.info("Reading traces from %s", parquet_path)
 
     # Read all columns first to check what's available
-    df = spark.read.parquet(to_s3a(parquet_path))
+    if trace_format == "native":
+        # Explicit types preserve all-null columns and JSON-string payloads.
+        schema = (
+            "schema_version INT, id STRING, trace_id STRING, parent_run_id STRING, "
+            "name STRING, run_type STRING, status STRING, capture_status STRING, start_time STRING, "
+            "end_time STRING, inputs STRING, outputs STRING, extra STRING"
+        )
+        df = (
+            spark.read.schema(schema)
+            .option("recursiveFileLookup", "true")
+            .option("mode", "FAILFAST")
+            .json(to_s3a(parquet_path))
+        )
+        df = df.filter(
+            (F.col("schema_version") == 1)
+            & (F.col("status") != "error")
+            & (F.coalesce(F.col("capture_status"), F.col("status")) != "error")
+        )
+        df = df.withColumn(
+            "start_time", F.to_timestamp("start_time")
+        ).withColumn("end_time", F.to_timestamp("end_time"))
+    elif trace_format == "parquet":
+        df = spark.read.parquet(to_s3a(parquet_path))
+    else:
+        raise ValueError(f"Unsupported trace format: {trace_format}")
     available_columns = set(df.columns)
 
     logger.info("Available columns in parquet: %s", sorted(available_columns))
@@ -128,6 +154,12 @@ def extract_receipt_traces(df: Any) -> list[dict[str, Any]]:
     # Get root receipt_processing traces
     roots = df.filter(F.col("name") == "receipt_processing")
 
+    # Deferred LLM work can finish after the producer root has returned.
+    trace_ends = df.groupBy("trace_id").agg(
+        F.max("end_time").alias("trace_end_time")
+    )
+    roots = roots.join(trace_ends, "trace_id", "left")
+
     # Extract metadata from extra field
     roots = (
         roots.withColumn(
@@ -143,19 +175,27 @@ def extract_receipt_traces(df: Any) -> list[dict[str, Any]]:
         .withColumn(
             "duration_ms",
             (
-                F.col("end_time").cast("double")
+                F.greatest("end_time", "trace_end_time").cast("double")
                 - F.col("start_time").cast("double")
             )
             * 1000,
         )
     )
 
-    root_rows = roots.select(
-        "trace_id", "image_id", "receipt_id", "outputs", "duration_ms"
-    ).toLocalIterator()
+    root_rows = (
+        roots.orderBy(F.col("start_time").desc())
+        .select("trace_id", "image_id", "receipt_id", "outputs", "duration_ms")
+        .toLocalIterator()
+    )
     root_data: list[dict[str, Any]] = []
+    seen: set[tuple[str, int]] = set()
     for row in root_rows:
-        root_data.append(row.asDict())
+        record = row.asDict()
+        receipt_key = (record["image_id"], record["receipt_id"])
+        if receipt_key in seen:
+            continue
+        seen.add(receipt_key)
+        root_data.append(record)
         if len(root_data) > LABEL_DRIVER_ROOT_HARD_LIMIT:
             raise RuntimeError(
                 "receipt_processing root trace collection exceeded hard "
@@ -201,9 +241,11 @@ def extract_validation_traces(
         * 1000,
     )
 
-    validation_data = validations.select(
-        "trace_id", "name", "outputs", "duration_ms"
-    ).toLocalIterator()
+    validation_data = (
+        validations.orderBy("end_time", "id")
+        .select("trace_id", "name", "outputs", "duration_ms")
+        .toLocalIterator()
+    )
 
     # Group by trace_id
     result: dict[str, list[dict]] = {}
@@ -664,8 +706,8 @@ def write_cache(  # pylint: disable=too-many-locals
 ) -> None:
     """Write individual receipt files + metadata to S3."""
     timestamp = datetime.now(timezone.utc)
-    cache_version = timestamp.strftime("%Y%m%d-%H%M%S")
-    receipts_prefix = "receipts/"
+    cache_version = timestamp.strftime("%Y%m%d-%H%M%S") + f"-{uuid4()}"
+    receipts_prefix = f"cache-runs/{cache_version}/receipts/"
 
     logger.info(
         "Writing %d individual receipt files to s3://%s/%s",
@@ -704,7 +746,9 @@ def write_cache(  # pylint: disable=too-many-locals
                 logger.exception("Failed to upload receipt")
 
     if failed_count > 0:
-        logger.warning("Completed with %d failures", failed_count)
+        raise RuntimeError(
+            f"Failed to upload {failed_count} receipt cache files"
+        )
 
     # Write metadata.json
     aggregate_stats = calculate_aggregate_stats(receipts)
@@ -833,24 +877,34 @@ def run_label_validation_cache(args: Any) -> int:
 
     s3_client = boto3.client("s3")
 
-    parquet_prefix = _resolve_parquet_prefix(args.parquet_prefix)
+    trace_format = getattr(args, "trace_format", "parquet")
+    if trace_format == "native":
+        parquet_prefix = args.parquet_prefix.strip("/") + "/"
+        if (
+            not parquet_prefix.startswith("native-traces/")
+            or ".." in parquet_prefix
+        ):
+            raise ValueError("Native trace input must be under native-traces/")
+    else:
+        parquet_prefix = _resolve_parquet_prefix(args.parquet_prefix)
     if not parquet_prefix:
         return 1
 
     logger.info("Using parquet prefix: %s", parquet_prefix)
     parquet_path = f"s3://{args.parquet_bucket}/{parquet_prefix}"
-    try:
-        s3_client.head_object(
-            Bucket=args.parquet_bucket,
-            Key=f"{parquet_prefix}_SUCCESS",
-        )
-    except (ClientError, BotoCoreError):
-        logger.warning(
-            "Could not verify _SUCCESS marker under %s; Spark will attempt direct read",
-            parquet_path,
-        )
-    else:
-        logger.info("Verified export marker at %s_SUCCESS", parquet_path)
+    if trace_format == "parquet":
+        try:
+            s3_client.head_object(
+                Bucket=args.parquet_bucket,
+                Key=f"{parquet_prefix}_SUCCESS",
+            )
+        except (ClientError, BotoCoreError):
+            logger.warning(
+                "Could not verify _SUCCESS marker under %s; Spark will attempt direct read",
+                parquet_path,
+            )
+        else:
+            logger.info("Verified export marker at %s_SUCCESS", parquet_path)
 
     receipt_lookup = load_receipts_from_s3(s3_client, args.receipts_json)
 
@@ -860,7 +914,7 @@ def run_label_validation_cache(args: Any) -> int:
     ).getOrCreate()
 
     def job() -> int:
-        df = read_traces(spark, parquet_path)
+        df = read_traces(spark, parquet_path, trace_format)
         build_stats: dict[str, Any] = {}
         viz_receipts = _build_viz_receipts(
             df,
@@ -876,6 +930,7 @@ def run_label_validation_cache(args: Any) -> int:
         run_profile = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "parquet_path": parquet_path,
+            "trace_format": trace_format,
             "parquet_prefix": parquet_prefix,
             "max_receipts": args.max_receipts,
             "receipt_lookup_count": len(receipt_lookup),

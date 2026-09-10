@@ -17,13 +17,15 @@ from pulumi import (
 
 # Import shared components
 from codebuild_docker_image import CodeBuildDockerImage
+
+# Load secrets
+from infra.components.tracing_config import hosted_tracing_environment
 from lambda_layer import dynamo_layer
 
 from .definition import (
     build_state_machine_definition as _build_state_machine_definition,
 )
 
-# Load secrets
 config = Config("portfolio")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
@@ -230,8 +232,7 @@ class QAAgentStepFunction(ComponentResource):
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_MODEL": qa_openrouter_model,
-                "LANGCHAIN_TRACING_V2": "false",
-                "LANGSMITH_TRACING": "false",
+                **hosted_tracing_environment(config),
                 "LANGCHAIN_PROJECT": "qa-agent-marquee",
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 "BATCH_BUCKET": self.batch_bucket.id,

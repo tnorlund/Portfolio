@@ -259,6 +259,25 @@ create_lambda_route(
 # - Embedding polling handlers (LangGraph)
 # Consolidation and batch cleaning can be added as standalone Lambdas if needed
 
+# Retain trace history under the existing bucket resource identities.
+from components.langsmith_bulk_export import LangSmithBulkExport
+
+langsmith_bulk_export = LangSmithBulkExport(
+    f"langsmith-export-{pulumi.get_stack()}",
+    project_name=f"label-evaluator-{pulumi.get_stack()}",
+)
+label_validation_export = LangSmithBulkExport(
+    f"label-validation-export-{pulumi.get_stack()}",
+    project_name=label_validation_project_name,
+)
+pulumi.export(
+    "langsmith_export_bucket", langsmith_bulk_export.export_bucket.id
+)
+pulumi.export(
+    "label_validation_export_bucket", label_validation_export.export_bucket.id
+)
+pulumi.export("label_validation_project_name", label_validation_project_name)
+
 # upload-images runs outside the VPC (VPC prune): default Lambda egress
 # reaches Google Places / OpenAI / OpenRouter / LangSmith directly.
 upload_images = UploadImages(
@@ -266,6 +285,7 @@ upload_images = UploadImages(
     raw_bucket=raw_bucket,
     site_bucket=site_bucket,
     label_validation_project_name=label_validation_project_name,
+    trace_bucket=label_validation_export.export_bucket,
     # Post-re-OCR line-item refresh (summary recompute -> stream ->
     # LINE_ITEMS stage)
     summary_queue_url=receipt_update_queues.summary_queue_url,
@@ -705,41 +725,6 @@ pulumi.export(
 # docs/chroma-removal/); the pipeline-consolidation plan called for its
 # removal.
 
-# LangSmith Bulk Export infrastructure (for Parquet exports)
-from components.langsmith_bulk_export import LangSmithBulkExport
-
-# Label Evaluator project export
-langsmith_bulk_export = LangSmithBulkExport(
-    f"langsmith-export-{stack}",
-    project_name=f"label-evaluator-{stack}",
-)
-pulumi.export(
-    "langsmith_export_bucket", langsmith_bulk_export.export_bucket.id
-)
-pulumi.export(
-    "langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name
-)
-pulumi.export(
-    "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
-)
-
-# Receipt Label Validation project export
-label_validation_export = LangSmithBulkExport(
-    f"label-validation-export-{stack}",
-    project_name=label_validation_project_name,
-)
-pulumi.export(
-    "label_validation_export_bucket", label_validation_export.export_bucket.id
-)
-pulumi.export(
-    "label_validation_setup_lambda", label_validation_export.setup_lambda.name
-)
-pulumi.export(
-    "label_validation_trigger_lambda",
-    label_validation_export.trigger_lambda.name,
-)
-pulumi.export("label_validation_project_name", label_validation_project_name)
-
 # EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
 from components.emr_serverless_analytics import create_emr_serverless_analytics
 
@@ -898,16 +883,11 @@ if hasattr(api_gateway, "api"):
     label_validation_viz_cache = create_label_validation_viz_cache(
         f"label-validation-viz-{stack}",
         langsmith_export_bucket=label_validation_export.export_bucket.id,
-        langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
-        langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
-        langsmith_project_name=label_validation_project_name,
         dynamodb_table_name=dynamodb_table.name,
         dynamodb_table_arn=dynamodb_table.arn,
         emr_application_id=emr_analytics.emr_application.id,
         emr_job_role_arn=emr_analytics.emr_job_role.arn,
         spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-        setup_lambda_name=label_validation_export.setup_lambda.name,
-        setup_lambda_arn=label_validation_export.setup_lambda.arn,
     )
     pulumi.export(
         "label_validation_viz_cache_bucket",
@@ -934,7 +914,6 @@ qa_agent_sf = QAAgentStepFunction(
     f"qa-agent-{stack}",
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
-
 )
 
 pulumi.export("qa_agent_sf_arn", qa_agent_sf.state_machine_arn)

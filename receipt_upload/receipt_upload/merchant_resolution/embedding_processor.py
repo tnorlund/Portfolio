@@ -36,7 +36,6 @@ from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 from receipt_embeddings import report_incomplete
-
 from receipt_upload.label_validation import (
     LightweightLabelValidator,
 )
@@ -64,6 +63,8 @@ from receipt_upload.merchant_resolution.resolver import (
 from receipt_upload.merchant_resolution.resolver import (
     redact_pii as _redact_pii,
 )
+from receipt_upload.tracing import hosted_enabled
+from receipt_upload.tracing import traceable as native_traceable
 
 logger = logging.getLogger(__name__)
 
@@ -309,21 +310,8 @@ def _remove_label_from_list(
 
 
 def _get_traceable():
-    """Get the traceable decorator if langsmith is available."""
-    try:
-        from langsmith.run_helpers import traceable
-
-        return traceable
-    except ImportError:
-
-        # Return a no-op decorator if langsmith not installed
-        def noop_decorator(*args, **kwargs):
-            def wrapper(fn):
-                return fn
-
-            return wrapper
-
-        return noop_decorator
+    """Use durable native tracing with optional hosted debugging."""
+    return native_traceable
 
 
 def _get_label_validation_project() -> str:
@@ -394,7 +382,6 @@ def _run_lines_pipeline_worker(
         ReceiptWordLabel,
     )
     from receipt_embeddings.formatting import build_receipt_rows
-
     from receipt_upload.merchant_resolution.resolver import (
         MerchantResolver,
         merchant_name_matches_receipt,
@@ -610,7 +597,7 @@ def _run_lines_pipeline_worker(
     # tracing_context(parent=...) can accept headers directly for distributed tracing
     # CRITICAL: Must flush traces before process exits - each process has its own
     # background thread for sending traces to LangSmith
-    if langsmith_headers:
+    if langsmith_headers and hosted_enabled():
         try:
             import logging
             import os
@@ -669,7 +656,6 @@ def _run_words_pipeline_worker(
     from receipt_dynamo import DynamoClient
     from receipt_dynamo.constants import ValidationStatus
     from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
-
     from receipt_upload.vector_search import vector_search_client
 
     def _do_words_work() -> Dict[str, Any]:
@@ -814,9 +800,10 @@ def _run_words_pipeline_worker(
             similarity_validated = 0
             llm_needed = []
 
-            def _run_similarity_validation_loop():
+            def _run_similarity_validation_loop() -> Dict[str, Any]:
                 """Run similarity validation for all pending labels."""
                 nonlocal similarity_validated
+                validations = []
                 for label in pending_labels:
                     word = next(
                         (
@@ -840,6 +827,23 @@ def _run_words_pipeline_worker(
                         line_id=label.line_id,
                         word_id=label.word_id,
                         predicted_label=label.label,
+                    )
+
+                    validations.append(
+                        {
+                            "line_id": label.line_id,
+                            "word_id": label.word_id,
+                            "word_text": word.text,
+                            "predicted_label": label.label,
+                            "final_label": result.consensus_label
+                            or label.label,
+                            "decision": {
+                                ValidationDecision.AUTO_VALIDATE: "VALID",
+                                ValidationDecision.AUTO_INVALID: "INVALID",
+                            }.get(result.decision, result.decision.value),
+                            "confidence": result.confidence,
+                            "reasoning": result.reason,
+                        }
                     )
 
                     if result.decision in (
@@ -878,31 +882,25 @@ def _run_words_pipeline_worker(
                             )
                             label.label_proposed_by = "geometry_trusted"
                             dynamo.update_receipt_word_label(label)
+                            validations[-1][
+                                "decision"
+                            ] = ValidationStatus.NEEDS_REVIEW.value
+                            validations[-1]["final_label"] = label.label
                             similarity_validated += 1
                             continue
                         llm_needed.append((word, label))
 
-            # Apply traceable decorator if available
-            try:
-                import os
+                return {"validations": validations}
 
-                from langsmith.run_helpers import traceable
-
-                project = os.environ.get(
-                    "LANGCHAIN_PROJECT", "receipt-label-validation"
-                )
-                traced_loop = traceable(
-                    name="similarity_label_validation",
-                    project_name=project,
-                    metadata={
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                        "pending_count": len(pending_labels),
-                    },
-                )(_run_similarity_validation_loop)
-                traced_loop()
-            except ImportError:
-                _run_similarity_validation_loop()
+            native_traceable(
+                name="label_validation_similarity",
+                project_name=_get_label_validation_project(),
+                metadata={
+                    "image_id": image_id,
+                    "receipt_id": receipt_id,
+                    "pending_count": len(pending_labels),
+                },
+            )(_run_similarity_validation_loop)()
 
             # LLM (grok) validation for labels similarity couldn't
             # auto-resolve. This is the slowest single step on the upload
@@ -978,7 +976,7 @@ def _run_words_pipeline_worker(
     # tracing_context(parent=...) can accept headers directly for distributed tracing
     # CRITICAL: Must flush traces before process exits - each process has its own
     # background thread for sending traces to LangSmith
-    if langsmith_headers:
+    if langsmith_headers and hosted_enabled():
         try:
             import logging
             import os

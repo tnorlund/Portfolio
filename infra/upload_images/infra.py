@@ -22,6 +22,7 @@ from dynamo_db import dynamodb_table
 
 # Import the CodeBuildDockerImage component
 from infra.components.codebuild_docker_image import CodeBuildDockerImage
+from infra.components.tracing_config import hosted_tracing_environment
 
 config = Config("portfolio")
 current_region = aws.get_region()
@@ -32,7 +33,6 @@ pinecone_host = config.require("PINECONE_HOST")
 validate_receipt_lambda_arn_cfg = config.get("VALIDATE_RECEIPT_LAMBDA_ARN")
 google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
-langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 # Defer grok label validation to the async queue/consumer (off by default).
 llm_validation_async = config.get("LLM_VALIDATION_ASYNC") or "false"
@@ -55,6 +55,7 @@ class UploadImages(ComponentResource):
         name: str,
         raw_bucket: Bucket,
         site_bucket: Bucket,
+        trace_bucket: Bucket | None = None,
         vpc_subnet_ids: pulumi.Input[list[str]] | None = None,
         security_group_id: pulumi.Input[str] | None = None,
         label_validation_project_name: pulumi.Input[str] | None = None,
@@ -539,6 +540,27 @@ class UploadImages(ComponentResource):
         # - Compaction trigger
         # ---------------------------------------------
 
+        if trace_bucket is not None:
+            RolePolicy(
+                f"{name}-native-traces-policy",
+                role=process_ocr_role.id,
+                policy=trace_bucket.arn.apply(
+                    lambda arn: json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "s3:PutObject",
+                                    "Resource": f"{arn}/native-traces/*",
+                                }
+                            ],
+                        }
+                    )
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
         # Create container-based process_ocr Lambda with merchant validation
         # This replaces the old zip-based Lambda and integrates merchant validation + embedding
         process_ocr_lambda_config = {
@@ -579,9 +601,10 @@ class UploadImages(ComponentResource):
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": "x-ai/grok-4.3",
-                "LANGCHAIN_API_KEY": langchain_api_key,
-                "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
-                "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
+                **hosted_tracing_environment(config),
+                "RECEIPT_TRACE_BUCKET": (
+                    trace_bucket.id if trace_bucket else ""
+                ),
                 "LANGCHAIN_PROJECT": label_validation_project_name
                 or "receipt-validation",
                 "OPENROUTER_API_KEY": openrouter_api_key,
