@@ -8,7 +8,7 @@ structurally-open writer.
 
 These tests exercise the real tool path on BOTH server copies -- the stdio
 ``scripts/receipt_mcp_server.py`` and the deployed Lambda
-``infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py`` -- which
+the package staged by the Lambda Dockerfile -- which
 must stay identical. They assert:
 
 * the published ``inputSchema`` declares the allowed values as an ``enum``,
@@ -19,28 +19,13 @@ must stay identical. They assert:
 """
 
 import asyncio
-import importlib.util
 import sys
 import types
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
 from receipt_dynamo.constants import CORE_LABELS
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-SERVER_FILES = {
-    "stdio": REPO_ROOT / "scripts" / "receipt_mcp_server.py",
-    "lambda": (
-        REPO_ROOT
-        / "infra"
-        / "mcp_server_lambda"
-        / "lambdas"
-        / "receipt_mcp_server_server.py"
-    ),
-}
+from receipt_mcp_test_support import SERVER_FILES, load_server_module
 
 VALID_IMAGE_ID = "344f4a1b-1476-442e-bb01-7eed30934285"
 
@@ -109,13 +94,7 @@ def _install_mcp_stubs():
 
 def _load_module(label, path):
     _install_mcp_stubs()
-    spec = importlib.util.spec_from_file_location(
-        f"receipt_mcp_server_vocab_{label}", path
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_server_module(f"receipt_mcp_server_vocab_{label}", path)
 
 
 def _create_word_label_schema(module):

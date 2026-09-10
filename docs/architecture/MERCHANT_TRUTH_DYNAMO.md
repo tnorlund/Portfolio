@@ -420,9 +420,10 @@ Alias collisions across merchants are rejected in the same validation path as
 flip. Migration keeps a compat read path for `MerchantFont`'s exact-name PK
 until it retires.
 
-**MCP surface:** any new truth accessor exposed through receipt-tools must
-land in BOTH implementations (stdio `scripts/receipt_mcp_server.py` and the
-Lambda `receipt_mcp_server_server.py`) or the tools silently diverge.
+**MCP surface:** add truth accessors to `scripts/receipt_mcp_server.py`.
+The Lambda Dockerfile packages that same implementation as
+`receipt_mcp_server.server`; its small adapter supplies environment config
+and preserves Lambda's existing tag-only model activation.
 
 Migration is incremental: mint v1 per merchant from today's files via a
 one-shot `migration` writer (provenance = repo git SHA), flip ACTIVE, then

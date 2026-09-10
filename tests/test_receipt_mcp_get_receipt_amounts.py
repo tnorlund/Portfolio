@@ -2,7 +2,7 @@
 
 Two gaps found in the 2026-08-10 receipt audit, pinned here for both
 the stdio server (``scripts/receipt_mcp_server.py``) and the Lambda
-copy (``infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py``):
+copy (the package staged by the Lambda Dockerfile):
 
 1. Trailing-minus accounting negatives -- Target return receipts print
    refunds as "$16.25-" (dev receipt
@@ -17,26 +17,12 @@ copy (``infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py``):
 """
 
 import asyncio
-import importlib.util
 import sys
 import types
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-SERVER_FILES = {
-    "stdio": REPO_ROOT / "scripts" / "receipt_mcp_server.py",
-    "lambda": (
-        REPO_ROOT
-        / "infra"
-        / "mcp_server_lambda"
-        / "lambdas"
-        / "receipt_mcp_server_server.py"
-    ),
-}
+from receipt_mcp_test_support import SERVER_FILES, load_server_module
 
 RETURN_IMAGE_ID = "d30ba860-4bd6-4c9e-a6d7-c2eaed0c2149"
 TIP_IMAGE_ID = "29a3b291-ac80-47bf-bdc9-2cde1d79f1b6"
@@ -95,13 +81,7 @@ def _install_mcp_stubs():
 
 def _load_module(label, path):
     _install_mcp_stubs()
-    spec = importlib.util.spec_from_file_location(
-        f"receipt_mcp_server_amounts_{label}", path
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_server_module(f"receipt_mcp_server_amounts_{label}", path)
 
 
 def _word(line_id, word_id, text, x, y):

@@ -71,6 +71,7 @@ def test_build_plan_includes_earlier_commits_in_a_push(tmp_path):
     "changed_path",
     [
         "infra/merge_receipt_lambda/lambdas/handler.py",
+        "scripts/receipt_mcp_server.py",
         "receipt_upload/receipt_upload/combine/records_builder.py",
         "tools/glyph-studio/py/glyphstudio/compile.py",
         "tools/glyph-studio/fonts/example/glyphs/a.json",

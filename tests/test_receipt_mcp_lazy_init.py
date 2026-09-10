@@ -1,7 +1,7 @@
 """Tests for lazy client initialization on both MCP server implementations.
 
 The two servers (stdio ``scripts/receipt_mcp_server.py`` and the Lambda
-``infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py``) must
+the package staged by the Lambda Dockerfile) must
 start and serve every Dynamo-backed tool without an OpenAI key; only the
 vector-search tools (VECTOR_TOOLS) build the embedding function, and they
 do so lazily at CALL time.

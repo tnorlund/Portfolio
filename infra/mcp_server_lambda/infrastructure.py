@@ -266,6 +266,7 @@ class McpServerLambda(ComponentResource):
                 "receipt_places",
                 "receipt_upload",
             ],
+            extra_context_paths=["scripts/receipt_mcp_server.py"],
             lambda_function_name=f"{name}-{stack}-mcp-server",
             lambda_config=lambda_config,
             platform="linux/arm64",
