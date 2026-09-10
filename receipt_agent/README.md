@@ -12,8 +12,6 @@ stored in DynamoDB:
 - `agents/place_id_finder` and `subagents/place_finder` — Google Place ID
   resolution for receipts with missing or wrong merchant metadata
 - `agents/receipt_grouping` — clustering of receipts by merchant
-- `subagents/financial_validation`, `subagents/table_columns` — focused
-  structured-output helpers used by the evaluators
 
 Vector similarity search is provided by `receipt_embeddings`
 (`DynamoVectorSearchClient`), which queries the native DynamoDB embedding

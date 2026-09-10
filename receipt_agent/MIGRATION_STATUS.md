@@ -16,14 +16,15 @@ harmonizer have been removed from the active surface.
 
 ## Active Subagents
 
-- `financial_validation/` - Financial consistency checks used by the label
-  evaluator.
 - `place_finder/` - Place data fill-in and Google Places verification used by
   fix-place workflows.
 - `table_columns/` - Placeholder table column helper.
 
 ## Retired Components
 
+- The unused `subagents/financial_validation/` package and its three graph
+  implementations were removed. Current financial checks use
+  `agents/label_evaluator/financial_structured` and `financial_subagent`.
 - `agents/harmonizer/` and `subagents/cove_text_consistency/` were removed with
   the bulk metadata harmonizer. Existing place corrections now run through the
   fix-place workflow and receipt MCP tools.

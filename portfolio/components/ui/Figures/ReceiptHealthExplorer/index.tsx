@@ -41,7 +41,6 @@ interface EvidenceWord {
 
 const BATCH_SIZE = 12;
 const INITIAL_SEED = 29;
-const MAX_ISSUE_FETCHES = 3;
 const AUTO_ROTATE_MS = 5200;
 const MANUAL_ROTATE_PAUSE_MS = 8000;
 const TRANSITION_DURATION_MS = 600;
@@ -207,13 +206,6 @@ const STATUS_LABELS: Record<ReceiptHealthStatus, string> = {
   not_applicable: "N/A",
 };
 
-const STATUS_CLASS: Record<ReceiptHealthStatus, string> = {
-  pass: styles.statusPass,
-  review: styles.statusReview,
-  fail: styles.statusFail,
-  not_applicable: styles.statusNeutral,
-};
-
 const STATUS_COLOR: Record<ReceiptHealthStatus, string> = {
   pass: "var(--color-green)",
   review: "var(--color-yellow)",
@@ -226,16 +218,6 @@ const DECISION_COLOR: Record<string, string> = {
   INVALID: "var(--color-red)",
   NEEDS_REVIEW: "var(--color-yellow)",
   CORRECTED: "var(--color-blue)",
-};
-
-const ISSUE_STATE_LABELS: Record<string, string> = {
-  open: "Open",
-  claimed: "Claimed",
-  awaiting_validation: "Waiting",
-  resolved: "Resolved",
-  blocked: "Blocked",
-  manual_review: "Review",
-  known_limitation: "Known limit",
 };
 
 const PREFLIGHT_LABELS: Record<string, string> = {
@@ -264,26 +246,6 @@ const ROOT_CAUSE_LABELS: Record<string, string> = {
 
 function receiptKey(receipt: ReceiptHealthReceipt): string {
   return `${receipt.image_id}-${receipt.receipt_id}`;
-}
-
-function secondsLabel(seconds: number | null | undefined): string {
-  if (seconds == null) return "No timing";
-  if (seconds < 0.01) return "<10ms";
-  if (seconds < 1) return `${Math.round(seconds * 1000)}ms`;
-  return `${seconds.toFixed(1)}s`;
-}
-
-function statusClass(status: ReceiptHealthStatus): string {
-  return `${styles.statusBadge} ${STATUS_CLASS[status]}`;
-}
-
-function issueLabel(count: number): string {
-  if (count === 1) return "1 issue";
-  return `${count} issues`;
-}
-
-function countLabel(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 function isCheckId(detailId: DetailId): detailId is CheckId {
@@ -389,237 +351,8 @@ function evidenceForCheck(
   return Array.from(byWord.values());
 }
 
-function checkMethodLabel(check: ReceiptHealthCheck): string {
-  if (check.id === "financial_math") {
-    return "math rule";
-  }
-
-  return check.is_llm ? "LLM" : "rule";
-}
-
-function checkEvidenceLabel(check: ReceiptHealthCheck): string {
-  return check.id === "financial_math"
-    ? countLabel(check.evidence_count, "label box", "label boxes")
-    : countLabel(check.evidence_count, "box", "boxes");
-}
-
-function mismatchCount(check: ReceiptHealthCheck): number {
-  if (check.id !== "financial_math") return 0;
-  return "mismatched_equations" in check.summary
-    ? (check.summary.mismatched_equations ?? 0)
-    : 0;
-}
-
-function checkDetailValue(check: ReceiptHealthCheck): string {
-  const mismatches = mismatchCount(check);
-  if (mismatches > 0) {
-    return `${STATUS_LABELS[check.status]}: ${countLabel(mismatches, "mismatch")}`;
-  }
-
-  return STATUS_LABELS[check.status];
-}
-
-function checkDetailNote(check: ReceiptHealthCheck): string {
-  const mismatches = mismatchCount(check);
-  if (check.id === "financial_math" && mismatches > 0) {
-    return "Green boxes mean the visible labels are valid. The check fails because the totals still do not reconcile.";
-  }
-
-  if (check.status === "fail" || check.status === "review") {
-    return check.result;
-  }
-
-  return check.question;
-}
-
 function receiptTitle(receipt: ReceiptHealthReceipt): string {
   return receipt.merchant_name || `Receipt ${receipt.receipt_id}`;
-}
-
-function ReceiptImage({
-  receipt,
-  activeCheck,
-  onImageUnavailable,
-}: {
-  receipt: ReceiptHealthReceipt;
-  activeCheck: ReceiptHealthCheck;
-  onImageUnavailable: (receipt: ReceiptHealthReceipt) => void;
-}) {
-  const formatSupport = useImageFormatSupport();
-  const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
-  const [imageFailed, setImageFailed] = useState(false);
-
-  const imageUrl = useMemo(() => {
-    if (!formatSupport) return null;
-    return getBestImageUrl(receipt, formatSupport, "medium");
-  }, [formatSupport, receipt]);
-
-  const evidence = useMemo(
-    () => evidenceForCheck(receipt, activeCheck.id),
-    [activeCheck.id, receipt],
-  );
-
-  const width = naturalSize?.width ?? receipt.width;
-  const height = naturalSize?.height ?? receipt.height;
-  const color = STATUS_COLOR[activeCheck.status];
-
-  useEffect(() => {
-    setImageFailed(false);
-    setNaturalSize(null);
-  }, [receipt.image_id, receipt.receipt_id]);
-
-  if (!imageUrl || imageFailed) {
-    return <div className={styles.imageLoading}>Loading receipt</div>;
-  }
-
-  return (
-    <div className={styles.receiptImageStage}>
-      <div className={styles.receiptImageFrame}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={imageUrl}
-          alt={receiptTitle(receipt)}
-          className={styles.receiptImage}
-          onLoad={(event) => {
-            const image = event.currentTarget;
-            if (image.naturalWidth > 0 && image.naturalHeight > 0) {
-              setNaturalSize({
-                width: image.naturalWidth,
-                height: image.naturalHeight,
-              });
-            }
-          }}
-          onError={(event) => {
-            const fallback = getJpegFallbackUrl(receipt);
-            if (setReceiptImageFallback(event.currentTarget, fallback)) {
-              return;
-            }
-            setImageFailed(true);
-            onImageUnavailable(receipt);
-          }}
-        />
-        <svg
-          className={styles.overlay}
-          viewBox={`0 0 ${width} ${height}`}
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          {evidence.map((word) => {
-            const boxColor = DECISION_COLOR[word.decision ?? ""] ?? color;
-            const x = word.bbox.x * width;
-            const y = (1 - word.bbox.y - word.bbox.height) * height;
-            const w = word.bbox.width * width;
-            const h = word.bbox.height * height;
-
-            return (
-              <rect
-                key={word.key}
-                x={x}
-                y={y}
-                width={w}
-                height={h}
-                rx={2}
-                fill={boxColor}
-                fillOpacity={0.22}
-                stroke={boxColor}
-                strokeWidth={2}
-                strokeOpacity={0.72}
-              />
-            );
-          })}
-        </svg>
-      </div>
-    </div>
-  );
-}
-
-function HealthSummary({ receipt }: { receipt: ReceiptHealthReceipt }) {
-  return (
-    <div className={styles.summaryGrid} aria-label="Receipt health summary">
-      <div className={styles.summaryCell}>
-        <span className={styles.summaryValue}>{receipt.summary.passed}</span>
-        <span className={styles.summaryLabel}>Pass</span>
-      </div>
-      <div className={styles.summaryCell}>
-        <span className={styles.summaryValue}>{receipt.summary.needs_review}</span>
-        <span className={styles.summaryLabel}>Review</span>
-      </div>
-      <div className={styles.summaryCell}>
-        <span className={styles.summaryValue}>{receipt.summary.failed}</span>
-        <span className={styles.summaryLabel}>Fail</span>
-      </div>
-      <div className={styles.summaryCell}>
-        <span className={styles.summaryValue}>{receipt.summary.not_applicable}</span>
-        <span className={styles.summaryLabel}>N/A</span>
-      </div>
-    </div>
-  );
-}
-
-function CheckButton({
-  check,
-  active,
-  onSelect,
-}: {
-  check: ReceiptHealthCheck;
-  active: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`${styles.checkButton} ${active ? styles.checkButtonActive : ""}`}
-      onClick={onSelect}
-      aria-pressed={active}
-    >
-      <span className={styles.checkHeader}>
-        <span className={styles.checkTitle}>{check.title}</span>
-        <span className={statusClass(check.status)}>{STATUS_LABELS[check.status]}</span>
-      </span>
-      <span className={styles.checkResult}>{check.result}</span>
-      <span className={styles.checkMeta}>
-        <span>{check.evidence_count} evidence</span>
-        <span>{secondsLabel(check.duration_seconds)}</span>
-        <span>{check.is_llm ? "LLM" : "rule"}</span>
-      </span>
-    </button>
-  );
-}
-
-function CheckDetails({ check }: { check: ReceiptHealthCheck }) {
-  return (
-    <div className={styles.checkDetails}>
-      <div className={styles.checkQuestion}>{check.question}</div>
-      <div className={styles.validatesList}>
-        {check.what_it_validates.map((field) => (
-          <span key={field} className={styles.fieldBadge}>
-            {field}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Issues({ receipt }: { receipt: ReceiptHealthReceipt }) {
-  if (receipt.primary_issues.length === 0) {
-    return (
-      <div className={styles.issueEmpty}>
-        No primary issues for this receipt.
-      </div>
-    );
-  }
-
-  return (
-    <div className={styles.issueList}>
-      {receipt.primary_issues.map((issue) => (
-        <div key={`${issue.check_id}-${issue.message}`} className={styles.issueItem}>
-          <span className={statusClass(issue.status)}>{STATUS_LABELS[issue.status]}</span>
-          <span className={styles.issueMessage}>{issue.message}</span>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 function sectionLabel(value: string): string {
@@ -638,68 +371,6 @@ function rootCauseLabel(value: string | undefined): string {
 function compactText(value: string | null | undefined, fallback: string): string {
   const text = value?.trim();
   return text && text.length > 0 ? text : fallback;
-}
-
-function sectionEntries(
-  sections: Record<string, number> | undefined,
-): Array<[string, number]> {
-  if (!sections) return [];
-  return Object.entries(sections)
-    .filter(([, count]) => count > 0)
-    .sort((a, b) => b[1] - a[1]);
-}
-
-function SectionEvidence({
-  evidence,
-}: {
-  evidence: ReceiptHealthSectionEvidence | undefined;
-}) {
-  const issueSections = sectionEntries(evidence?.issue_sections);
-  const contextSections = sectionEntries(evidence?.context_sections);
-  const rows = evidence?.issue_rows ?? [];
-
-  if (!evidence || (issueSections.length === 0 && rows.length === 0)) {
-    return null;
-  }
-
-  return (
-    <div className={styles.sectionEvidence}>
-      {issueSections.length > 0 ? (
-        <div className={styles.sectionChips}>
-          {issueSections.map(([section, count]) => (
-            <span key={section} className={styles.sectionChip}>
-              {sectionLabel(section)}
-              {count > 1 ? ` ${count}` : ""}
-            </span>
-          ))}
-        </div>
-      ) : null}
-      {rows.length > 0 ? (
-        <div className={styles.sectionRows}>
-          {rows.slice(0, 3).map((row) => (
-            <div
-              key={`${row.row_index}-${row.line_ids.join("-")}`}
-              className={styles.sectionRow}
-            >
-              <span className={styles.sectionRowLabel}>
-                {sectionLabel(row.section)}
-              </span>
-              <span className={styles.sectionRowText}>{row.text}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {contextSections.length > 0 ? (
-        <div className={styles.sectionContext}>
-          Nearby:{" "}
-          {contextSections
-            .slice(0, 3)
-            .map(([section]) => sectionLabel(section))
-            .join(", ")}
-        </div>
-      ) : null}
-    </div>
-  );
 }
 
 function sortedCountEntries(
@@ -1509,210 +1180,6 @@ function DiagnosisRail({
   );
 }
 
-function RootCauseVolume({
-  summary,
-  activeRootCause,
-}: {
-  summary: ReceiptHealthLedgerSummary | null;
-  activeRootCause: string | undefined;
-}) {
-  const allEntries = sortedCountEntries(summary?.by_preflight_root_cause).filter(
-    ([rootCause]) => rootCause !== "unclassified",
-  );
-  const entries = allEntries.slice(0, 5);
-  if (entries.length === 0) return null;
-
-  const maxCount = entries[0]?.[1] ?? 1;
-  const classifiedTotal = allEntries.reduce((sum, [, count]) => sum + count, 0);
-
-  return (
-    <div className={styles.rootCauseVolume}>
-      <div className={styles.volumeHeader}>
-        <span>Root causes</span>
-        <span>{classifiedTotal} classified</span>
-      </div>
-      <div className={styles.volumeRows}>
-        {entries.map(([rootCause, count]) => {
-          const width = maxCount > 0 ? (count / maxCount) * 100 : 0;
-          const isActive = activeRootCause === rootCause;
-          return (
-            <div
-              key={rootCause}
-              className={`${styles.volumeRow} ${isActive ? styles.volumeRowActive : ""}`}
-            >
-              <span className={styles.volumeLabel}>{sectionLabel(rootCause)}</span>
-              <span className={styles.volumeBarTrack}>
-                <span
-                  className={styles.volumeBar}
-                  style={{ "--volume-width": `${width}%` } as React.CSSProperties}
-                />
-              </span>
-              <span className={styles.volumeCount}>{count}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function DecisionPath({
-  receipt,
-  activeCheck,
-  ledgerIssue,
-  loadingLedgerIssues,
-}: {
-  receipt: ReceiptHealthReceipt;
-  activeCheck: ReceiptHealthCheck;
-  ledgerIssue: ReceiptHealthLedgerIssue | null;
-  loadingLedgerIssues: boolean;
-}) {
-  const preflight = ledgerIssue?.preflight;
-  const sectionEvidence = preflight?.evidence?.section_evidence;
-  const primaryIssue = receipt.primary_issues.find(
-    (issue) => issue.check_id === activeCheck.id,
-  ) ?? receipt.primary_issues[0];
-  const issueMessage = compactText(
-    ledgerIssue?.message ?? primaryIssue?.message,
-    activeCheck.result,
-  );
-  const routeLabel = preflight
-    ? (PREFLIGHT_LABELS[preflight.classification] ?? preflight.classification)
-    : loadingLedgerIssues
-      ? "Loading"
-      : "No route";
-  const rootCause = preflight?.root_cause
-    ? sectionLabel(preflight.root_cause)
-    : "No root cause";
-  const sectionSummary = sectionEvidence
-    ? compactText(
-        [
-          sectionEntries(sectionEvidence.issue_sections)
-            .slice(0, 2)
-            .map(([section]) => sectionLabel(section))
-            .join(", "),
-          sectionEntries(sectionEvidence.context_sections)
-            .slice(0, 1)
-            .map(([section]) => `near ${sectionLabel(section)}`)
-            .join(", "),
-        ]
-          .filter(Boolean)
-          .join("; "),
-        "Section evidence attached",
-      )
-    : "No section trigger";
-  const actionText = preflight?.is_automation_ready
-    ? `${preflight.action_count} exact action${preflight.action_count === 1 ? "" : "s"}`
-    : preflight
-      ? "Held from writes"
-      : "No stored action";
-
-  return (
-    <div className={styles.decisionPath}>
-      <div className={styles.decisionHeader}>
-        <span>{receiptTitle(receipt)}</span>
-        <span>{CHECK_LABELS[activeCheck.id]}</span>
-      </div>
-      <div className={styles.decisionSteps}>
-        <div className={styles.decisionStep}>
-          <span className={styles.decisionStepIndex}>1</span>
-          <span className={styles.decisionStepBody}>
-            <span className={styles.decisionStepTitle}>Issue</span>
-            <span className={styles.decisionStepText}>{issueMessage}</span>
-          </span>
-        </div>
-        <div className={styles.decisionStep}>
-          <span className={styles.decisionStepIndex}>2</span>
-          <span className={styles.decisionStepBody}>
-            <span className={styles.decisionStepTitle}>Section</span>
-            <span className={styles.decisionStepText}>{sectionSummary}</span>
-          </span>
-        </div>
-        <div className={styles.decisionStep}>
-          <span className={styles.decisionStepIndex}>3</span>
-          <span className={styles.decisionStepBody}>
-            <span className={styles.decisionStepTitle}>Root cause</span>
-            <span className={styles.decisionStepText}>{rootCause}</span>
-          </span>
-        </div>
-        <div className={styles.decisionStep}>
-          <span className={styles.decisionStepIndex}>4</span>
-          <span className={styles.decisionStepBody}>
-            <span className={styles.decisionStepTitle}>Route</span>
-            <span className={styles.decisionStepText}>
-              {routeLabel}
-              {preflight?.lane ? ` · ${sectionLabel(preflight.lane)}` : ""}
-            </span>
-          </span>
-        </div>
-        <div className={styles.decisionStep}>
-          <span className={styles.decisionStepIndex}>5</span>
-          <span className={styles.decisionStepBody}>
-            <span className={styles.decisionStepTitle}>Automation</span>
-            <span className={styles.decisionStepText}>{actionText}</span>
-          </span>
-        </div>
-      </div>
-      {preflight?.summary ? (
-        <div className={styles.decisionSummary}>{preflight.summary}</div>
-      ) : null}
-      <SectionEvidence evidence={sectionEvidence} />
-    </div>
-  );
-}
-
-function IssueLedger({
-  issues,
-  loading,
-}: {
-  issues: ReceiptHealthLedgerIssue[];
-  loading: boolean;
-}) {
-  return (
-    <div className={styles.ledgerList}>
-      {loading ? (
-        <div className={styles.issueEmpty}>Loading issue state.</div>
-      ) : null}
-      {!loading && issues.length === 0 ? (
-        <div className={styles.issueEmpty}>No ledger state for this receipt.</div>
-      ) : null}
-      {issues.map((issue) => {
-        const preflight = issue.preflight;
-        const classification = preflight?.classification;
-        return (
-          <div key={issue.issue_id} className={styles.ledgerItem}>
-            <div className={styles.ledgerItemHeader}>
-              <span className={styles.ledgerIssueType}>{issue.issue_type}</span>
-              <span className={styles.ledgerState}>
-                {ISSUE_STATE_LABELS[issue.state ?? "open"] ?? issue.state ?? "Open"}
-              </span>
-            </div>
-            <div className={styles.ledgerMessage}>{issue.message}</div>
-            {preflight ? (
-              <div className={styles.preflightRow}>
-                <span className={styles.preflightBadge}>
-                  {PREFLIGHT_LABELS[classification ?? ""] ?? classification}
-                </span>
-                <span className={styles.preflightSummary}>
-                  {preflight.summary}
-                </span>
-              </div>
-            ) : null}
-            <SectionEvidence
-              evidence={preflight?.evidence?.section_evidence}
-            />
-            {preflight?.is_automation_ready ? (
-              <div className={styles.actionCount}>
-                {preflight.action_count} exact actions
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 function ReceiptHealthFlowQueue({
   receipts,
   currentIndex,
@@ -1934,121 +1401,6 @@ function ReceiptHealthFlowReceipt({
   );
 }
 
-function FlowLegendItem({
-  label,
-  value,
-  color,
-  active,
-  onSelect,
-}: {
-  label: string;
-  value: string;
-  color: string;
-  active?: boolean;
-  onSelect?: () => void;
-}) {
-  const content = (
-    <>
-      <span className={styles.flowLegendDot} style={{ backgroundColor: color }} />
-      <span className={styles.flowLegendLabel}>{label}</span>
-      <span className={styles.flowLegendValue}>{value}</span>
-    </>
-  );
-
-  if (!onSelect) {
-    return (
-      <div className={`${styles.flowLegendItem} ${active ? styles.flowLegendActive : ""}`}>
-        {content}
-      </div>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      className={`${styles.flowLegendItem} ${styles.flowLegendButton} ${active ? styles.flowLegendActive : ""}`}
-      onClick={onSelect}
-    >
-      {content}
-    </button>
-  );
-}
-
-function automationColor(preflight: ReceiptHealthLedgerIssue["preflight"] | undefined): string {
-  if (!preflight) return "rgba(var(--text-color-rgb, 0, 0, 0), 0.28)";
-  if (preflight.is_automation_ready) return "var(--color-green)";
-
-  switch (preflight.classification) {
-    case "evaluator_rule_gap":
-    case "math_mismatch":
-      return "var(--color-red)";
-    case "known_limitation":
-    case "already_consistent":
-      return "var(--color-blue)";
-    case "reocr_needed":
-      return "var(--color-red)";
-    case "not_applicable":
-      return "rgba(var(--text-color-rgb, 0, 0, 0), 0.28)";
-    default:
-      return "var(--color-yellow)";
-  }
-}
-
-function automationDetailValue(
-  preflight: ReceiptHealthLedgerIssue["preflight"] | undefined,
-  loading: boolean,
-): string {
-  if (loading) return "Loading";
-  if (!preflight) return "No action";
-  if (preflight.is_automation_ready) return "Agent ready";
-
-  switch (preflight.classification) {
-    case "known_limitation":
-    case "already_consistent":
-      return "No label edit";
-    case "evaluator_rule_gap":
-    case "math_mismatch":
-      return "Rule gap";
-    case "reocr_needed":
-      return "Re-OCR";
-    case "needs_ai_review":
-      return "Needs review";
-    case "not_applicable":
-      return "N/A";
-    default:
-      return "Agent hold";
-  }
-}
-
-function automationDetailNote(
-  preflight: ReceiptHealthLedgerIssue["preflight"] | undefined,
-): string {
-  if (!preflight) {
-    return "No deterministic cleanup action is queued for this receipt.";
-  }
-
-  if (preflight.is_automation_ready) {
-    return `${countLabel(preflight.action_count, "exact action")} stored for the cleanup agent.`;
-  }
-
-  switch (preflight.classification) {
-    case "known_limitation":
-    case "already_consistent":
-      return `${preflight.summary} The agent has enough context to avoid retrying this edit, not to change labels.`;
-    case "evaluator_rule_gap":
-    case "math_mismatch":
-      return `${preflight.summary} Keep this out of automation until the inputs or evaluator change.`;
-    case "reocr_needed":
-      return `${preflight.summary} Send this through OCR/parser repair before label cleanup.`;
-    case "needs_ai_review":
-      return `${preflight.summary} No exact deterministic action plan is stored.`;
-    case "not_applicable":
-      return preflight.summary;
-    default:
-      return preflight.summary;
-  }
-}
-
 function ReceiptHealthFlowLegend({
   receipt,
   checks,
@@ -2104,136 +1456,6 @@ function ReceiptHealthFlowLegend({
   );
 }
 
-function ReceiptStackNav({
-  receipts,
-  currentIndex,
-  totalCount,
-  formatSupport,
-  canGoPrevious,
-  canGoNext,
-  loadingMore,
-  onPrevious,
-  onNext,
-  onSelect,
-}: {
-  receipts: ReceiptHealthReceipt[];
-  currentIndex: number;
-  totalCount: number;
-  formatSupport: ImageFormatSupport | null;
-  canGoPrevious: boolean;
-  canGoNext: boolean;
-  loadingMore: boolean;
-  onPrevious: () => void;
-  onNext: () => void;
-  onSelect: (index: number) => void;
-}) {
-  const maxVisible = 7;
-  const visibleIndices = useMemo(() => {
-    if (receipts.length === 0) return [];
-
-    const nextIndices = getVisibleQueueIndices(
-      receipts.length,
-      currentIndex,
-      maxVisible - 1,
-      false,
-    );
-
-    if (nextIndices.length >= maxVisible - 1 || currentIndex === 0) {
-      return [currentIndex, ...nextIndices];
-    }
-
-    const previousSlots = maxVisible - 1 - nextIndices.length;
-    const previousStart = Math.max(0, currentIndex - previousSlots);
-    const previousIndices = Array.from(
-      { length: currentIndex - previousStart },
-      (_, offset) => previousStart + offset,
-    );
-
-    return [...previousIndices, currentIndex, ...nextIndices];
-  }, [currentIndex, receipts.length]);
-
-  return (
-    <aside className={styles.stackPane} aria-label="Receipt stack">
-      <div className={styles.stackHeader}>
-        <span>Stack</span>
-        <span>{currentIndex + 1}/{totalCount || receipts.length}</span>
-      </div>
-
-      <div className={styles.receiptStackViewport}>
-        {visibleIndices.map((receiptIndex, stackIndex) => {
-          const receipt = receipts[receiptIndex];
-          const receiptId = `${receipt.image_id}_${receipt.receipt_id}`;
-          const imageUrl = formatSupport
-            ? getBestImageUrl(receipt, formatSupport, "thumbnail")
-            : null;
-          const { rotation, leftOffset } = getQueuePosition(receiptId);
-          const isActive = receiptIndex === currentIndex;
-          const stackOffset = stackIndex * 42;
-
-          return (
-            <button
-              key={`${receiptId}-${receiptIndex}`}
-              type="button"
-              className={`${styles.stackReceiptButton} ${isActive ? styles.stackReceiptActive : ""}`}
-              style={{
-                top: `${stackOffset}px`,
-                left: `${28 + leftOffset}px`,
-                transform: `rotate(${rotation}deg)`,
-                zIndex: visibleIndices.length - stackIndex,
-              }}
-              onClick={() => onSelect(receiptIndex)}
-              aria-label={`${receiptTitle(receipt)} status ${STATUS_LABELS[receipt.overall_status]}`}
-              aria-current={isActive ? "true" : undefined}
-            >
-              <span className={`${styles.stackStatusPip} ${STATUS_CLASS[receipt.overall_status]}`} />
-              {imageUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={imageUrl}
-                  alt=""
-                  className={styles.stackReceiptImage}
-                  onError={(event) => {
-                    const fallback = getJpegFallbackUrl(receipt);
-                    setReceiptImageFallback(event.currentTarget, fallback);
-                  }}
-                />
-              ) : (
-                <span className={styles.stackReceiptPlaceholder}>
-                  {receipt.receipt_id}
-                </span>
-              )}
-              {receipt.summary.issue_count > 0 ? (
-                <span className={styles.stackIssuePill}>
-                  {receipt.summary.issue_count}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </div>
-
-      <div className={styles.stackControls}>
-        <button
-          type="button"
-          className={styles.navButton}
-          onClick={onPrevious}
-          disabled={!canGoPrevious}
-        >
-          Prev
-        </button>
-        <button
-          type="button"
-          className={styles.navButton}
-          onClick={onNext}
-          disabled={!canGoNext || loadingMore}
-        >
-          {loadingMore ? "Loading" : "Next"}
-        </button>
-      </div>
-    </aside>
-  );
-}
-
 export default function ReceiptHealthExplorer() {
   const { ref: lazyRef, inView: nearViewport } = useInView({
     triggerOnce: true,
@@ -2255,15 +1477,11 @@ export default function ReceiptHealthExplorer() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [activeCheckId, setActiveCheckId] = useState<CheckId>("merchant_identity");
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [findingIssue, setFindingIssue] = useState(false);
   const [ledgerIssues, setLedgerIssues] = useState<ReceiptHealthLedgerIssue[]>([]);
   const [ledgerSummary, setLedgerSummary] = useState<ReceiptHealthLedgerSummary | null>(null);
   const [transitionLedgerContext, setTransitionLedgerContext] = useState<LedgerContext | null>(null);
   const [loadingLedgerIssues, setLoadingLedgerIssues] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
-  const [totalCount, setTotalCount] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [transitionTargetIndex, setTransitionTargetIndex] = useState<number | null>(null);
   const [promotedReceiptKey, setPromotedReceiptKey] = useState<string | null>(null);
@@ -2285,26 +1503,6 @@ export default function ReceiptHealthExplorer() {
   usePreloadReceiptImages(
     receipts,
     formatSupport,
-  );
-
-  const loadReceipts = useCallback(
-    async (offset: number) => {
-      const response = await api.fetchReceiptHealth(BATCH_SIZE, INITIAL_SEED, offset);
-      setTotalCount(response.total_count);
-      setHasMore(response.has_more);
-      setReceipts((current) => {
-        if (offset === 0) return response.receipts;
-        const existing = new Set(
-          current.map((receipt) => `${receipt.image_id}-${receipt.receipt_id}`),
-        );
-        const next = response.receipts.filter(
-          (receipt) => !existing.has(`${receipt.image_id}-${receipt.receipt_id}`),
-        );
-        return [...current, ...next];
-      });
-      return response.receipts;
-    },
-    [],
   );
 
   const loadScenarioReceipts = useCallback(async () => {
@@ -2335,14 +1533,14 @@ export default function ReceiptHealthExplorer() {
     );
 
     if (scenarioReceipts.length === 0) {
-      return loadReceipts(0);
+      const response = await api.fetchReceiptHealth(BATCH_SIZE, INITIAL_SEED, 0);
+      setReceipts(response.receipts);
+      return response.receipts;
     }
 
-    setTotalCount(scenarioReceipts.length);
-    setHasMore(false);
     setReceipts(scenarioReceipts);
     return scenarioReceipts;
-  }, [loadReceipts]);
+  }, []);
 
   const fetchLedgerContext = useCallback(async (
     receipt: ReceiptHealthReceipt,
@@ -2573,8 +1771,6 @@ export default function ReceiptHealthExplorer() {
       !inView ||
       loading ||
       receipts.length < 2 ||
-      findingIssue ||
-      loadingMore ||
       isTransitioning
     ) return;
 
@@ -2589,11 +1785,9 @@ export default function ReceiptHealthExplorer() {
 
     return () => window.clearInterval(timer);
   }, [
-    findingIssue,
     inView,
     isTransitioning,
     loading,
-    loadingMore,
     receipts,
     selectReceipt,
   ]);
@@ -2624,111 +1818,6 @@ export default function ReceiptHealthExplorer() {
     currentReceipt,
     receipts,
     selectReceipt,
-    unavailableImageKeys,
-  ]);
-
-  const goPrevious = useCallback(() => {
-    selectReceipt(Math.max(0, currentIndex - 1));
-  }, [currentIndex, selectReceipt]);
-
-  const goNext = useCallback(async () => {
-    if (currentIndex < receipts.length - 1) {
-      selectReceipt(currentIndex + 1);
-      return;
-    }
-
-    if (!hasMore || loadingMore) return;
-    setLoadingMore(true);
-    try {
-      const previousLength = receipts.length;
-      const loaded = await loadReceipts(previousLength);
-      if (loaded.length > 0) {
-        lastManualSelectionRef.current = Date.now();
-        setCurrentIndex(previousLength);
-        focusReceiptCheck(loaded[0]);
-      }
-    } catch (err) {
-      console.error("Failed to fetch more receipt health data:", err);
-      setError(err instanceof Error ? err.message : "Failed to load more receipts");
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [
-    currentIndex,
-    focusReceiptCheck,
-    hasMore,
-    loadReceipts,
-    loadingMore,
-    receipts.length,
-    selectReceipt,
-  ]);
-
-  const selectFirstIssueCheck = useCallback((receipt: ReceiptHealthReceipt) => {
-    const issueCheckId = receipt.primary_issues[0]?.check_id;
-    if (issueCheckId && receipt.checks.some((check) => check.id === issueCheckId)) {
-      setActiveCheckId(issueCheckId);
-      return;
-    }
-
-    const firstNonPassingCheck = receipt.checks.find((check) =>
-      check.status === "fail" || check.status === "review"
-    );
-    if (firstNonPassingCheck) {
-      setActiveCheckId(firstNonPassingCheck.id);
-    }
-  }, []);
-
-  const goNextIssue = useCallback(async () => {
-    if (findingIssue || loadingMore) return;
-    setFindingIssue(true);
-    try {
-      let searchStart = currentIndex + 1;
-      let loadedReceipts = receipts;
-
-      for (let fetchCount = 0; fetchCount <= MAX_ISSUE_FETCHES; fetchCount += 1) {
-        const issueIndex = loadedReceipts.findIndex(
-          (receipt, index) =>
-            index >= searchStart &&
-            receipt.summary.issue_count > 0 &&
-            !unavailableImageKeys.has(receiptKey(receipt)),
-        );
-
-        if (issueIndex >= 0) {
-          lastManualSelectionRef.current = Date.now();
-          setCurrentIndex(issueIndex);
-          selectFirstIssueCheck(loadedReceipts[issueIndex]);
-          return;
-        }
-
-        if (!hasMore) return;
-
-        const previousLength = loadedReceipts.length;
-        const loaded = await loadReceipts(previousLength);
-        if (loaded.length === 0) return;
-
-        const existing = new Set(
-          loadedReceipts.map((receipt) => receiptKey(receipt)),
-        );
-        loadedReceipts = [
-          ...loadedReceipts,
-          ...loaded.filter((receipt) => !existing.has(receiptKey(receipt))),
-        ];
-        searchStart = previousLength;
-      }
-    } catch (err) {
-      console.error("Failed to find issue receipt:", err);
-      setError(err instanceof Error ? err.message : "Failed to find issue receipt");
-    } finally {
-      setFindingIssue(false);
-    }
-  }, [
-    currentIndex,
-    findingIssue,
-    hasMore,
-    loadReceipts,
-    loadingMore,
-    receipts,
-    selectFirstIssueCheck,
     unavailableImageKeys,
   ]);
 
@@ -2820,16 +1909,6 @@ export default function ReceiptHealthExplorer() {
       </div>
     );
   }
-
-  const canGoPrevious = currentIndex > 0;
-  const canGoNext = currentIndex < receipts.length - 1 || hasMore;
-  const hasLoadedIssueAhead = receipts.some(
-    (receipt, index) =>
-      index > currentIndex &&
-      receipt.summary.issue_count > 0 &&
-      !unavailableImageKeys.has(receiptKey(receipt)),
-  );
-  const canGoNextIssue = hasLoadedIssueAhead || hasMore;
 
   return (
     <div
