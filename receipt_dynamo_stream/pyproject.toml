@@ -22,17 +22,17 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "boto3>=1.43.32,<1.44.0",
+    "boto3>=1.43.92,<1.44.0",
     "receipt-dynamo>=0.3.0",
 ]
 keywords = ["dynamodb", "receipts", "aws", "streams"]
 
 [project.optional-dependencies]
 test = [
-    "pytest>=8.3.0,<10.0.0",
-    "pytest-cov>=6.1.0,<8.0.0",
-    "pytest-mock>=3.14.0,<4.0.0",
-    "moto>=5.1.0,<6.0.0",
+    "pytest>=9.1.1,<10.0.0",
+    "pytest-cov>=7.1.0,<8.0.0",
+    "pytest-mock>=3.15.1,<4.0.0",
+    "moto>=5.2.3,<6.0.0",
 ]
 lint = [
     "black==26.5.1",
@@ -40,11 +40,11 @@ lint = [
 ]
 dev = [
     "black==26.5.1",
-    "pylint>=3.0.0,<5.0.0",
-    "mypy>=1.19.0",
+    "pylint>=4.0.8,<5.0.0",
+    "mypy>=2.3.1",
     "isort==9.0.1",
-    "boto3-stubs[dynamodb]>=1.42.0",
-    "mypy-boto3-dynamodbstreams>=1.42.0",
+    "boto3-stubs[dynamodb]>=1.43.92",
+    "mypy-boto3-dynamodbstreams>=1.43.0",
 ]
 
 [tool.hatch.build]
