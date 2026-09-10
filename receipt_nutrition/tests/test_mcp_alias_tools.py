@@ -80,7 +80,9 @@ def _load_server(name: str, path: Path) -> types.ModuleType:
     saved = {key: sys.modules.get(key) for key in _stub_mcp()}
     sys.modules.update(_stub_mcp())
     try:
-        module = SUPPORT.load_server_module(f"mcp_alias_tools_{name}", path)
+        module: types.ModuleType = SUPPORT.load_server_module(
+            f"mcp_alias_tools_{name}", path
+        )
     finally:
         for key, value in saved.items():
             if value is None:
@@ -267,7 +269,7 @@ def test_both_servers_expose_identical_tool_schemas():
     ]
 
 
-def test_alias_decisions_use_dynamo_client():
+def test_alias_decisions_use_dynamo_client() -> None:
     source = "".join(
         inspect.getsource(getattr(SERVER_MODULES["scripts"], attr))
         for attr in (
