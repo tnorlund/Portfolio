@@ -14,7 +14,6 @@ vendored Lambda fork) must:
 """
 
 import asyncio
-import inspect
 import json
 import sys
 import types
@@ -136,18 +135,6 @@ def test_both_servers_agree_on_similarity_surface():
     for name in ("similar_labeled_words", "validate_word_similarity"):
         assert stdio_tools[name].inputSchema == lam_tools[name].inputSchema
         assert stdio_tools[name].description == lam_tools[name].description
-
-    # The vendored fork must carry byte-equal similarity plumbing.
-    for function_name in (
-        "similar_labeled_words_impl",
-        "validate_word_similarity_impl",
-        "search_receipts_impl",
-        "search_product_lines_impl",
-        "get_vector_search_client",
-    ):
-        assert inspect.getsource(
-            getattr(stdio, function_name)
-        ) == inspect.getsource(getattr(lam, function_name)), function_name
 
 
 # ---------------------------------------------------------------------------

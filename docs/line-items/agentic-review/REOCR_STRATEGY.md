@@ -71,11 +71,11 @@ fixture jobs (`receipt_upload/tests/test_reocr_strategy.py`).
    `reocr_mechanism`, and stamps both onto the created OCRJob. It
    deliberately does NOT compute a default strategy: it only bundles
    `receipt_dynamo`, so ladder decisions stay with callers.
-3. **MCP tool** — `trigger_reocr` in BOTH server variants
-   (`scripts/receipt_mcp_server.py`,
-   `infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py`)
-   gained optional `strategy` + `mechanism` args, forwarded to the
-   Lambda as `reocr_strategy`/`reocr_mechanism`.
+3. **MCP tool** — `trigger_reocr` in the shared
+   `scripts/receipt_mcp_server.py` accepts optional `strategy` + `mechanism`
+   args, forwarded to the Lambda as `reocr_strategy`/`reocr_mechanism`.
+   The MCP Lambda Dockerfile packages this same source as
+   `receipt_mcp_server/server.py`.
 
 ## Mechanism source: triage dossiers
 

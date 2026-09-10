@@ -196,6 +196,7 @@ def build_needed(root: Path, event: str, before: str = "") -> bool:
         in {
             ".github/workflows/lambda-images.yml",
             "scripts/lambda_image_import_check.py",
+            "scripts/receipt_mcp_server.py",
         }
         for path in changed
     )

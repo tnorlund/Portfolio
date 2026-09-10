@@ -1,5 +1,10 @@
 # Spec: Remove ChromaDB — collapse vector search into DynamoDB
 
+> MCP layout note (2026-09-10): Fork references below preserve the historical
+> snapshot. Current tools live in `scripts/receipt_mcp_server.py`;
+> `infra/mcp_server_lambda/lambdas/Dockerfile` packages that source as
+> `receipt_mcp_server/server.py`.
+
 Status: DRAFT for review · Branch: `claude/chroma-removal-spec` · 2026-08-31
 Companion docs (full evidence, file:line):
 [research-dynamodb-vector-search.md](research-dynamodb-vector-search.md) ·

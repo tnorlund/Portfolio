@@ -1,14 +1,12 @@
-"""set_receipt_fact / get_receipt_fact_override on both MCP server copies.
+"""set_receipt_fact / get_receipt_fact_override through both MCP entry points.
 
-The stdio server (``scripts/receipt_mcp_server.py``) and the hand-synced
-Lambda copy (``infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py``)
-are loaded with a stubbed ``mcp`` package and exercised end to end
+The local server and the package staged by the Lambda Dockerfile are
+loaded with a stubbed ``mcp`` package and exercised end to end
 (list_tools schema -> call_tool dispatch -> impl -> DynamoClient) against
-moto. Every test runs against both copies.
+moto. Every test runs against both entry points.
 """
 
 import asyncio
-import importlib.util
 import json
 import sys
 import types
@@ -19,29 +17,14 @@ from unittest.mock import patch
 import boto3
 import pytest
 from moto import mock_aws
+from receipt_mcp_test_support import SERVER_FILES, load_server_module
 
-# isort: off
-# receipt_dynamo is third-party to isort in the repository-tests job and
-# first-party in jobs that do not install it; pin the grouping.
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data._receipt_fact_override import (
     PROTECTED_FACT_TABLE_MARKERS,
 )
 from receipt_dynamo.entities.receipt_fact_override import ReceiptFactOverride
 
-# isort: on
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-SERVER_FILES = {
-    "stdio": REPO_ROOT / "scripts" / "receipt_mcp_server.py",
-    "lambda": (
-        REPO_ROOT
-        / "infra"
-        / "mcp_server_lambda"
-        / "lambdas"
-        / "receipt_mcp_server_server.py"
-    ),
-}
 NEW_TOOLS = ("set_receipt_fact", "get_receipt_fact_override")
 IMAGE_ID = "b7eecdb7-9eaf-47c0-941a-b576604c2e9d"
 RECEIPT_ID = 1
@@ -85,15 +68,9 @@ def _install_mcp_stubs():
     sys.modules["mcp.types"] = types_mod
 
 
-def _load_module(label, path):
+def _load_module(label: str, path: Path) -> types.ModuleType:
     _install_mcp_stubs()
-    spec = importlib.util.spec_from_file_location(
-        f"receipt_mcp_fact_override_{label}", path
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_server_module(f"receipt_mcp_fact_override_{label}", path)
 
 
 SERVER_MODULES = {

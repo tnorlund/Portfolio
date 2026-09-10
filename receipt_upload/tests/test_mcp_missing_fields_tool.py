@@ -1,9 +1,9 @@
 """list_receipts_missing_fields is a read-only, exactly-paginated worklist.
 
-Both server copies (scripts/ and the hand-synced Lambda file) are loaded
+The local server and the package staged by the Lambda Dockerfile are loaded
 with stubbed ``mcp`` modules, so the receipt_upload CI leg (which has no
 mcp package) exercises the real tool schema, dispatch, and DynamoDB reads
-against moto. Every test runs against both copies.
+against moto. Every test runs against both entry points.
 """
 
 import asyncio
@@ -31,13 +31,15 @@ from receipt_dynamo.entities.receipt_summary_record import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
+SUPPORT_SPEC = importlib.util.spec_from_file_location(
+    "receipt_mcp_test_support", ROOT / "tests" / "receipt_mcp_test_support.py"
+)
+assert SUPPORT_SPEC is not None and SUPPORT_SPEC.loader is not None
+SUPPORT = importlib.util.module_from_spec(SUPPORT_SPEC)
+SUPPORT_SPEC.loader.exec_module(SUPPORT)
 SERVERS = {
-    "scripts": ROOT / "scripts" / "receipt_mcp_server.py",
-    "lambda": ROOT
-    / "infra"
-    / "mcp_server_lambda"
-    / "lambdas"
-    / "receipt_mcp_server_server.py",
+    "scripts": SUPPORT.SERVER_FILES["stdio"],
+    "lambda": SUPPORT.SERVER_FILES["lambda"],
 }
 TOOL = "list_receipts_missing_fields"
 ALL_FIELDS = ["date", "merchant_name", "line_merchant"]
@@ -79,16 +81,13 @@ def _stub_mcp() -> dict[str, types.ModuleType]:
     }
 
 
-def _load_server(name: str, path: Path):
+def _load_server(name: str, path: Path) -> types.ModuleType:
     saved = {key: sys.modules.get(key) for key in _stub_mcp()}
     sys.modules.update(_stub_mcp())
     try:
-        spec = importlib.util.spec_from_file_location(
+        module: types.ModuleType = SUPPORT.load_server_module(
             f"mcp_missing_fields_{name}", path
         )
-        module = importlib.util.module_from_spec(spec)
-        assert spec.loader is not None
-        spec.loader.exec_module(module)
     finally:
         for key, value in saved.items():
             if value is None:
@@ -274,20 +273,15 @@ def test_both_servers_expose_identical_tool_schemas():
     assert schema["properties"]["limit"]["default"] == 50
 
 
-def test_both_servers_share_the_same_read_only_implementation():
-    sources = {
-        name: "".join(
-            inspect.getsource(getattr(module, attr))
-            for attr in (
-                "_encode_summary_cursor",
-                "_decode_summary_cursor",
-                "list_receipts_missing_fields_impl",
-            )
+def test_missing_fields_uses_only_dynamo_client_reads() -> None:
+    source = "".join(
+        inspect.getsource(getattr(SERVER_MODULES["scripts"], attr))
+        for attr in (
+            "_encode_summary_cursor",
+            "_decode_summary_cursor",
+            "list_receipts_missing_fields_impl",
         )
-        for name, module in SERVER_MODULES.items()
-    }
-    assert sources["scripts"] == sources["lambda"]
-    source = sources["scripts"]
+    )
     # DynamoDB is reached only through DynamoClient read accessors.
     assert not re.search(r"\._client\b", source)
     assert "boto3" not in source

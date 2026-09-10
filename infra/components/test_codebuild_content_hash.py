@@ -9,6 +9,7 @@ python/project files only -- so a font-only edit would not rebuild the image.
 
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -144,6 +145,70 @@ def test_upload_context_includes_only_explicit_packages(tmp_path, monkeypatch):
     assert 'PACKAGES_TO_INCLUDE="receipt_dynamo"' in script
     assert "--include='receipt_dynamo/'" in script
     assert "receipt_other" not in script
+
+
+def test_literal_extra_context_file_changes_hash_and_upload_script(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shared MCP script must be hashed and included in CodeBuild input."""
+    _make_project(tmp_path)
+    source = tmp_path / "scripts/receipt_mcp_server.py"
+    source.parent.mkdir()
+    source.write_text("VALUE = 1\n")
+    monkeypatch.setattr(cdi, "PROJECT_DIR", str(tmp_path))
+    instance = _bare_instance(
+        dockerfile_path="Dockerfile",
+        extra_context_paths=["scripts/receipt_mcp_server.py"],
+    )
+    before = instance._calculate_content_hash()
+    source.write_text("VALUE = 2\n")
+    assert instance._calculate_content_hash() != before
+    script = instance._generate_upload_script("artifact-bucket", "hash")
+    assert 'EXTRA_CONTEXT_PATHS="scripts/receipt_mcp_server.py"' in script
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "receipt_agent",
+        "fonts/sprouts",
+        "scripts/receipt_mcp_server.py",
+        "data/v1.2/assets.json",
+    ],
+)
+def test_safe_source_paths_include_files_and_directories(path: str) -> None:
+    instance = _bare_instance(dockerfile_path="Dockerfile")
+    assert instance._validate_source_path(path)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "",
+        "/tmp/server.py",
+        ".",
+        "..",
+        "scripts/../server.py",
+        "scripts/./server.py",
+        "scripts//server.py",
+        "scripts/server.py\n",
+        "scripts/server file.py",
+        "scripts/$(command).py",
+        "scripts/`command`.py",
+        "scripts/server;command.py",
+        "-server.py",
+    ],
+)
+def test_unsafe_extra_context_paths_rejected_before_script_generation(
+    path: str,
+) -> None:
+    instance = _bare_instance(
+        dockerfile_path="Dockerfile",
+        extra_context_paths=[path],
+    )
+    with pytest.raises(ValueError, match="Invalid extra context path"):
+        instance._generate_upload_script("artifact-bucket", "hash")
 
 
 if __name__ == "__main__":

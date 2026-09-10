@@ -473,8 +473,9 @@ match `ReceiptSection.model_source` exactly:
 - `tools/glyph-studio/py/face_map_v2_cli.py` (Counter grouping) and
   `tools/glyph-studio/py/write_section_seeds.py` (None check) — tolerant,
   but grouping output changes if values change.
-- `infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py` — MCP
-  tools read/write `model_source` as an opaque string (defaults
+- `scripts/receipt_mcp_server.py` — shared MCP tools, packaged as
+  `receipt_mcp_server/server.py` by the Lambda Dockerfile, read/write
+  `model_source` as an opaque string (defaults
   `"mcp-claude-review"`); pass-through, no exact match on the
   deterministic literal.
 

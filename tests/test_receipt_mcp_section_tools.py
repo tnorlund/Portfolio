@@ -1,32 +1,18 @@
 """Tests for the ReceiptSection QA tools on both MCP server implementations.
 
 The two servers (stdio `scripts/receipt_mcp_server.py` and the Lambda
-`infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py`) must expose the
+the package staged by the Lambda Dockerfile) must expose the
 same tool surface. These tests import each module with a minimal fake `mcp`
 package (the real dependency is not installed in CI) and assert the four
 section tools are registered with valid input schemas and matching impls.
 """
 
 import asyncio
-import importlib.util
 import sys
 import types
-from pathlib import Path
 
 import pytest
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-SERVER_FILES = {
-    "stdio": REPO_ROOT / "scripts" / "receipt_mcp_server.py",
-    "lambda": (
-        REPO_ROOT
-        / "infra"
-        / "mcp_server_lambda"
-        / "lambdas"
-        / "receipt_mcp_server_server.py"
-    ),
-}
+from receipt_mcp_test_support import SERVER_FILES, load_server_module
 
 EXPECTED_SECTION_TOOLS = {
     "get_receipt_sections",
@@ -99,11 +85,7 @@ def _install_mcp_stubs():
 
 def _load_module(label, path):
     _install_mcp_stubs()
-    spec = importlib.util.spec_from_file_location(f"receipt_mcp_server_{label}", path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_server_module(f"receipt_mcp_server_{label}", path)
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
@@ -184,7 +166,9 @@ def test_resegment_tools_present_with_valid_schema(label):
     }
     segment_schema = plan_schema["properties"]["segments"]["items"]
     assert "include_word_refs" in segment_schema["properties"]
-    word_ref_schema = segment_schema["properties"]["include_word_refs"]["items"]
+    word_ref_schema = segment_schema["properties"]["include_word_refs"][
+        "items"
+    ]
     assert word_ref_schema["oneOf"] == [
         {"required": ["word_id"]},
         {"required": ["word_ids"]},
@@ -259,19 +243,25 @@ def test_resegment_proxies_force_lambda_mode(label, monkeypatch):
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-def test_resegment_plan_attaches_contact_sheet_as_image_content(label, monkeypatch):
+def test_resegment_plan_attaches_contact_sheet_as_image_content(
+    label, monkeypatch
+):
     module = _load_module(label, SERVER_FILES[label])
     monkeypatch.setattr(module, "get_dynamo_client", lambda: object())
 
     async def fake_plan(_arguments):
         return {
             "plan_id": "plan-1",
-            "preview_urls": {"contact_sheet": "https://example.test/sheet.jpg"},
+            "preview_urls": {
+                "contact_sheet": "https://example.test/sheet.jpg"
+            },
             "visualizations": {"contact_sheet": {"mime_type": "image/jpeg"}},
         }
 
     monkeypatch.setattr(module, "plan_receipt_resegmentation_impl", fake_plan)
-    monkeypatch.setattr(module, "_fetch_mcp_preview", lambda _url: b"jpeg-bytes")
+    monkeypatch.setattr(
+        module, "_fetch_mcp_preview", lambda _url: b"jpeg-bytes"
+    )
 
     content = asyncio.run(module.call_tool("plan_receipt_resegmentation", {}))
 
@@ -328,7 +318,9 @@ def test_create_rejects_invalid_section_type(label):
     module = _load_module(label, SERVER_FILES[label])
     client = _StubDynamoClient()
     result = asyncio.run(
-        module.create_receipt_section_impl(client, VALID_IMAGE_ID, 1, "ITMES", [1, 2])
+        module.create_receipt_section_impl(
+            client, VALID_IMAGE_ID, 1, "ITMES", [1, 2]
+        )
     )
     assert "error" in result
     assert "Invalid section_type" in result["error"]
@@ -342,7 +334,9 @@ def test_create_rejects_line_ids_not_on_receipt(label):
     module = _load_module(label, SERVER_FILES[label])
     client = _StubDynamoClient(line_ids=(1, 2, 3))
     result = asyncio.run(
-        module.create_receipt_section_impl(client, VALID_IMAGE_ID, 1, "ITEMS", [2, 99])
+        module.create_receipt_section_impl(
+            client, VALID_IMAGE_ID, 1, "ITEMS", [2, 99]
+        )
     )
     assert "error" in result
     assert "99" in result["error"]
@@ -356,7 +350,9 @@ def test_create_rejects_nonexistent_receipt(label):
     module = _load_module(label, SERVER_FILES[label])
     client = _StubDynamoClient(receipt_exists=False)
     result = asyncio.run(
-        module.create_receipt_section_impl(client, VALID_IMAGE_ID, 42, "ITEMS", [1])
+        module.create_receipt_section_impl(
+            client, VALID_IMAGE_ID, 42, "ITEMS", [1]
+        )
     )
     assert "error" in result
     assert "not found" in result["error"]
@@ -369,7 +365,9 @@ def test_create_succeeds_for_valid_input(label):
     module = _load_module(label, SERVER_FILES[label])
     client = _StubDynamoClient(line_ids=(1, 2, 3))
     result = asyncio.run(
-        module.create_receipt_section_impl(client, VALID_IMAGE_ID, 1, " items ", [1, 2])
+        module.create_receipt_section_impl(
+            client, VALID_IMAGE_ID, 1, " items ", [1, 2]
+        )
     )
     assert result.get("success") is True
     assert result["section_type"] == "ITEMS"  # stripped + uppercased
@@ -403,13 +401,17 @@ def test_update_and_delete_reject_invalid_section_type(label, impl_name, args):
 
 
 @pytest.mark.parametrize("label", sorted(SERVER_FILES))
-@pytest.mark.parametrize("legacy_type", ["HEADER", "ITEMS_VALUE", "ITEMS_DESCRIPTION"])
+@pytest.mark.parametrize(
+    "legacy_type", ["HEADER", "ITEMS_VALUE", "ITEMS_DESCRIPTION"]
+)
 def test_create_rejects_deprecated_section_types(label, legacy_type):
     pytest.importorskip("receipt_dynamo")
     module = _load_module(label, SERVER_FILES[label])
     client = _StubDynamoClient(line_ids=(1, 2, 3))
     result = asyncio.run(
-        module.create_receipt_section_impl(client, VALID_IMAGE_ID, 1, legacy_type, [1])
+        module.create_receipt_section_impl(
+            client, VALID_IMAGE_ID, 1, legacy_type, [1]
+        )
     )
     assert "error" in result
     assert "deprecated" in result["error"]
@@ -430,7 +432,9 @@ def test_delete_still_accepts_deprecated_section_types(label):
             deleted.append((receipt_id, image_id, section_type))
 
     result = asyncio.run(
-        module.delete_receipt_section_impl(_DeleteClient(), VALID_IMAGE_ID, 1, "HEADER")
+        module.delete_receipt_section_impl(
+            _DeleteClient(), VALID_IMAGE_ID, 1, "HEADER"
+        )
     )
     assert result.get("success") is True
     assert deleted == [(1, VALID_IMAGE_ID, "HEADER")]

@@ -895,7 +895,7 @@ reimplemented.
 | Stream routing | `receipt_dynamo_stream/receipt_dynamo_stream/{models,message_builder,sqs_publisher}.py`, `change_detection/detector.py` |
 | Queue and Lambda infra | `infra/receipt_update_queues/__init__.py` |
 | Table and TTL | `infra/dynamo_db.py` |
-| MCP tools (both copies) | `scripts/receipt_mcp_server.py`, `infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py` |
+| MCP tools (shared source) | `scripts/receipt_mcp_server.py`; `infra/mcp_server_lambda/lambdas/Dockerfile` packages it as `receipt_mcp_server/server.py` |
 | Vector search | `receipt_embeddings/receipt_embeddings/service_limits.py` |
 | Site page | `portfolio/pages/receipt.tsx`, `portfolio/components/ui/Figures/index.ts` |
 | Site types | `portfolio/types/api.ts`, `portfolio/services/api/index.ts` |

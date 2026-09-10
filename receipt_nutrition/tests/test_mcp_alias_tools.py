@@ -1,9 +1,9 @@
 """confirm/reject alias MCP tools write user decisions through the DAL guard.
 
-Both server copies (scripts/ and the hand-synced Lambda file) are loaded
+The local server and the package staged by the Lambda Dockerfile are loaded
 with stubbed ``mcp`` modules, so the receipt_nutrition CI leg (which has no
 mcp package) exercises the real tool schemas, dispatch, and DynamoDB writes
-against moto. Every test runs against both copies.
+against moto. Every test runs against both entry points.
 """
 
 import asyncio
@@ -27,13 +27,15 @@ from receipt_dynamo.entities.nutrition_support import nutrition_json
 from receipt_dynamo.entities.product_alias import ProductAlias
 
 ROOT = Path(__file__).resolve().parents[2]
+SUPPORT_SPEC = importlib.util.spec_from_file_location(
+    "receipt_mcp_test_support", ROOT / "tests" / "receipt_mcp_test_support.py"
+)
+assert SUPPORT_SPEC is not None and SUPPORT_SPEC.loader is not None
+SUPPORT = importlib.util.module_from_spec(SUPPORT_SPEC)
+SUPPORT_SPEC.loader.exec_module(SUPPORT)
 SERVERS = {
-    "scripts": ROOT / "scripts" / "receipt_mcp_server.py",
-    "lambda": ROOT
-    / "infra"
-    / "mcp_server_lambda"
-    / "lambdas"
-    / "receipt_mcp_server_server.py",
+    "scripts": SUPPORT.SERVER_FILES["stdio"],
+    "lambda": SUPPORT.SERVER_FILES["lambda"],
 }
 NEW_TOOLS = ("confirm_product_alias", "reject_product_alias")
 
@@ -74,16 +76,13 @@ def _stub_mcp() -> dict[str, types.ModuleType]:
     }
 
 
-def _load_server(name: str, path: Path):
+def _load_server(name: str, path: Path) -> types.ModuleType:
     saved = {key: sys.modules.get(key) for key in _stub_mcp()}
     sys.modules.update(_stub_mcp())
     try:
-        spec = importlib.util.spec_from_file_location(
+        module: types.ModuleType = SUPPORT.load_server_module(
             f"mcp_alias_tools_{name}", path
         )
-        module = importlib.util.module_from_spec(spec)
-        assert spec.loader is not None
-        spec.loader.exec_module(module)
     finally:
         for key, value in saved.items():
             if value is None:
@@ -270,23 +269,19 @@ def test_both_servers_expose_identical_tool_schemas():
     ]
 
 
-def test_both_servers_share_the_same_implementation():
-    sources = {
-        name: "".join(
-            inspect.getsource(getattr(module, attr))
-            for attr in (
-                "_save_user_alias_decision",
-                "confirm_product_alias_impl",
-                "reject_product_alias_impl",
-            )
+def test_alias_decisions_use_dynamo_client() -> None:
+    source = "".join(
+        inspect.getsource(getattr(SERVER_MODULES["scripts"], attr))
+        for attr in (
+            "_save_user_alias_decision",
+            "confirm_product_alias_impl",
+            "reject_product_alias_impl",
         )
-        for name, module in SERVER_MODULES.items()
-    }
-    assert sources["scripts"] == sources["lambda"]
+    )
     # DynamoDB is reached only through DynamoClient methods.
-    assert not re.search(r"\._client\b", sources["scripts"])
-    assert "boto3" not in sources["scripts"]
-    assert "transact_write_items" not in sources["scripts"]
+    assert not re.search(r"\._client\b", source)
+    assert "boto3" not in source
+    assert "transact_write_items" not in source
 
 
 def test_confirm_creates_user_decision_pinned_to_revision(server, client):

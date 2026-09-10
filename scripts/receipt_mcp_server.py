@@ -31,7 +31,9 @@ import re
 import sys
 import urllib.request
 from collections import defaultdict
-from typing import Any, Optional
+from collections.abc import Awaitable, Callable
+from functools import partial
+from typing import TYPE_CHECKING, Any, Optional
 
 # Add paths for local packages
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -57,13 +59,17 @@ from receipt_dynamo.constants import (  # noqa: E402
     normalize_label_alias,
 )
 
+if TYPE_CHECKING:
+    from receipt_dynamo import DynamoClient
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Global clients (initialized lazily on first use)
 _dynamo_client = None
 _embed_fn = None
-_config = None
+_config: dict[str, Any] | None = None
+ModelActivator = Callable[["DynamoClient", str], Awaitable[dict[str, Any]]]
 
 # Tools that embed the query (OpenAI) before searching the DynamoDB vector
 # indexes. Every other tool is served from DynamoDB / Lambda / Athena.
@@ -109,9 +115,14 @@ def get_vector_search_client():
     return _vector_search_client
 
 
-def _load_config():
-    """Load and cache Pulumi config + secrets."""
+def _load_config(
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Cache supplied Lambda configuration or load local Pulumi settings."""
     global _config
+
+    if config is not None:
+        _config = config
 
     if _config is None:
         from receipt_dynamo.data._pulumi import load_env, load_secrets
@@ -129,13 +140,10 @@ def _load_config():
             )
             config[normalized_key] = value
 
-        # Set up API keys
-        if config.get("openai_api_key"):
-            os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config[
-                "openai_api_key"
-            ]
-
         _config = config
+
+    if _config.get("openai_api_key"):
+        os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = _config["openai_api_key"]
 
     return _config
 
@@ -846,7 +854,6 @@ WARNING: This WRITES to DynamoDB. Double-check the word context before calling."
                 ],
             },
         ),
-        # NOTE: keep in sync with infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py
         Tool(
             name="batch_update_word_labels",
             description="""Batch-update existing ReceiptWordLabel validation statuses.
@@ -2465,7 +2472,10 @@ def _fetch_mcp_preview(url: str) -> bytes:
 
 @server.call_tool()
 async def call_tool(
-    name: str, arguments: dict
+    name: str,
+    arguments: dict,
+    *,
+    model_activator: ModelActivator | None = None,
 ) -> list[TextContent | ImageContent]:
     """Handle tool calls."""
     try:
@@ -2781,10 +2791,8 @@ async def call_tool(
         elif name == "get_active_model":
             result = await get_active_model_impl(dynamo_client)
         elif name == "set_active_model":
-            result = await set_active_model_impl(
-                dynamo_client,
-                job_name=arguments["job_name"],
-            )
+            activate_model = model_activator or set_active_model_impl
+            result = await activate_model(dynamo_client, arguments["job_name"])
         elif name == "get_label_distribution":
             result = await get_label_distribution_impl(dynamo_client)
         elif name == "analytics_traffic":
@@ -7352,8 +7360,15 @@ async def get_label_distribution_impl(dynamo_client) -> dict:
         return {"error": str(e)}
 
 
-async def main():
-    """Run the MCP server."""
+async def main(
+    *,
+    config: dict[str, Any] | None = None,
+    model_activator: ModelActivator | None = None,
+) -> None:
+    """Run stdio with the entry point's config and model activation policy."""
+    if config is not None:
+        _load_config(config)
+    server.call_tool()(partial(call_tool, model_activator=model_activator))
     logger.info("Starting Receipt MCP Server...")
 
     # Pre-initialize the DynamoDB client (embeddings are built lazily)
