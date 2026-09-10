@@ -144,25 +144,37 @@ _MONTHS = {
 # "June 18-Tuesday,") and is refused, and a two-digit year must not be
 # the integer part of a price ("Jan 21, 32.99" stays None). A month
 # name with no year on the line never parses: the year is not guessed.
-# Year group shared by both month-name patterns: four digits, or two
-# digits that are not the integer part of a price ("32.99") or a time
-# ("10:15"); neither may run straight into a weekday ("2026-Tuesday").
-_YEAR_PATTERN = r"(\d{4}\b|\d{2}\b(?![.:]\d))(?!-[A-Za-z])"
+# Year group shared by the month-name patterns: four digits, or two
+# digits that are not the integer part of a price ("32.99"; a following
+# colon time like "'26:10:15" is fine); neither may run into a weekday
+# ("2026-Tuesday", "2026- Tuesday").
+_MONTH_NAME = r"(?P<month>jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)"
+_YEAR_PATTERN = r"(?P<year>\d{4}\b|\d{2}\b(?!\.\d))(?!-\s*[A-Za-z])"
 
 _MONTH_NAME_PATTERNS = [
     # Month first: JUL 25, 2026 / July 25 '26 / May 6. 2025 / Mar 10,2026
     re.compile(
-        r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+"
-        r"(\d{1,2})(?:st|nd|rd|th)?(?:,\s*|[.:]\s+|\s+)'?" + _YEAR_PATTERN,
+        r"\b" + _MONTH_NAME + r"[a-z]*\.?\s+"
+        r"(?P<day>\d{1,2})(?:st|nd|rd|th)?(?:,\s*|[.:]\s+|\s+)'?"
+        + _YEAR_PATTERN,
         re.IGNORECASE,
     ),
-    # Day first: 25 JUL 2026 / 25 July '26 / 01-Mar-2025 / 01.Mar.2025 /
-    # 01/Mar/2025. A "-" separator must touch both neighbours so a
-    # spaced range ("June 16 - June 22") never reads as day-Mon-year.
+    # Day first, spaced: 25 JUL 2026 / 25 July '26 / 25. Jul 2026
     re.compile(
-        r"\b(\d{1,2})(?:st|nd|rd|th)?(?:-|/|\.\s*|\s+)"
-        r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?"
-        r"(?:-|/|\.\s*|\s+)'?" + _YEAR_PATTERN,
+        r"\b(?P<day>\d{1,2})(?:st|nd|rd|th)?\.?\s+"
+        + _MONTH_NAME
+        + r"[a-z]*\.?,?\s+'?"
+        + _YEAR_PATTERN,
+        re.IGNORECASE,
+    ),
+    # Day first, punctuated: 01-Mar-2025 / 01.Mar.2025 / 01/Mar/2025. The
+    # same separator must appear on both sides of the month, so a range
+    # ("June 16-June 22") never reads its last day as a year.
+    re.compile(
+        r"\b(?P<day>\d{1,2})(?P<sep>[-./])"
+        + _MONTH_NAME
+        + r"[a-z]*(?P=sep)'?"
+        + _YEAR_PATTERN,
         re.IGNORECASE,
     ),
 ]
@@ -266,15 +278,10 @@ def parse_date(text: str) -> datetime | None:
         match = pattern.search(text)
         if not match:
             continue
-        groups = match.groups()
         try:
-            if groups[0].isdigit():
-                day = int(groups[0])
-                month = _MONTHS[groups[1][:3].lower()]
-            else:
-                month = _MONTHS[groups[0][:3].lower()]
-                day = int(groups[1])
-            year = _expand_year(int(groups[2]))
+            day = int(match.group("day"))
+            month = _MONTHS[match.group("month")[:3].lower()]
+            year = _expand_year(int(match.group("year")))
             return datetime(year, month, day)
         except (ValueError, KeyError):
             continue

@@ -77,6 +77,7 @@ def test_extract_amount(text: str, expected: float | None):
         ("01/Mar/2025", datetime(2025, 3, 1)),
         ("25. Jul 2026", datetime(2026, 7, 25)),
         ("Jul 25 2026:10:15", datetime(2026, 7, 25)),
+        ("25 July '26:10:15", datetime(2026, 7, 25)),
         # Never guessed: promo ranges, weekday suffixes, missing years,
         # OCR junk, prices and bare digit runs all stay None
         ("June 18-Tuesday,", None),
@@ -84,7 +85,9 @@ def test_extract_amount(text: str, expected: float | None):
         ("June 16-22", None),
         ("June 16 - June 22", None),
         ("June 16- June 22", None),
+        ("June 16-June 22", None),
         ("June 18,2026-Tuesday,", None),
+        ("June 18,2026- Tuesday,", None),
         ("Jan 21,", None),
         ("Jan 21", None),
         ("1/14,23", None),
