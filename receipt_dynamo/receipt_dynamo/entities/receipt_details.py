@@ -7,6 +7,7 @@ from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_barcode import ReceiptBarcode
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_section import ReceiptSection
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 
@@ -29,6 +30,7 @@ class ReceiptDetails:
     letters: list[ReceiptLetter] = field(default_factory=list)
     place: "ReceiptPlace" | None = None
     barcodes: list[ReceiptBarcode] = field(default_factory=list)
+    sections: list[ReceiptSection] = field(default_factory=list)
 
     def __iter__(self) -> Generator[
         Receipt

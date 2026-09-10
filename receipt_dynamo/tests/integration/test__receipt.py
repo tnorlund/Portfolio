@@ -21,6 +21,7 @@ from receipt_dynamo import (
     Receipt,
     ReceiptLetter,
     ReceiptLine,
+    ReceiptSection,
     ReceiptWord,
     ReceiptWordLabel,
 )
@@ -972,6 +973,14 @@ def test_consistent_receipt_details_reads_all_pages_without_index_lag(
         timestamp_added="2026-09-10T00:00:00+00:00",
     )
     client.add_receipt_word_labels([label])
+    section = ReceiptSection(
+        image_id=sample_receipt.image_id,
+        receipt_id=1,
+        section_type="ITEMS",
+        line_ids=[1],
+        created_at="2026-09-10T00:00:00+00:00",
+    )
+    client.add_receipt_section(section)
     # A committed word can precede its asynchronous GSI projection.
     word_item = sample_receipt_word.to_item()
     word_item.pop("GSI4PK", None)
@@ -993,6 +1002,8 @@ def test_consistent_receipt_details_reads_all_pages_without_index_lag(
     assert details.words == [sample_receipt_word]
     assert details.letters == [sample_receipt_letter]
     assert details.labels == [label]
+    assert details.sections == [section]
+    assert len(tuple(details)) == 7
     assert query.call_count >= 4
     assert all(call.kwargs["ConsistentRead"] for call in query.call_args_list)
     assert all("IndexName" not in call.kwargs for call in query.call_args_list)

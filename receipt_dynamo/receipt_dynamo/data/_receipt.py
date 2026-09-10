@@ -28,6 +28,7 @@ from receipt_dynamo.entities.receipt_line import (
 from receipt_dynamo.entities.receipt_place import (
     item_to_receipt_place,
 )
+from receipt_dynamo.entities.receipt_section import item_to_receipt_section
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
@@ -43,6 +44,7 @@ _RECEIPT_DETAILS_CONVERTERS = {
     "RECEIPT_WORD_LABEL": ("label", item_to_receipt_word_label),
     "RECEIPT_PLACE": ("place", item_to_receipt_place),
     "RECEIPT_BARCODE": ("barcode", item_to_receipt_barcode),
+    "RECEIPT_SECTION": ("section", item_to_receipt_section),
 }
 
 
@@ -161,6 +163,7 @@ class _Receipt(FlattenedStandardMixin):
         receipt = None
         place = None
         lines, words, letters, labels, barcodes = [], [], [], [], []
+        sections = []
 
         for item in items:
             if item is None:
@@ -180,6 +183,8 @@ class _Receipt(FlattenedStandardMixin):
                 place = entity
             elif item_type == "barcode":
                 barcodes.append(entity)
+            elif item_type == "section":
+                sections.append(entity)
 
         if receipt is None:
             raise EntityNotFoundError(
@@ -196,6 +201,7 @@ class _Receipt(FlattenedStandardMixin):
             labels=labels,
             place=place,
             barcodes=barcodes,
+            sections=sections,
         )
 
     @handle_dynamodb_errors("add_receipt")
