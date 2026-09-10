@@ -856,3 +856,32 @@ def test_generic_proxy_rescues_an_unaliased_line_but_not_a_user_decision():
     )
     code, _ = _run(client, argv)
     assert code == meal_cli.EXIT_POINTER
+
+
+def test_generic_proxy_may_stand_in_for_a_pending_alias():
+    pending = _alias(
+        SLUG, "TEXT", "EGGS DOZEN", EGG, status="pending", method="lexical"
+    )
+    client = FakeClient(
+        [a for a in _aliases() if a.text != "EGGS DOZEN"] + [pending]
+    )
+    code, text = _run(
+        client,
+        [
+            "--as-of",
+            "2026-03-02",
+            "--format",
+            "json",
+            "--item",
+            f"e=line:{IMG}:1:3:3each",
+            "--quantity",
+            "e=12:each",
+            "--generic",
+            f"e={EGG.product_id}@{EGG.revision}",
+        ],
+    )
+    assert code == meal_cli.EXIT_OK
+    observations, _ = client.published[0]
+    assert {o.status for o in observations if o.text == "EGGS DOZEN"} == {
+        "pending"
+    }

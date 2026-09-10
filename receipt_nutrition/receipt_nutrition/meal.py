@@ -1335,11 +1335,13 @@ def run(
                 else:
                     item.coverage = {"outcome": "not_checked"}
             if spec.key in overrides.generics and item.product is None:
-                # An explicit proxy stands in for a line nobody has aliased;
-                # it never overrides a pending or user-decided alias.
+                # An explicit proxy stands in for a line nobody has decided
+                # on (unaliased, no_match, or still pending); it never
+                # overrides a user decision and leaves the alias untouched.
                 if item.error is not None and (
                     item.resolution is None
-                    or item.resolution.status not in ("unaliased", "no_match")
+                    or item.resolution.status
+                    not in ("unaliased", "no_match", "pending")
                     or item.resolution.decided_by == "user"
                 ):
                     raise item.error
