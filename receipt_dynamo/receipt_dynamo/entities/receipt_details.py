@@ -18,9 +18,8 @@ if TYPE_CHECKING:
 class ReceiptDetails:
     """Container for a receipt and its related data.
 
-    Note: The optimized GSI4 query (get_receipt_details) does not fetch letters
-    by design, as they are rarely needed. The letters field defaults to an
-    empty list for backward compatibility.
+    The default GSI4 query does not fetch letters. Calling get_receipt_details
+    with consistent_read=True reads the primary table and includes letters.
     """
 
     receipt: Receipt

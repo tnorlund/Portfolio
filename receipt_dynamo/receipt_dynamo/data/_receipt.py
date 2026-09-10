@@ -21,6 +21,7 @@ from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
 from receipt_dynamo.entities.receipt_barcode import item_to_receipt_barcode
 from receipt_dynamo.entities.receipt_bundle import ReceiptBundlePage
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
+from receipt_dynamo.entities.receipt_letter import item_to_receipt_letter
 from receipt_dynamo.entities.receipt_line import (
     item_to_receipt_line,
 )
@@ -38,6 +39,7 @@ _RECEIPT_DETAILS_CONVERTERS = {
     "RECEIPT": ("receipt", item_to_receipt),
     "RECEIPT_LINE": ("line", item_to_receipt_line),
     "RECEIPT_WORD": ("word", item_to_receipt_word),
+    "RECEIPT_LETTER": ("letter", item_to_receipt_letter),
     "RECEIPT_WORD_LABEL": ("label", item_to_receipt_word_label),
     "RECEIPT_PLACE": ("place", item_to_receipt_place),
     "RECEIPT_BARCODE": ("barcode", item_to_receipt_barcode),
@@ -141,7 +143,7 @@ class _Receipt(FlattenedStandardMixin):
 
     @staticmethod
     def _convert_receipt_details_item(item):
-        """Convert one GSI4 item into its ReceiptDetails collection name."""
+        """Convert one receipt item into its ReceiptDetails collection name."""
         item_type = item.get("TYPE", {}).get("S")
         converter = _RECEIPT_DETAILS_CONVERTERS.get(item_type)
         if converter is None:
@@ -155,10 +157,10 @@ class _Receipt(FlattenedStandardMixin):
         image_id: str,
         receipt_id: int,
     ) -> ReceiptDetails:
-        """Build ReceiptDetails from converted GSI4 items."""
+        """Build ReceiptDetails from converted receipt items."""
         receipt = None
         place = None
-        lines, words, labels, barcodes = [], [], [], []
+        lines, words, letters, labels, barcodes = [], [], [], [], []
 
         for item in items:
             if item is None:
@@ -170,6 +172,8 @@ class _Receipt(FlattenedStandardMixin):
                 lines.append(entity)
             elif item_type == "word":
                 words.append(entity)
+            elif item_type == "letter":
+                letters.append(entity)
             elif item_type == "label":
                 labels.append(entity)
             elif item_type == "place":
@@ -188,10 +192,10 @@ class _Receipt(FlattenedStandardMixin):
             receipt=receipt,
             lines=lines,
             words=words,
+            letters=letters,
             labels=labels,
             place=place,
             barcodes=barcodes,
-            # letters excluded by GSI4 design - uses default empty list
         )
 
     @handle_dynamodb_errors("add_receipt")
@@ -596,22 +600,55 @@ class _Receipt(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("get_receipt_details")
     def get_receipt_details(
-        self, image_id: str, receipt_id: int
+        self,
+        image_id: str,
+        receipt_id: int,
+        *,
+        consistent_read: bool = False,
     ) -> ReceiptDetails:
-        """Get a receipt with its details using optimized GSI4 query.
+        """Get a receipt and its details, optionally from the primary table.
 
-        This method uses GSI4 which is designed for efficient single-query
-        retrieval of receipt details. By design, GSI4 excludes ReceiptLetters
-        to reduce read costs - letters are rarely needed in most patterns.
+        The default GSI4 query excludes letters to reduce read costs.
+        Corrections can read committed primary-table values, including letters,
+        without waiting for GSI propagation. All pages are read consistently;
+        this does not provide snapshot isolation against concurrent writers.
 
         Args:
             image_id (str): The ID of the image the receipt belongs to
             receipt_id (int): The ID of the receipt to get
+            consistent_read: Read committed primary-table values and letters.
 
         Returns:
             ReceiptDetails: Dataclass with receipt and related data.
-                Note: letters will be an empty list (excluded from GSI4).
+                Letters are empty for the default GSI4 query.
         """
+        if consistent_read:
+            self._validate_image_id(image_id)
+            self._validate_receipt_id(receipt_id)
+            receipt_key = f"RECEIPT#{receipt_id:05d}"
+            detail_types = {
+                f":type{index}": {"S": item_type}
+                for index, item_type in enumerate(_RECEIPT_DETAILS_CONVERTERS)
+            }
+            # '#' children sort before '$'; longer numeric IDs sort after it.
+            # This range includes the parent without matching a neighbor ID.
+            items, _ = self._query_entities(
+                index_name=None,
+                key_condition_expression=(
+                    "PK = :pk AND SK BETWEEN :receipt AND :children_end"
+                ),
+                expression_attribute_names={"#type": "TYPE"},
+                expression_attribute_values={
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":receipt": {"S": receipt_key},
+                    ":children_end": {"S": f"{receipt_key}$"},
+                    **detail_types,
+                },
+                converter_func=self._convert_receipt_details_item,
+                filter_expression=f"#type IN ({', '.join(detail_types)})",
+                consistent_read=True,
+            )
+            return self._build_receipt_details(items, image_id, receipt_id)
 
         # Query GSI4 for all receipt-related items (excluding letters)
         # GSI4PK: IMAGE#{image_id}#RECEIPT#{receipt_id:05d}

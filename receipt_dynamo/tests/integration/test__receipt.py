@@ -7,9 +7,10 @@ code duplication.
 
 from dataclasses import replace
 from datetime import datetime
-from typing import Any, Literal, Type
+from typing import TYPE_CHECKING, Any, Literal, Type
 from uuid import uuid4
 
+import boto3
 import pytest
 from botocore.exceptions import ClientError
 from pytest_mock import MockerFixture
@@ -32,6 +33,10 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
     OperationError,
 )
+
+if TYPE_CHECKING:
+    from mypy_boto3_dynamodb import DynamoDBClient
+    from mypy_boto3_dynamodb.type_defs import QueryOutputTypeDef
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -929,6 +934,138 @@ def test_get_receipt_details_success(
     assert (
         lines == []
     ), "No lines were added in this test, so expect an empty list."
+
+
+@pytest.fixture(name="receipt_query_client")
+def _receipt_query_client(
+    dynamodb_table: Literal["MyMockedTable"], mocker: MockerFixture
+) -> tuple[DynamoClient, "DynamoDBClient"]:
+    """Expose the injected moto client for consistency and pagination checks."""
+    raw_client = boto3.client("dynamodb", region_name="us-east-1")
+    mocker.patch(
+        "receipt_dynamo.data.dynamo_client.boto3.client",
+        return_value=raw_client,
+    )
+    return DynamoClient(dynamodb_table), raw_client
+
+
+@pytest.mark.integration
+def test_consistent_receipt_details_reads_all_pages_without_index_lag(
+    receipt_query_client: tuple[DynamoClient, "DynamoDBClient"],
+    sample_receipt: Receipt,
+    sample_receipt_word: ReceiptWord,
+    sample_receipt_letter: ReceiptLetter,
+    mocker: MockerFixture,
+) -> None:
+    """Correction reads include letters and committed rows absent from GSI4."""
+    client, raw_client = receipt_query_client
+    client.add_receipt(sample_receipt)
+    client.add_receipt_words([sample_receipt_word])
+    client.add_receipt_letters([sample_receipt_letter])
+    label = ReceiptWordLabel(
+        image_id=sample_receipt.image_id,
+        receipt_id=sample_receipt.receipt_id,
+        line_id=1,
+        word_id=1,
+        label="PRODUCT_NAME",
+        reasoning="correction test",
+        timestamp_added="2026-09-10T00:00:00+00:00",
+    )
+    client.add_receipt_word_labels([label])
+    # A committed word can precede its asynchronous GSI projection.
+    word_item = sample_receipt_word.to_item()
+    word_item.pop("GSI4PK", None)
+    word_item.pop("GSI4SK", None)
+    raw_client.put_item(TableName=client.table_name, Item=word_item)
+    original_query = raw_client.query
+
+    def one_item_per_page(**kwargs: Any) -> "QueryOutputTypeDef":
+        return original_query(**{**kwargs, "Limit": 1})
+
+    query = mocker.patch.object(
+        raw_client, "query", side_effect=one_item_per_page
+    )
+    details = client.get_receipt_details(
+        sample_receipt.image_id, 1, consistent_read=True
+    )
+
+    assert details.receipt == sample_receipt
+    assert details.words == [sample_receipt_word]
+    assert details.letters == [sample_receipt_letter]
+    assert details.labels == [label]
+    assert query.call_count >= 4
+    assert all(call.kwargs["ConsistentRead"] for call in query.call_args_list)
+    assert all("IndexName" not in call.kwargs for call in query.call_args_list)
+
+
+@pytest.mark.integration
+def test_consistent_receipt_details_excludes_neighbor_and_derived_rows(
+    receipt_query_client: tuple[DynamoClient, "DynamoDBClient"],
+    sample_receipt: Receipt,
+) -> None:
+    """A numeric neighbor and non-OCR children cannot contaminate details."""
+    client, raw_client = receipt_query_client
+    receipt = replace(sample_receipt, receipt_id=12345)
+    neighbor = replace(sample_receipt, receipt_id=123456)
+    client.add_receipts([receipt, neighbor])
+    raw_client.put_item(
+        TableName=client.table_name,
+        Item={
+            "PK": {"S": f"IMAGE#{receipt.image_id}"},
+            "SK": {"S": "RECEIPT#12345#LINE#00001#EMBEDDING"},
+            "TYPE": {"S": "RECEIPT_LINE_EMBEDDING"},
+        },
+    )
+
+    details = client.get_receipt_details(
+        receipt.image_id, receipt.receipt_id, consistent_read=True
+    )
+
+    assert details.receipt == receipt
+    assert details.lines == []
+    assert details.words == []
+
+
+@pytest.mark.integration
+def test_consistent_receipt_details_missing_parent(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_receipt_word: ReceiptWord,
+) -> None:
+    """Orphan children never substitute for an existing parent receipt."""
+    client = DynamoClient(dynamodb_table)
+    client.add_receipt_words([sample_receipt_word])
+    with pytest.raises(EntityNotFoundError, match="receipt not found"):
+        client.get_receipt_details(
+            sample_receipt_word.image_id, 1, consistent_read=True
+        )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    "error_code,expected_exception,error_match", ERROR_SCENARIOS
+)
+def test_consistent_receipt_details_maps_query_errors(
+    receipt_query_client: tuple[DynamoClient, "DynamoDBClient"],
+    sample_receipt: Receipt,
+    mocker: MockerFixture,
+    error_code: str,
+    expected_exception: Type[Exception],
+    error_match: str,
+) -> None:
+    """Strong-read failures retain the data layer's public exception types."""
+    client, raw_client = receipt_query_client
+    mocker.patch.object(
+        raw_client,
+        "query",
+        side_effect=ClientError(
+            {"Error": {"Code": error_code, "Message": "test failure"}},
+            "Query",
+        ),
+    )
+    with pytest.raises(expected_exception, match=error_match):
+        client.get_receipt_details(
+            sample_receipt.image_id, 1, consistent_read=True
+        )
 
 
 @pytest.mark.integration
