@@ -12,19 +12,19 @@ authors = [
     { name = "Tyler Norlund" }
 ]
 dependencies = [
-    "mcp>=1.26.0,<2",
-    "numpy>=1.26.0,<3.0.0",
-    "Pillow>=10.0.0,<13.0.0",
+    "mcp>=1.30.0,<2",
+    "numpy>=2.5.3,<3.0.0",
+    "Pillow>=12.3.0,<13.0.0",
 ]
 
 [project.optional-dependencies]
 test = [
-    "pytest>=8.0.0",
+    "pytest>=9.1.1",
 ]
 dev = [
     "black==26.5.1",
     "isort==9.0.1",
-    "pytest>=8.0.0",
+    "pytest>=9.1.1",
 ]
 
 [project.scripts]

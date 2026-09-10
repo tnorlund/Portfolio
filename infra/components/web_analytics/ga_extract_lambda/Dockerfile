@@ -3,7 +3,7 @@
 # container Lambdas). boto3 ships in the AWS base image.
 FROM public.ecr.aws/lambda/python:3.14
 
-RUN pip install --no-cache-dir "google-analytics-data>=0.18,<1"
+RUN pip install --no-cache-dir "google-analytics-data>=0.23.0,<1"
 
 COPY infra/components/web_analytics/ga_extract_lambda/handler.py ${LAMBDA_TASK_ROOT}/
 

@@ -11,9 +11,9 @@ let package = Package(
         .library(name: "ReceiptOCRCore", targets: ["ReceiptOCRCore"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
-            .package(url: "https://github.com/soto-project/soto", from: "6.7.0"),
-        .package(url: "https://github.com/apple/swift-log", from: "1.5.3")
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.8.2"),
+            .package(url: "https://github.com/soto-project/soto", from: "6.8.0"),
+        .package(url: "https://github.com/apple/swift-log", from: "1.15.1")
     ],
     targets: [
         .target(
