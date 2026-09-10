@@ -25,6 +25,7 @@ from receipt_dynamo import (
     ReceiptWordLabel,
 )
 from receipt_dynamo.constants import ValidationStatus
+from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 from receipt_dynamo.entities.receipt_summary import (
     MonetaryTotals,
     ReceiptSummary,
@@ -32,6 +33,8 @@ from receipt_dynamo.entities.receipt_summary import (
 from receipt_dynamo.entities.receipt_summary_record import (
     ReceiptSummaryRecord,
 )
+
+from infra.receipt_summary_updater import summary_processor
 
 # isort: on
 
@@ -170,6 +173,8 @@ def _stored_summary(image_id, receipt_id, date=None) -> ReceiptSummaryRecord:
             date=date,
             totals=MonetaryTotals(grand_total=47.18),
             item_count=0,
+            # what the Lambda path stores for a receipt with no payment zone
+            tender_class="unknown",
         )
     )
 
@@ -245,7 +250,7 @@ def test_without_filter_every_summary_is_examined(table, capsys):
 
     out = capsys.readouterr().out
     assert f"{IMAGE_ID}#1 WOULD UPDATE" in out
-    assert f"{OTHER_IMAGE_ID}#2 unchanged" in out
+    assert f"{OTHER_IMAGE_ID}#2 unchanged: date=2026-01-02" in out
     assert "DRY RUN: 2 receipts examined" in out
     assert client.get_receipt_summary(IMAGE_ID, 1).date is None
     assert client.get_receipt_summary(OTHER_IMAGE_ID, 2).date == datetime(
@@ -305,6 +310,70 @@ def test_apply_preserves_offline_bank_fields(table):
         47.18,
         0.9,
     )
+
+
+def test_consecutive_computes_agree(table):
+    """compute_receipt_summary is a pure function of the stored rows."""
+    client = DynamoClient(table)
+    _seed_dateless_receipt(client)
+    client.add_receipt_word_labels(
+        [_label(IMAGE_ID, 1, line, 2, "LINE_TOTAL") for line in range(20, 45)]
+    )
+    client.add_receipt_line_items(
+        [
+            ReceiptLineItem(
+                image_id=IMAGE_ID,
+                receipt_id=1,
+                item_index=i,
+                name=f"item {i}",
+                price="1.00",
+                line_ids=[20 + i],
+                extractor_version="test",
+                extracted_at="2026-09-10T00:00:00+00:00",
+            )
+            for i in range(3)
+        ]
+    )
+    first, _ = summary_processor.compute_receipt_summary(IMAGE_ID, 1, client)
+    second, _ = summary_processor.compute_receipt_summary(IMAGE_ID, 1, client)
+    assert first.to_dict() == second.to_dict()
+    assert first.item_count == 3  # rows win over the 25 LINE_TOTAL labels
+
+
+def test_item_count_only_drift_is_reported_never_written(table, capsys):
+    """Rows rewritten after the last summary write must not restart the
+    line-item cycle: the count is left to the item worker's finalizer."""
+    client = DynamoClient(table)
+    _seed_dated_receipt(client)
+    client.add_receipt_line_items(
+        [
+            ReceiptLineItem(
+                image_id=OTHER_IMAGE_ID,
+                receipt_id=2,
+                item_index=i,
+                name=f"item {i}",
+                price="1.00",
+                line_ids=[20 + i],
+                extractor_version="swift-worker-v1+line-items-blocks-v2",
+                extracted_at="2026-09-10T17:55:53+00:00",
+            )
+            for i in range(4)
+        ]
+    )
+    before = client.get_receipt_summary(OTHER_IMAGE_ID, 2)
+
+    assert recompute.main(["--table", table, "--apply"]) == 0
+
+    out = capsys.readouterr().out
+    assert (
+        f"{OTHER_IMAGE_ID}#2 ITEM_COUNT DRIFT (not written; finalized by "
+        "the line-item worker): date=2026-01-02 total=47.18 items=0 -> "
+        "date=2026-01-02 total=47.18 items=4" in out
+    )
+    assert "item_count_drift         1" in out
+    after = client.get_receipt_summary(OTHER_IMAGE_ID, 2)
+    assert after.item_count == 0
+    assert after.timestamp_computed == before.timestamp_computed
 
 
 def test_orphan_summary_is_skipped_not_recomputed(table, capsys):

@@ -41,6 +41,7 @@ os.environ.pop("DYNAMODB_TABLE_NAME", None)
 # the local-package block so both legs accept one ordering.
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.receipt_summary import ReceiptSummary
 from receipt_dynamo.entities.receipt_summary_record import (
     ReceiptSummaryRecord,
 )
@@ -84,6 +85,12 @@ def iter_summaries(client: DynamoClient) -> list[ReceiptSummaryRecord]:
             return records
 
 
+def _fields_without_item_count(summary: ReceiptSummary) -> dict[str, Any]:
+    fields = summary.to_dict()
+    fields.pop("item_count", None)
+    return fields
+
+
 def recompute(
     client: DynamoClient,
     *,
@@ -91,7 +98,18 @@ def recompute(
     apply: bool,
     out: TextIO | None = None,
 ) -> Counter:
-    """Print before/after per receipt; write only when ``apply`` is True."""
+    """Print before/after per receipt; write only when ``apply`` is True.
+
+    ``item_count`` is owned by the line-item worker: a summary write bumps
+    ``timestamp_computed``, which routes the receipt to the line-item
+    updater, which rewrites the RECEIPT_LINE_ITEM rows, finalizes
+    ``item_count`` from its own rows and then hands the receipt to the
+    Swift refine pass, which rewrites the rows once more without
+    touching ``item_count``. Recomputing from the refined rows and
+    writing would restart that cycle and flip the count on every run, so
+    a summary whose only difference is ``item_count`` is reported as
+    drift and never written here.
+    """
     out = out if out is not None else sys.stdout
     counts: Counter = Counter()
     for stored in sorted(
@@ -104,46 +122,48 @@ def recompute(
         key = f"{stored.image_id}#{stored.receipt_id}"
         before = _describe(stored.date, stored.grand_total, stored.item_count)
 
+        try:
+            client.get_receipt(stored.image_id, stored.receipt_id)
+        except EntityNotFoundError:
+            counts["skipped_parent_deleted"] += 1
+            print(f"{key} SKIPPED (parent receipt deleted)", file=out)
+            continue
+        computed, _category = summary_processor.compute_receipt_summary(
+            stored.image_id, stored.receipt_id, client
+        )
+        after = _describe(
+            computed.date, computed.grand_total, computed.item_count
+        )
+
+        if after == before:
+            counts["unchanged"] += 1
+            print(f"{key} unchanged: {before}", file=out)
+            continue
+        if _fields_without_item_count(computed) == _fields_without_item_count(
+            stored.summary
+        ):
+            counts["item_count_drift"] += 1
+            print(
+                f"{key} ITEM_COUNT DRIFT (not written; finalized by the "
+                f"line-item worker): {before} -> {after}",
+                file=out,
+            )
+            continue
+
+        counts["changed"] += 1
+        if stored.date is None and computed.date is not None:
+            counts["date_filled"] += 1
+        tag = "WOULD UPDATE"
         if apply:
             result: dict[str, Any] = summary_processor.update_receipt_summary(
                 stored.image_id, stored.receipt_id, client
             )
             if result.get("skipped"):
+                counts["changed"] -= 1
                 counts["skipped_parent_deleted"] += 1
                 print(f"{key} SKIPPED ({result['skipped']})", file=out)
                 continue
-            after_date = (
-                datetime.fromisoformat(result["date"])
-                if result["date"]
-                else None
-            )
-            after = _describe(
-                after_date, result["grand_total"], result["item_count"]
-            )
             tag = "UPDATED"
-        else:
-            try:
-                client.get_receipt(stored.image_id, stored.receipt_id)
-            except EntityNotFoundError:
-                counts["skipped_parent_deleted"] += 1
-                print(f"{key} SKIPPED (parent receipt deleted)", file=out)
-                continue
-            computed, _category = summary_processor.compute_receipt_summary(
-                stored.image_id, stored.receipt_id, client
-            )
-            after_date = computed.date
-            after = _describe(
-                computed.date, computed.grand_total, computed.item_count
-            )
-            tag = "WOULD UPDATE"
-
-        if after == before:
-            counts["unchanged"] += 1
-            tag = "unchanged"
-        else:
-            counts["changed"] += 1
-            if stored.date is None and after_date is not None:
-                counts["date_filled"] += 1
         print(f"{key} {tag}: {before} -> {after}", file=out)
     return counts
 
