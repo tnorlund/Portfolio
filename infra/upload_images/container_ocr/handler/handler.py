@@ -73,8 +73,8 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     total_embedding_duration = 0.0
     dual_write_written_count = 0
     dual_write_failed_count = 0
-    # Messages to redrive (the llm-validation mapping reports these so SQS
-    # retries / DLQs them instead of silently deleting on a swallowed error).
+    # Both source mappings redrive these records instead of deleting failed
+    # OCR corrections or deferred label validations.
     batch_item_failures: list[Dict[str, str]] = []
     llm_validation_failures = 0
 
@@ -100,6 +100,9 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                     embedding_count += 1
             else:
                 error_count += 1
+                batch_item_failures.append(
+                    {"itemIdentifier": record["messageId"]}
+                )
 
             # Aggregate per-record metrics
             if result.get("ocr_failed"):
@@ -134,9 +137,12 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 # Report for redrive instead of swallowing — otherwise the
                 # message is deleted and the labels stay PENDING forever.
                 llm_validation_failures += 1
-                mid = record.get("messageId")
-                if mid:
-                    batch_item_failures.append({"itemIdentifier": mid})
+            message_id = record.get("messageId")
+            if not message_id:
+                raise ValueError(
+                    "Cannot redrive failed record without messageId"
+                ) from exc
+            batch_item_failures.append({"itemIdentifier": message_id})
 
     # Record aggregated metrics
     execution_time = time.time() - start_time
@@ -203,9 +209,8 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     # This ensures all validation/merchant resolution decisions are logged
     flush_traces()
 
-    # The llm-validation mapping has ReportBatchItemFailures enabled, so SQS
-    # redrives any messageId returned here (and DLQs it after maxReceiveCount).
-    # The OCR-results mapping does not enable it, so this field is ignored there.
+    # Both mappings enable ReportBatchItemFailures: SQS retries these message
+    # IDs and sends exhausted messages to the configured DLQ.
     return {
         "statusCode": 200,
         "batchItemFailures": batch_item_failures,
