@@ -1057,6 +1057,7 @@ async def answer_question(
         logger.error("Error answering question: %s", e)
         return {
             "answer": f"Error: {str(e)}",
+            "error": str(e),
             "total_amount": None,
             "receipt_count": 0,
             "evidence": [],

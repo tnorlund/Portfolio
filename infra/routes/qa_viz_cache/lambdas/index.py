@@ -43,7 +43,9 @@ def _accepts_gzip(event: dict) -> bool:
     return "gzip" in ae.lower()
 
 
-def _cors_response(status_code: int, body: Any, event: dict | None = None) -> dict:
+def _cors_response(
+    status_code: int, body: Any, event: dict | None = None
+) -> dict:
     """Build an API Gateway v2 response with CORS headers + optional gzip."""
     headers = {
         "Content-Type": "application/json",
@@ -91,9 +93,11 @@ def _fetch_metadata() -> dict[str, Any]:
         return {}
 
 
-def _fetch_question(index: int) -> dict[str, Any] | None:
+def _fetch_question(
+    index: int, prefix: str = QUESTIONS_PREFIX
+) -> dict[str, Any] | None:
     """Fetch a single question cache file from S3."""
-    key = f"{QUESTIONS_PREFIX}question-{index}.json"
+    key = f"{prefix}question-{index}.json"
     try:
         response = s3_client.get_object(Bucket=S3_CACHE_BUCKET, Key=key)
         return json.loads(response["Body"].read().decode("utf-8"))
@@ -102,14 +106,12 @@ def _fetch_question(index: int) -> dict[str, Any] | None:
         return None
 
 
-def _list_question_keys() -> list[str]:
+def _list_question_keys(prefix: str = QUESTIONS_PREFIX) -> list[str]:
     """List all cached question keys from S3."""
     keys: list[str] = []
     try:
         paginator = s3_client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(
-            Bucket=S3_CACHE_BUCKET, Prefix=QUESTIONS_PREFIX
-        ):
+        for page in paginator.paginate(Bucket=S3_CACHE_BUCKET, Prefix=prefix):
             for obj in page.get("Contents", []):
                 key = obj.get("Key", "")
                 if key.endswith(".json"):
@@ -119,9 +121,11 @@ def _list_question_keys() -> list[str]:
     return sorted(keys)
 
 
-def _fetch_all_questions() -> list[dict[str, Any]]:
+def _fetch_all_questions(
+    prefix: str = QUESTIONS_PREFIX,
+) -> list[dict[str, Any]]:
     """Fetch all question cache files from S3 in parallel."""
-    keys = _list_question_keys()
+    keys = _list_question_keys(prefix)
     if not keys:
         return []
 
@@ -191,6 +195,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     try:
         query_params = event.get("queryStringParameters") or {}
         metadata = _fetch_metadata()
+        prefix = metadata.get("questions_prefix", QUESTIONS_PREFIX)
 
         # Single question by index
         question_index = query_params.get("index") or query_params.get(
@@ -202,7 +207,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             except (ValueError, TypeError):
                 return _cors_response(400, {"error": "Invalid question index"})
 
-            question = _fetch_question(idx)
+            question = _fetch_question(idx, prefix)
             if not question:
                 return _cors_response(
                     404, {"error": f"Question {idx} not found"}
@@ -220,7 +225,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
 
         # All questions
         if query_params.get("all", "").lower() == "true":
-            questions = _fetch_all_questions()
+            questions = _fetch_all_questions(prefix)
             return _cors_response(
                 200,
                 {

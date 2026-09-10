@@ -934,16 +934,7 @@ qa_agent_sf = QAAgentStepFunction(
     f"qa-agent-{stack}",
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
-    # EMR Serverless
-    emr_application_id=emr_analytics.emr_application.id,
-    emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
-    langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
-    analytics_output_bucket=emr_analytics.analytics_bucket.id,
-    spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-    # LangSmith export lambdas — use the langsmith_bulk_export component's trigger
-    # (correct SSM_PREFIX → correct destination → correct S3 bucket)
-    trigger_export_lambda_arn=langsmith_bulk_export.trigger_lambda.arn,
-    check_export_lambda_arn=label_validation_viz_cache.check_export_lambda.arn,
+
 )
 
 pulumi.export("qa_agent_sf_arn", qa_agent_sf.state_machine_arn)
