@@ -940,7 +940,7 @@ def test_get_receipt_details_success(
 def _receipt_query_client(
     dynamodb_table: Literal["MyMockedTable"], mocker: MockerFixture
 ) -> tuple[DynamoClient, "DynamoDBClient"]:
-    """Expose the injected moto client for consistency and pagination checks."""
+    """Inject a moto client for consistency and pagination checks."""
     raw_client = boto3.client("dynamodb", region_name="us-east-1")
     mocker.patch(
         "receipt_dynamo.data.dynamo_client.boto3.client",
