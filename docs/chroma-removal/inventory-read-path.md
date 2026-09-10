@@ -1,5 +1,10 @@
 # Inventory: Chroma read/query consumers
 
+> MCP layout note (2026-09-10): Fork references below preserve the historical
+> snapshot. Current tools live in `scripts/receipt_mcp_server.py`;
+> `infra/mcp_server_lambda/lambdas/Dockerfile` packages that source as
+> `receipt_mcp_server/server.py`.
+
 Compiled 2026-08-31 by mapping agent (chroma-read-path) against origin/main @ 1b6540c81,
 with empirical verification against live Chroma Cloud (dev).
 
