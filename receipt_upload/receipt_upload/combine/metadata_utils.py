@@ -11,12 +11,19 @@ import logging
 from copy import deepcopy
 from dataclasses import fields
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import MerchantValidationStatus
-from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
-from receipt_dynamo.entities import ReceiptPlace, ReceiptWordLabel
+from receipt_dynamo.data.shared_exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+)
+from receipt_dynamo.entities import (
+    ReceiptDetails,
+    ReceiptPlace,
+    ReceiptWordLabel,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +43,9 @@ def get_best_receipt_place(
     client: DynamoClient,
     image_id: str,
     receipt_ids: List[int],
+    *,
+    strict: bool = False,
+    source_details: Mapping[int, ReceiptDetails] | None = None,
 ) -> Optional[ReceiptPlace]:
     """
     Get the best ReceiptPlace from the original receipts.
@@ -48,6 +58,7 @@ def get_best_receipt_place(
         client: DynamoDB client
         image_id: Image ID containing the receipts
         receipt_ids: List of receipt IDs to consider
+        strict: Fail on lookup errors, allowing genuinely absent place rows.
 
     Returns:
         Best ReceiptPlace or None if no valid place data found
@@ -55,10 +66,18 @@ def get_best_receipt_place(
     places = []
     for receipt_id in receipt_ids:
         try:
-            place = client.get_receipt_place(image_id, receipt_id)
+            place = (
+                source_details[receipt_id].place
+                if source_details is not None
+                else client.get_receipt_place(image_id, receipt_id)
+            )
             if place and place.merchant_name and place.merchant_name.strip():
                 places.append(place)
+        except EntityNotFoundError:
+            continue
         except Exception as e:  # pylint: disable=broad-except
+            if strict:
+                raise
             logger.error(
                 "Failed to fetch place data for image_id=%s receipt_id=%s: %s",
                 image_id,
@@ -150,6 +169,9 @@ def migrate_receipt_word_labels(
     word_id_map: Dict[Tuple[int, int, int], int],
     line_id_map: Dict[Tuple[int, int], int],
     new_receipt_id: int,
+    *,
+    strict: bool = False,
+    source_details: Mapping[int, ReceiptDetails] | None = None,
 ) -> List[ReceiptWordLabel]:
     """
     Migrate ReceiptWordLabel entities from original receipts to the new combined receipt.
@@ -161,6 +183,7 @@ def migrate_receipt_word_labels(
         word_id_map: Mapping from (word_id, line_id, receipt_id) to new word_id
         line_id_map: Mapping from (line_id, receipt_id) to new line_id
         new_receipt_id: ID of the new combined receipt
+        strict: Raise on incomplete label reads before destructive merges.
 
     Returns:
         List of migrated ReceiptWordLabel entities
@@ -171,13 +194,17 @@ def migrate_receipt_word_labels(
             # Paginate through all labels for this receipt
             last_evaluated_key = None
             while True:
-                labels, last_evaluated_key = (
-                    client.list_receipt_word_labels_for_receipt(
-                        image_id,
-                        receipt_id,
-                        last_evaluated_key=last_evaluated_key,
+                if source_details is not None:
+                    labels = source_details[receipt_id].labels
+                    last_evaluated_key = None
+                else:
+                    labels, last_evaluated_key = (
+                        client.list_receipt_word_labels_for_receipt(
+                            image_id,
+                            receipt_id,
+                            last_evaluated_key=last_evaluated_key,
+                        )
                     )
-                )
 
                 for label in labels:
                     original_key = (label.word_id, label.line_id, receipt_id)
@@ -205,6 +232,8 @@ def migrate_receipt_word_labels(
                 if not last_evaluated_key:
                     break
         except Exception as e:  # pylint: disable=broad-except
+            if strict:
+                raise
             logger.error(
                 "Failed to migrate word labels for image_id=%s receipt_id=%s: %s",
                 image_id,

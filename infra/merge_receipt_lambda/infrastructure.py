@@ -149,6 +149,7 @@ class MergeReceiptLambda(ComponentResource):
                                     "dynamodb:Query",
                                     "dynamodb:BatchGetItem",
                                     "dynamodb:BatchWriteItem",
+                                    "dynamodb:ConditionCheckItem",
                                 ],
                                 "Resource": [
                                     arn,
