@@ -10,12 +10,14 @@ by default. This code change does not cancel or change a subscription.
 | Workflow | Replacement | Preserved behavior |
 | --- | --- | --- |
 | QA marquee | Run questions → query receipt metadata → build cache in Lambda | Answers, receipt evidence, node/tool timing, cost and token totals |
-| Receipt validation visualization | Receipt spans written directly to S3 → existing Spark cache job | Receipt images, word decisions, tier timing, existing API payload |
+| Receipt validation visualization | Receipt spans written directly to S3 → one Python Lambda | Receipt images, word decisions, tier timing, existing API payload |
 | Retired label evaluator | Keep its existing cache and trace archive | Historical visualization remains available |
 | Occasional hosted debugging | Explicit, sampled LangSmith opt-in | Hosted tools available under the chosen account's plan |
 
-QA no longer starts Spark or waits for trace ingestion/export. Receipt analytics
-still uses EMR Serverless. AWS storage/compute and model-provider charges remain.
+Both live cache workflows run without Spark, PySpark, Java, PyArrow, or EMR.
+The receipt builder uses the existing DynamoDB Lambda layer and boto3. The EMR
+application, job role, and environment builder are retired; historical S3 buckets
+remain, with expiration disabled. AWS Lambda, storage, and model charges remain.
 
 ## Native records and failure handling
 
@@ -35,16 +37,19 @@ Receipt processing writes one NDJSON object per completed root under
 `native-traces/date=YYYY-MM-DD/<trace-id>-<publisher-run-id>.ndjson` in the existing label-validation
 export bucket. Each span includes IDs/parentage, start/end timestamps, status,
 inputs, outputs and metadata. JSON payload columns retain the existing export
-representation so the Spark cache assembly code can be reused. Lambda worker
+representation for compatibility with archived records. Lambda worker
 threads propagate the native context, and deferred validation carries its trace
 identity through the SQS payload. Failed deferred attempts stay in private records
 but are excluded from the visualization. Receipt lookups select recent traced
 receipts so a new native run does not depend on overlap with a table scan sample.
-Archived Parquet remains readable through
-the job's default `--trace-format parquet`; deployed jobs use `--trace-format native`.
+The Lambda samples the 500 newest native trace objects, includes older objects
+for those trace identities (including deferred SQS work), and builds up to 50
+receipts. A 100 MiB input limit fails without publishing a partial cache.
+Historical Parquet readers remain optional offline tools; no deployed workflow
+installs or invokes them.
 
 Receipt caches also use unique prefixes. Their `metadata.json` contains the
-complete `receipt_keys` index; failed receipt writes do not publish that index.
+complete `receipt_keys` index and is the publication point; failed receipt writes do not publish that index.
 The API falls back to the historical layout when the index is absent.
 
 These records replace the application's export dependency, not the entire
@@ -79,7 +84,7 @@ write permission, and are independent of hosted sampling.
    but content that exists only in LangSmith has not been archived automatically.
 2. Obtain authorization for a dev deployment under the repository's `AGENTS.md`
    rules. Preview the fully qualified dev stack and verify the expected changes:
-   retained trace/cache buckets, new native S3 permission and QA builder, retired
+   retained trace/cache buckets, new native S3 permission and QA builder, retired EMR runtime/build resources and
    export setup/trigger/check Lambdas and their IAM credentials. Bucket resource
    identities stay the same; archive buckets disable `force_destroy` and use
    `retain_on_delete`. Stop on unrelated deletes or replacements.

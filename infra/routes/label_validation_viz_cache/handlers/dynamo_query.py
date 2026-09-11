@@ -1,136 +1,93 @@
-"""Look up rendering data for receipts that actually have native traces."""
+"""Build receipt visualization caches from S3 and DynamoDB, without Spark."""
 
-import heapq
 import json
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
 import boto3
+from receipt_cache import (
+    MAX_RECEIPTS,
+    aggregate_stats,
+    build_receipt,
+    group_spans,
+    read_traces,
+    receipt_roots,
+)
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
 logger = logging.getLogger(__name__)
-MAX_RECEIPTS = 500
-MAX_NATIVE_RECEIPTS = 50  # Matches the cache job's sample size.
-
-
-def native_receipt_keys(s3: Any, bucket: str) -> list[tuple[str, int]]:
-    """Select recent traced receipts, not an unrelated DynamoDB scan sample."""
-    pages = s3.get_paginator("list_objects_v2").paginate(
-        Bucket=bucket, Prefix="native-traces/"
-    )
-    recent = heapq.nlargest(
-        MAX_RECEIPTS,
-        (
-            obj
-            for page in pages
-            for obj in page.get("Contents", [])
-            if obj["Key"].endswith(".ndjson")
-        ),
-        key=lambda obj: (obj["LastModified"], obj["Key"]),
-    )
-    selected: dict[tuple[str, int], None] = {}
-    for obj in recent:
-        body = (
-            s3.get_object(Bucket=bucket, Key=obj["Key"])["Body"]
-            .read()
-            .decode()
-        )
-        for line in body.splitlines():
-            if not line.strip():
-                continue
-            row = json.loads(line)
-            if (
-                row.get("name")
-                not in {"receipt_processing", "async_label_validation"}
-                or row.get("status") == "error"
-                or row.get("capture_status") == "error"
-            ):
-                continue
-            metadata = json.loads(row.get("extra") or "{}").get("metadata", {})
-            if (
-                metadata.get("image_id")
-                and metadata.get("receipt_id") is not None
-            ):
-                selected[
-                    (metadata["image_id"], int(metadata["receipt_id"]))
-                ] = None
-        if len(selected) >= MAX_NATIVE_RECEIPTS:
-            break
-    if not selected:
-        raise ValueError("No completed native receipt roots are available")
-    return list(selected)[:MAX_NATIVE_RECEIPTS]
 
 
 def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Write an execution-specific receipt lookup for the Spark cache job."""
+    """Publish the new index only after every receipt object has been written."""
     client = DynamoClient(os.environ["DYNAMODB_TABLE"])
     cache_bucket = os.environ["CACHE_BUCKET"]
-    trace_bucket = os.environ.get("NATIVE_TRACE_BUCKET")
     s3 = boto3.client("s3")
-    if trace_bucket:
-        receipts = []
-        for image_id, receipt_id in native_receipt_keys(s3, trace_bucket):
-            try:
-                receipts.append(client.get_receipt(image_id, receipt_id))
-            except EntityNotFoundError:
-                logger.info(
-                    "Traced receipt was deleted: %s/%s", image_id, receipt_id
-                )
-    else:
-        # Retain the legacy standalone lookup path for archived Parquet jobs.
-        receipts, last_key = client.list_receipts(limit=MAX_RECEIPTS)
-        while last_key and len(receipts) < MAX_RECEIPTS:
-            page, last_key = client.list_receipts(
-                limit=MAX_RECEIPTS - len(receipts),
+    rows = read_traces(s3, os.environ["NATIVE_TRACE_BUCKET"])
+    grouped = group_spans(rows)
+    receipts = []
+    for root in receipt_roots(rows):
+        image_id, receipt_id = root["image_id"], root["receipt_id"]
+        try:
+            receipt = client.get_receipt(image_id, receipt_id)
+        except EntityNotFoundError:
+            logger.info(
+                "Traced receipt was deleted: %s/%s", image_id, receipt_id
+            )
+            continue
+        words = client.list_receipt_words_from_receipt(image_id, receipt_id)
+        labels, last_key = client.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id
+        )
+        while last_key:
+            page, last_key = client.list_receipt_word_labels_for_receipt(
+                image_id,
+                receipt_id,
                 last_evaluated_key=last_key,
             )
-            receipts.extend(page)
+            labels.extend(page)
+        payload = build_receipt(
+            root, grouped[root["trace_id"]], receipt, words, labels
+        )
+        if payload:
+            receipts.append(payload)
+        if len(receipts) >= MAX_RECEIPTS:
+            break
+    if not receipts:
+        raise ValueError("No native receipt validation results are available")
 
-    lookup = {}
+    version = str(uuid4())
+    prefix = f"cache-runs/{version}/receipts/"
+    keys = []
     for receipt in receipts:
-        words = client.list_receipt_words_from_receipt(
-            receipt.image_id, receipt.receipt_id
+        key = f"{prefix}receipt-{receipt['image_id']}-{receipt['receipt_id']}.json"
+        s3.put_object(
+            Bucket=cache_bucket,
+            Key=key,
+            Body=json.dumps(receipt).encode(),
+            ContentType="application/json",
         )
-        labels, _ = client.list_receipt_word_labels_for_receipt(
-            receipt.image_id, receipt.receipt_id
-        )
-        lookup[f"{receipt.image_id}_{receipt.receipt_id}"] = {
-            "cdn_s3_key": receipt.cdn_s3_key or "",
-            "cdn_webp_s3_key": receipt.cdn_webp_s3_key,
-            "cdn_avif_s3_key": receipt.cdn_avif_s3_key,
-            "cdn_medium_s3_key": receipt.cdn_medium_s3_key,
-            "cdn_medium_webp_s3_key": receipt.cdn_medium_webp_s3_key,
-            "cdn_medium_avif_s3_key": receipt.cdn_medium_avif_s3_key,
-            "width": receipt.width or 0,
-            "height": receipt.height or 0,
-            "words": [
-                {
-                    "line_id": w.line_id,
-                    "word_id": w.word_id,
-                    "text": w.text,
-                    "bbox": w.bounding_box,
-                }
-                for w in words
-            ],
-            "labels": {
-                f"{label.line_id}_{label.word_id}": label.label
-                for label in labels
-            },
-        }
-    if not lookup:
-        raise ValueError("No traced receipts remain available for the cache")
-    request_id = getattr(context, "aws_request_id", None) or str(uuid4())
-    key = f"receipt-lookups/{request_id}.json"
+        keys.append(key)
+    metadata = {
+        "version": version,
+        "receipt_keys": keys,
+        "aggregate_stats": aggregate_stats(receipts),
+        "cached_at": datetime.now(timezone.utc).isoformat(),
+        "trace_source": "native-s3",
+        "schema_version": 1,
+    }
     s3.put_object(
         Bucket=cache_bucket,
-        Key=key,
-        Body=json.dumps(lookup).encode(),
+        Key="metadata.json",
+        Body=json.dumps(metadata).encode(),
         ContentType="application/json",
     )
     return {
-        "receipt_count": len(lookup),
-        "receipts_s3_path": f"s3://{cache_bucket}/{key}",
+        "receipt_count": len(receipts),
+        "version": version,
+        "trace_source": "native-s3",
     }

@@ -725,27 +725,12 @@ pulumi.export(
 # docs/chroma-removal/); the pipeline-consolidation plan called for its
 # removal.
 
-# EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
-from components.emr_serverless_analytics import create_emr_serverless_analytics
+# Retain historical analytics buckets after retiring the Spark runtime.
+from components.emr_serverless_analytics import retain_analytics_archives
 
-# Shared resources for the label evaluator pipeline (buckets used by multiple
-# components) are constructed near the top of this program (search for
-# label_evaluator_shared) so that `pulumi --target` reconciles cleanly; see the
-# comment there. The instance is reused here via label_evaluator_shared.
-
-emr_analytics = create_emr_serverless_analytics(
-    langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
-    # Shared buckets - grant EMR job access
-    cache_bucket_arn=label_evaluator_shared.viz_cache_bucket_arn,
-    batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
-)
-pulumi.export("emr_application_id", emr_analytics.emr_application.id)
-pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
-pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
-pulumi.export(
-    "emr_python_environment_uri",
-    emr_analytics.python_environment_uri,
-)
+analytics_archives = retain_analytics_archives()
+pulumi.export("emr_analytics_bucket", analytics_archives.analytics_bucket.id)
+pulumi.export("emr_artifacts_bucket", analytics_archives.artifacts_bucket.id)
 pulumi.export(
     "label_evaluator_viz_cache_merged_bucket",
     label_evaluator_shared.viz_cache_bucket_name,
@@ -753,7 +738,7 @@ pulumi.export(
 
 # Label Evaluator Step Function: RETIRED 2026-09-02 (vector-store
 # teardown, closing #1523); the pipeline-consolidation plan supersedes it.
-# Shared resources it merely referenced (OCR queue, EMR analytics,
+# Shared resources it merely referenced (OCR queue, analytics archives,
 # LangSmith bulk export, label_evaluator_shared viz-cache/batch buckets)
 # all remain — the viz-cache API routes keep serving the frozen cache.
 
@@ -885,9 +870,6 @@ if hasattr(api_gateway, "api"):
         langsmith_export_bucket=label_validation_export.export_bucket.id,
         dynamodb_table_name=dynamodb_table.name,
         dynamodb_table_arn=dynamodb_table.arn,
-        emr_application_id=emr_analytics.emr_application.id,
-        emr_job_role_arn=emr_analytics.emr_job_role.arn,
-        spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
     )
     pulumi.export(
         "label_validation_viz_cache_bucket",

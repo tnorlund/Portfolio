@@ -52,11 +52,6 @@ updates:
       prefix: "chore"
       include: "scope"
     ignore:
-      # pyspark deliberately mirrors EMR_SPARK_RELEASE/EMR_SPARK_VERSION in
-      # infra/components/emr_serverless_runtime.py (parity enforced by
-      # infra/components/test_emr_serverless_runtime.py). Bump all three
-      # together when AWS ships an EMR Serverless label with a newer Spark.
-      - dependency-name: "pyspark"
       # mcp is pinned <2: receipt_logo/receipt_logo/mcp_server.py and
       # scripts/receipt_mcp_server.py use the mcp 1.x low-level Server API,
       # which breaks under the mcp 2.x rework. Drop after migrating both

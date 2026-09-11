@@ -38,9 +38,6 @@ class LabelValidationVizCache(ComponentResource):
         langsmith_export_bucket: Input[str],
         dynamodb_table_name: Input[str],
         dynamodb_table_arn: Input[str],
-        emr_application_id: Input[str],
-        emr_job_role_arn: Input[str],
-        spark_artifacts_bucket: Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(
@@ -50,21 +47,12 @@ class LabelValidationVizCache(ComponentResource):
             opts,
         )
 
-        region = aws.get_region().name
-        account_id = aws.get_caller_identity().account_id
-
         # Convert to Output for proper resolution
         langsmith_export_bucket_output = Output.from_input(
             langsmith_export_bucket
         )
         dynamodb_table_name_output = Output.from_input(dynamodb_table_name)
         dynamodb_table_arn_output = Output.from_input(dynamodb_table_arn)
-        emr_application_id_output = Output.from_input(emr_application_id)
-        emr_job_role_arn_output = Output.from_input(emr_job_role_arn)
-        spark_artifacts_bucket_output = Output.from_input(
-            spark_artifacts_bucket
-        )
-
         # ============================================================
         # S3 Cache Bucket
         # ============================================================
@@ -195,7 +183,7 @@ class LabelValidationVizCache(ComponentResource):
         )
 
         # ============================================================
-        # Step 1: DynamoDB Query Lambda (exports receipts + words + labels)
+        # Native cache Lambda (S3 traces + DynamoDB rendering data)
         # ============================================================
         self.dynamo_query_role = aws.iam.Role(
             f"{name}-dynamo-query-role",
@@ -252,7 +240,7 @@ class LabelValidationVizCache(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # S3 write access for receipts-lookup.json
+        # S3 write access for versioned receipt caches and their index
         aws.iam.RolePolicy(
             f"{name}-dynamo-query-s3-policy",
             role=self.dynamo_query_role.id,
@@ -273,7 +261,7 @@ class LabelValidationVizCache(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # DynamoDB query code - exports receipts, words, and labels
+        # Native receipt cache builder
         aws.iam.RolePolicy(
             f"{name}-query-native-traces-policy",
             role=self.dynamo_query_role.id,
@@ -306,6 +294,9 @@ class LabelValidationVizCache(ComponentResource):
                 {
                     "index.py": FileAsset(
                         os.path.join(HANDLERS_DIR, "dynamo_query.py")
+                    ),
+                    "receipt_cache.py": FileAsset(
+                        os.path.join(HANDLERS_DIR, "receipt_cache.py")
                     ),
                 }
             ),
@@ -381,114 +372,9 @@ class LabelValidationVizCache(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
-        # Allow Step Function to start EMR Serverless jobs
-        aws.iam.RolePolicy(
-            f"{name}-sf-emr-policy",
-            role=self.step_function_role.id,
-            policy=Output.all(
-                emr_application_id_output,
-                emr_job_role_arn_output,
-            ).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "emr-serverless:StartJobRun",
-                                    "emr-serverless:GetJobRun",
-                                    "emr-serverless:CancelJobRun",
-                                ],
-                                "Resource": [
-                                    f"arn:aws:emr-serverless:{region}:{account_id}"
-                                    f":/applications/{args[0]}",
-                                    f"arn:aws:emr-serverless:{region}:{account_id}"
-                                    f":/applications/{args[0]}/jobruns/*",
-                                ],
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": "iam:PassRole",
-                                "Resource": args[1],
-                                "Condition": {
-                                    "StringEquals": {
-                                        "iam:PassedToService": "emr-serverless.amazonaws.com"
-                                    }
-                                },
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "events:PutTargets",
-                                    "events:PutRule",
-                                    "events:DescribeRule",
-                                    "events:DeleteRule",
-                                    "events:RemoveTargets",
-                                ],
-                                "Resource": [
-                                    f"arn:aws:events:{region}:{account_id}:rule/StepFunctions*",
-                                ],
-                            },
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
+        step_function_definition = self.dynamo_query_lambda.arn.apply(
+            lambda arn: json.dumps(build_state_machine_definition(arn))
         )
-
-        # Grant EMR job role access to cache and export buckets
-        aws.iam.RolePolicy(
-            f"{name}-emr-bucket-policy",
-            role=emr_job_role_arn_output.apply(lambda arn: arn.split("/")[-1]),
-            policy=Output.all(
-                langsmith_export_bucket_output,
-                cache_bucket_output,
-            ).apply(
-                lambda args: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            # Read from LangSmith export bucket
-                            {
-                                "Effect": "Allow",
-                                "Action": ["s3:GetObject", "s3:ListBucket"],
-                                "Resource": [
-                                    f"arn:aws:s3:::{args[0]}",
-                                    f"arn:aws:s3:::{args[0]}/*",
-                                ],
-                            },
-                            # Read/write to cache bucket
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:PutObject",
-                                    "s3:ListBucket",
-                                ],
-                                "Resource": [
-                                    f"arn:aws:s3:::{args[1]}",
-                                    f"arn:aws:s3:::{args[1]}/*",
-                                ],
-                            },
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
-        # ============================================================
-        # Step Function Definition
-        # ============================================================
-        step_function_definition = Output.all(
-            self.dynamo_query_lambda.arn,
-            emr_application_id_output,
-            emr_job_role_arn_output,
-            spark_artifacts_bucket_output,
-            langsmith_export_bucket_output,
-            cache_bucket_output,
-        ).apply(lambda args: json.dumps(build_state_machine_definition(*args)))
 
         self.step_function = aws.sfn.StateMachine(
             f"{name}-sf",
@@ -521,21 +407,15 @@ def create_label_validation_viz_cache(
     langsmith_export_bucket: Input[str],
     dynamodb_table_name: Input[str],
     dynamodb_table_arn: Input[str],
-    emr_application_id: Input[str],
-    emr_job_role_arn: Input[str],
-    spark_artifacts_bucket: Input[str],
     opts: Optional[ResourceOptions] = None,
 ) -> LabelValidationVizCache:
     """Factory function to create LabelValidationVizCache component.
 
     Args:
         name: Resource name prefix.
-        langsmith_export_bucket: S3 bucket for LangSmith Parquet exports.
+        langsmith_export_bucket: S3 bucket containing native receipt traces.
         dynamodb_table_name: DynamoDB table name.
         dynamodb_table_arn: DynamoDB table ARN.
-        emr_application_id: EMR Serverless application ID.
-        emr_job_role_arn: EMR job execution role ARN.
-        spark_artifacts_bucket: S3 bucket with Spark job scripts.
         opts: Pulumi resource options.
 
     Returns:
@@ -546,8 +426,5 @@ def create_label_validation_viz_cache(
         langsmith_export_bucket=langsmith_export_bucket,
         dynamodb_table_name=dynamodb_table_name,
         dynamodb_table_arn=dynamodb_table_arn,
-        emr_application_id=emr_application_id,
-        emr_job_role_arn=emr_job_role_arn,
-        spark_artifacts_bucket=spark_artifacts_bucket,
         opts=opts,
     )

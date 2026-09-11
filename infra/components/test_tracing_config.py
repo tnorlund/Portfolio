@@ -66,15 +66,10 @@ def test_bad_sampling_rate_is_rejected() -> None:
 
 
 def test_label_workflow_reads_native_s3_without_export_waits() -> None:
-    flow = definition.build_state_machine_definition(
-        "query", "emr", "role", "artifacts", "traces", "cache"
-    )
-    assert set(flow["States"]) == {"QueryDynamoDB", "StartEMRJob"}
-    job = flow["States"]["StartEMRJob"]["Parameters"]["JobDriver"][
-        "SparkSubmit"
-    ]
-    assert "'--trace-format', 'native'" in job["EntryPointArguments.$"]
-    assert "native-traces/" in job["EntryPointArguments.$"]
+    flow = definition.build_state_machine_definition("cache-lambda")
+    assert set(flow["States"]) == {"BuildReceiptCache"}
+    assert flow["States"]["BuildReceiptCache"]["Resource"] == "cache-lambda"
+    assert flow["States"]["BuildReceiptCache"]["End"] is True
 
 
 def test_label_api_reads_the_published_receipt_index(
@@ -113,52 +108,3 @@ def test_label_api_reads_the_published_receipt_index(
     assert body["total_count"] == 1
     assert body["receipts"][0]["image_id"] == "image"
     assert body["cached_at"] == "now"
-
-
-@pytest.mark.parametrize("error_field", ["status", "capture_status"])
-def test_receipt_lookup_selects_new_native_roots_instead_of_scan_sample(
-    monkeypatch: pytest.MonkeyPatch,
-    error_field: str,
-) -> None:
-    query = load(
-        Path(__file__).parents[1]
-        / "routes/label_validation_viz_cache/handlers/dynamo_query.py"
-    )
-    rows = [
-        {
-            "name": "receipt_processing",
-            "status": "success",
-            "extra": json.dumps(
-                {"metadata": {"image_id": "new-image", "receipt_id": 2}}
-            ),
-        },
-        {
-            "name": "receipt_processing",
-            "status": "success",
-            error_field: "error",
-            "extra": json.dumps(
-                {"metadata": {"image_id": "failed-image", "receipt_id": 3}}
-            ),
-        },
-    ]
-    s3 = SimpleNamespace(
-        get_paginator=lambda name: SimpleNamespace(
-            paginate=lambda **kw: [
-                {
-                    "Contents": [
-                        {"Key": "native-traces/new.ndjson", "LastModified": 2},
-                        {
-                            "Key": "native-traces/failed.ndjson",
-                            "LastModified": 3,
-                        },
-                    ]
-                }
-            ]
-        ),
-        get_object=lambda **kw: {
-            "Body": io.BytesIO(
-                json.dumps(rows[1 if "failed" in kw["Key"] else 0]).encode()
-            )
-        },
-    )
-    assert query.native_receipt_keys(s3, "traces") == [("new-image", 2)]
