@@ -3,15 +3,29 @@ import json
 import os
 from dataclasses import asdict
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
 
 
-def datetime_handler(obj: Any) -> str:
-    """Custom JSON encoder for datetime objects."""
+def datetime_handler(obj: Any) -> Any:
+    """JSON encoder for types DynamoDB hands back that json cannot encode.
+
+    DynamoDB returns every numeric attribute as ``Decimal``. Most entity
+    converters cast those to ``int``/``float``, but not all of them do on
+    every field, so a single un-cast attribute anywhere in an image would
+    otherwise abort the whole export.
+    """
     if isinstance(obj, datetime):
         return obj.isoformat()
+    if isinstance(obj, Decimal):
+        # Exact integers stay integers so ids and counts do not gain a
+        # ".0"; everything else becomes a float, which is what the entity
+        # constructors on the copy side expect.
+        return int(obj) if obj == obj.to_integral_value() else float(obj)
+    if isinstance(obj, (set, frozenset)):
+        return sorted(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 

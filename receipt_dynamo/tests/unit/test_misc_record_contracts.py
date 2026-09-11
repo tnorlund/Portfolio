@@ -1,7 +1,9 @@
 """Focused boundary contracts for miscellaneous Dynamo record entities."""
 
+import json
 from dataclasses import fields as dataclass_fields
 from datetime import datetime
+from decimal import Decimal
 from time import time
 
 import pytest
@@ -9,6 +11,9 @@ import pytest
 from receipt_dynamo.constants import (
     OCRJobType,
     OCRStatus,
+)
+from receipt_dynamo.data.export_image import (
+    datetime_handler as export_datetime_handler,
 )
 from receipt_dynamo.entities.image_details import ImageDetails
 from receipt_dynamo.entities.label_count_cache import LabelCountCache
@@ -435,3 +440,40 @@ def test_image_details_defaults_and_input_containers_are_independent():
 def test_image_details_rejects_non_list_collections():
     with pytest.raises(ValueError, match="images must be a list"):
         ImageDetails(images=())
+
+
+def test_export_encoder_handles_dynamo_decimals():
+    """The export encoder must handle every type DynamoDB hands back.
+
+    DynamoDB returns numerics as Decimal. The encoder previously handled
+    only datetime, so one un-cast Decimal anywhere in an image aborted the
+    entire dev->prod export mid-run (after ~40 of 749 images).
+    """
+    assert export_datetime_handler(Decimal("3")) == 3
+    assert isinstance(export_datetime_handler(Decimal("3")), int)
+    assert export_datetime_handler(Decimal("2.26")) == pytest.approx(2.26)
+    assert isinstance(export_datetime_handler(Decimal("2.26")), float)
+    assert export_datetime_handler(Decimal("-0.5")) == pytest.approx(-0.5)
+    assert export_datetime_handler({3, 1, 2}) == [1, 2, 3]
+    assert export_datetime_handler(datetime(2026, 9, 11, 10, 19)).startswith(
+        "2026-09-11T10:19"
+    )
+
+    with pytest.raises(TypeError):
+        export_datetime_handler(object())
+
+
+def test_export_encoder_serializes_a_decimal_bearing_payload():
+    """json.dumps must survive Decimals nested anywhere in the payload."""
+    payload = {
+        "receipt_summaries": [
+            {"receipt_id": Decimal("1"), "bank_amount": Decimal("12.99")}
+        ],
+        "receipt_rows": [{"line_ids": [Decimal("1"), Decimal("2")]}],
+    }
+    loaded = json.loads(json.dumps(payload, default=export_datetime_handler))
+    assert loaded["receipt_summaries"][0]["receipt_id"] == 1
+    assert loaded["receipt_summaries"][0]["bank_amount"] == pytest.approx(
+        12.99
+    )
+    assert loaded["receipt_rows"][0]["line_ids"] == [1, 2]
