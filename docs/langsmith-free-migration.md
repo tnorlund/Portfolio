@@ -45,8 +45,9 @@ receipts so a new native run does not depend on overlap with a table scan sample
 The Lambda samples the 500 newest native trace objects, includes older objects
 for those trace identities (including deferred SQS work), and builds up to 50
 receipts. A 100 MiB input limit fails without publishing a partial cache.
-Historical Parquet readers remain optional offline tools; no deployed workflow
-installs or invokes them.
+The unused Spark/Parquet analytics package, export handlers, and CI dependency
+installation have been removed. Their former implementation remains in Git
+history; stored S3 archives are retained independently of that source code.
 
 Receipt caches also use unique prefixes. Their `metadata.json` contains the
 complete `receipt_keys` index and is the publication point; failed receipt writes do not publish that index.
