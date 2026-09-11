@@ -62,3 +62,4 @@ config:
   portfolio:ats_verification_inbox_enabled: "true"
   chromadb:enable-line-item-refine: "true"
   portfolio:vector-backend: dynamodb
+  portfolio:QA_OPENROUTER_MODEL: openai/gpt-5.6-luna
