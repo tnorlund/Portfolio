@@ -1,5 +1,6 @@
 """Focused boundary contracts for miscellaneous Dynamo record entities."""
 
+from dataclasses import fields as dataclass_fields
 from datetime import datetime
 from time import time
 
@@ -423,7 +424,12 @@ def test_image_details_defaults_and_input_containers_are_independent():
     assert not other.images
     details.lines.append(object())
     assert not other.lines
-    assert len(list(details)) == 13
+    # __iter__ must yield every declared collection. Asserting against the
+    # field count rather than a literal keeps this honest when a new entity
+    # type is added: a field that is never yielded would silently drop out of
+    # export/copy, which is how rows, sections, line items and summaries went
+    # missing from the dev->prod promotion path.
+    assert len(list(details)) == len(dataclass_fields(ImageDetails))
 
 
 def test_image_details_rejects_non_list_collections():
