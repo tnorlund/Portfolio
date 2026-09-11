@@ -20,6 +20,7 @@ from receipt_dynamo.data.shared_exceptions import (
     FactOverrideConflictError,
 )
 from receipt_dynamo.entities.receipt_fact_override import (
+    FACT_OVERRIDE_TYPE,
     ReceiptFactOverride,
     check_fact_revision,
     item_to_receipt_fact_override,
@@ -176,3 +177,48 @@ class _ReceiptFactOverride(FlattenedStandardMixin):
         except ClientError as error:
             _raise_fact_conflict(error, "delete_receipt_fact_override")
             raise
+
+    @handle_dynamodb_errors("list_receipt_fact_overrides")
+    def list_receipt_fact_overrides(
+        self,
+        limit: int | None = None,
+        last_evaluated_key: dict | None = None,
+    ) -> tuple[list[ReceiptFactOverride], dict | None]:
+        """
+        Returns all ReceiptFactOverrides from the table, with pagination.
+
+        Owner-stated facts outrank every extracted value, so the dev->prod
+        mirror needs a bulk read to detect a change confined to them.
+
+        Parameters
+        ----------
+        limit : int, optional
+            Maximum number of items to return.
+        last_evaluated_key : dict, optional
+            Key to continue pagination from.
+
+        Returns
+        -------
+        tuple[list[ReceiptFactOverride], dict | None]
+            The overrides and the last evaluated key for pagination.
+
+        Raises
+        ------
+        EntityValidationError
+            If parameters are invalid.
+        """
+        if limit is not None and not isinstance(limit, int):
+            raise EntityValidationError("limit must be an integer or None.")
+        if last_evaluated_key is not None and not isinstance(
+            last_evaluated_key, dict
+        ):
+            raise EntityValidationError(
+                "last_evaluated_key must be a dictionary or None."
+            )
+
+        return self._query_by_type(
+            entity_type=FACT_OVERRIDE_TYPE,
+            converter_func=item_to_receipt_fact_override,
+            limit=limit,
+            last_evaluated_key=last_evaluated_key,
+        )

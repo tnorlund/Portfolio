@@ -153,6 +153,9 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     summaries = defaultdict(
         list
     )  # image_id -> [(receipt, ledger, bank_amount, bank_date)]
+    fact_overrides = defaultdict(
+        list
+    )  # image_id -> [(receipt, revision, owner-stated values...)]
     images = set()  # image_ids with an Image row (may be childless)
 
     def _scan(list_fn, sink):
@@ -268,11 +271,27 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             for s in b
         ],
     )
-    # NOTE: ReceiptFactOverride is copied but NOT fingerprinted — there is no
-    # bulk list accessor for it. An image whose ONLY change is an edited fact
-    # override will not be detected as changed; it still rides along on any
-    # REPLACE triggered by another field, and on the initial ADD.
-    #
+    # Owner-stated facts outrank every extracted value, so an edit confined to
+    # one must move prod. `revision` is included: it is the field the
+    # optimistic-concurrency check keys on, so it changes on every edit even
+    # when a value is restored to a previous setting.
+    _scan(
+        client.list_receipt_fact_overrides,
+        lambda b: [
+            fact_overrides[o.image_id].append(
+                (
+                    o.receipt_id,
+                    str(o.revision),
+                    str(o.date or ""),
+                    str(o.date_reference or ""),
+                    str(o.merchant_name or ""),
+                    str(o.merchant_name_reference or ""),
+                    str(o.source or ""),
+                )
+            )
+            for o in b
+        ],
+    )
     # NOTE: embedding items are copied but deliberately NOT fingerprinted.
     # They are derived from words, which are fingerprinted above, so a text
     # change already forces the REPLACE that recopies the vectors; hashing
@@ -301,6 +320,7 @@ def _fingerprint_env(client: DynamoClient) -> dict:
         | set(sections)
         | set(line_items)
         | set(summaries)
+        | set(fact_overrides)
         | images
     )
     out = {}
@@ -323,6 +343,7 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             "sections": sorted(sections[iid]),
             "line_items": sorted(line_items[iid]),
             "summaries": sorted(summaries[iid]),
+            "fact_overrides": sorted(fact_overrides[iid]),
         }
         fp = hashlib.sha256(
             json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
@@ -639,8 +660,8 @@ def main():
     prod_config = get_table_and_bucket_names("prod")
     apply_plan(p, dev_client, prod_client, dev_config, prod_config)
     logger.info(
-        "\n✅ Reconcile applied. Kick prod embedding step functions "
-        "(start_ingestion_prod.sh) and re-run health_gate to confirm drain."
+        "\n✅ Reconcile applied. Vector items were copied with the data; "
+        "re-run health_gate to confirm the update queues drain."
     )
     if guarded:
         logger.error(
