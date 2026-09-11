@@ -34,6 +34,8 @@ def delete_native_embedding_items(
     Queries with ``begins_with(SK, RECEIPT#{n}#)``, keeps keys whose SK
     ends with ``#EMBEDDING``, then BatchWrite-deletes them in 25-item
     chunks. UnprocessedItems are retried with exponential backoff.
+    Each page uses a consistent primary-table read so recently committed stale
+    vectors are not missed. Callers must serialize concurrent receipt rewrites.
     Returns the number of matching keys found. Raises ``RuntimeError``
     if any deletes remain unprocessed after retries.
     """
@@ -46,6 +48,7 @@ def delete_native_embedding_items(
             ":s": {"S": f"RECEIPT#{int(receipt_id):05d}#"},
         },
         "ProjectionExpression": "PK, SK",
+        "ConsistentRead": True,
     }
     keys: list[dict[str, Any]] = []
     while True:

@@ -50,8 +50,9 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
   LayoutLM containers and ZIP Lambdas remain on Python 3.13.
 - Format only the files you touch; do not reformat unrelated packages. CI lints
   `receipt_agent` on changed `.py` files only; every other package is linted whole.
-- The CI matrix runs only for PRs targeting `main`. A PR based on another PR
-  branch gets no matrix, so run the package checks locally before marking it ready.
+- The main CI matrix runs for PRs targeting any branch, including children in
+  a PR stack. Run package checks locally while implementing and require each
+  PR's own CI to pass before marking it ready.
 - Browser tests select an isolated loopback port via `PLAYWRIGHT_PORT` in CI.
   Investigate port conflicts using that run's logs; never kill host-wide listeners.
 
