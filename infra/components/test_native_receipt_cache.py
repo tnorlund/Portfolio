@@ -182,7 +182,14 @@ def test_reader_recovers_old_ancestor_and_ignores_failed_attempt(
         f"native-traces/{TRACE_ID}-root.ndjson": [span("receipt_processing")],
         f"native-traces/{TRACE_ID}-child.ndjson": [
             span("async_label_validation", 5, 8),
-            span("llm_batch_validation", **{error_field: "error"}),
+            span(
+                "llm_batch_validation",
+                **{
+                    error_field: "error",
+                    "start_time": None,
+                    "end_time": "invalid",
+                },
+            ),
         ],
     }
     objects = [
@@ -222,3 +229,87 @@ def test_deployed_modules_import_without_analytics_packages() -> None:
         check=True,
         capture_output=True,
     )
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("name", None),
+        ("trace_id", 3),
+        ("end_time", ""),
+        ("status", None),
+        ("status", "pending"),
+        ("capture_status", "pending"),
+        ("start_time", "invalid"),
+        ("end_time", "invalid"),
+        ("start_time", "2026-09-11T00:00:00"),
+    ],
+)
+def test_malformed_span_preserves_published_index(
+    setup: Any, field: str, value: Any
+) -> None:
+    handler, s3 = setup
+    row = span("receipt_processing")
+    row[field] = value
+    s3.put_object(
+        Bucket="test-traces",
+        Key=f"native-traces/{TRACE_ID}-malformed.ndjson",
+        Body=json.dumps(row),
+    )
+    with pytest.raises(ValueError, match=field):
+        handler.handler({}, None)
+    metadata = json.load(
+        s3.get_object(Bucket="test-cache", Key="metadata.json")["Body"]
+    )
+    assert metadata["version"] == "previous"
+
+
+def test_llm_retry_supersedes_similarity_decision(setup: Any) -> None:
+    handler, s3 = setup
+    spans = [
+        span(
+            "label_validation_similarity",
+            0,
+            2,
+            outputs=json.dumps(
+                {
+                    "validations": [
+                        {"line_id": 11, "word_id": 1, "decision": "VALID"}
+                    ]
+                }
+            ),
+        ),
+        span(
+            "llm_batch_validation",
+            20,
+            22,
+            outputs=json.dumps(
+                {
+                    "validations": [
+                        {"line_id": 11, "word_id": 1, "decision": "CORRECTED"}
+                    ]
+                }
+            ),
+        ),
+    ]
+    s3.put_object(
+        Bucket="test-traces",
+        Key=f"native-traces/{TRACE_ID}-retry.ndjson",
+        Body="\n".join(json.dumps(row) for row in spans),
+    )
+    handler.handler({}, None)
+    metadata = json.load(
+        s3.get_object(Bucket="test-cache", Key="metadata.json")["Body"]
+    )
+    receipt = json.load(
+        s3.get_object(Bucket="test-cache", Key=metadata["receipt_keys"][0])[
+            "Body"
+        ]
+    )
+    assert receipt["words"][0]["decision"] == "INVALID"
+    assert receipt["words"][0]["validation_source"] == "llm"
+    assert receipt["llm"]["decisions"] == {
+        "VALID": 0,
+        "INVALID": 1,
+        "NEEDS_REVIEW": 0,
+    }

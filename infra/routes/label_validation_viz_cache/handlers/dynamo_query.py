@@ -4,12 +4,13 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import boto3
 from receipt_cache import (
     MAX_RECEIPTS,
+    NativeSpan,
     aggregate_stats,
     build_receipt,
     group_spans,
@@ -19,15 +20,17 @@ from receipt_cache import (
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
+
 logger = logging.getLogger(__name__)
 
 
-def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
-    """Publish the new index only after every receipt object has been written."""
-    client = DynamoClient(os.environ["DYNAMODB_TABLE"])
-    cache_bucket = os.environ["CACHE_BUCKET"]
-    s3 = boto3.client("s3")
-    rows = read_traces(s3, os.environ["NATIVE_TRACE_BUCKET"])
+def _build_receipts(
+    client: DynamoClient,
+    rows: list[NativeSpan],
+) -> list[dict[str, Any]]:
+    """Join trace results with the current receipt entities."""
     grouped = group_spans(rows)
     receipts = []
     for root in receipt_roots(rows):
@@ -58,13 +61,25 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         if len(receipts) >= MAX_RECEIPTS:
             break
     if not receipts:
-        raise ValueError("No native receipt validation results are available")
+        raise ValueError("No native receipt validation results available")
 
+    return receipts
+
+
+def _publish_cache(
+    s3: "S3Client",
+    cache_bucket: str,
+    receipts: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Publish the index only after every receipt file has been written."""
     version = str(uuid4())
     prefix = f"cache-runs/{version}/receipts/"
     keys = []
     for receipt in receipts:
-        key = f"{prefix}receipt-{receipt['image_id']}-{receipt['receipt_id']}.json"
+        key = (
+            f"{prefix}receipt-{receipt['image_id']}-"
+            f"{receipt['receipt_id']}.json"
+        )
         s3.put_object(
             Bucket=cache_bucket,
             Key=key,
@@ -91,3 +106,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
         "version": version,
         "trace_source": "native-s3",
     }
+
+
+def handler(_event: object, _context: object) -> dict[str, Any]:
+    """Build and publish a cache from completed native receipt traces."""
+    client = DynamoClient(os.environ["DYNAMODB_TABLE"])
+    s3 = boto3.client("s3")
+    rows = read_traces(s3, os.environ["NATIVE_TRACE_BUCKET"])
+    receipts = _build_receipts(client, rows)
+    return _publish_cache(s3, os.environ["CACHE_BUCKET"], receipts)

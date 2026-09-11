@@ -1,0 +1,72 @@
+name: Native tracing quality
+
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - "receipt_upload/**"
+      - "receipt_dynamo/**"
+      - "scripts/check_native_tracing_quality.py"
+      - ".github/workflows/native-tracing-quality.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - "receipt_upload/**"
+      - "receipt_dynamo/**"
+      - "scripts/check_native_tracing_quality.py"
+      - ".github/workflows/native-tracing-quality.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: native-tracing-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Native tracing (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.13", "3.14"]
+    env:
+      AWS_EC2_METADATA_DISABLED: "true"
+      AWS_DEFAULT_REGION: us-east-1
+      LANGCHAIN_TRACING_V2: "false"
+      LANGSMITH_TRACING: "false"
+      PYTHONPATH: .:receipt_dynamo:receipt_dynamo_stream:receipt_embeddings:receipt_places:receipt_agent:receipt_upload
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install checked-out packages and quality tools
+        run: |
+          python -m pip install --upgrade pip
+          python - <<'PY' > "$RUNNER_TEMP/native-tracing-infra-requirements.txt"
+          import pathlib
+          import tomllib
+          config = tomllib.loads(pathlib.Path("infra/pyproject.toml").read_text())
+          print("\n".join(config["project"]["dependencies"]))
+          PY
+          python -m pip install \
+            -r "$RUNNER_TEMP/native-tracing-infra-requirements.txt" \
+            -r infra/requirements-native-tracing-quality.txt \
+            -e receipt_dynamo -e receipt_dynamo_stream \
+            -e receipt_embeddings -e receipt_places \
+            -e receipt_agent -e "receipt_upload[test]"
+      - name: Black, isort, strict mypy, and pylint
+        run: python scripts/check_native_tracing_quality.py
+      - name: Native tracing and cache regression tests
+        run: |
+          python -m pytest -q \
+            infra/components/test_native_receipt_cache.py \
+            infra/components/test_qa_native_cache.py \
+            infra/components/test_tracing_config.py \
+            infra/components/test_trace_archive_resources.py \
+            receipt_upload/tests/test_native_tracing.py

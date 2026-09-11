@@ -1,0 +1,11 @@
+# Development-only tools; never installed in a deployed Lambda.
+black==26.5.1
+isort==9.0.1
+mypy==2.3.1
+pylint==4.0.8
+boto3-stubs[s3]>=1.43.89,<1.44.0
+
+# Test runners used directly by the native tracing CI job.
+pytest>=9.1.1,<10.0.0
+pytest-asyncio>=0.23.0,<2.0.0
+moto>=5.1.0,<6.0.0

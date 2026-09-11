@@ -1,0 +1,27 @@
+# The live native tracing path is checked independently of legacy infra rules.
+[tool.mypy]
+python_version = "3.13"
+strict = true
+follow_imports = "silent"
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = [
+    "$MYPY_CONFIG_FILE_DIR/..",
+    "$MYPY_CONFIG_FILE_DIR/../receipt_dynamo",
+    "$MYPY_CONFIG_FILE_DIR/../receipt_upload",
+    "$MYPY_CONFIG_FILE_DIR/routes/label_validation_viz_cache/handlers",
+]
+files = [
+    "infra/components/trace_archives.py",
+    "infra/components/tracing_config.py",
+    "infra/routes/label_validation_viz_cache/handlers/receipt_cache.py",
+    "infra/routes/label_validation_viz_cache/handlers/dynamo_query.py",
+    "infra/routes/label_validation_viz_cache/definition.py",
+    "infra/qa_agent_step_functions/handlers/build_viz_cache.py",
+    "receipt_upload/receipt_upload/tracing.py",
+    "receipt_upload/tests/typecheck_tracing.py",
+    "scripts/check_native_tracing_quality.py",
+]
+
+[tool.pylint.format]
+max-line-length = 79

@@ -6,7 +6,9 @@ from typing import Any
 def build_state_machine_definition(cache_lambda_arn: str) -> dict[str, Any]:
     """A single retryable Lambda builds and publishes the receipt cache."""
     return {
-        "Comment": "Build label validation cache from native S3 receipt traces",
+        "Comment": (
+            "Build label validation cache from native S3 receipt traces"
+        ),
         "StartAt": "BuildReceiptCache",
         "States": {
             "BuildReceiptCache": {

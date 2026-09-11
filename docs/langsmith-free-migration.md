@@ -76,6 +76,26 @@ API key no longer enables tracing by itself. Native receipt records are governed
 by `RECEIPT_TRACE_BUCKET`, which infrastructure supplies with narrowly scoped S3
 write permission, and are independent of hosted sampling.
 
+## Native tracing quality checks
+
+Run `python scripts/check_native_tracing_quality.py` from an environment with
+`infra/requirements-native-tracing-quality.txt` and the local receipt packages
+installed. The command checks the native writer, both cache builders, hosted
+tracing configuration, and retained archive declarations with Black, isort,
+strict mypy, and pylint. Its dedicated configuration has no pylint suppressions
+and does not inherit the broad exceptions in the general infrastructure config.
+Dynamic model payloads remain dictionaries at JSON boundaries; span fields,
+receipt entities, S3 calls and decorated function signatures are typed.
+A completed span with missing or invalid required fields rejects the refresh
+and preserves the previous cache, rather than silently omitting unknown spans.
+Completed spans require a success status and timezone-aware timestamps. The
+native writer supplies these fields; malformed foreign records need repair
+before that sample can be published. Explicitly failed spans remain excluded.
+
+The `Native tracing quality` workflow runs these checks and focused regression
+tests on Python 3.13 and 3.14 for pull requests against any base branch, including
+stacked PRs. It installs neither the retired analytics package nor Spark/Arrow.
+
 ## Rollout and cancellation checklist
 
 1. **Before retiring the existing export resources**, choose the history,
