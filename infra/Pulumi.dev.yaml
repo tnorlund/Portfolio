@@ -63,3 +63,4 @@ config:
   chromadb:enable-line-item-refine: "true"
   portfolio:vector-backend: dynamodb
   portfolio:QA_OPENROUTER_MODEL: openai/gpt-5.6-luna
+  portfolio:RECEIPT_OPENROUTER_MODEL: openai/gpt-5.6-luna
