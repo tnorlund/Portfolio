@@ -1569,12 +1569,15 @@ Choosing the right tool:
 - merge_receipts: combine TWO fragments that are halves of the SAME receipt.
 - delete_image: remove the whole image and every receipt on it.
 
-How it works: deletes the Receipt entity from DynamoDB. Child records
-(ReceiptLine, ReceiptWord, ReceiptLetter, ReceiptWordLabel, ReceiptPlace) and
-embedding items are not cascaded by this tool.
+How it works: sweeps the whole RECEIPT#{receipt_id} sort-key prefix, so the
+Receipt and every child row go together — ReceiptLine, ReceiptWord,
+ReceiptLetter, ReceiptWordLabel, ReceiptPlace, ReceiptRow, ReceiptSection,
+ReceiptLineItem, ReceiptSummary and the embedding items. The child rows are
+deleted individually on purpose so stream consumers get the removal events.
 
-Returns the receipt's merchant and a breakdown of child-record counts. By
-default runs in dry-run mode — set dry_run=false to actually delete.
+Returns the receipt's merchant, a per-type breakdown counted off the key
+prefix, and total_rows. By default runs in dry-run mode — set dry_run=false
+to actually delete.
 
 WARNING: This is IRREVERSIBLE. Verify the receipt is truly unwanted first
 using get_receipt or get_receipt_image_url.""",
@@ -5260,10 +5263,12 @@ async def delete_image_impl(
 async def delete_receipt_impl(
     dynamo_client, image_id: str, receipt_id: int, dry_run: bool = True
 ) -> dict:
-    """Delete a single receipt, keeping the rest of the image.
+    """Delete a single receipt and its children, keeping the rest of the image.
 
-    Only the Receipt entity is deleted here; child records (lines, words,
-    letters, labels, place) and embedding items are not cascaded.
+    Sweeps the whole ``RECEIPT#{receipt_id}`` sort-key prefix, so lines,
+    words, letters, labels, place, rows, sections, line items, summary and
+    embedding items all go with the receipt. Deleting the concrete child
+    rows is deliberate: stream consumers need the per-row removal events.
     """
     try:
         from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
@@ -5282,16 +5287,13 @@ async def delete_receipt_impl(
             getattr(place, "merchant_name", None) if place else None
         )
 
-        # Note: ReceiptLetters are excluded from the GSI4 query that backs
-        # get_receipt_details, so they are not counted here. The compactor
-        # still deletes them via DynamoDB streams.
-        breakdown = {
-            "RECEIPT": 1,
-            "RECEIPT_LINES": len(details.lines or []),
-            "RECEIPT_WORDS": len(details.words or []),
-            "RECEIPT_WORD_LABELS": len(details.labels or []),
-            "RECEIPT_PLACES": 1 if place else 0,
-        }
+        # Count straight off the key prefix rather than from
+        # get_receipt_details, whose GSI4 query omits ReceiptLetters and every
+        # derived type. Undercounting here is what made an earlier version of
+        # this tool report 63 of 314 rows.
+        breakdown = dynamo_client.get_receipt_item_type_counts(
+            image_id, receipt_id
+        )
 
         if dry_run:
             return {
@@ -5300,24 +5302,16 @@ async def delete_receipt_impl(
                 "merchant_name": merchant_name,
                 "dry_run": True,
                 "breakdown": breakdown,
+                "total_rows": sum(breakdown.values()),
                 "message": (
-                    "Deletes the Receipt entity only; child records and "
-                    "embedding items are not cascaded. Re-run with "
-                    "dry_run=false to delete."
+                    "Deletes the receipt and every row beneath its key "
+                    "prefix. Re-run with dry_run=false to delete."
                 ),
             }
 
-        from receipt_agent.lifecycle.receipt_manager import (
-            delete_receipt as delete_receipt_fn,
+        deleted = dynamo_client.delete_receipt_items(
+            image_id, receipt_id, include_parent=True
         )
-
-        deletion = delete_receipt_fn(dynamo_client, image_id, receipt_id)
-        if not deletion.success:
-            return {
-                "error": deletion.error or "Failed to delete receipt",
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-            }
 
         return {
             "image_id": image_id,
@@ -5326,10 +5320,10 @@ async def delete_receipt_impl(
             "dry_run": False,
             "deleted": True,
             "breakdown": breakdown,
+            "total_rows": deleted,
             "message": (
-                "Receipt entity deleted. Child records (lines, words, "
-                "letters, labels, place) and embedding items were not "
-                "cascaded."
+                f"Deleted {deleted} rows: the receipt and every child row "
+                "beneath its key prefix."
             ),
         }
 
