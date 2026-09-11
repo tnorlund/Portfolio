@@ -1,6 +1,6 @@
 """Native receipt spans in S3, with optional hosted LangSmith debugging.
 
-Each completed root writes one NDJSON object containing all its completed spans.
+Each completed root writes its completed spans to one NDJSON object.
 The context propagates through LangSmith's ContextThreadPoolExecutor in Lambda.
 No API key or LangSmith service is needed for the native record.
 """
@@ -13,18 +13,24 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Lock
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, ParamSpec, TypeVar
 from uuid import uuid4
 
 import boto3
 from langsmith import traceable as hosted_traceable
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 @dataclass
 class _Trace:
     trace_id: str = field(default_factory=lambda: str(uuid4()))
     rows: list[dict[str, Any]] = field(default_factory=list)
-    lock: Any = field(default_factory=Lock)
+    lock: Lock = field(default_factory=Lock)
 
 
 _trace: ContextVar[_Trace | None] = ContextVar("receipt_trace", default=None)
@@ -43,10 +49,11 @@ def hosted_enabled() -> bool:
 
 
 def capture_enabled() -> bool:
+    """Return whether native or hosted capture is configured."""
     return bool(os.environ.get("RECEIPT_TRACE_BUCKET")) or hosted_enabled()
 
 
-def _json(value: Any) -> str:
+def _json(value: object) -> str:
     return json.dumps(
         value,
         default=lambda obj: (
@@ -64,16 +71,42 @@ def current_trace_context() -> dict[str, str] | None:
     return {"trace_id": current.trace_id, "parent_run_id": parent}
 
 
-def traceable(**options: Any) -> Callable:
-    """Capture synchronous receipt pipeline spans with export-compatible fields."""
+def _publish_trace(
+    trace: _Trace,
+    bucket: str,
+    started: datetime,
+    run_id: str,
+    status: str,
+) -> None:
+    """Publish one complete bundle, isolated from other Lambda publishers."""
+    body = "\n".join(
+        _json({**span, "capture_status": status}) for span in trace.rows
+    )
+    key = (
+        f"native-traces/date={started.date()}/"
+        f"{trace.trace_id}-{run_id}.ndjson"
+    )
+    client: S3Client = boto3.client("s3")
+    client.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body=body.encode(),
+        ContentType="application/x-ndjson",
+    )
+
+
+def traceable(
+    **options: Any,
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """Capture synchronous spans while preserving the wrapped signature."""
 
     native_parent = options.pop("native_parent", None)
 
-    def decorate(fn: Callable) -> Callable:
+    def decorate(fn: Callable[P, R]) -> Callable[P, R]:
         signature = inspect.signature(fn)
 
         @functools.wraps(fn)
-        def wrapped(*args: Any, **kwargs: Any) -> Any:
+        def wrapped(*args: P.args, **kwargs: P.kwargs) -> R:
             call = hosted_traceable(**options)(fn) if hosted_enabled() else fn
             bucket = os.environ.get("RECEIPT_TRACE_BUCKET")
             if not bucket:
@@ -87,8 +120,13 @@ def traceable(**options: Any) -> Callable:
             current = current or _Trace()
             run_id = str(uuid4())
             started = datetime.now(timezone.utc)
-            bound = signature.bind(*args, **kwargs)
-            inputs = {k: v for k, v in bound.arguments.items() if k != "self"}
+            inputs = {
+                key: value
+                for key, value in signature.bind(
+                    *args, **kwargs
+                ).arguments.items()
+                if key != "self"
+            }
             row = {
                 "schema_version": 1,
                 "id": run_id,
@@ -126,16 +164,8 @@ def traceable(**options: Any) -> Callable:
                 _parent.reset(parent_token)
                 _trace.reset(trace_token)
                 if is_root:
-                    # Atomic object publication avoids analytics reading half a trace.
-                    body = "\n".join(
-                        _json({**span, "capture_status": row["status"]})
-                        for span in current.rows
-                    )
-                    boto3.client("s3").put_object(
-                        Bucket=bucket,
-                        Key=f"native-traces/date={started.date()}/{current.trace_id}-{run_id}.ndjson",
-                        Body=body.encode(),
-                        ContentType="application/x-ndjson",
+                    _publish_trace(
+                        current, bucket, started, run_id, row["status"]
                     )
 
         return wrapped

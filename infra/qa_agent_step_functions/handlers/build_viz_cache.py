@@ -7,13 +7,19 @@ files. Failed writes leave the previous cache visible to the API.
 import json
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import boto3
 
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
 
-def _evidence(result: dict, lookup: dict) -> list[dict]:
+
+def _evidence(
+    result: dict[str, Any],
+    lookup: dict[str, Any],
+) -> list[dict[str, Any]]:
     receipts = []
     for entry in result.get("evidence", []):
         image_id = entry.get("imageId") or entry.get("image_id")
@@ -23,23 +29,25 @@ def _evidence(result: dict, lookup: dict) -> list[dict]:
             raise ValueError(
                 f"Missing receipt metadata: {image_id}/{receipt_id}"
             )
-        if receipt:
-            receipts.append(
-                {
-                    "imageId": image_id,
-                    "merchant": entry.get("merchant", ""),
-                    "item": entry.get("item", ""),
-                    "amount": entry.get("amount", 0),
-                    "thumbnailKey": receipt.get("cdn_webp_s3_key")
-                    or receipt.get("cdn_s3_key", ""),
-                    "width": receipt.get("width", 0),
-                    "height": receipt.get("height", 0),
-                }
-            )
+        receipts.append(
+            {
+                "imageId": image_id,
+                "merchant": entry.get("merchant", ""),
+                "item": entry.get("item", ""),
+                "amount": entry.get("amount", 0),
+                "thumbnailKey": receipt.get("cdn_webp_s3_key")
+                or receipt.get("cdn_s3_key", ""),
+                "width": receipt.get("width", 0),
+                "height": receipt.get("height", 0),
+            }
+        )
     return receipts
 
 
-def build_question(result: dict, lookup: dict) -> dict:
+def build_question(
+    result: dict[str, Any],
+    lookup: dict[str, Any],
+) -> dict[str, Any]:
     """Keep actual node/tool timing; never invent unexecuted phases."""
     events = result.get("trace", [])
     started = result.get("startedAt") or min(
@@ -101,9 +109,9 @@ def build_question(result: dict, lookup: dict) -> dict:
 
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
-    """Read one complete batch, write all questions, then publish its pointer."""
+    """Publish a complete QA batch through one metadata pointer."""
     bucket = os.environ["BATCH_BUCKET"]
-    client = boto3.client("s3")
+    client: S3Client = boto3.client("s3")
     execution_id = event["execution_id"]
     run_prefix = f"qa-runs/{execution_id}/"
     results_key = event["results_ndjson_key"]

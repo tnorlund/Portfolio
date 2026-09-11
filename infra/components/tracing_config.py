@@ -1,12 +1,29 @@
 """Optional hosted tracing configuration shared by deployed agents."""
 
-from typing import Any
+from typing import Protocol
+
+from pulumi import Input, Output
 
 
-def hosted_tracing_environment(config: Any) -> dict[str, Any]:
+class TracingConfig(Protocol):
+    """Configuration methods needed to enable optional hosted tracing."""
+
+    def get_bool(self, key: str) -> bool | None:
+        """Read an optional boolean setting."""
+
+    def get(self, key: str) -> str | None:
+        """Read an optional text setting."""
+
+    def require_secret(self, key: str) -> Output[str]:
+        """Read a required secret without revealing its value."""
+
+
+def hosted_tracing_environment(
+    config: TracingConfig,
+) -> dict[str, Input[str]]:
     """Disable uploads by default; require a key only for explicit opt-in."""
     enabled = config.get_bool("LANGSMITH_TRACING_ENABLED") is True
-    environment = {
+    environment: dict[str, Input[str]] = {
         "LANGCHAIN_TRACING_V2": str(enabled).lower(),
         "LANGSMITH_TRACING": str(enabled).lower(),
     }

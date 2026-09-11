@@ -4,7 +4,12 @@ import heapq
 import json
 from collections import defaultdict
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypedDict
+
+from receipt_dynamo.entities import Receipt, ReceiptWord, ReceiptWordLabel
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
 
 MAX_TRACE_OBJECTS = 500
 MAX_TRACE_BYTES = 100 * 1024 * 1024
@@ -19,7 +24,57 @@ SOURCES = {
 }
 
 
-def json_object(value: Any) -> dict[str, Any]:
+class NativeSpan(TypedDict):
+    """Fields consumed from a completed native span."""
+
+    name: str
+    trace_id: str
+    start_time: str
+    end_time: str
+    outputs: object
+    extra: object
+
+
+class ReceiptRoot(NativeSpan):
+    """A root span associated with an existing receipt."""
+
+    image_id: str
+    receipt_id: int
+
+
+def _text(row: dict[str, Any], field: str) -> str:
+    value = row.get(field)
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"Native span requires a nonempty {field}")
+    return value
+
+
+def _parse_span(line: bytes) -> NativeSpan | None:
+    row: object = json.loads(line)
+    if not isinstance(row, dict) or row.get("schema_version") != 1:
+        raise ValueError("Unsupported native receipt trace schema")
+    if row.get("status") == "error" or row.get("capture_status") == "error":
+        return None
+    if row.get("status") != "success":
+        raise ValueError("Native span requires a success status")
+    if row.get("capture_status", "success") != "success":
+        raise ValueError("Native span has invalid capture_status")
+    for field in ("start_time", "end_time"):
+        try:
+            timestamp(_text(row, field))
+        except ValueError as error:
+            raise ValueError(f"Native span has invalid {field}") from error
+    return NativeSpan(
+        name=_text(row, "name"),
+        trace_id=_text(row, "trace_id"),
+        start_time=_text(row, "start_time"),
+        end_time=_text(row, "end_time"),
+        outputs=row.get("outputs"),
+        extra=row.get("extra"),
+    )
+
+
+def json_object(value: object) -> dict[str, Any]:
     """Decode the native span's JSON payload columns."""
     if isinstance(value, str):
         value = json.loads(value)
@@ -28,10 +83,13 @@ def json_object(value: Any) -> dict[str, Any]:
 
 def timestamp(value: str) -> float:
     """Compare UTC timestamps numerically, including fractional seconds."""
-    return datetime.fromisoformat(value).timestamp()
+    parsed = datetime.fromisoformat(value)
+    if parsed.utcoffset() is None:
+        raise ValueError("Native span timestamps must include a timezone")
+    return parsed.timestamp()
 
 
-def read_traces(s3: Any, bucket: str) -> list[dict[str, Any]]:
+def read_traces(s3: "S3Client", bucket: str) -> list[NativeSpan]:
     """Read recent trace bundles plus older ancestors of deferred work.
 
     Only native NDJSON is read. Large inputs fail before cache publication;
@@ -50,50 +108,44 @@ def read_traces(s3: Any, bucket: str) -> list[dict[str, Any]]:
         objects,
         key=lambda obj: (obj["LastModified"], obj["Key"]),
     )
-    rows: list[dict[str, Any]] = []
+    rows: list[NativeSpan] = []
     size = 0
 
-    def read(obj: dict[str, Any]) -> None:
+    def read(key: str, object_size: int) -> None:
         nonlocal size
-        size += obj["Size"]
+        size += object_size
         if size > MAX_TRACE_BYTES:
             raise ValueError("Native receipt trace sample exceeds byte limit")
-        body = s3.get_object(Bucket=bucket, Key=obj["Key"])["Body"]
+        body = s3.get_object(Bucket=bucket, Key=key)["Body"]
         try:
             for line in body.iter_lines():
                 if not line.strip():
                     continue
-                row = json.loads(line)
-                if row.get("schema_version") != 1:
-                    raise ValueError("Unsupported native receipt trace schema")
-                if (
-                    row.get("status") == "error"
-                    or row.get("capture_status") == "error"
-                ):
-                    continue
-                rows.append(row)
+                row = _parse_span(line)
+                if row is not None:
+                    rows.append(row)
         finally:
             body.close()
 
     for obj in recent:
-        read(obj)
+        read(obj["Key"], obj["Size"])
     trace_ids = {row["trace_id"] for row in rows}
     loaded = {obj["Key"] for obj in recent}
     for obj in objects:
         trace_id = obj["Key"].rsplit("/", 1)[-1][:36]
         if obj["Key"] not in loaded and trace_id in trace_ids:
-            read(obj)
+            read(obj["Key"], obj["Size"])
     return rows
 
 
-def receipt_roots(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def receipt_roots(rows: list[NativeSpan]) -> list[ReceiptRoot]:
     """Select one latest successful root per receipt."""
     roots = sorted(
         (r for r in rows if r.get("name") == "receipt_processing"),
         key=lambda r: timestamp(r["start_time"]),
         reverse=True,
     )
-    selected: dict[tuple[str, int], dict[str, Any]] = {}
+    selected: dict[tuple[str, int], ReceiptRoot] = {}
     for root in roots:
         metadata = json_object(root.get("extra")).get("metadata", {})
         if not metadata.get("image_id") or metadata.get("receipt_id") is None:
@@ -105,26 +157,21 @@ def receipt_roots(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return list(selected.values())
 
 
-def build_receipt(
-    root: dict[str, Any],
-    spans: list[dict[str, Any]],
-    receipt: Any,
-    words: list[Any],
-    labels: list[Any],
-) -> dict[str, Any] | None:
-    """Combine real validation decisions with current word geometry/labels."""
+def _validation_results(
+    spans: list[NativeSpan],
+) -> tuple[dict[tuple[int, int], dict[str, Any]], dict[str, float]]:
+    """Apply LLM decisions after similarity decisions, newest attempt last."""
     decisions: dict[tuple[int, int], dict[str, Any]] = {}
     durations = {"chroma": 0.0, "llm": 0.0}
-    # LLM decisions supersede similarity decisions; retries use the latest span.
     ordered = sorted(
         spans,
         key=lambda r: (
-            SOURCES.get(r.get("name"), ""),
+            SOURCES.get(r["name"], ""),
             timestamp(r["start_time"]),
         ),
     )
     for span in ordered:
-        source = SOURCES.get(span.get("name"))
+        source = SOURCES.get(span["name"])
         if not source:
             continue
         durations[source] += max(
@@ -144,6 +191,15 @@ def build_receipt(
                 "validation_source": source,
                 "decision": decision,
             }
+    return decisions, durations
+
+
+def _labeled_words(
+    words: list[ReceiptWord],
+    labels: list[ReceiptWordLabel],
+    decisions: dict[tuple[int, int], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Attach current labels to receipt geometry and traced decisions."""
     label_map = {(l.line_id, l.word_id): l for l in labels}
     viz_words = []
     for word in words:
@@ -164,8 +220,14 @@ def build_receipt(
                 ),
             }
         )
-    if not viz_words or not receipt.cdn_s3_key:
-        return None
+    return viz_words
+
+
+def _validation_tiers(
+    viz_words: list[dict[str, Any]],
+    durations: dict[str, float],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Summarize decisions and execution time using the existing API names."""
     tiers = {}
     timings = {}
     for source in ("chroma", "llm"):
@@ -192,6 +254,22 @@ def build_receipt(
                 "duration_ms": durations[source] * 1000,
                 "duration_seconds": durations[source],
             }
+    return tiers, timings
+
+
+def build_receipt(
+    root: ReceiptRoot,
+    spans: list[NativeSpan],
+    receipt: Receipt,
+    words: list[ReceiptWord],
+    labels: list[ReceiptWordLabel],
+) -> dict[str, Any] | None:
+    """Combine real validation decisions with current word geometry/labels."""
+    decisions, durations = _validation_results(spans)
+    viz_words = _labeled_words(words, labels, decisions)
+    if not viz_words or not receipt.cdn_s3_key:
+        return None
+    tiers, timings = _validation_tiers(viz_words, durations)
     end = max(timestamp(s["end_time"]) for s in spans)
     total = max(0, end - timestamp(root["start_time"]))
     timings["total"] = {"duration_ms": total * 1000, "duration_seconds": total}
@@ -219,7 +297,7 @@ def build_receipt(
     }
 
 
-def group_spans(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+def group_spans(rows: list[NativeSpan]) -> dict[str, list[NativeSpan]]:
     """Join synchronous and SQS-delivered spans by trace identity."""
     grouped = defaultdict(list)
     for row in rows:

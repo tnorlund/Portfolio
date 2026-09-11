@@ -16,7 +16,7 @@ stack = pulumi.get_stack()
 
 
 class TraceArchive(ComponentResource):
-    """Retain the existing private trace bucket without paid export machinery."""
+    """Retain the private trace bucket without paid export machinery."""
 
     def __init__(
         self,
@@ -64,12 +64,12 @@ class TraceArchive(ComponentResource):
         )
 
         # Keep the bucket and its original URN as a history archive and native
-        # trace store. Paid export Lambdas and cross-account credentials retire.
+        # trace store, without export Lambdas or cross-account credentials.
         self.register_outputs({"export_bucket": self.export_bucket.id})
 
 
 class AnalyticsArchives(ComponentResource):
-    """Preserve existing bucket identities while retiring EMR and its builder."""
+    """Preserve archive bucket identities after the runtime retirement."""
 
     def __init__(self, name: str) -> None:
         # Keep the old component type so the archive buckets retain their URNs.
