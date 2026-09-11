@@ -24,13 +24,11 @@ updates:
   - package-ecosystem: "pip"
     directories:
       - "/infra"
-      - "/infra/components/langsmith_bulk_export/lambdas"
       - "/infra/upload_images/container_ocr"
       - "/receipt_agent"
       - "/receipt_dynamo"
       - "/receipt_dynamo_stream"
       - "/receipt_embeddings"
-      - "/receipt_langsmith"
       - "/receipt_layoutlm"
       - "/receipt_logo"
       - "/receipt_places"

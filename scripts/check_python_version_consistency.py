@@ -21,7 +21,6 @@ SCAN_ROOTS = (
     "scripts",
     "synthesis_loop",
     "tests",
-    "receipt_langsmith/scripts",
     "receipt_upload/tests",
 )
 SCAN_SUFFIXES = {".py", ".sh", ".yaml", ".yml"}

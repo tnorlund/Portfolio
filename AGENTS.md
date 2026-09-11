@@ -15,7 +15,7 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 - `receipt_places/` Google Places client with DynamoDB cache.
 - `receipt_nutrition/` source-backed product facts and dimensional purchase costing.
 - `receipt_layoutlm/` LayoutLM training, inference, CoreML export (heavy deps).
-- `receipt_langsmith/`, `receipt_logo/` trace analytics and logo MCP tools (heavy deps).
+- `receipt_logo/` logo MCP tools (heavy dependencies).
 - `receipt_ocr_swift/` Swift Mac worker: Apple Vision OCR + CoreML LayoutLM.
 - `portfolio/` Next.js 16 / React 19 frontend. `infra/` Pulumi AWS stack.
 - Package-specific rules live in nested `AGENTS.md` files inside `portfolio/`,
@@ -29,8 +29,7 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
   editable package set as CI's `repository-tests` job: `receipt_dynamo`,
   `receipt_embeddings`, `receipt_dynamo_stream`, `receipt_places`, `receipt_agent`,
   `receipt_upload`, `receipt_nutrition`. Activate with `source .venv/bin/activate`.
-- NOT installed (PySpark, torch, CoreML): `receipt_langsmith`, `receipt_layoutlm`,
-  `receipt_logo`. Run `pip install -e "<package>[test]"` before working on those.
+- NOT installed (torch, CoreML): `receipt_layoutlm`, `receipt_logo`. Run `pip install -e "<package>[test]"` before working on those.
 - Node 22 with `portfolio/node_modules` installed via `npm ci`. Run every npm
   command from `portfolio/`, never from the repo root.
 - Do not assume credentials or AWS access. Unit tests and `receipt_dynamo`'s

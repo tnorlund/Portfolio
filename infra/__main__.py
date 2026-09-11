@@ -260,21 +260,19 @@ create_lambda_route(
 # Consolidation and batch cleaning can be added as standalone Lambdas if needed
 
 # Retain trace history under the existing bucket resource identities.
-from components.langsmith_bulk_export import LangSmithBulkExport
+from components.trace_archives import AnalyticsArchives, TraceArchive
 
-langsmith_bulk_export = LangSmithBulkExport(
+evaluator_trace_archive = TraceArchive(
     f"langsmith-export-{pulumi.get_stack()}",
-    project_name=f"label-evaluator-{pulumi.get_stack()}",
 )
-label_validation_export = LangSmithBulkExport(
+receipt_trace_archive = TraceArchive(
     f"label-validation-export-{pulumi.get_stack()}",
-    project_name=label_validation_project_name,
 )
 pulumi.export(
-    "langsmith_export_bucket", langsmith_bulk_export.export_bucket.id
+    "langsmith_export_bucket", evaluator_trace_archive.export_bucket.id
 )
 pulumi.export(
-    "label_validation_export_bucket", label_validation_export.export_bucket.id
+    "label_validation_export_bucket", receipt_trace_archive.export_bucket.id
 )
 pulumi.export("label_validation_project_name", label_validation_project_name)
 
@@ -285,7 +283,7 @@ upload_images = UploadImages(
     raw_bucket=raw_bucket,
     site_bucket=site_bucket,
     label_validation_project_name=label_validation_project_name,
-    trace_bucket=label_validation_export.export_bucket,
+    trace_bucket=receipt_trace_archive.export_bucket,
     # Post-re-OCR line-item refresh (summary recompute -> stream ->
     # LINE_ITEMS stage)
     summary_queue_url=receipt_update_queues.summary_queue_url,
@@ -726,9 +724,7 @@ pulumi.export(
 # removal.
 
 # Retain historical analytics buckets after retiring the Spark runtime.
-from components.emr_serverless_analytics import retain_analytics_archives
-
-analytics_archives = retain_analytics_archives()
+analytics_archives = AnalyticsArchives(f"emr-analytics-{stack}")
 pulumi.export("emr_analytics_bucket", analytics_archives.analytics_bucket.id)
 pulumi.export("emr_artifacts_bucket", analytics_archives.artifacts_bucket.id)
 pulumi.export(
@@ -867,7 +863,7 @@ if hasattr(api_gateway, "api"):
 
     label_validation_viz_cache = create_label_validation_viz_cache(
         f"label-validation-viz-{stack}",
-        langsmith_export_bucket=label_validation_export.export_bucket.id,
+        langsmith_export_bucket=receipt_trace_archive.export_bucket.id,
         dynamodb_table_name=dynamodb_table.name,
         dynamodb_table_arn=dynamodb_table.arn,
     )
