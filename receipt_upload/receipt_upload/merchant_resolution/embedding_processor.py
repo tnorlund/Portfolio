@@ -36,6 +36,7 @@ from receipt_dynamo import DynamoClient
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptLine, ReceiptWord, ReceiptWordLabel
 from receipt_embeddings import report_incomplete
+
 from receipt_upload.label_validation import (
     LightweightLabelValidator,
 )
@@ -382,6 +383,7 @@ def _run_lines_pipeline_worker(
         ReceiptWordLabel,
     )
     from receipt_embeddings.formatting import build_receipt_rows
+
     from receipt_upload.merchant_resolution.resolver import (
         MerchantResolver,
         merchant_name_matches_receipt,
@@ -656,6 +658,7 @@ def _run_words_pipeline_worker(
     from receipt_dynamo import DynamoClient
     from receipt_dynamo.constants import ValidationStatus
     from receipt_dynamo.entities import ReceiptWord, ReceiptWordLabel
+
     from receipt_upload.vector_search import vector_search_client
 
     def _do_words_work() -> Dict[str, Any]:

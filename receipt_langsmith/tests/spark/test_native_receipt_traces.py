@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from pyspark.sql import SparkSession
+
 from receipt_langsmith.spark import (
     label_validation_viz_cache_helpers as helpers,
 )

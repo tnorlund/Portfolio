@@ -9,6 +9,7 @@ import pytest
 import receipt_dynamo
 import receipt_dynamo.entities
 from langsmith.utils import ContextThreadPoolExecutor
+
 from receipt_upload import line_items, tracing, vector_search
 from receipt_upload.label_validation import llm_runner
 from receipt_upload.label_validation.llm_validator import (

@@ -28,6 +28,7 @@ from receipt_dynamo.amounts import (
     looks_like_receipt_amount,
     parse_receipt_amount,
 )
+
 from receipt_upload.tracing import traceable as native_traceable
 
 from .label_normalization import canonical_label_name, normalize_label_alias

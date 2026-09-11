@@ -13,6 +13,7 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+
 from receipt_langsmith.spark.cli import run_spark_job
 from receipt_langsmith.spark.s3_io import (
     ReceiptsCachePointer,

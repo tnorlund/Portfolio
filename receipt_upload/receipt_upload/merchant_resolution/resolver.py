@@ -39,6 +39,7 @@ from receipt_embeddings.normalize import (
     normalize_address,
     normalize_phone,
 )
+
 from receipt_upload.tracing import traceable as native_traceable
 
 logger = logging.getLogger(__name__)

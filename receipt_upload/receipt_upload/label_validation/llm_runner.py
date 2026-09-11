@@ -27,6 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
+
 from receipt_upload.tracing import current_trace_context, traceable
 
 # NOTE: ``receipt_agent.constants`` (CORE_LABELS) and the LLM validator pull in
@@ -184,6 +185,7 @@ def apply_llm_results(
     from receipt_dynamo.data.shared_exceptions import (
         EntityAlreadyExistsError,
     )
+
     from receipt_upload.label_validation.llm_validator import (
         LLMBatchValidator,
     )
