@@ -235,6 +235,33 @@ jobs:
             -m "not end_to_end and not slow and not performance and not unused_in_production" \
             --cov --cov-report=xml
 
+      - name: Test correction workflow contracts on the selected runtime
+        if: matrix.package == 'receipt_agent'
+        env:
+          AWS_ACCESS_KEY_ID: testing
+          AWS_SECRET_ACCESS_KEY: testing
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_EC2_METADATA_DISABLED: "true"
+          LANGSMITH_TRACING: "false"
+          LANGCHAIN_TRACING_V2: "false"
+        run: |
+          # Both correction Lambdas ship the same local stack as this job.
+          # Separate invocations isolate each suite's pytest configuration
+          # and fixtures while exercising both Python matrix runtimes.
+          source .venv-receipt_agent/bin/activate
+          python -m pytest -q --confcutdir=tests \
+            tests/test_merge_receipt_lambda.py \
+            tests/test_merge_receipt_recovery.py \
+            tests/test_correction_retry_acceptance.py \
+            --timeout=120 --tb=short --maxfail=5
+          python -m pytest -q --import-mode=importlib \
+            --confcutdir=infra/upload_images/container_ocr/handler/tests \
+            infra/upload_images/container_ocr/handler/tests \
+            --timeout=120 --tb=short --maxfail=5
+          python -m pytest -q --confcutdir=infra/tests \
+            infra/tests/test_ocr_results_redrive_mapping.py \
+            --timeout=120 --tb=short --maxfail=5
+
       - name: Test Glyph Studio on the selected runtime
         if: matrix.package == 'receipt_agent'
         run: |
