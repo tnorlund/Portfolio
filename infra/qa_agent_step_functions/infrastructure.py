@@ -1,19 +1,4 @@
-"""
-Pulumi infrastructure for QA Agent Step Function pipeline.
-
-This component creates a Step Function that:
-1. Runs all 32 marquee questions through the 5-node QA graph (single container Lambda)
-2. Queries DynamoDB for receipt rendering data (zip Lambda)
-3. Triggers LangSmith bulk export (reuses existing Lambda)
-4. Polls export status with retry loop (reuses existing Lambda)
-5. Starts EMR Spark job to build per-question viz cache
-
-Architecture:
-- Container Lambda: run_question (runs all 32 questions with asyncio concurrency)
-- Zip Lambda: query_receipt_metadata (DynamoDB lookup)
-- S3 Bucket: intermediate results (NDJSON, receipts-lookup.json)
-- Step Function: orchestration with export polling + EMR
-"""
+"""Run QA questions and build visualization caches directly from S3 records."""
 
 import json
 import os
@@ -32,12 +17,17 @@ from pulumi import (
 
 # Import shared components
 from codebuild_docker_image import CodeBuildDockerImage
-from lambda_layer import dynamo_layer
 
 # Load secrets
+from infra.components.tracing_config import hosted_tracing_environment
+from lambda_layer import dynamo_layer
+
+from .definition import (
+    build_state_machine_definition as _build_state_machine_definition,
+)
+
 config = Config("portfolio")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
-langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
 
 # Model is a stack config so per-stack experiments (e.g. a pricier model on
@@ -51,21 +41,7 @@ HANDLERS_DIR = os.path.join(os.path.dirname(__file__), "handlers")
 
 
 class QAAgentStepFunction(ComponentResource):
-    """Step Function infrastructure for QA Agent marquee pipeline.
-
-    Components:
-    - Container Lambda: run_question (runs all 32 questions, asyncio concurrency=10)
-    - Zip Lambda: query_receipt_metadata (DynamoDB → receipts-lookup.json)
-    - Step Function: orchestration with LangSmith export polling + EMR
-
-    Workflow:
-    1. RunAllQuestions → run 32 questions, write NDJSON, extract receipt keys
-    2. QueryReceiptData → receipts-lookup.json to S3
-    3. TriggerLangSmithExport → start bulk export
-    4. WaitForExport → 60s wait
-    5. CheckExportStatus → poll loop (max 30 retries)
-    6. StartEMRJob → qa_viz_cache_job.py
-    """
+    """Run questions, look up receipt images, and publish the native cache."""
 
     def __init__(
         self,
@@ -73,21 +49,10 @@ class QAAgentStepFunction(ComponentResource):
         *,
         dynamodb_table_name: pulumi.Input[str],
         dynamodb_table_arn: pulumi.Input[str],
-        # EMR Serverless
-        emr_application_id: pulumi.Input[str],
-        emr_job_execution_role_arn: pulumi.Input[str],
-        langsmith_export_bucket: pulumi.Input[str],
-        analytics_output_bucket: pulumi.Input[str],
-        spark_artifacts_bucket: pulumi.Input[str],
-        # LangSmith export lambdas (reuse from existing infrastructure)
-        trigger_export_lambda_arn: pulumi.Input[str],
-        check_export_lambda_arn: pulumi.Input[str],
         opts: Optional[ResourceOptions] = None,
     ):
         super().__init__(f"{__name__}-{name}", name, None, opts)
         stack = pulumi.get_stack()
-        region = aws.get_region().name
-        account_id = aws.get_caller_identity().account_id
 
         # ============================================================
         # S3 Bucket for intermediate results
@@ -197,35 +162,6 @@ class QAAgentStepFunction(ComponentResource):
             opts=ResourceOptions(parent=lambda_role),
         )
 
-        # Grant EMR job execution role access to the QA batch/cache bucket
-        # so the Spark job can read NDJSON/receipts-lookup and write cache files.
-        emr_role_name = Output.from_input(emr_job_execution_role_arn).apply(
-            lambda arn: arn.split("/")[-1]
-        )
-        aws.iam.RolePolicy(
-            f"{name}-emr-s3-policy",
-            role=emr_role_name,
-            policy=self.batch_bucket.arn.apply(
-                lambda arn: json.dumps(
-                    {
-                        "Version": "2012-10-17",
-                        "Statement": [
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "s3:GetObject",
-                                    "s3:PutObject",
-                                    "s3:ListBucket",
-                                ],
-                                "Resource": [arn, f"{arn}/*"],
-                            }
-                        ],
-                    }
-                )
-            ),
-            opts=ResourceOptions(parent=self),
-        )
-
         # Step Function role
         sfn_role = aws.iam.Role(
             f"{name}-sfn-role",
@@ -296,8 +232,7 @@ class QAAgentStepFunction(ComponentResource):
                 "DYNAMODB_TABLE_NAME": dynamodb_table_name,
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_MODEL": qa_openrouter_model,
-                "LANGCHAIN_API_KEY": langchain_api_key,
-                "LANGCHAIN_TRACING_V2": "true",
+                **hosted_tracing_environment(config),
                 "LANGCHAIN_PROJECT": "qa-agent-marquee",
                 "RECEIPT_AGENT_OPENAI_API_KEY": openai_api_key,
                 "BATCH_BUCKET": self.batch_bucket.id,
@@ -366,6 +301,35 @@ class QAAgentStepFunction(ComponentResource):
             opts=ResourceOptions(parent=self),
         )
 
+        self.build_cache_lambda = aws.lambda_.Function(
+            f"{name}-build-viz-cache",
+            runtime="python3.13",
+            architectures=["arm64"],
+            role=lambda_role.arn,
+            code=AssetArchive(
+                {
+                    "index.py": FileAsset(
+                        os.path.join(HANDLERS_DIR, "build_viz_cache.py")
+                    )
+                }
+            ),
+            handler="index.handler",
+            environment=aws.lambda_.FunctionEnvironmentArgs(
+                variables={"BATCH_BUCKET": self.batch_bucket.id}
+            ),
+            memory_size=512,
+            timeout=120,
+            opts=ResourceOptions(parent=self),
+        )
+        aws.cloudwatch.LogGroup(
+            f"{name}-build-viz-cache-logs",
+            name=self.build_cache_lambda.name.apply(
+                lambda n: f"/aws/lambda/{n}"
+            ),
+            retention_in_days=30,
+            opts=ResourceOptions(parent=self),
+        )
+
         # ============================================================
         # Step Function IAM Policy
         # ============================================================
@@ -375,9 +339,7 @@ class QAAgentStepFunction(ComponentResource):
             policy=Output.all(
                 self.run_question_lambda.arn,
                 self.query_metadata_lambda.arn,
-                Output.from_input(trigger_export_lambda_arn),
-                Output.from_input(check_export_lambda_arn),
-                Output.from_input(emr_application_id),
+                self.build_cache_lambda.arn,
             ).apply(
                 lambda args: json.dumps(
                     {
@@ -386,33 +348,7 @@ class QAAgentStepFunction(ComponentResource):
                             {
                                 "Effect": "Allow",
                                 "Action": "lambda:InvokeFunction",
-                                "Resource": list(args[:-1]),
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "emr-serverless:StartJobRun",
-                                    "emr-serverless:GetJobRun",
-                                    "emr-serverless:CancelJobRun",
-                                ],
-                                "Resource": (
-                                    [args[-1], f"{args[-1]}/*"]
-                                    if str(args[-1]).startswith("arn:")
-                                    else [
-                                        f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[-1]}",
-                                        f"arn:aws:emr-serverless:{region}:{account_id}:/applications/{args[-1]}/*",
-                                    ]
-                                ),
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": "iam:PassRole",
-                                "Resource": "*",
-                                "Condition": {
-                                    "StringEquals": {
-                                        "iam:PassedToService": "emr-serverless.amazonaws.com"
-                                    }
-                                },
+                                "Resource": args,
                             },
                             {
                                 "Effect": "Allow",
@@ -427,19 +363,6 @@ class QAAgentStepFunction(ComponentResource):
                                     "logs:DescribeLogGroups",
                                 ],
                                 "Resource": "*",
-                            },
-                            {
-                                "Effect": "Allow",
-                                "Action": [
-                                    "events:PutTargets",
-                                    "events:PutRule",
-                                    "events:DescribeRule",
-                                    "events:DeleteRule",
-                                    "events:RemoveTargets",
-                                ],
-                                "Resource": [
-                                    f"arn:aws:events:{region}:{account_id}:rule/StepFunctions*",
-                                ],
                             },
                         ],
                     }
@@ -464,27 +387,15 @@ class QAAgentStepFunction(ComponentResource):
         step_function_definition = Output.all(
             self.run_question_lambda.arn,
             self.query_metadata_lambda.arn,
-            Output.from_input(trigger_export_lambda_arn),
-            Output.from_input(check_export_lambda_arn),
-            Output.from_input(emr_application_id),
-            Output.from_input(emr_job_execution_role_arn),
-            Output.from_input(spark_artifacts_bucket),
-            Output.from_input(langsmith_export_bucket),
+            self.build_cache_lambda.arn,
             self.batch_bucket.id,
         ).apply(
             lambda args: json.dumps(
                 _build_state_machine_definition(
                     run_all_questions_arn=args[0],
                     query_metadata_arn=args[1],
-                    trigger_export_arn=args[2],
-                    check_export_arn=args[3],
-                    emr_application_id=args[4],
-                    emr_job_role_arn=args[5],
-                    spark_artifacts_bucket=args[6],
-                    langsmith_export_bucket=args[7],
-                    # Cache and batch are the same bucket
-                    cache_bucket=args[8],
-                    batch_bucket=args[8],
+                    build_cache_arn=args[2],
+                    batch_bucket=args[3],
                 )
             )
         )
@@ -518,279 +429,3 @@ class QAAgentStepFunction(ComponentResource):
                 "batch_bucket_name": self.batch_bucket.id,
             }
         )
-
-
-def _build_state_machine_definition(
-    *,
-    run_all_questions_arn: str,
-    query_metadata_arn: str,
-    trigger_export_arn: str,
-    check_export_arn: str,
-    emr_application_id: str,
-    emr_job_role_arn: str,
-    spark_artifacts_bucket: str,
-    langsmith_export_bucket: str,
-    cache_bucket: str,
-    batch_bucket: str,
-) -> dict:
-    """Build the Step Function ASL definition.
-
-    Pipeline:
-    Initialize → RunAllQuestions → QueryReceiptData →
-    TriggerLangSmithExport → WaitForExport ⟷ CheckExportStatus →
-    PrepareEMRArgs → StartEMRJob → Done
-    """
-    return {
-        "Comment": "QA Agent pipeline: run marquee questions, export traces, build viz cache",
-        "StartAt": "Initialize",
-        "States": {
-            "Initialize": {
-                "Type": "Pass",
-                "Parameters": {
-                    "execution_id.$": "$$.Execution.Name",
-                    "batch_bucket": batch_bucket,
-                    "retry_count": 0,
-                },
-                "ResultPath": "$.init",
-                "Next": "RunAllQuestions",
-            },
-            "RunAllQuestions": {
-                "Type": "Task",
-                "Resource": "arn:aws:states:::lambda:invoke",
-                "Parameters": {
-                    "FunctionName": run_all_questions_arn,
-                    "Payload.$": "States.JsonMerge($.init, $$.Execution.Input, false)",
-                },
-                "ResultSelector": {
-                    "receipt_keys.$": "$.Payload.receipt_keys",
-                    "total_questions.$": "$.Payload.total_questions",
-                    "success_count.$": "$.Payload.success_count",
-                    "results_ndjson_key.$": "$.Payload.results_ndjson_key",
-                    "langchain_project.$": "$.Payload.langchain_project",
-                },
-                "ResultPath": "$.questions_result",
-                # The Lambda's own timeout is 900s — the AWS hard maximum —
-                # so this state can never legitimately run longer than that.
-                # Small margin covers invoke/retry overhead; anything past
-                # it means the task is already dead.
-                "TimeoutSeconds": 960,
-                "Retry": [
-                    {
-                        "ErrorEquals": [
-                            "Lambda.ServiceException",
-                            "Lambda.AWSLambdaException",
-                            "Lambda.SdkClientException",
-                        ],
-                        "IntervalSeconds": 30,
-                        "MaxAttempts": 1,
-                        "BackoffRate": 1,
-                    }
-                ],
-                "Next": "QueryReceiptData",
-            },
-            "QueryReceiptData": {
-                "Type": "Task",
-                "Resource": "arn:aws:states:::lambda:invoke",
-                "Parameters": {
-                    "FunctionName": query_metadata_arn,
-                    "Payload": {
-                        "receipt_keys.$": "$.questions_result.receipt_keys",
-                        "execution_id.$": "$.init.execution_id",
-                        "batch_bucket.$": "$.init.batch_bucket",
-                    },
-                },
-                "ResultSelector": {
-                    "receipts_lookup_path.$": "$.Payload.receipts_lookup_path",
-                    "receipts_found.$": "$.Payload.receipts_found",
-                },
-                "ResultPath": "$.metadata",
-                "Next": "WaitForTraceIngestion",
-            },
-            # LangSmith needs time to ingest traces after the Lambda
-            # flushes them.  Without this delay the bulk export may
-            # return 0 rows because the traces aren't queryable yet.
-            # 5 minutes is conservative but reliable for 32-trace batches.
-            "WaitForTraceIngestion": {
-                "Type": "Wait",
-                "Seconds": 300,
-                "Next": "TriggerLangSmithExport",
-            },
-            "TriggerLangSmithExport": {
-                "Type": "Task",
-                "Resource": "arn:aws:states:::lambda:invoke",
-                "Parameters": {
-                    "FunctionName": trigger_export_arn,
-                    "Payload": {
-                        "project_name.$": "$.questions_result.langchain_project",
-                        "start_time.$": "$$.Execution.StartTime",
-                        "export_fields": [
-                            "id",
-                            "name",
-                            "inputs",
-                            "outputs",
-                            "extra",
-                            "parent_run_id",
-                            "trace_id",
-                            "dotted_order",
-                            "is_root",
-                            "start_time",
-                            "end_time",
-                            "run_type",
-                            "status",
-                            "total_tokens",
-                            "prompt_tokens",
-                            "completion_tokens",
-                            "tags",
-                            "session_id",
-                        ],
-                    },
-                },
-                "ResultSelector": {
-                    "export_id.$": "$.Payload.export_id",
-                    "status.$": "$.Payload.status",
-                },
-                "ResultPath": "$.export",
-                "Next": "WaitForExport",
-            },
-            "WaitForExport": {
-                "Type": "Wait",
-                "Seconds": 60,
-                "Next": "CheckExportStatus",
-            },
-            "CheckExportStatus": {
-                "Type": "Task",
-                "Resource": "arn:aws:states:::lambda:invoke",
-                "Parameters": {
-                    "FunctionName": check_export_arn,
-                    "Payload": {
-                        "export_id.$": "$.export.export_id",
-                    },
-                },
-                "ResultSelector": {
-                    "status.$": "$.Payload.status",
-                    "export_id.$": "$.Payload.export_id",
-                },
-                "ResultPath": "$.export_check",
-                "Next": "ExportReady",
-            },
-            "ExportReady": {
-                "Type": "Choice",
-                "Choices": [
-                    {
-                        "Variable": "$.export_check.status",
-                        "StringEquals": "completed",
-                        "Next": "PrepareEMRArgs",
-                    },
-                    {
-                        "Variable": "$.export_check.status",
-                        "StringEquals": "failed",
-                        "Next": "ExportFailed",
-                    },
-                ],
-                "Default": "IncrementRetryCount",
-            },
-            "IncrementRetryCount": {
-                "Type": "Pass",
-                "Parameters": {
-                    "execution_id.$": "$.init.execution_id",
-                    "batch_bucket.$": "$.init.batch_bucket",
-                    "retry_count.$": "States.MathAdd($.init.retry_count, 1)",
-                },
-                "ResultPath": "$.init",
-                "Next": "CheckRetryLimit",
-            },
-            "CheckRetryLimit": {
-                "Type": "Choice",
-                "Choices": [
-                    {
-                        "Variable": "$.init.retry_count",
-                        "NumericGreaterThanEquals": 30,
-                        "Next": "MaxRetriesExceeded",
-                    }
-                ],
-                "Default": "WaitForExport",
-            },
-            # Format dynamic EMR arguments in a Pass state so the
-            # StartEMRJob state can reference them with States.Array.
-            "PrepareEMRArgs": {
-                "Type": "Pass",
-                "Parameters": {
-                    "execution_id.$": "$.init.execution_id",
-                    "receipts_json.$": "$.metadata.receipts_lookup_path",
-                    "results_ndjson.$": (
-                        "States.Format('s3://{}/{}', "
-                        "$.init.batch_bucket, "
-                        "$.questions_result.results_ndjson_key)"
-                    ),
-                    "langchain_project.$": "$.questions_result.langchain_project",
-                    "parquet_input.$": (
-                        f"States.Format('s3://{langsmith_export_bucket}"
-                        "/traces/export_id={}/'"
-                        ", $.export.export_id)"
-                    ),
-                },
-                "ResultPath": "$.emr_args",
-                "Next": "StartEMRJob",
-            },
-            "StartEMRJob": {
-                "Type": "Task",
-                "Resource": "arn:aws:states:::emr-serverless:startJobRun.sync",
-                "Parameters": {
-                    "ApplicationId": emr_application_id,
-                    "ExecutionRoleArn": emr_job_role_arn,
-                    "Name.$": "States.Format('qa-viz-cache-{}', $.init.execution_id)",
-                    "JobDriver": {
-                        "SparkSubmit": {
-                            "EntryPoint": f"s3://{spark_artifacts_bucket}/spark/merged_job.py",
-                            "EntryPointArguments.$": (
-                                "States.Array("
-                                "'--job-type', 'qa-cache', "
-                                "'--parquet-input', $.emr_args.parquet_input, "
-                                f"'--cache-bucket', '{cache_bucket}', "
-                                "'--execution-id', $.emr_args.execution_id, "
-                                "'--receipts-json', $.emr_args.receipts_json, "
-                                "'--results-ndjson', $.emr_args.results_ndjson, "
-                                "'--langchain-project', $.emr_args.langchain_project"
-                                ")"
-                            ),
-                            "SparkSubmitParameters": (
-                                "--conf spark.sql.adaptive.enabled=true "
-                                "--conf spark.sql.shuffle.partitions=32 "
-                                "--conf spark.sql.adaptive.coalescePartitions.initialPartitionNum=32 "
-                                "--conf spark.sql.files.openCostInBytes=134217728 "
-                                "--conf spark.sql.files.maxPartitionBytes=268435456 "
-                                "--conf spark.executor.memory=4g "
-                                "--conf spark.executor.cores=2 "
-                                "--conf spark.dynamicAllocation.enabled=true "
-                                "--conf spark.dynamicAllocation.minExecutors=1 "
-                                "--conf spark.dynamicAllocation.maxExecutors=4 "
-                                "--conf spark.sql.legacy.parquet.nanosAsLong=true"
-                            ),
-                        }
-                    },
-                    "ConfigurationOverrides": {
-                        "MonitoringConfiguration": {
-                            "S3MonitoringConfiguration": {
-                                "LogUri": f"s3://{spark_artifacts_bucket}/logs/"
-                            }
-                        }
-                    },
-                },
-                "ResultPath": "$.emr_result",
-                "Next": "Done",
-            },
-            "Done": {
-                "Type": "Succeed",
-            },
-            "ExportFailed": {
-                "Type": "Fail",
-                "Error": "LangSmithExportFailed",
-                "Cause": "LangSmith bulk export failed",
-            },
-            "MaxRetriesExceeded": {
-                "Type": "Fail",
-                "Error": "MaxRetriesExceeded",
-                "Cause": "LangSmith export polling exceeded 30 retries",
-            },
-        },
-    }

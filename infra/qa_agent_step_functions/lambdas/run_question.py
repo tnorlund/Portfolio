@@ -13,13 +13,21 @@ import os
 import time
 from threading import Lock
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import boto3
+from botocore.exceptions import ClientError
 from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.tracers.langchain import wait_for_all_tracers
+from langsmith.run_helpers import get_current_run_tree
+from receipt_agent.agents.question_answering import (
+    answer_question,
+    create_qa_graph,
+)
+from receipt_agent.clients.factory import create_dynamo_client, create_embed_fn
 
 # LangGraph node names we care about for the trace.
-TRACE_NODE_NAMES = frozenset({"plan", "agent", "tools", "shape", "synthesize"})
+TRACE_NODE_NAMES = frozenset({"plan", "agent", "shape", "synthesize"})
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -115,8 +123,6 @@ class CostTrackingCallback(BaseCallbackHandler):
         # Add cost to LangSmith run via usage_metadata (populates the cost column)
         if cost > 0:
             try:
-                from langsmith.run_helpers import get_current_run_tree
-
                 run_tree = get_current_run_tree()
                 if run_tree:
                     run_tree.set(
@@ -139,6 +145,18 @@ class CostTrackingCallback(BaseCallbackHandler):
                 "completion_tokens": self.completion_tokens,
                 "llm_calls": self.llm_calls,
             }
+
+
+def _snapshot(value: Any) -> Any:
+    """Detach mutable graph state and serialize messages for private S3 storage."""
+    return json.loads(
+        json.dumps(
+            value,
+            default=lambda obj: (
+                obj.model_dump() if hasattr(obj, "model_dump") else str(obj)
+            ),
+        )
+    )
 
 
 class TraceCaptureCallback(BaseCallbackHandler):
@@ -179,12 +197,17 @@ class TraceCaptureCallback(BaseCallbackHandler):
         **kwargs,
     ) -> None:
         node = self._node_name(metadata)
-        if not node:
+        if not node or kwargs.get("name") != node:
             return
         with self._lock:
             self._events.append(
                 {
                     "type": node,
+                    "run_id": str(run_id),
+                    "parent_run_id": (
+                        str(parent_run_id) if parent_run_id else None
+                    ),
+                    "inputs": _snapshot(inputs),
                     "start_ts": time.time(),
                     "end_ts": None,
                     "duration_ms": None,
@@ -211,6 +234,7 @@ class TraceCaptureCallback(BaseCallbackHandler):
                 (event["end_ts"] - event["start_ts"]) * 1000, 1
             )
             event["status"] = "ok"
+            event["outputs"] = _snapshot(outputs)
 
     def on_chain_error(
         self,
@@ -232,9 +256,44 @@ class TraceCaptureCallback(BaseCallbackHandler):
             event["status"] = "error"
             event["error"] = str(error)[:200]
 
+    def on_tool_start(
+        self,
+        serialized: dict,
+        input_str: str,
+        *,
+        run_id: UUID,
+        parent_run_id: UUID | None = None,
+        **kwargs: Any,
+    ) -> None:
+        with self._lock:
+            self._events.append(
+                {
+                    "type": "tools",
+                    "name": serialized.get("name", "Tool"),
+                    "run_id": str(run_id),
+                    "parent_run_id": (
+                        str(parent_run_id) if parent_run_id else None
+                    ),
+                    "inputs": input_str,
+                    "start_ts": time.time(),
+                    "end_ts": None,
+                    "duration_ms": None,
+                    "status": "running",
+                }
+            )
+            self._pending[run_id] = len(self._events) - 1
+
+    def on_tool_end(self, output: Any, *, run_id: UUID, **kwargs: Any) -> None:
+        self.on_chain_end(output, run_id=run_id)
+
+    def on_tool_error(
+        self, error: BaseException, *, run_id: UUID, **kwargs: Any
+    ) -> None:
+        self.on_chain_error(error, run_id=run_id)
+
     def get_trace(self) -> list[dict]:
         with self._lock:
-            return list(self._events)
+            return _snapshot(self._events)
 
 
 async def _run_question(
@@ -256,6 +315,7 @@ async def _run_question(
         cost_callback = CostTrackingCallback()
         trace_callback = TraceCaptureCallback()
         start_time = time.time()
+        trace_id = str(uuid4())
 
         try:
             result = await answer_question_fn(
@@ -268,6 +328,9 @@ async def _run_question(
             stats = cost_callback.get_stats()
 
             return {
+                "schemaVersion": 1,
+                "traceId": trace_id,
+                "startedAt": start_time,
                 "questionIndex": question_index,
                 "question": question_text,
                 "answer": result.get("answer", ""),
@@ -276,25 +339,44 @@ async def _run_question(
                 "evidence": result.get("evidence", []),
                 "cost": stats["total_cost"],
                 "llmCalls": stats["llm_calls"],
-                "toolInvocations": len(state_holder.get("searches", [])),
+                "tokens": {
+                    "input": stats["prompt_tokens"],
+                    "output": stats["completion_tokens"],
+                    "total": stats["total_tokens"],
+                },
+                "toolInvocations": sum(
+                    e["type"] == "tools" for e in trace_callback.get_trace()
+                ),
                 "durationSeconds": round(duration, 1),
-                "success": True,
+                "success": not bool(result.get("error")),
+                "error": result.get("error"),
                 "trace": trace_callback.get_trace(),
             }
         except Exception as e:
             logger.exception(
                 "Error on question %d: %s", question_index, question_text[:60]
             )
+            stats = cost_callback.get_stats()
             return {
+                "schemaVersion": 1,
+                "traceId": trace_id,
+                "startedAt": start_time,
                 "questionIndex": question_index,
                 "question": question_text,
                 "answer": f"Error: {e}",
                 "totalAmount": None,
                 "receiptCount": 0,
                 "evidence": [],
-                "cost": 0,
-                "llmCalls": 0,
-                "toolInvocations": 0,
+                "cost": stats["total_cost"],
+                "llmCalls": stats["llm_calls"],
+                "tokens": {
+                    "input": stats["prompt_tokens"],
+                    "output": stats["completion_tokens"],
+                    "total": stats["total_tokens"],
+                },
+                "toolInvocations": sum(
+                    e["type"] == "tools" for e in trace_callback.get_trace()
+                ),
                 "durationSeconds": round(time.time() - start_time, 1),
                 "success": False,
                 "error": str(e),
@@ -302,20 +384,47 @@ async def _run_question(
             }
 
 
+async def _run_and_store_question(
+    batch_bucket: str,
+    execution_id: str,
+    question_index: int,
+    question_text: str,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Checkpoint each completed question and reuse it on invocation retries."""
+    key = f"qa-runs/{execution_id}/q{question_index:02d}.json"
+    try:
+        saved = json.loads(
+            s3_client.get_object(Bucket=batch_bucket, Key=key)["Body"].read()
+        )
+    except ClientError as error:
+        if error.response["Error"]["Code"] not in {"NoSuchKey", "404"}:
+            raise
+    else:
+        if (
+            saved.get("questionIndex") != question_index
+            or saved.get("question") != question_text
+        ):
+            raise ValueError("Question checkpoint does not match this batch")
+        return saved
+    result = await _run_question(
+        question_index=question_index,
+        question_text=question_text,
+        **kwargs,
+    )
+    s3_client.put_object(
+        Bucket=batch_bucket,
+        Key=key,
+        Body=json.dumps(result, default=str).encode(),
+        ContentType="application/json",
+    )
+    return result
+
+
 async def _run_all(
     execution_id: str, batch_bucket: str, langchain_project: str
 ) -> dict[str, Any]:
     """Run all questions concurrently and write results to S3."""
-    from receipt_agent.agents.question_answering import (
-        answer_question,
-        create_qa_graph,
-    )
-    from receipt_agent.clients.factory import (
-        create_dynamo_client,
-        create_embed_fn,
-    )
-
-    os.environ["LANGCHAIN_TRACING_V2"] = "true"
     os.environ["LANGCHAIN_PROJECT"] = langchain_project
 
     table_name = os.environ.get("DYNAMODB_TABLE_NAME", "")
@@ -325,53 +434,31 @@ async def _run_all(
     semaphore = asyncio.Semaphore(CONCURRENCY)
 
     tasks = [
-        _run_question(
-            semaphore,
-            answer_question,
-            create_qa_graph,
-            dynamo_client,
-            embed_fn,
-            question_text,
+        _run_and_store_question(
+            batch_bucket,
+            execution_id,
             i,
+            question_text,
+            semaphore=semaphore,
+            answer_question_fn=answer_question,
+            create_qa_graph_fn=create_qa_graph,
+            dynamo_client=dynamo_client,
+            embed_fn=embed_fn,
         )
         for i, question_text in enumerate(QUESTIONS)
     ]
-
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    # Process results: handle any exceptions from gather
-    processed: list[dict[str, Any]] = []
+    # An infrastructure failure must stop publication; completed questions
+    # already have durable checkpoints and are reused if the invocation retries.
+    processed = await asyncio.gather(*tasks)
     receipt_keys: set[tuple[str, str]] = set()
-
-    for i, result in enumerate(results):
-        if isinstance(result, Exception):
-            processed.append(
-                {
-                    "questionIndex": i,
-                    "question": QUESTIONS[i],
-                    "answer": f"Error: {result}",
-                    "totalAmount": None,
-                    "receiptCount": 0,
-                    "evidence": [],
-                    "cost": 0,
-                    "llmCalls": 0,
-                    "toolInvocations": 0,
-                    "durationSeconds": 0,
-                    "success": False,
-                    "error": str(result),
-                    # Always include trace so per-Q JSON consumers
-                    # (BuildVizCache Lambda, scripts) can rely on the key
-                    # existing — keep as empty list for exception cases.
-                    "trace": [],
-                }
+    for result in processed:
+        for evidence in result.get("evidence", []):
+            image_id = evidence.get("imageId") or evidence.get("image_id")
+            receipt_id = evidence.get("receiptId") or evidence.get(
+                "receipt_id"
             )
-        else:
-            processed.append(result)
-            for e in result.get("evidence", []):
-                image_id = e.get("imageId") or e.get("image_id")
-                receipt_id = e.get("receiptId") or e.get("receipt_id")
-                if image_id and receipt_id:
-                    receipt_keys.add((image_id, str(receipt_id)))
+            if image_id and receipt_id:
+                receipt_keys.add((image_id, str(receipt_id)))
 
     # Write NDJSON (one JSON line per question result)
     ndjson_key = f"qa-runs/{execution_id}/question-results.ndjson"
@@ -383,19 +470,6 @@ async def _run_all(
         Body=ndjson_lines.encode("utf-8"),
         ContentType="application/x-ndjson",
     )
-
-    # Also write one JSON file per question with full trace + result.
-    # The forthcoming BuildVizCache Lambda will read these to assemble the
-    # viz cache, replacing the LangSmith export + EMR pipeline.
-    for r in processed:
-        q_idx = r.get("questionIndex", 0)
-        q_key = f"qa-runs/{execution_id}/q{q_idx:02d}.json"
-        s3_client.put_object(
-            Bucket=batch_bucket,
-            Key=q_key,
-            Body=json.dumps(r, default=str, indent=2).encode("utf-8"),
-            ContentType="application/json",
-        )
 
     success_count = sum(1 for r in processed if r.get("success"))
     total_cost = sum(r.get("cost", 0) for r in processed)
@@ -409,8 +483,6 @@ async def _run_all(
 
     # Flush LangSmith traces before Lambda terminates
     try:
-        from langchain_core.tracers.langchain import wait_for_all_tracers
-
         logger.info("Flushing LangSmith traces...")
         wait_for_all_tracers()
         logger.info("LangSmith traces flushed")

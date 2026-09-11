@@ -56,8 +56,17 @@ F = TypeVar("F", bound=Callable[..., Any])
 # ==============================================================================
 
 
+def _hosted_tracing_enabled() -> bool:
+    flag = os.environ.get(
+        "LANGSMITH_TRACING", os.environ.get("LANGCHAIN_TRACING_V2", "false")
+    )
+    return flag.lower() == "true"
+
+
 def _get_langsmith_client() -> Any:
-    """Get LangSmith client if available."""
+    """Get LangSmith client only when explicitly enabled."""
+    if not _hosted_tracing_enabled():
+        return None
     try:
         from langsmith import Client
 
@@ -78,7 +87,9 @@ def _get_langsmith_client() -> Any:
 
 
 def _get_traceable_decorator() -> Optional[Callable]:
-    """Get langsmith.traceable decorator if available."""
+    """Get langsmith.traceable decorator only when explicitly enabled."""
+    if not _hosted_tracing_enabled():
+        return None
     try:
         from langsmith import traceable
 

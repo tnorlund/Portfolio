@@ -301,9 +301,21 @@ def main():
     s3 = boto3.client("s3", region_name="us-east-1")
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
+    # Native cache batches advertise their location through metadata.json.
+    # Manual per-question repairs must target the currently published batch.
+    try:
+        published = json.loads(
+            s3.get_object(Bucket=batch_bucket, Key="metadata.json")[
+                "Body"
+            ].read()
+        )
+    except s3.exceptions.NoSuchKey:
+        published = {}
+    questions_prefix = published.get("questions_prefix", "questions/")
+
     # Back up current cache files for the touched questions + metadata.
     for p in payloads:
-        key = f"questions/question-{p['questionIndex']}.json"
+        key = f"{questions_prefix}question-{p['questionIndex']}.json"
         try:
             s3.copy_object(
                 Bucket=batch_bucket,
@@ -322,7 +334,7 @@ def main():
         pass
 
     for p in payloads:
-        key = f"questions/question-{p['questionIndex']}.json"
+        key = f"{questions_prefix}question-{p['questionIndex']}.json"
         s3.put_object(
             Bucket=batch_bucket,
             Key=key,

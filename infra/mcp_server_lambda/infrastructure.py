@@ -34,10 +34,11 @@ except ImportError as e:
     ) from e
 
 # Load secrets
+from infra.components.tracing_config import hosted_tracing_environment
+
 config = Config("portfolio")
 openai_api_key = config.require_secret("OPENAI_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
-langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
 
 
@@ -246,8 +247,7 @@ class McpServerLambda(ComponentResource):
                 # Google Places API
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
                 # LangSmith tracing
-                "LANGCHAIN_API_KEY": langchain_api_key,
-                "LANGCHAIN_TRACING_V2": "true",
+                **hosted_tracing_environment(config),
                 "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
                 "LANGCHAIN_PROJECT": (
                     config.get("langchain_project") or "receipt-mcp"

@@ -29,16 +29,11 @@ from receipt_dynamo.amounts import (
     parse_receipt_amount,
 )
 
+from receipt_upload.tracing import traceable as native_traceable
+
 from .label_normalization import canonical_label_name, normalize_label_alias
 
 logger = logging.getLogger(__name__)
-
-# Enable Langsmith tracing if API key is set
-if os.environ.get("LANGCHAIN_API_KEY") and not os.environ.get(
-    "LANGCHAIN_TRACING_V2"
-):
-    os.environ["LANGCHAIN_TRACING_V2"] = "true"
-
 
 # =============================================================================
 # Structured Output Models (Pydantic)
@@ -272,20 +267,8 @@ def convert_structured_response(
 
 
 def _get_traceable():
-    """Get the traceable decorator if langsmith is available."""
-    try:
-        from langsmith.run_helpers import traceable
-
-        return traceable
-    except ImportError:
-        # Return a no-op decorator if langsmith not installed
-        def noop_decorator(*args, **kwargs):
-            def wrapper(fn):
-                return fn
-
-            return wrapper
-
-        return noop_decorator
+    """Use durable native tracing with optional hosted debugging."""
+    return native_traceable
 
 
 def _get_label_validation_project() -> str:
@@ -795,7 +778,23 @@ class LLMBatchValidator:
             response = self.structured_llm.invoke(
                 [HumanMessage(content=prompt)]
             )
+            converted = convert_structured_response(response, pending_labels)
+            validations = []
+            for label, decision in zip(pending_labels, converted, strict=True):
+                validations.append(
+                    {
+                        "line_id": label["line_id"],
+                        "word_id": label["word_id"],
+                        "word_text": label.get("word_text", ""),
+                        "predicted_label": label["label"],
+                        "final_label": decision.label,
+                        "decision": decision.decision,
+                        "confidence": decision.confidence,
+                        "reasoning": decision.reasoning,
+                    }
+                )
             return {
+                "validations": validations,
                 "prompt": prompt,
                 "response": response,
                 "label_count": label_count,

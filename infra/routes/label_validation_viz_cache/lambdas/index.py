@@ -246,8 +246,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             "batch_size=%d, seed=%d, offset=%d", batch_size, seed, offset
         )
 
-        # List all cached receipts
-        cached_keys = _list_cached_receipts()
+        # Metadata names one complete, immutable receipt set. Legacy caches
+        # without an index still use the original receipts/ prefix.
+        metadata = _fetch_metadata()
+        cached_keys = metadata.get("receipt_keys")
+        if cached_keys is None:
+            cached_keys = _list_cached_receipts()
         if not cached_keys:
             logger.warning("No cached receipts found in %s", RECEIPTS_PREFIX)
             return {
@@ -305,7 +309,6 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         ]
 
         # Get metadata and build response
-        metadata = _fetch_metadata()
         aggregate_stats = _calculate_aggregate_stats(receipts, total_count)
 
         response_data = {

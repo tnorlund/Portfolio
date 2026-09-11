@@ -81,6 +81,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
             logger.exception(
                 "Error querying receipt %s/%s", image_id, receipt_id
             )
+            raise
 
     # Write lookup JSON to S3
     lookup_key = f"qa-runs/{execution_id}/receipts-lookup.json"

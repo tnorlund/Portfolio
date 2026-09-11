@@ -40,24 +40,14 @@ from receipt_embeddings.normalize import (
     normalize_phone,
 )
 
+from receipt_upload.tracing import traceable as native_traceable
+
 logger = logging.getLogger(__name__)
 
 
-def _get_traceable() -> Callable:
-    """Get the traceable decorator if langsmith is available."""
-    try:
-        from langsmith.run_helpers import traceable
-
-        return traceable
-    except ImportError:
-        # Return a no-op decorator if langsmith not installed
-        def noop_decorator(*args, **kwargs):
-            def wrapper(fn):
-                return fn
-
-            return wrapper
-
-        return noop_decorator
+def _get_traceable():
+    """Use durable native tracing with optional hosted debugging."""
+    return native_traceable
 
 
 def _get_project_name() -> str:

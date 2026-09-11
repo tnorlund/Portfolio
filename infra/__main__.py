@@ -259,6 +259,25 @@ create_lambda_route(
 # - Embedding polling handlers (LangGraph)
 # Consolidation and batch cleaning can be added as standalone Lambdas if needed
 
+# Retain trace history under the existing bucket resource identities.
+from components.langsmith_bulk_export import LangSmithBulkExport
+
+langsmith_bulk_export = LangSmithBulkExport(
+    f"langsmith-export-{pulumi.get_stack()}",
+    project_name=f"label-evaluator-{pulumi.get_stack()}",
+)
+label_validation_export = LangSmithBulkExport(
+    f"label-validation-export-{pulumi.get_stack()}",
+    project_name=label_validation_project_name,
+)
+pulumi.export(
+    "langsmith_export_bucket", langsmith_bulk_export.export_bucket.id
+)
+pulumi.export(
+    "label_validation_export_bucket", label_validation_export.export_bucket.id
+)
+pulumi.export("label_validation_project_name", label_validation_project_name)
+
 # upload-images runs outside the VPC (VPC prune): default Lambda egress
 # reaches Google Places / OpenAI / OpenRouter / LangSmith directly.
 upload_images = UploadImages(
@@ -266,6 +285,7 @@ upload_images = UploadImages(
     raw_bucket=raw_bucket,
     site_bucket=site_bucket,
     label_validation_project_name=label_validation_project_name,
+    trace_bucket=label_validation_export.export_bucket,
     # Post-re-OCR line-item refresh (summary recompute -> stream ->
     # LINE_ITEMS stage)
     summary_queue_url=receipt_update_queues.summary_queue_url,
@@ -705,62 +725,12 @@ pulumi.export(
 # docs/chroma-removal/); the pipeline-consolidation plan called for its
 # removal.
 
-# LangSmith Bulk Export infrastructure (for Parquet exports)
-from components.langsmith_bulk_export import LangSmithBulkExport
+# Retain historical analytics buckets after retiring the Spark runtime.
+from components.emr_serverless_analytics import retain_analytics_archives
 
-# Label Evaluator project export
-langsmith_bulk_export = LangSmithBulkExport(
-    f"langsmith-export-{stack}",
-    project_name=f"label-evaluator-{stack}",
-)
-pulumi.export(
-    "langsmith_export_bucket", langsmith_bulk_export.export_bucket.id
-)
-pulumi.export(
-    "langsmith_setup_lambda", langsmith_bulk_export.setup_lambda.name
-)
-pulumi.export(
-    "langsmith_trigger_lambda", langsmith_bulk_export.trigger_lambda.name
-)
-
-# Receipt Label Validation project export
-label_validation_export = LangSmithBulkExport(
-    f"label-validation-export-{stack}",
-    project_name=label_validation_project_name,
-)
-pulumi.export(
-    "label_validation_export_bucket", label_validation_export.export_bucket.id
-)
-pulumi.export(
-    "label_validation_setup_lambda", label_validation_export.setup_lambda.name
-)
-pulumi.export(
-    "label_validation_trigger_lambda",
-    label_validation_export.trigger_lambda.name,
-)
-pulumi.export("label_validation_project_name", label_validation_project_name)
-
-# EMR Serverless Analytics infrastructure (for Spark analytics on LangSmith traces)
-from components.emr_serverless_analytics import create_emr_serverless_analytics
-
-# Shared resources for the label evaluator pipeline (buckets used by multiple
-# components) are constructed near the top of this program (search for
-# label_evaluator_shared) so that `pulumi --target` reconciles cleanly; see the
-# comment there. The instance is reused here via label_evaluator_shared.
-
-emr_analytics = create_emr_serverless_analytics(
-    langsmith_export_bucket_arn=langsmith_bulk_export.export_bucket.arn,
-    # Shared buckets - grant EMR job access
-    cache_bucket_arn=label_evaluator_shared.viz_cache_bucket_arn,
-    batch_bucket_arn=label_evaluator_shared.batch_bucket_arn,
-)
-pulumi.export("emr_application_id", emr_analytics.emr_application.id)
-pulumi.export("emr_analytics_bucket", emr_analytics.analytics_bucket.id)
-pulumi.export("emr_artifacts_bucket", emr_analytics.artifacts_bucket.id)
-pulumi.export(
-    "emr_python_environment_uri",
-    emr_analytics.python_environment_uri,
-)
+analytics_archives = retain_analytics_archives()
+pulumi.export("emr_analytics_bucket", analytics_archives.analytics_bucket.id)
+pulumi.export("emr_artifacts_bucket", analytics_archives.artifacts_bucket.id)
 pulumi.export(
     "label_evaluator_viz_cache_merged_bucket",
     label_evaluator_shared.viz_cache_bucket_name,
@@ -768,7 +738,7 @@ pulumi.export(
 
 # Label Evaluator Step Function: RETIRED 2026-09-02 (vector-store
 # teardown, closing #1523); the pipeline-consolidation plan supersedes it.
-# Shared resources it merely referenced (OCR queue, EMR analytics,
+# Shared resources it merely referenced (OCR queue, analytics archives,
 # LangSmith bulk export, label_evaluator_shared viz-cache/batch buckets)
 # all remain — the viz-cache API routes keep serving the frozen cache.
 
@@ -898,16 +868,8 @@ if hasattr(api_gateway, "api"):
     label_validation_viz_cache = create_label_validation_viz_cache(
         f"label-validation-viz-{stack}",
         langsmith_export_bucket=label_validation_export.export_bucket.id,
-        langsmith_api_key=config.require_secret("LANGCHAIN_API_KEY"),
-        langsmith_tenant_id=config.require("LANGSMITH_TENANT_ID"),
-        langsmith_project_name=label_validation_project_name,
         dynamodb_table_name=dynamodb_table.name,
         dynamodb_table_arn=dynamodb_table.arn,
-        emr_application_id=emr_analytics.emr_application.id,
-        emr_job_role_arn=emr_analytics.emr_job_role.arn,
-        spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-        setup_lambda_name=label_validation_export.setup_lambda.name,
-        setup_lambda_arn=label_validation_export.setup_lambda.arn,
     )
     pulumi.export(
         "label_validation_viz_cache_bucket",
@@ -934,16 +896,6 @@ qa_agent_sf = QAAgentStepFunction(
     f"qa-agent-{stack}",
     dynamodb_table_name=dynamodb_table.name,
     dynamodb_table_arn=dynamodb_table.arn,
-    # EMR Serverless
-    emr_application_id=emr_analytics.emr_application.id,
-    emr_job_execution_role_arn=emr_analytics.emr_job_role.arn,
-    langsmith_export_bucket=langsmith_bulk_export.export_bucket.id,
-    analytics_output_bucket=emr_analytics.analytics_bucket.id,
-    spark_artifacts_bucket=emr_analytics.artifacts_bucket.id,
-    # LangSmith export lambdas — use the langsmith_bulk_export component's trigger
-    # (correct SSM_PREFIX → correct destination → correct S3 bucket)
-    trigger_export_lambda_arn=langsmith_bulk_export.trigger_lambda.arn,
-    check_export_lambda_arn=label_validation_viz_cache.check_export_lambda.arn,
 )
 
 pulumi.export("qa_agent_sf_arn", qa_agent_sf.state_machine_arn)

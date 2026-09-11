@@ -104,7 +104,7 @@ class Settings(BaseSettings):
         alias="LANGCHAIN_PROJECT",
     )
     langsmith_tracing: bool = Field(
-        default=True,
+        default=False,
         description="Enable LangSmith tracing",
         alias="LANGCHAIN_TRACING_V2",
     )

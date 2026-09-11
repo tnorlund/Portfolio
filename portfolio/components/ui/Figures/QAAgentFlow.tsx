@@ -707,7 +707,9 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
     [timelineLayout, motionScale],
   );
   const synthesizeStep = trace.find((step) => step.type === "synthesize");
-  const rawAnswer = synthesizeStep?.content ?? "";
+  const rawAnswer = questionData?.error
+    ? `Unable to answer: ${questionData.error}`
+    : (synthesizeStep?.content ?? "");
   const answerText =
     rawAnswer
       .replace(/\n*#{0,3}\s*\*{0,2}Evidence\*{0,2}:?\**\s*[\s\S]*$/i, "")
