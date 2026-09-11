@@ -25,10 +25,16 @@ Usage:
     python scripts/reconcile_dev_to_prod.py --no-dry-run    # apply
     python scripts/reconcile_dev_to_prod.py --skip-health-gate
 
-The summary/line-item update leg self-heals via the prod stream processor +
-embedding step functions, but only if that chain is healthy — so apply is
-gated on an update-queue health check (DLQs empty, backlog bounded) unless
-overridden.
+The summary/line-item update leg self-heals via the prod stream processor, but
+only if that chain is healthy — so apply is gated on an update-queue health
+check (DLQs empty, backlog bounded) unless overridden.
+
+Vectors do NOT self-heal: the embedding step functions are gone, and per
+docs/chroma-removal/SPEC.md 3.1 embedding items are copied verbatim rather
+than re-derived (OpenAI embeddings are not bit-stable across calls or model
+revisions). Everything listed in RESTORABLE_TYPES must therefore be restored
+by copy_image_entities, not merely "regenerated somehow" — a type added here
+without a matching copy is a silent, permanent data loss on every REPLACE.
 """
 
 import argparse
@@ -94,9 +100,27 @@ RESTORABLE_TYPES = {
     "OCR_ROUTING_DECISION",
     # restored by the filtered sync_ocr_jobs step
     "OCR_JOB",
-    # derived / regenerated after copy (safe to drop on replace);
-    # COMPACTION_RUN items are orphans left by the retired vector store
+    # Derived rows, owner facts and vectors — restored by
+    # copy_image_entities. These are NOT regenerated in the destination
+    # after a cross-environment copy (there is no row-regeneration consumer
+    # at all, and the summary updater preserves its offline bank fields by
+    # reading the STORED row, so a missing summary loses them), which is why
+    # they are copied rather than recomputed.
+    "RECEIPT_ROW",
+    "RECEIPT_SECTION",
+    "RECEIPT_LINE_ITEM",
     "RECEIPT_SUMMARY",
+    "RECEIPT_FACT_OVERRIDE",
+    "RECEIPT_LINE_EMBEDDING",
+    "RECEIPT_WORD_EMBEDDING",
+    # Nutrition rows are written by the receipt_nutrition DAL and travel with
+    # the receipt prefix; listed so prod partitions holding them stay
+    # REPLACE-able once that pipeline runs in prod.
+    "RECEIPT_LINE_NUTRITION",
+    "RECEIPT_NUTRITION_SUMMARY",
+    # COMPACTION_RUN items are orphans left by the retired vector store and
+    # are deliberately never copied: they would make prod act on dev's
+    # compaction state.
     "COMPACTION_RUN",
     "EMBEDDING_STATUS",
 }
@@ -119,6 +143,19 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     barcodes = defaultdict(
         list
     )  # image_id -> [(receipt, barcode_id, symbology, text)]
+    rows = defaultdict(list)  # image_id -> [(receipt, row_id, line_ids)]
+    sections = defaultdict(
+        list
+    )  # image_id -> [(receipt, section_type, line_ids)]
+    line_items = defaultdict(
+        list
+    )  # image_id -> [(receipt, item_index, name, price)]
+    summaries = defaultdict(
+        list
+    )  # image_id -> [(receipt, ledger, bank_amount, bank_date)]
+    fact_overrides = defaultdict(
+        list
+    )  # image_id -> [(receipt, revision, owner-stated values...)]
     images = set()  # image_ids with an Image row (may be childless)
 
     def _scan(list_fn, sink):
@@ -183,6 +220,83 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             for bc in b
         ],
     )
+    # Derived rows are copied (not regenerated in the destination), so a
+    # change confined to them must move prod. Only structural, decision-level
+    # fields are hashed — never timestamps, confidences or algorithm-version
+    # stamps, which would churn a REPLACE on every re-evaluation.
+    _scan(
+        client.list_receipt_rows,
+        lambda b: [
+            rows[r.image_id].append(
+                (r.receipt_id, r.row_id, tuple(r.line_ids or ()))
+            )
+            for r in b
+        ],
+    )
+    _scan(
+        client.list_receipt_sections,
+        lambda b: [
+            sections[s.image_id].append(
+                (s.receipt_id, str(s.section_type), tuple(s.line_ids or ()))
+            )
+            for s in b
+        ],
+    )
+    _scan(
+        client.list_receipt_line_items,
+        lambda b: [
+            line_items[li.image_id].append(
+                (li.receipt_id, li.item_index, li.name, li.price)
+            )
+            for li in b
+        ],
+    )
+    # ReceiptSummary: hash ONLY the offline bank-match fields. Every other
+    # field is recomputed from the destination's own words by the summary
+    # updater within ~30s of a copy, so hashing them would diff dev against a
+    # prod row that is mid-recompute and REPLACE forever. The bank fields are
+    # carried over verbatim from the stored row, so they are stable and are
+    # exactly what is lost if the summary never reaches prod.
+    _scan(
+        client.list_receipt_summaries,
+        lambda b: [
+            summaries[s.image_id].append(
+                (
+                    s.receipt_id,
+                    str(getattr(s, "ledger", "") or ""),
+                    str(getattr(s, "bank_amount", "") or ""),
+                    str(getattr(s, "bank_date", "") or ""),
+                )
+            )
+            for s in b
+        ],
+    )
+    # Owner-stated facts outrank every extracted value, so an edit confined to
+    # one must move prod. `revision` is included: it is the field the
+    # optimistic-concurrency check keys on, so it changes on every edit even
+    # when a value is restored to a previous setting.
+    _scan(
+        client.list_receipt_fact_overrides,
+        lambda b: [
+            fact_overrides[o.image_id].append(
+                (
+                    o.receipt_id,
+                    str(o.revision),
+                    str(o.date or ""),
+                    str(o.date_reference or ""),
+                    str(o.merchant_name or ""),
+                    str(o.merchant_name_reference or ""),
+                    str(o.source or ""),
+                )
+            )
+            for o in b
+        ],
+    )
+    # NOTE: embedding items are copied but deliberately NOT fingerprinted.
+    # They are derived from words, which are fingerprinted above, so a text
+    # change already forces the REPLACE that recopies the vectors; hashing
+    # 1536-float vectors would be enormous and would diff on float formatting.
+    #
     # NOTE: ReceiptMetadata is intentionally NOT fingerprinted. It is a legacy
     # entity superseded by ReceiptPlace (nothing in the pipeline writes it now),
     # so its rows are stale/orphaned and would cause perpetual spurious REPLACEs.
@@ -202,6 +316,11 @@ def _fingerprint_env(client: DynamoClient) -> dict:
         | set(receipts)
         | set(places)
         | set(barcodes)
+        | set(rows)
+        | set(sections)
+        | set(line_items)
+        | set(summaries)
+        | set(fact_overrides)
         | images
     )
     out = {}
@@ -220,6 +339,11 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             "places": sorted(places[iid]),
             "receipts": sorted(receipts[iid]),
             "barcodes": sorted(barcodes[iid]),
+            "rows": sorted(rows[iid]),
+            "sections": sorted(sections[iid]),
+            "line_items": sorted(line_items[iid]),
+            "summaries": sorted(summaries[iid]),
+            "fact_overrides": sorted(fact_overrides[iid]),
         }
         fp = hashlib.sha256(
             json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
@@ -536,8 +660,8 @@ def main():
     prod_config = get_table_and_bucket_names("prod")
     apply_plan(p, dev_client, prod_client, dev_config, prod_config)
     logger.info(
-        "\n✅ Reconcile applied. Kick prod embedding step functions "
-        "(start_ingestion_prod.sh) and re-run health_gate to confirm drain."
+        "\n✅ Reconcile applied. Vector items were copied with the data; "
+        "re-run health_gate to confirm the update queues drain."
     )
     if guarded:
         logger.error(

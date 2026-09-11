@@ -40,6 +40,7 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.entities.image import Image
@@ -48,11 +49,19 @@ from receipt_dynamo.entities.line import Line
 from receipt_dynamo.entities.ocr_routing_decision import OCRRoutingDecision
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_barcode import ReceiptBarcode
+from receipt_dynamo.entities.receipt_embedding import (
+    ReceiptLineEmbedding,
+    ReceiptWordEmbedding,
+)
+from receipt_dynamo.entities.receipt_fact_override import ReceiptFactOverride
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
-from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities.receipt_row import ReceiptRow
+from receipt_dynamo.entities.receipt_section import ReceiptSection
+from receipt_dynamo.entities.receipt_summary import ReceiptSummary
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo.entities.word import Word
@@ -195,6 +204,12 @@ def copy_image_entities(
         "receipt_metadatas": 0,
         "receipt_places": 0,
         "receipt_barcodes": 0,
+        "receipt_rows": 0,
+        "receipt_sections": 0,
+        "receipt_line_items": 0,
+        "receipt_summaries": 0,
+        "receipt_fact_overrides": 0,
+        "receipt_embeddings": 0,
         "ocr_routing_decisions": 0,
         "errors": [],
     }
@@ -331,6 +346,84 @@ def copy_image_entities(
             if not dry_run:
                 prod_client.add_receipt_barcodes(receipt_barcodes)
             stats["receipt_barcodes"] = len(receipt_barcodes)
+
+        # Derived rows, owner facts and vectors. A REPLACE deletes the whole
+        # image partition, and nothing in the destination environment
+        # regenerates these after a cross-environment copy, so they must be
+        # restored here or prod silently loses them (and reconcile's
+        # guard_replaces then refuses to ever REPLACE the image again).
+        #
+        # Copied in dependency order: rows -> sections (reference row_ids) ->
+        # line items (reference sections/summaries).
+        if export_data.get("receipt_rows"):
+            receipt_rows = [
+                ReceiptRow(**row) for row in export_data["receipt_rows"]
+            ]
+            if not dry_run:
+                prod_client.add_receipt_rows(receipt_rows)
+            stats["receipt_rows"] = len(receipt_rows)
+
+        if export_data.get("receipt_sections"):
+            receipt_sections = [
+                ReceiptSection(**section)
+                for section in export_data["receipt_sections"]
+            ]
+            if not dry_run:
+                prod_client.add_receipt_sections(receipt_sections)
+            stats["receipt_sections"] = len(receipt_sections)
+
+        if export_data.get("receipt_line_items"):
+            receipt_line_items = [
+                ReceiptLineItem(**li)
+                for li in export_data["receipt_line_items"]
+            ]
+            if not dry_run:
+                prod_client.add_receipt_line_items(receipt_line_items)
+            stats["receipt_line_items"] = len(receipt_line_items)
+
+        # ReceiptSummary carries the offline bank-match fields (ledger,
+        # bank_amount, bank_match_confidence, bank_date) written by
+        # scripts/backfill_tender_bank.py. The summary updater preserves them
+        # by reading the STORED row, so if prod has no summary row a recompute
+        # has nothing to preserve and those fields are lost until the backfill
+        # is re-run against prod. Everything else on the row is recomputed
+        # from the destination's own words within ~30s of the copy.
+        if export_data.get("receipt_summaries"):
+            receipt_summaries = [
+                ReceiptSummary(**s) for s in export_data["receipt_summaries"]
+            ]
+            if not dry_run:
+                prod_client.add_receipt_summaries(receipt_summaries)
+            stats["receipt_summaries"] = len(receipt_summaries)
+
+        # Owner-stated facts outrank every extracted value, so they must
+        # survive promotion; nothing recomputes them.
+        if export_data.get("receipt_fact_overrides"):
+            receipt_fact_overrides = [
+                ReceiptFactOverride(**o)
+                for o in export_data["receipt_fact_overrides"]
+            ]
+            if not dry_run:
+                for override in receipt_fact_overrides:
+                    prod_client.add_receipt_fact_override(override)
+            stats["receipt_fact_overrides"] = len(receipt_fact_overrides)
+
+        # Vectors are copied, not regenerated: OpenAI embeddings are not
+        # bit-stable across calls or model revisions, so copying is the only
+        # way a receipt shared by dev and prod behaves identically in both
+        # (docs/chroma-removal/SPEC.md 3.1).
+        if export_data.get("receipt_embeddings"):
+            receipt_embeddings = [
+                (
+                    ReceiptWordEmbedding(**e)
+                    if "word_vector" in e
+                    else ReceiptLineEmbedding(**e)
+                )
+                for e in export_data["receipt_embeddings"]
+            ]
+            if not dry_run:
+                prod_client.add_receipt_embeddings(receipt_embeddings)
+            stats["receipt_embeddings"] = len(receipt_embeddings)
 
         # NOTE: OCRJobs are intentionally NOT copied here. sync_ocr_jobs_dev_to_prod.py
         # owns them because it also rewrites OCRJob.s3_bucket (dev→prod) and copies

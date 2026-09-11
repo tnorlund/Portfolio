@@ -57,6 +57,12 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
     receipt_word_labels = details.receipt_word_labels
     receipt_places = details.receipt_places
     receipt_barcodes = details.receipt_barcodes
+    receipt_rows = details.receipt_rows
+    receipt_sections = details.receipt_sections
+    receipt_line_items = details.receipt_line_items
+    receipt_summaries = details.receipt_summaries
+    receipt_fact_overrides = details.receipt_fact_overrides
+    receipt_embeddings = details.receipt_embeddings
     ocr_jobs = details.ocr_jobs
     ocr_routing_decisions = details.ocr_routing_decisions
 
@@ -78,6 +84,12 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         ],
         "receipt_places": [asdict(place) for place in receipt_places],
         "receipt_barcodes": [asdict(bc) for bc in receipt_barcodes],
+        "receipt_rows": [asdict(row) for row in receipt_rows],
+        "receipt_sections": [asdict(section) for section in receipt_sections],
+        "receipt_line_items": [asdict(li) for li in receipt_line_items],
+        "receipt_summaries": [asdict(s) for s in receipt_summaries],
+        "receipt_fact_overrides": [asdict(o) for o in receipt_fact_overrides],
+        "receipt_embeddings": [asdict(e) for e in receipt_embeddings],
         "ocr_jobs": [asdict(job) for job in ocr_jobs],
         "ocr_routing_decisions": [
             asdict(decision) for decision in ocr_routing_decisions

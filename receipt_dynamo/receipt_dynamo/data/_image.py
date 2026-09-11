@@ -31,9 +31,14 @@ from receipt_dynamo.entities import (
     item_to_ocr_routing_decision,
     item_to_receipt,
     item_to_receipt_barcode,
+    item_to_receipt_fact_override,
     item_to_receipt_letter,
     item_to_receipt_line,
+    item_to_receipt_line_item,
     item_to_receipt_place,
+    item_to_receipt_row,
+    item_to_receipt_section,
+    item_to_receipt_summary_record,
     item_to_receipt_word,
     item_to_receipt_word_label,
     item_to_word,
@@ -41,6 +46,11 @@ from receipt_dynamo.entities import (
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.line import Line
 from receipt_dynamo.entities.receipt import Receipt
+from receipt_dynamo.entities.receipt_embedding import (
+    ReceiptLineEmbedding,
+    ReceiptWordEmbedding,
+    item_to_receipt_embedding,
+)
 
 if TYPE_CHECKING:
     pass
@@ -117,6 +127,12 @@ class _Image(FlattenedStandardMixin):
         receipt_word_labels = []
         receipt_places = []
         receipt_barcodes = []
+        receipt_rows = []
+        receipt_sections = []
+        receipt_line_items = []
+        receipt_summaries = []
+        receipt_fact_overrides = []
+        receipt_embeddings = []
         ocr_jobs = []
         ocr_routing_decisions = []
 
@@ -159,6 +175,29 @@ class _Image(FlattenedStandardMixin):
             "RECEIPT_BARCODE": lambda item: receipt_barcodes.append(
                 item_to_receipt_barcode(item)
             ),
+            "RECEIPT_ROW": lambda item: receipt_rows.append(
+                item_to_receipt_row(item)
+            ),
+            "RECEIPT_SECTION": lambda item: receipt_sections.append(
+                item_to_receipt_section(item)
+            ),
+            "RECEIPT_LINE_ITEM": lambda item: receipt_line_items.append(
+                item_to_receipt_line_item(item)
+            ),
+            "RECEIPT_SUMMARY": lambda item: receipt_summaries.append(
+                item_to_receipt_summary_record(item)
+            ),
+            "RECEIPT_FACT_OVERRIDE": (
+                lambda item: receipt_fact_overrides.append(
+                    item_to_receipt_fact_override(item)
+                )
+            ),
+            ReceiptLineEmbedding.TYPE: lambda item: receipt_embeddings.append(
+                item_to_receipt_embedding(item)
+            ),
+            ReceiptWordEmbedding.TYPE: lambda item: receipt_embeddings.append(
+                item_to_receipt_embedding(item)
+            ),
             "OCR_JOB": lambda item: ocr_jobs.append(item_to_ocr_job(item)),
             "OCR_ROUTING_DECISION": lambda item: ocr_routing_decisions.append(
                 item_to_ocr_routing_decision(item)
@@ -183,6 +222,12 @@ class _Image(FlattenedStandardMixin):
             receipt_word_labels=receipt_word_labels,
             receipt_places=receipt_places,
             receipt_barcodes=receipt_barcodes,
+            receipt_rows=receipt_rows,
+            receipt_sections=receipt_sections,
+            receipt_line_items=receipt_line_items,
+            receipt_summaries=receipt_summaries,
+            receipt_fact_overrides=receipt_fact_overrides,
+            receipt_embeddings=receipt_embeddings,
             ocr_jobs=ocr_jobs,
             ocr_routing_decisions=ocr_routing_decisions,
         )

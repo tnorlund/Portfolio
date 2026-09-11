@@ -1,11 +1,15 @@
 #!/bin/bash
-# Promote new receipts from dev → prod and kick prod embedding ingestion.
+# Promote new receipts from dev → prod.
 #
 # Steps:
 #   1. Sync S3 images  (dev → prod bucket)
 #   2. Reconcile DynamoDB records (dev → prod mirror: ADD / REPLACE / DELETE)
 #   3. Sync OCR jobs (bucket rewrite + ocr_results/ S3 copy; prod-image filtered)
-#   4. Start prod word + line embedding step functions
+#
+# There is no embedding step. Vector items are copied verbatim by the reconcile
+# step (docs/chroma-removal/SPEC.md 3.1) because OpenAI embeddings are not
+# bit-stable across calls or model revisions. The word/line embedding step
+# functions this script used to kick no longer exist.
 #
 # The reconcile step (reconcile_dev_to_prod.py) makes prod an exact mirror of
 # dev at image granularity: new images added, changed images replaced (delete +
@@ -15,9 +19,8 @@
 # now filtered to prod-existing images so it can't recreate orphan rows. Reconcile
 # gates apply on prod compaction-queue health.
 #
-# Usage: ./scripts/promote_dev_to_prod.sh [--skip-sync] [--skip-embed] [--dry-run]
+# Usage: ./scripts/promote_dev_to_prod.sh [--skip-sync] [--dry-run]
 #   --skip-sync   Skip S3/DynamoDB sync (useful when already synced)
-#   --skip-embed  Skip step function kick (data-only promotion)
 #   --dry-run     Print what would run, do nothing
 set -euo pipefail
 
@@ -31,14 +34,12 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 SKIP_SYNC=false
-SKIP_EMBED=false
 DRY_RUN=false
 PROTECT=""
 
 for arg in "$@"; do
   case "$arg" in
     --skip-sync)  SKIP_SYNC=true ;;
-    --skip-embed) SKIP_EMBED=true ;;
     --dry-run)    DRY_RUN=true ;;
     --protect=*)  PROTECT="${arg#*=}" ;;
     --help|-h)
@@ -106,22 +107,9 @@ else
   echo ""
 fi
 
-# ── Step 5: Kick prod embedding SFs ─────────────────────────────────────────
-if [[ "$SKIP_EMBED" == "true" ]]; then
-  echo -e "${YELLOW}Skipping embedding step functions (--skip-embed)${NC}"
-else
-  echo -e "${GREEN}[4/4] Starting prod embedding step functions...${NC}"
-  run bash "$SCRIPT_DIR/start_ingestion_prod.sh" both
-  echo ""
-  echo -e "${BLUE}Monitor ingestion:${NC}"
-  echo "  aws stepfunctions list-executions --state-machine-arn \$(aws stepfunctions list-state-machines --query 'stateMachines[?contains(name,\`word-ingest-sf-prod\`)].stateMachineArn' --output text) --query 'executions[0]' --output json"
-fi
-
 echo ""
 if [[ "$DRY_RUN" == "true" ]]; then
   echo -e "${YELLOW}Done (dry-run — no changes made).${NC}"
-elif [[ "$SKIP_EMBED" == "true" ]]; then
-  echo -e "${GREEN}Done. Embedding skipped (--skip-embed).${NC}"
 else
-  echo -e "${GREEN}Done. Prod embedding will run in the background.${NC}"
+  echo -e "${GREEN}Done.${NC}"
 fi
