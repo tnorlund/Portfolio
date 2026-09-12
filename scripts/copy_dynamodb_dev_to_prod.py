@@ -61,7 +61,13 @@ from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_row import ReceiptRow
 from receipt_dynamo.entities.receipt_section import ReceiptSection
-from receipt_dynamo.entities.receipt_summary import ReceiptSummary
+from receipt_dynamo.entities.receipt_summary import (
+    MonetaryTotals,
+    ReceiptSummary,
+)
+from receipt_dynamo.entities.receipt_summary_record import (
+    ReceiptSummaryRecord,
+)
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo.entities.word import Word
@@ -313,7 +319,19 @@ def copy_image_entities(
                 batch_size = 25
                 for i in range(0, len(receipt_word_labels), batch_size):
                     batch = receipt_word_labels[i : i + batch_size]
-                    prod_client.add_receipt_word_labels(batch)
+                    # This mirror restores labels that already exist on dev,
+                    # including legacy values retired from CORE_LABELS
+                    # (OTHER, PHONE, BUSINESS_NAME, ADDRESS, AMOUNT,
+                    # WEIGHT, TENDER, ITEM_QUANTITY, REGISTER, ...). The
+                    # core-label guard exists to stop NEW non-core labels
+                    # being minted; refusing them here instead drops real
+                    # dev labels on the floor, and because the guard raises
+                    # for the whole image it also aborts every entity the
+                    # copy would have written after this point. This is the
+                    # "controlled legacy restoration" the guard carves out.
+                    prod_client.add_receipt_word_labels(
+                        batch, allow_non_core_labels=True
+                    )
             stats["receipt_word_labels"] = len(receipt_word_labels)
 
         # Preserve legacy ReceiptMetadata rows during whole-image mirroring.
@@ -389,8 +407,31 @@ def copy_image_entities(
         # is re-run against prod. Everything else on the row is recomputed
         # from the destination's own words within ~30s of the copy.
         if export_data.get("receipt_summaries"):
+            # The stored row is a ReceiptSummaryRecord, which WRAPS a
+            # ReceiptSummary in `summary` alongside timestamp_computed and
+            # overrides_applied. Reconstructing the inner ReceiptSummary
+            # here instead of the record is a type mismatch against what
+            # get_image_details read and what add_receipt_summaries takes.
+            # asdict() flattens nested dataclasses but Class(**d) does not
+            # rebuild them, so each level has to be reconstructed by hand:
+            # ReceiptSummaryRecord -> ReceiptSummary -> MonetaryTotals.
+            # Every other entity copied here is flat; this is the only one
+            # with nested objects, and a bare ReceiptSummary(**s) raises
+            # "totals must be a MonetaryTotals object".
+            def _rebuild_summary(raw: Dict[str, Any]) -> ReceiptSummary:
+                inner = dict(raw)
+                totals = inner.get("totals")
+                if isinstance(totals, dict):
+                    inner["totals"] = MonetaryTotals(**totals)
+                return ReceiptSummary(**inner)
+
             receipt_summaries = [
-                ReceiptSummary(**s) for s in export_data["receipt_summaries"]
+                ReceiptSummaryRecord(
+                    summary=_rebuild_summary(s["summary"]),
+                    timestamp_computed=s.get("timestamp_computed"),
+                    overrides_applied=s.get("overrides_applied") or [],
+                )
+                for s in export_data["receipt_summaries"]
             ]
             if not dry_run:
                 prod_client.add_receipt_summaries(receipt_summaries)
