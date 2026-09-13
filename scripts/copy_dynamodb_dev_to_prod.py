@@ -43,6 +43,9 @@ sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.export_image import (
+    receipt_summary_record_from_export,
+)
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.letter import Letter
 from receipt_dynamo.entities.line import Line
@@ -61,13 +64,6 @@ from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_row import ReceiptRow
 from receipt_dynamo.entities.receipt_section import ReceiptSection
-from receipt_dynamo.entities.receipt_summary import (
-    MonetaryTotals,
-    ReceiptSummary,
-)
-from receipt_dynamo.entities.receipt_summary_record import (
-    ReceiptSummaryRecord,
-)
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo.entities.word import Word
@@ -412,25 +408,12 @@ def copy_image_entities(
             # overrides_applied. Reconstructing the inner ReceiptSummary
             # here instead of the record is a type mismatch against what
             # get_image_details read and what add_receipt_summaries takes.
-            # asdict() flattens nested dataclasses but Class(**d) does not
-            # rebuild them, so each level has to be reconstructed by hand:
-            # ReceiptSummaryRecord -> ReceiptSummary -> MonetaryTotals.
-            # Every other entity copied here is flat; this is the only one
-            # with nested objects, and a bare ReceiptSummary(**s) raises
-            # "totals must be a MonetaryTotals object".
-            def _rebuild_summary(raw: Dict[str, Any]) -> ReceiptSummary:
-                inner = dict(raw)
-                totals = inner.get("totals")
-                if isinstance(totals, dict):
-                    inner["totals"] = MonetaryTotals(**totals)
-                return ReceiptSummary(**inner)
-
+            # Rebuilt by the helper that lives next to the exporter, so
+            # this copier and its contract tests exercise one
+            # implementation. ReceiptSummaryRecord wraps a ReceiptSummary
+            # which holds a MonetaryTotals, and asdict() flattens both.
             receipt_summaries = [
-                ReceiptSummaryRecord(
-                    summary=_rebuild_summary(s["summary"]),
-                    timestamp_computed=s.get("timestamp_computed"),
-                    overrides_applied=s.get("overrides_applied") or [],
-                )
+                receipt_summary_record_from_export(s)
                 for s in export_data["receipt_summaries"]
             ]
             if not dry_run:
