@@ -56,7 +56,6 @@ from receipt_dynamo.entities.receipt_embedding import (
     ReceiptLineEmbedding,
     ReceiptWordEmbedding,
 )
-from receipt_dynamo.entities.receipt_fact_override import ReceiptFactOverride
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
@@ -420,17 +419,18 @@ def copy_image_entities(
                 prod_client.add_receipt_summaries(receipt_summaries)
             stats["receipt_summaries"] = len(receipt_summaries)
 
-        # Owner-stated facts outrank every extracted value, so they must
-        # survive promotion; nothing recomputes them.
-        if export_data.get("receipt_fact_overrides"):
-            receipt_fact_overrides = [
-                ReceiptFactOverride(**o)
-                for o in export_data["receipt_fact_overrides"]
-            ]
-            if not dry_run:
-                for override in receipt_fact_overrides:
-                    prod_client.add_receipt_fact_override(override)
-            stats["receipt_fact_overrides"] = len(receipt_fact_overrides)
+        # ReceiptFactOverride rows are deliberately NOT written. Owner facts
+        # are stated on the dev table only: the DAL refuses the write on any
+        # protected table (_assert_fact_override_writable), and the refusal
+        # raises out of this function, aborting every entity queued after it
+        # (embeddings, routing decisions). Their EFFECT still reaches prod --
+        # the summary updater applies the override on dev and bakes the
+        # result into the ReceiptSummaryRecord (see overrides_applied),
+        # which is copied above. Counted so the operator can see they were
+        # present and intentionally left behind.
+        stats["receipt_fact_overrides"] = len(
+            export_data.get("receipt_fact_overrides") or []
+        )
 
         # Vectors are copied, not regenerated: OpenAI embeddings are not
         # bit-stable across calls or model revisions, so copying is the only

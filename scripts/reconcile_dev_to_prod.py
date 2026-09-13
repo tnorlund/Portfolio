@@ -110,7 +110,6 @@ RESTORABLE_TYPES = {
     "RECEIPT_SECTION",
     "RECEIPT_LINE_ITEM",
     "RECEIPT_SUMMARY",
-    "RECEIPT_FACT_OVERRIDE",
     "RECEIPT_LINE_EMBEDDING",
     "RECEIPT_WORD_EMBEDDING",
     # Nutrition rows are written by the receipt_nutrition DAL and travel with
@@ -152,10 +151,7 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     )  # image_id -> [(receipt, item_index, name, price)]
     summaries = defaultdict(
         list
-    )  # image_id -> [(receipt, ledger, bank_amount, bank_date)]
-    fact_overrides = defaultdict(
-        list
-    )  # image_id -> [(receipt, revision, owner-stated values...)]
+    )  # image_id -> [(receipt, ledger, bank_amount, bank_date, overrides)]
     images = set()  # image_ids with an Image row (may be childless)
 
     def _scan(list_fn, sink):
@@ -251,7 +247,8 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             for li in b
         ],
     )
-    # ReceiptSummary: hash ONLY the offline bank-match fields. Every other
+    # ReceiptSummary: hash ONLY the offline bank-match fields plus the list
+    # of owner-fact overrides baked into the record. Every other
     # field is recomputed from the destination's own words by the summary
     # updater within ~30s of a copy, so hashing them would diff dev against a
     # prod row that is mid-recompute and REPLACE forever. The bank fields are
@@ -266,32 +263,19 @@ def _fingerprint_env(client: DynamoClient) -> dict:
                     str(getattr(s, "ledger", "") or ""),
                     str(getattr(s, "bank_amount", "") or ""),
                     str(getattr(s, "bank_date", "") or ""),
+                    tuple(sorted(getattr(s, "overrides_applied", []) or [])),
                 )
             )
             for s in b
         ],
     )
-    # Owner-stated facts outrank every extracted value, so an edit confined to
-    # one must move prod. `revision` is included: it is the field the
-    # optimistic-concurrency check keys on, so it changes on every edit even
-    # when a value is restored to a previous setting.
-    _scan(
-        client.list_receipt_fact_overrides,
-        lambda b: [
-            fact_overrides[o.image_id].append(
-                (
-                    o.receipt_id,
-                    str(o.revision),
-                    str(o.date or ""),
-                    str(o.date_reference or ""),
-                    str(o.merchant_name or ""),
-                    str(o.merchant_name_reference or ""),
-                    str(o.source or ""),
-                )
-            )
-            for o in b
-        ],
-    )
+    # NOTE: ReceiptFactOverride is deliberately NOT fingerprinted and NOT
+    # copied. Owner facts are stated on the dev table only -- the DAL refuses
+    # the write on prod -- so dev always has the row and prod never does;
+    # hashing it would REPLACE that image on every run forever. The
+    # override's effect still mirrors: the summary updater bakes it into the
+    # ReceiptSummaryRecord, whose overrides_applied is hashed above.
+    #
     # NOTE: embedding items are copied but deliberately NOT fingerprinted.
     # They are derived from words, which are fingerprinted above, so a text
     # change already forces the REPLACE that recopies the vectors; hashing
@@ -320,7 +304,6 @@ def _fingerprint_env(client: DynamoClient) -> dict:
         | set(sections)
         | set(line_items)
         | set(summaries)
-        | set(fact_overrides)
         | images
     )
     out = {}
@@ -343,7 +326,6 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             "sections": sorted(sections[iid]),
             "line_items": sorted(line_items[iid]),
             "summaries": sorted(summaries[iid]),
-            "fact_overrides": sorted(fact_overrides[iid]),
         }
         fp = hashlib.sha256(
             json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
