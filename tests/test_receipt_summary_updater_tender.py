@@ -51,8 +51,15 @@ def _label(line_id, word_id, label, status="VALID"):
 class FakeClient:
     """Minimal DynamoClient stand-in for update_receipt_summary."""
 
-    def __init__(self, existing_summary=None, receipt_exists=True):
+    def __init__(
+        self,
+        existing_summary=None,
+        receipt_exists=True,
+        existing_overrides=None,
+    ):
         self.table_name = "test-table"
+        # overrides_applied on the STORED record, as the promotion copies it
+        self.existing_overrides = list(existing_overrides or [])
         self._client = SimpleNamespace(
             get_item=lambda **kwargs: (
                 {"Item": {"PK": {"S": IMAGE_ID}}}
@@ -118,7 +125,14 @@ class FakeClient:
     def get_receipt_summary(self, image_id, receipt_id):
         if self.existing_summary is None:
             raise EntityNotFoundError("no summary")
-        return ReceiptSummaryRecord.from_summary(self.existing_summary)
+        record = ReceiptSummaryRecord.from_summary(self.existing_summary)
+        if self.existing_overrides:
+            record = ReceiptSummaryRecord(
+                summary=record.summary,
+                timestamp_computed=record.timestamp_computed,
+                overrides_applied=self.existing_overrides,
+            )
+        return record
 
     def get_receipt_fact_override(self, image_id, receipt_id):
         self.fact_override_reads += 1
@@ -369,3 +383,53 @@ def test_processor_uses_the_shared_apply_helper():
         summary,
         [],
     )
+
+
+def test_recompute_carries_owner_facts_when_no_override_row(monkeypatch):
+    """Owner facts survive a recompute on a table with no override row.
+
+    Fact overrides are stated on the dev table only, so on prod
+    get_receipt_fact_override returns None. Before this fix the
+    stream-triggered recompute after a dev->prod promotion overwrote the
+    copied record with extracted values and an empty overrides_applied,
+    erasing the owner's stated date/merchant (Codex, #1652).
+    """
+    stored = ReceiptSummary(
+        image_id=IMAGE_ID,
+        receipt_id=RECEIPT_ID,
+        totals=MonetaryTotals(grand_total=47.18),
+        date=datetime(2026, 9, 9),
+        merchant_name="Owner Stated Name",
+    )
+    client = FakeClient(
+        existing_summary=stored,
+        existing_overrides=["date", "merchant_name"],
+    )
+    client.fact_override = None  # what prod always returns
+    monkeypatch.setattr(summary_processor, "dynamo_client", client)
+
+    summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    record = client.upserted[0]
+    assert record.date == datetime(2026, 9, 9)
+    assert record.merchant_name == "Owner Stated Name"
+    assert sorted(record.overrides_applied) == ["date", "merchant_name"]
+
+
+def test_recompute_does_not_resurrect_a_retracted_override(monkeypatch):
+    """A stored record with overrides_applied=[] carries nothing forward."""
+    stored = ReceiptSummary(
+        image_id=IMAGE_ID,
+        receipt_id=RECEIPT_ID,
+        totals=MonetaryTotals(grand_total=47.18),
+        merchant_name="Stale Value",
+    )
+    client = FakeClient(existing_summary=stored, existing_overrides=[])
+    client.fact_override = None
+    monkeypatch.setattr(summary_processor, "dynamo_client", client)
+
+    summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    record = client.upserted[0]
+    assert record.overrides_applied == []
+    assert record.merchant_name != "Stale Value"

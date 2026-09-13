@@ -5273,20 +5273,6 @@ async def delete_receipt_impl(
     try:
         from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
-        try:
-            details = dynamo_client.get_receipt_details(image_id, receipt_id)
-        except EntityNotFoundError:
-            return {
-                "error": (
-                    f"Receipt {receipt_id} not found for image {image_id}"
-                )
-            }
-
-        place = getattr(details, "place", None)
-        merchant_name = (
-            getattr(place, "merchant_name", None) if place else None
-        )
-
         # Count straight off the key prefix rather than from
         # get_receipt_details, whose GSI4 query omits ReceiptLetters and every
         # derived type. Undercounting here is what made an earlier version of
@@ -5294,6 +5280,28 @@ async def delete_receipt_impl(
         breakdown = dynamo_client.get_receipt_item_type_counts(
             image_id, receipt_id
         )
+
+        merchant_name = None
+        try:
+            details = dynamo_client.get_receipt_details(image_id, receipt_id)
+            place = getattr(details, "place", None)
+            merchant_name = (
+                getattr(place, "merchant_name", None) if place else None
+            )
+        except EntityNotFoundError:
+            # A previous cascade may have deleted the parent row and then
+            # exhausted retries on a later chunk, leaving children behind.
+            # The sweep is idempotent, so let a retry finish the job when
+            # anything is still under the prefix; only refuse when the
+            # prefix is genuinely empty.
+            if not breakdown:
+                return {
+                    "error": (
+                        f"Receipt {receipt_id} not found for image "
+                        f"{image_id}"
+                    )
+                }
+            merchant_name = "(parent already deleted; orphaned children)"
 
         if dry_run:
             return {

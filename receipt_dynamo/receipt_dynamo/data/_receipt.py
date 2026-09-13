@@ -416,6 +416,70 @@ class _Receipt(FlattenedStandardMixin):
         self._client.transact_write_items(TransactItems=transact_items)
 
     @handle_dynamodb_errors("delete_receipt_items")
+    def _receipt_prefix_keys(
+        self, image_id: str, receipt_id: int, *, include_parent: bool
+    ) -> list[dict[str, Any]]:
+        """Keys of the exact parent row (optional) plus every delimited child.
+
+        The parent is matched by exact key, never by prefix: an undelimited
+        ``begins_with(SK, "RECEIPT#10000")`` would also select receipt
+        100000. Children are swept under both the canonical padded prefix
+        and the legacy unpadded one, the same way purge_receipt_children
+        does. Reads are strongly consistent so rows written moments before
+        a delete are not missed.
+        """
+        pk = {"S": f"IMAGE#{image_id}"}
+        keys: list[dict[str, Any]] = []
+        if include_parent:
+            parent = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk AND SK = :sk",
+                ExpressionAttributeValues={
+                    ":pk": pk,
+                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
+                },
+                ProjectionExpression="PK, SK, #t",
+                ExpressionAttributeNames={"#t": "TYPE"},
+                ConsistentRead=True,
+            )
+            keys.extend(parent.get("Items", []))
+        prefixes = sorted(
+            {f"RECEIPT#{receipt_id:05d}#", f"RECEIPT#{receipt_id}#"}
+        )
+        for prefix in prefixes:
+            exclusive_start_key = None
+            while True:
+                params: dict[str, Any] = {
+                    "TableName": self.table_name,
+                    "KeyConditionExpression": (
+                        "PK = :pk AND begins_with(SK, :prefix)"
+                    ),
+                    "ExpressionAttributeValues": {
+                        ":pk": pk,
+                        ":prefix": {"S": prefix},
+                    },
+                    "ProjectionExpression": "PK, SK, #t",
+                    "ExpressionAttributeNames": {"#t": "TYPE"},
+                    "ConsistentRead": True,
+                }
+                if exclusive_start_key:
+                    params["ExclusiveStartKey"] = exclusive_start_key
+                response = self._client.query(**params)
+                keys.extend(response.get("Items", []))
+                exclusive_start_key = response.get("LastEvaluatedKey")
+                if not exclusive_start_key:
+                    break
+        # Three queries feed this list; a key must be enqueued once even if
+        # a client returns it for more than one of them.
+        seen: set[tuple[str, str]] = set()
+        unique: list[dict[str, Any]] = []
+        for item in keys:
+            key = (item["PK"]["S"], item["SK"]["S"])
+            if key not in seen:
+                seen.add(key)
+                unique.append(item)
+        return unique
+
     def delete_receipt_items(
         self,
         image_id: str,
@@ -423,51 +487,29 @@ class _Receipt(FlattenedStandardMixin):
         *,
         include_parent: bool = True,
     ) -> int:
-        """Delete every row beneath a receipt primary-key prefix.
+        """Delete the receipt row and every row beneath its key prefix.
 
         This intentionally deletes concrete child rows so DynamoDB stream
         consumers receive word and line removal events for vector cleanup.
         The operation is idempotent and paginates the full partition prefix.
+        The parent is matched exactly and children by delimited prefix; see
+        :meth:`_receipt_prefix_keys`.
         """
         self._validate_image_id(image_id)
         self._validate_receipt_id(receipt_id)
-        parent_sk = f"RECEIPT#{receipt_id:05d}"
-        items: list[dict[str, Any]] = []
-        exclusive_start_key = None
-
-        while True:
-            params: dict[str, Any] = {
-                "TableName": self.table_name,
-                "KeyConditionExpression": (
-                    "PK = :pk AND begins_with(SK, :receipt_prefix)"
-                ),
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":receipt_prefix": {"S": parent_sk},
-                },
-                "ProjectionExpression": "PK, SK",
-            }
-            if exclusive_start_key:
-                params["ExclusiveStartKey"] = exclusive_start_key
-            response = self._client.query(**params)
-            items.extend(response.get("Items", []))
-            exclusive_start_key = response.get("LastEvaluatedKey")
-            if not exclusive_start_key:
-                break
-
+        items = self._receipt_prefix_keys(
+            image_id, receipt_id, include_parent=include_parent
+        )
         # A receipt cascade deletes its derived NUTRITION_SUMMARY row by
         # design; the nutrition write guard only covers nutrition partitions.
-        requests = []
-        for item in items:
-            if not include_parent and item["SK"]["S"] == parent_sk:
-                continue
-            requests.append(
-                WriteRequestTypeDef(
-                    DeleteRequest=DeleteRequestTypeDef(
-                        Key={"PK": item["PK"], "SK": item["SK"]}
-                    )
+        requests = [
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(
+                    Key={"PK": item["PK"], "SK": item["SK"]}
                 )
             )
+            for item in items
+        ]
         if requests:
             self._batch_write_with_retry(requests)
         return len(requests)
@@ -476,32 +518,19 @@ class _Receipt(FlattenedStandardMixin):
     def get_receipt_item_type_counts(
         self, image_id: str, receipt_id: int
     ) -> dict[str, int]:
-        """Count all entity types stored below a receipt key prefix."""
+        """Count entity types stored at and below a receipt key prefix.
+
+        Walks exactly the keys :meth:`delete_receipt_items` would delete
+        (exact parent + delimited canonical and legacy child prefixes,
+        strongly consistent), so a dry-run preview matches the sweep.
+        """
         self._validate_image_id(image_id)
         self._validate_receipt_id(receipt_id)
         counts: Counter[str] = Counter()
-        exclusive_start_key = None
-        while True:
-            params: dict[str, Any] = {
-                "TableName": self.table_name,
-                "KeyConditionExpression": (
-                    "PK = :pk AND begins_with(SK, :receipt_prefix)"
-                ),
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":receipt_prefix": {"S": f"RECEIPT#{receipt_id:05d}"},
-                },
-                "ProjectionExpression": "#type",
-                "ExpressionAttributeNames": {"#type": "TYPE"},
-            }
-            if exclusive_start_key:
-                params["ExclusiveStartKey"] = exclusive_start_key
-            response = self._client.query(**params)
-            for item in response.get("Items", []):
-                counts[item.get("TYPE", {}).get("S", "UNKNOWN")] += 1
-            exclusive_start_key = response.get("LastEvaluatedKey")
-            if not exclusive_start_key:
-                break
+        for item in self._receipt_prefix_keys(
+            image_id, receipt_id, include_parent=True
+        ):
+            counts[item.get("TYPE", {}).get("S", "UNKNOWN")] += 1
         return dict(sorted(counts.items()))
 
     @handle_dynamodb_errors("release_receipt_id_reservations")

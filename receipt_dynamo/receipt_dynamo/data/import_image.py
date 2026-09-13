@@ -5,7 +5,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.export_image import delete_image_data
+from receipt_dynamo.data.export_image import (
+    delete_image_data,
+    receipt_summary_record_from_export,
+)
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 from receipt_dynamo.entities import (
     Image,
     Letter,
@@ -14,12 +18,20 @@ from receipt_dynamo.entities import (
     OCRRoutingDecision,
     Receipt,
     ReceiptBarcode,
+    ReceiptFactOverride,
     ReceiptLetter,
     ReceiptLine,
+    ReceiptLineItem,
     ReceiptPlace,
+    ReceiptRow,
+    ReceiptSection,
     ReceiptWord,
     ReceiptWordLabel,
     Word,
+)
+from receipt_dynamo.entities.receipt_embedding import (
+    ReceiptLineEmbedding,
+    ReceiptWordEmbedding,
 )
 
 
@@ -99,6 +111,35 @@ def import_image(table_name: str, json_path: str) -> None:
             )
             for item in data.get("ocr_routing_decisions", [])
         ],
+        # Derived rows and vectors exported since 2026-09 (#1649). Flat
+        # dataclasses rebuild with **item; the summary record is nested and
+        # goes through the shared reconstruction next to the exporter.
+        "receipt_rows": [
+            ReceiptRow(**item) for item in data.get("receipt_rows", [])
+        ],
+        "receipt_sections": [
+            ReceiptSection(**item) for item in data.get("receipt_sections", [])
+        ],
+        "receipt_line_items": [
+            ReceiptLineItem(**item)
+            for item in data.get("receipt_line_items", [])
+        ],
+        "receipt_summaries": [
+            receipt_summary_record_from_export(item)
+            for item in data.get("receipt_summaries", [])
+        ],
+        "receipt_fact_overrides": [
+            ReceiptFactOverride(**item)
+            for item in data.get("receipt_fact_overrides", [])
+        ],
+        "receipt_embeddings": [
+            (
+                ReceiptWordEmbedding(**item)
+                if "word_vector" in item
+                else ReceiptLineEmbedding(**item)
+            )
+            for item in data.get("receipt_embeddings", [])
+        ],
     }
 
     # Import data in batches using existing DynamoClient methods
@@ -158,6 +199,27 @@ def import_image(table_name: str, json_path: str) -> None:
         dynamo_client.add_ocr_routing_decisions(
             entities["ocr_routing_decisions"]
         )
+
+    # Dependency order: rows -> sections (reference row_ids) -> line items.
+    if entities["receipt_rows"]:
+        dynamo_client.add_receipt_rows(entities["receipt_rows"])
+    if entities["receipt_sections"]:
+        dynamo_client.add_receipt_sections(entities["receipt_sections"])
+    if entities["receipt_line_items"]:
+        dynamo_client.add_receipt_line_items(entities["receipt_line_items"])
+    if entities["receipt_summaries"]:
+        dynamo_client.add_receipt_summaries(entities["receipt_summaries"])
+    for override in entities["receipt_fact_overrides"]:
+        # Owner facts are stated on the dev table only; the DAL refuses
+        # them elsewhere. A restore into a protected table keeps the rest
+        # of the snapshot rather than aborting on this row.
+        try:
+            dynamo_client.add_receipt_fact_override(override)
+        except EntityValidationError as exc:
+            if "owner facts are stated on the dev table only" not in str(exc):
+                raise
+    if entities["receipt_embeddings"]:
+        dynamo_client.add_receipt_embeddings(entities["receipt_embeddings"])
 
 
 def restore_image(table_name: str, json_path: str) -> None:

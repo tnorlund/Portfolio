@@ -154,37 +154,18 @@ def delete_image_data(table_name: str, image_id: str) -> dict[str, int]:
     """
     Deletes ALL DynamoDB records for a given image_id.
 
-    Uses get_image_details() to discover all entities, then deletes them
-    in reverse-dependency order (children first).
+    Sweeps the whole ``IMAGE#{image_id}`` partition via
+    ``delete_image_details`` regardless of entity TYPE. It used to iterate
+    an explicit per-type allowlist, which silently left behind every type
+    added after it (rows, sections, line items, summaries, overrides,
+    vectors) — so a restore over existing data kept stale rows and a
+    restore into an empty table was incomplete.
 
     Args:
         table_name: The DynamoDB table name
         image_id: UUID of the image whose data should be deleted
 
     Returns:
-        A dict mapping entity type names to the number of records deleted.
+        A dict mapping entity TYPE to the number of records deleted.
     """
-    dynamo_client = DynamoClient(table_name)
-    details = dynamo_client.get_image_details(image_id)
-    counts: dict[str, int] = {}
-    # Delete in reverse-dependency order (children first)
-    for attr, method in [
-        ("receipt_word_labels", "delete_receipt_word_labels"),
-        ("receipt_letters", "delete_receipt_letters"),
-        ("receipt_words", "delete_receipt_words"),
-        ("receipt_lines", "delete_receipt_lines"),
-        ("receipt_places", "delete_receipt_places"),
-        ("receipt_barcodes", "delete_receipt_barcodes"),
-        ("receipts", "delete_receipts"),
-        ("letters", "delete_letters"),
-        ("words", "delete_words"),
-        ("lines", "delete_lines"),
-        ("ocr_routing_decisions", "delete_ocr_routing_decisions"),
-        ("ocr_jobs", "delete_ocr_jobs"),
-        ("images", "delete_images"),
-    ]:
-        entities = getattr(details, attr)
-        if entities:
-            getattr(dynamo_client, method)(entities)
-            counts[attr] = len(entities)
-    return counts
+    return DynamoClient(table_name).delete_image_details(image_id)

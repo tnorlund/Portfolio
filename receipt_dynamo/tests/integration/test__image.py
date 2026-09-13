@@ -978,3 +978,56 @@ def test_get_image_details_includes_promoted_derived_entities(
     assert len(details.receipt_line_items) == 1
     assert details.receipt_line_items[0].name == "BYO SANDWICH"
     assert len(details.receipt_embeddings) == 2
+
+
+@pytest.mark.integration
+def test_receipt_prefix_sweep_is_delimited_consistent_and_legacy_aware(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_image: Image,
+) -> None:
+    """delete_receipt_items must not touch a neighbouring receipt.
+
+    With 5-digit padding, receipt 10000 is ``RECEIPT#10000`` and receipt
+    100000 is ``RECEIPT#100000`` -- an undelimited ``begins_with`` on the
+    former selects the latter's parent and every child. The sweep now
+    matches the parent exactly and children by delimited prefix, and it
+    also sweeps the legacy unpadded ``RECEIPT#N#`` form the way
+    purge_receipt_children does. get_receipt_item_type_counts walks the
+    identical key set so a dry-run preview matches the delete.
+    """
+    client = DynamoClient(dynamodb_table)
+    pk = {"S": f"IMAGE#{sample_image.image_id}"}
+    client.add_image(sample_image)
+
+    def put(sk: str, typ: str) -> None:
+        client._client.put_item(
+            TableName=dynamodb_table,
+            Item={"PK": pk, "SK": {"S": sk}, "TYPE": {"S": typ}},
+        )
+
+    target, neighbour = 10000, 100000
+    put(f"RECEIPT#{target:05d}", "RECEIPT")  # parent
+    put(f"RECEIPT#{target:05d}#ROW#00001", "RECEIPT_ROW")  # padded child
+    put(f"RECEIPT#{target:05d}#ROW#00002", "RECEIPT_ROW")
+    put(f"RECEIPT#{target}#ROW#00099", "RECEIPT_ROW")  # legacy child
+    put(f"RECEIPT#{neighbour:05d}", "RECEIPT")  # neighbour parent
+    put(f"RECEIPT#{neighbour:05d}#ROW#00001", "RECEIPT_ROW")
+
+    counts = client.get_receipt_item_type_counts(sample_image.image_id, target)
+    assert counts == {"RECEIPT": 1, "RECEIPT_ROW": 3}
+
+    deleted = client.delete_receipt_items(
+        sample_image.image_id, target, include_parent=True
+    )
+    assert deleted == 4
+
+    left = client._client.query(
+        TableName=dynamodb_table,
+        KeyConditionExpression="PK = :pk AND begins_with(SK, :p)",
+        ExpressionAttributeValues={":pk": pk, ":p": {"S": "RECEIPT#"}},
+        ProjectionExpression="SK",
+    )["Items"]
+    assert sorted(i["SK"]["S"] for i in left) == [
+        f"RECEIPT#{neighbour:05d}",
+        f"RECEIPT#{neighbour:05d}#ROW#00001",
+    ]
