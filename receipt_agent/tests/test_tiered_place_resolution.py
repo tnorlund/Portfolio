@@ -9,6 +9,7 @@ from receipt_agent.subagents.place_finder.tiered import (
     ReceiptClues,
     Tier2Selection,
     _addresses_match,
+    _names_match,
     _select_with_llm,
     extract_receipt_clues,
     resolve_tiered_place,
@@ -477,3 +478,122 @@ def test_tier2_makes_one_structured_picker_call():
     structured_llm.ainvoke.assert_awaited_once()
     assert create_llm.call_args.kwargs["model"] == "openai/gpt-oss-120b"
     assert create_llm.call_args.kwargs["reasoning"] is True
+
+
+class _QueryFakePlaces(_FakePlaces):
+    """Fake whose text search answers depend on the query string."""
+
+    def __init__(self, *, text_by_query, **kwargs):
+        super().__init__(**kwargs)
+        self.text_by_query = text_by_query
+
+    def search_by_text(self, text):
+        self.calls.append(("text", text))
+        return self.text_by_query.get(text)
+
+
+def test_names_match_accepts_descriptor_padded_google_name():
+    assert _names_match(
+        "Rise Henderson", "RISE Recreational Dispensary Henderson"
+    )
+    assert _names_match("WHOLE FOODS", "Whole Foods Market")
+    assert not _names_match("WHOLE FOODS", "WFM Coffee & Juice Bar")
+    assert not _names_match("", "Whole Foods Market")
+
+
+def test_tier1_resolves_receipt_name_padded_by_google_descriptors():
+    details = _place_clue_details(
+        merchant="Rise Henderson",
+        address="4300 E Sunset Rd, suite A3, Henderson, NV 89014",
+        phone=None,
+    )
+    street = _place(
+        place_id="street",
+        name="4300 E Sunset Rd a3",
+        address="4300 E Sunset Rd a3, Henderson, NV 89014, USA",
+        phone=None,
+        types=["street_address", "subpremise"],
+    )
+    dispensary = _place(
+        place_id="rise",
+        name="RISE Recreational Dispensary Henderson",
+        address="4300 E Sunset Rd a3, Henderson, NV 89014, USA",
+        phone=None,
+    )
+    places = _QueryFakePlaces(
+        address=street, text_by_query={"Rise Henderson": dispensary}
+    )
+
+    result, stats = asyncio.run(resolve_tiered_place(details, places))
+
+    assert result["place_id"] == "rise"
+    assert result["resolution_tier"] == "tier1"
+    assert stats["llm_calls"] == 0
+    assert [q for m, q in places.calls if m == "text"] == ["Rise Henderson"]
+
+
+def test_tier1_retries_text_search_anchored_to_receipt_address():
+    details = _place_clue_details(
+        merchant="WHOLE FOODS",
+        address="6689 S Las Vegas Blvd, Las Vegas, NV 89119",
+        phone="702-589-7711",
+    )
+    coffee_bar = _place(
+        place_id="coffee",
+        name="WFM Coffee & Juice Bar",
+        address="6689 S Las Vegas Blvd, Las Vegas, NV 89119, USA",
+        phone="(702) 589-7711",
+        types=["cafe", "establishment"],
+    )
+    street = _place(
+        place_id="street",
+        name="6689 S Las Vegas Blvd",
+        address="6689 S Las Vegas Blvd, Las Vegas, NV 89119, USA",
+        phone=None,
+        types=["street_address", "subpremise"],
+    )
+    out_of_state = _place(
+        place_id="far",
+        name="Whole Foods Market",
+        address="1 Broadway, New York, NY 10001, USA",
+        phone=None,
+    )
+    store = _place(
+        place_id="whole-foods",
+        name="Whole Foods Market",
+        address="6689 S Las Vegas Blvd, Las Vegas, NV 89119, USA",
+        phone=None,
+    )
+    localized = "WHOLE FOODS 6689 S Las Vegas Blvd, Las Vegas, NV 89119"
+    places = _QueryFakePlaces(
+        phone=coffee_bar,
+        address=street,
+        text_by_query={"WHOLE FOODS": out_of_state, localized: store},
+    )
+
+    result, stats = asyncio.run(resolve_tiered_place(details, places))
+
+    assert result["place_id"] == "whole-foods"
+    assert result["resolution_tier"] == "tier1"
+    assert result["phone_number"] == "702-589-7711"
+    assert stats["llm_calls"] == 0
+    assert [q for m, q in places.calls if m == "text"] == [
+        "WHOLE FOODS",
+        localized,
+    ]
+
+
+def test_localized_text_retry_is_skipped_when_bare_text_search_hits():
+    details = _place_clue_details(
+        merchant="Right Cafe",
+        address="123 Main St, Las Vegas, NV 89101",
+        phone=None,
+    )
+    places = _QueryFakePlaces(
+        text_by_query={"Right Cafe": _place(name="Right Cafe", phone=None)}
+    )
+
+    result, _ = asyncio.run(resolve_tiered_place(details, places))
+
+    assert result["place_id"] == "ChIJ-test"
+    assert [q for m, q in places.calls if m == "text"] == ["Right Cafe"]
