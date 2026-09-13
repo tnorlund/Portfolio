@@ -1,6 +1,7 @@
 # infra/lambda_layer/python/dynamo/data/export_image.py
 import json
 import os
+import uuid
 from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal
@@ -150,6 +151,32 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         json.dump(results, f, indent=4, default=datetime_handler)
 
 
+# TYPE attribute -> the collection name delete_image_data has always reported.
+_TYPE_TO_COLLECTION: dict[str, str] = {
+    "IMAGE": "images",
+    "LINE": "lines",
+    "WORD": "words",
+    "LETTER": "letters",
+    "RECEIPT": "receipts",
+    "RECEIPT_LINE": "receipt_lines",
+    "RECEIPT_WORD": "receipt_words",
+    "RECEIPT_LETTER": "receipt_letters",
+    "RECEIPT_WORD_LABEL": "receipt_word_labels",
+    "RECEIPT_PLACE": "receipt_places",
+    "RECEIPT_METADATA": "receipt_metadatas",
+    "RECEIPT_BARCODE": "receipt_barcodes",
+    "OCR_JOB": "ocr_jobs",
+    "OCR_ROUTING_DECISION": "ocr_routing_decisions",
+    "RECEIPT_ROW": "receipt_rows",
+    "RECEIPT_SECTION": "receipt_sections",
+    "RECEIPT_LINE_ITEM": "receipt_line_items",
+    "RECEIPT_SUMMARY": "receipt_summaries",
+    "RECEIPT_FACT_OVERRIDE": "receipt_fact_overrides",
+    "RECEIPT_LINE_EMBEDDING": "receipt_embeddings",
+    "RECEIPT_WORD_EMBEDDING": "receipt_embeddings",
+}
+
+
 def delete_image_data(table_name: str, image_id: str) -> dict[str, int]:
     """
     Deletes ALL DynamoDB records for a given image_id.
@@ -166,6 +193,18 @@ def delete_image_data(table_name: str, image_id: str) -> dict[str, int]:
         image_id: UUID of the image whose data should be deleted
 
     Returns:
-        A dict mapping entity TYPE to the number of records deleted.
+        A dict mapping collection name (``images``, ``receipt_words``, ...)
+        to the number of records deleted, as this function always has.
+        Both embedding TYPEs report under ``receipt_embeddings``. An id
+        that is not a valid UUIDv4 cannot address any row and returns ``{}``.
     """
-    return DynamoClient(table_name).delete_image_details(image_id)
+    try:
+        uuid.UUID(image_id, version=4)
+    except (ValueError, AttributeError, TypeError):
+        return {}
+    by_type = DynamoClient(table_name).delete_image_details(image_id)
+    counts: dict[str, int] = {}
+    for entity_type, n in by_type.items():
+        name = _TYPE_TO_COLLECTION.get(entity_type, entity_type.lower())
+        counts[name] = counts.get(name, 0) + n
+    return counts
