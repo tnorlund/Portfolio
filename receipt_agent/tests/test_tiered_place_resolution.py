@@ -597,3 +597,39 @@ def test_localized_text_retry_is_skipped_when_bare_text_search_hits():
 
     assert result["place_id"] == "ChIJ-test"
     assert [q for m, q in places.calls if m == "text"] == ["Right Cafe"]
+
+
+def test_localized_text_retry_runs_after_same_state_wrong_branch():
+    """A bare chain query that hits another branch in town must not block
+    the anchored retry; only address/phone-corroborated hits do."""
+    details = _place_clue_details(
+        merchant="WHOLE FOODS",
+        address="6689 S Las Vegas Blvd, Las Vegas, NV 89119",
+        phone=None,
+    )
+    other_branch = _place(
+        place_id="other-branch",
+        name="Whole Foods Market",
+        address="8855 W Charleston Blvd, Las Vegas, NV 89117, USA",
+        phone=None,
+    )
+    store = _place(
+        place_id="whole-foods",
+        name="Whole Foods Market",
+        address="6689 S Las Vegas Blvd, Las Vegas, NV 89119, USA",
+        phone=None,
+    )
+    localized = "WHOLE FOODS 6689 S Las Vegas Blvd, Las Vegas, NV 89119"
+    places = _QueryFakePlaces(
+        text_by_query={"WHOLE FOODS": other_branch, localized: store}
+    )
+
+    result, stats = asyncio.run(resolve_tiered_place(details, places))
+
+    assert result["place_id"] == "whole-foods"
+    assert result["resolution_tier"] == "tier1"
+    assert stats["llm_calls"] == 0
+    assert [q for m, q in places.calls if m == "text"] == [
+        "WHOLE FOODS",
+        localized,
+    ]

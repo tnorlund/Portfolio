@@ -539,24 +539,25 @@ def _accept_search_result(
     method: str,
     query: str,
     search: Any,
-) -> bool:
+) -> PlaceCandidate | None:
     """Run one Places search and merge its result when it holds up."""
     try:
         place = search(query)
     except Exception:  # pylint: disable=broad-exception-caught
         logger.exception("Tier 1 Places %s search failed", method)
-        return False
+        return None
     if not _place_is_usable(place, clues):
-        return False
+        return None
     if not _primary_evidence_matches(place, clues, method):
         logger.warning(
             "Tier 1 rejected %s result because returned place did not "
             "match the receipt's primary clue",
             method,
         )
-        return False
-    _merge_candidate(candidates, _to_candidate(place, clues, method))
-    return True
+        return None
+    candidate = _to_candidate(place, clues, method)
+    _merge_candidate(candidates, candidate)
+    return candidate
 
 
 def collect_candidates(
@@ -573,19 +574,24 @@ def collect_candidates(
         ("address", clues.address, places_client.search_by_address),
         ("text", clues.merchant_name, places_client.search_by_text),
     )
-    accepted: dict[str, bool] = {}
+    corroborated = False
     for method, query, search in searches:
         if not query:
             continue
-        accepted[method] = _accept_search_result(
+        candidate = _accept_search_result(
             candidates, clues, method, query, search
         )
-    # A bare merchant query ("WHOLE FOODS") is unanchored and can land on a
-    # branch in another state, while the address query alone often returns
-    # the street address rather than the business.  When neither yielded a
-    # candidate, retry the text search anchored to the receipt's address.
+        if candidate and candidate.deterministic_eligible:
+            corroborated = True
+    # A bare merchant query ("WHOLE FOODS") is unanchored: it can land on a
+    # branch in another state (rejected) or another branch in the same city
+    # (accepted on name, but its address conflicts with the receipt).  The
+    # address query alone often returns the street address rather than the
+    # business.  Unless one of those searches produced a candidate whose
+    # secondary evidence agrees with the receipt, retry the text search
+    # anchored to the receipt's own address.
     localized = _localized_text_query(clues)
-    if localized and not (accepted.get("text") or accepted.get("address")):
+    if localized and not corroborated:
         _accept_search_result(
             candidates,
             clues,
