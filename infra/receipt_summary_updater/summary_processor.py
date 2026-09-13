@@ -7,7 +7,12 @@ a new ReceiptSummary from ReceiptWordLabel and ReceiptWord records.
 import json
 import logging
 import os
+from dataclasses import replace
 from typing import Any, NamedTuple
+
+from receipt_dynamo.data._receipt_fact_override import (
+    PROTECTED_FACT_TABLE_MARKERS,
+)
 
 # receipt_dynamo ships in the Lambda layer; receipt_upload.tender is
 # bundled into this Lambda's archive as a FileAsset referencing the
@@ -108,6 +113,7 @@ def compute_receipt_summary(
     # backfill_tender_bank.py); carry them over from the stored summary
     # so a label-change recompute does not clobber them.
     ledger = bank_amount = bank_match_confidence = bank_date = None
+    existing = None
     try:
         existing = dynamo.get_receipt_summary(image_id, receipt_id)
         ledger = existing.ledger
@@ -172,7 +178,44 @@ def compute_receipt_summary(
     # place on every recompute; a label change can never drop them.
     override = dynamo.get_receipt_fact_override(image_id, receipt_id)
     summary, overrides_applied = apply_fact_override(summary, override)
-    if overrides_applied:
+    stored_overrides = (
+        getattr(existing, "overrides_applied", None) if existing else None
+    )
+    stored_summary = getattr(existing, "summary", existing)
+    # Only on a protected table (prod), where an override row can never
+    # exist, does its absence mean "carry the stored values forward". On
+    # dev, absence can mean the maintenance API deleted the row on purpose
+    # -- carrying forward there would resurrect a retracted fact.
+    table_name = str(getattr(dynamo, "table_name", "") or "")
+    facts_are_readonly_here = any(
+        marker in table_name for marker in PROTECTED_FACT_TABLE_MARKERS
+    )
+    if override is None and facts_are_readonly_here and stored_overrides:
+        # Owner facts are stated on the dev table only, so on prod there is
+        # never an override row -- but the stored record, copied from dev by
+        # the promotion, says which fields the owner stated and carries
+        # their values. Carry those forward, the same way the bank fields
+        # are, so the stream-triggered recompute that follows a promotion
+        # does not overwrite the copied record with extracted values and an
+        # empty overrides_applied. If the owner retracts the override on
+        # dev, dev's recompute clears overrides_applied there and the next
+        # copy brings the cleared record over, so this never resurrects one.
+        carried = {
+            name: getattr(stored_summary, name)
+            for name in stored_overrides
+            if hasattr(stored_summary, name)
+        }
+        if carried:
+            summary = replace(summary, **carried)
+            overrides_applied = list(carried)
+            logger.info(
+                "Carried stored owner facts %s forward for %s:%d (facts "
+                "are read-only on this table)",
+                overrides_applied,
+                image_id[:8],
+                receipt_id,
+            )
+    if overrides_applied and override is not None:
         logger.info(
             "Applied owner fact override %s (revision %d) to %s:%d",
             overrides_applied,

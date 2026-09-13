@@ -14,6 +14,7 @@ from receipt_dynamo.entities.receipt_summary import (
 from receipt_dynamo.entities.receipt_summary_record import (
     ReceiptSummaryRecord,
 )
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 def datetime_handler(obj: Any) -> Any:
@@ -56,6 +57,12 @@ def receipt_summary_record_from_export(
     totals = inner.get("totals")
     if isinstance(totals, dict):
         inner["totals"] = MonetaryTotals(**totals)
+    # JSON turned the datetimes into ISO strings. The copier's loader
+    # converts them back before calling here, import_image does not; be
+    # correct for both rather than depend on the caller.
+    for name in ("date", "bank_date"):
+        if isinstance(inner.get(name), str):
+            inner[name] = datetime.fromisoformat(inner[name])
     return ReceiptSummaryRecord(
         summary=ReceiptSummary(**inner),
         timestamp_computed=raw.get("timestamp_computed"),
@@ -150,41 +157,63 @@ def export_image(table_name: str, image_id: str, output_dir: str) -> None:
         json.dump(results, f, indent=4, default=datetime_handler)
 
 
+# TYPE attribute -> the collection name delete_image_data has always reported.
+_TYPE_TO_COLLECTION: dict[str, str] = {
+    "IMAGE": "images",
+    "LINE": "lines",
+    "WORD": "words",
+    "LETTER": "letters",
+    "RECEIPT": "receipts",
+    "RECEIPT_LINE": "receipt_lines",
+    "RECEIPT_WORD": "receipt_words",
+    "RECEIPT_LETTER": "receipt_letters",
+    "RECEIPT_WORD_LABEL": "receipt_word_labels",
+    "RECEIPT_PLACE": "receipt_places",
+    "RECEIPT_METADATA": "receipt_metadatas",
+    "RECEIPT_BARCODE": "receipt_barcodes",
+    "OCR_JOB": "ocr_jobs",
+    "OCR_ROUTING_DECISION": "ocr_routing_decisions",
+    "RECEIPT_ROW": "receipt_rows",
+    "RECEIPT_SECTION": "receipt_sections",
+    "RECEIPT_LINE_ITEM": "receipt_line_items",
+    "RECEIPT_SUMMARY": "receipt_summaries",
+    "RECEIPT_FACT_OVERRIDE": "receipt_fact_overrides",
+    "RECEIPT_LINE_EMBEDDING": "receipt_embeddings",
+    "RECEIPT_WORD_EMBEDDING": "receipt_embeddings",
+}
+
+
 def delete_image_data(table_name: str, image_id: str) -> dict[str, int]:
     """
     Deletes ALL DynamoDB records for a given image_id.
 
-    Uses get_image_details() to discover all entities, then deletes them
-    in reverse-dependency order (children first).
+    Sweeps the whole ``IMAGE#{image_id}`` partition via
+    ``delete_image_details`` regardless of entity TYPE. It used to iterate
+    an explicit per-type allowlist, which silently left behind every type
+    added after it (rows, sections, line items, summaries, overrides,
+    vectors) — so a restore over existing data kept stale rows and a
+    restore into an empty table was incomplete.
 
     Args:
         table_name: The DynamoDB table name
         image_id: UUID of the image whose data should be deleted
 
     Returns:
-        A dict mapping entity type names to the number of records deleted.
+        A dict mapping collection name (``images``, ``receipt_words``, ...)
+        to the number of records deleted, as this function always has.
+        Both embedding TYPEs report under ``receipt_embeddings``. An id
+        that is not a valid UUIDv4 cannot address any row and returns ``{}``.
     """
-    dynamo_client = DynamoClient(table_name)
-    details = dynamo_client.get_image_details(image_id)
+    # Same validator the DAL applies. uuid.UUID(x, version=4) would coerce
+    # the version/variant bits and accept compact or v6 text that the sweep
+    # then rejects with OperationError instead of the documented {}.
+    try:
+        assert_valid_uuid(image_id)
+    except (ValueError, TypeError):
+        return {}
+    by_type = DynamoClient(table_name).delete_image_details(image_id)
     counts: dict[str, int] = {}
-    # Delete in reverse-dependency order (children first)
-    for attr, method in [
-        ("receipt_word_labels", "delete_receipt_word_labels"),
-        ("receipt_letters", "delete_receipt_letters"),
-        ("receipt_words", "delete_receipt_words"),
-        ("receipt_lines", "delete_receipt_lines"),
-        ("receipt_places", "delete_receipt_places"),
-        ("receipt_barcodes", "delete_receipt_barcodes"),
-        ("receipts", "delete_receipts"),
-        ("letters", "delete_letters"),
-        ("words", "delete_words"),
-        ("lines", "delete_lines"),
-        ("ocr_routing_decisions", "delete_ocr_routing_decisions"),
-        ("ocr_jobs", "delete_ocr_jobs"),
-        ("images", "delete_images"),
-    ]:
-        entities = getattr(details, attr)
-        if entities:
-            getattr(dynamo_client, method)(entities)
-            counts[attr] = len(entities)
+    for entity_type, n in by_type.items():
+        name = _TYPE_TO_COLLECTION.get(entity_type, entity_type.lower())
+        counts[name] = counts.get(name, 0) + n
     return counts

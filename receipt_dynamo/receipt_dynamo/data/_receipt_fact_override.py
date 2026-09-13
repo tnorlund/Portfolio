@@ -96,6 +96,27 @@ class _ReceiptFactOverride(FlattenedStandardMixin):
         )
         return override
 
+    @handle_dynamodb_errors("restore_receipt_fact_override")
+    def restore_receipt_fact_override(
+        self, override: ReceiptFactOverride
+    ) -> ReceiptFactOverride:
+        """Write an override exactly as exported, revision included.
+
+        For restoring a snapshot into an empty partition. Unlike
+        :meth:`add_receipt_fact_override` it accepts any revision (an
+        edited override is > 1) but keeps every other guard: the
+        protected-table refusal and create-only semantics.
+        """
+        self._assert_fact_override_writable()
+        override = self._validated_override(override)
+        self._add_entity(
+            override,
+            condition_expression=(
+                "attribute_not_exists(PK) AND attribute_not_exists(SK)"
+            ),
+        )
+        return override
+
     @handle_dynamodb_errors("update_receipt_fact_override")
     def update_receipt_fact_override(
         self, override: ReceiptFactOverride, *, expected_revision: int

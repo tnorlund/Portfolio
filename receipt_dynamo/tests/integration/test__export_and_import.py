@@ -472,6 +472,26 @@ def test_delete_image_data_no_records(dynamodb_table):
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "d3f528042fad4e0092c8b593da3a8ed3",  # compact hex, not canonical
+        "1ef1c5e0-5b7a-6d4e-8f2a-0123456789ab",  # canonical but version 6
+        "",
+    ],
+)
+def test_delete_image_data_non_canonical_ids_return_empty(
+    dynamodb_table, bad_id
+):
+    """Ids the project validator rejects return {} rather than raising.
+
+    uuid.UUID(x, version=4) would have coerced these through, and the sweep's
+    stricter validator would then raise OperationError (Codex, #1656).
+    """
+    assert delete_image_data(dynamodb_table, bad_id) == {}
+
+
+@pytest.mark.integration
 def test_restore_image(dynamodb_table, export_dir):
     """Test that restore_image deletes existing records and re-imports."""
     client = DynamoClient(dynamodb_table)

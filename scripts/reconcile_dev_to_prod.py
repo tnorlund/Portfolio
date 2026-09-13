@@ -114,17 +114,22 @@ RESTORABLE_TYPES = {
     "RECEIPT_SUMMARY",
     "RECEIPT_LINE_EMBEDDING",
     "RECEIPT_WORD_EMBEDDING",
-    # Nutrition rows are written by the receipt_nutrition DAL and travel with
-    # the receipt prefix; listed so prod partitions holding them stay
-    # REPLACE-able once that pipeline runs in prod.
-    "RECEIPT_LINE_NUTRITION",
-    "RECEIPT_NUTRITION_SUMMARY",
+    # RECEIPT_LINE_NUTRITION / RECEIPT_NUTRITION_SUMMARY are deliberately
+    # NOT listed: nothing in ImageDetails, export_image or copy_image_entities
+    # carries them yet, so a REPLACE would sweep them from prod with no
+    # restore. The guard is the right behaviour until the copy path is
+    # extended (they are zero rows in both envs today).
     # COMPACTION_RUN items are orphans left by the retired vector store and
     # are deliberately never copied: they would make prod act on dev's
     # compaction state.
     "COMPACTION_RUN",
     "EMBEDDING_STATUS",
 }
+
+
+def _opt(value) -> str:
+    """Fingerprint an optional scalar so None and 0 hash differently."""
+    return "" if value is None else str(value)
 
 
 def _fingerprint_env(client: DynamoClient) -> dict:
@@ -223,7 +228,23 @@ def _fingerprint_env(client: DynamoClient) -> dict:
         client.list_receipt_rows,
         lambda b: [
             rows[r.image_id].append(
-                (r.receipt_id, r.row_id, tuple(r.line_ids or ()))
+                (
+                    r.receipt_id,
+                    r.row_id,
+                    tuple(r.line_ids or ()),
+                    # persisted amount-pairing decisions consumed by section
+                    # assignment and line-item extraction; verified stable
+                    # across a copy (0 diffs over 1,114 rows, 2026-09-13)
+                    r.label_text or "",
+                    r.amount_text or "",
+                    r.amount_line_id,
+                    r.amount_word_id,
+                    (
+                        round(r.price_column_x, 4)
+                        if r.price_column_x is not None
+                        else None
+                    ),
+                )
             )
             for r in b
         ],
@@ -232,7 +253,18 @@ def _fingerprint_env(client: DynamoClient) -> dict:
         client.list_receipt_sections,
         lambda b: [
             sections[s.image_id].append(
-                (s.receipt_id, str(s.section_type), tuple(s.line_ids or ()))
+                (
+                    s.receipt_id,
+                    str(s.section_type),
+                    tuple(s.line_ids or ()),
+                    # verifier decisions; an ITEMS section flipping to
+                    # INVALID must move prod (it also drops dev's line
+                    # items, which are not fingerprinted). Verified stable
+                    # across a copy (0 diffs over 258 sections, 2026-09-13).
+                    str(s.validation_status or ""),
+                    str(s.verification_status or ""),
+                    str(s.verification_section_type or ""),
+                )
             )
             for s in b
         ],
@@ -247,8 +279,8 @@ def _fingerprint_env(client: DynamoClient) -> dict:
     # them would REPLACE every such image on every run forever. Their
     # inputs (words, labels, sections, summaries) are hashed above, so a
     # real change still moves prod.
-    # ReceiptSummary: hash ONLY the offline bank-match fields plus the list
-    # of owner-fact overrides baked into the record. Every other
+    # ReceiptSummary: hash ONLY the four offline bank-match fields plus the
+    # owner-fact overrides baked into the record (names AND values). Every other
     # field is recomputed from the destination's own words by the summary
     # updater within ~30s of a copy, so hashing them would diff dev against a
     # prod row that is mid-recompute and REPLACE forever. The bank fields are
@@ -260,10 +292,21 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             summaries[s.image_id].append(
                 (
                     s.receipt_id,
-                    str(getattr(s, "ledger", "") or ""),
-                    str(getattr(s, "bank_amount", "") or ""),
-                    str(getattr(s, "bank_date", "") or ""),
-                    tuple(sorted(getattr(s, "overrides_applied", []) or [])),
+                    # None and 0/0.0 are distinct stored states; `or ""`
+                    # would collapse them and hide a real change.
+                    _opt(getattr(s, "ledger", None)),
+                    _opt(getattr(s, "bank_amount", None)),
+                    _opt(getattr(s, "bank_date", None)),
+                    _opt(getattr(s, "bank_match_confidence", None)),
+                    # owner-stated facts: the field NAMES and their applied
+                    # VALUES. An owner changing an already-overridden date
+                    # keeps the same name, so names alone never move prod.
+                    tuple(
+                        (f, str(getattr(s.summary, f, None)))
+                        for f in sorted(
+                            getattr(s, "overrides_applied", []) or []
+                        )
+                    ),
                 )
             )
             for s in b

@@ -5,7 +5,10 @@ from datetime import datetime, timezone
 from typing import Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
-from receipt_dynamo.data.export_image import delete_image_data
+from receipt_dynamo.data.export_image import (
+    receipt_summary_record_from_export,
+)
+from receipt_dynamo.data.shared_exceptions import EntityValidationError
 from receipt_dynamo.entities import (
     Image,
     Letter,
@@ -14,12 +17,20 @@ from receipt_dynamo.entities import (
     OCRRoutingDecision,
     Receipt,
     ReceiptBarcode,
+    ReceiptFactOverride,
     ReceiptLetter,
     ReceiptLine,
+    ReceiptLineItem,
     ReceiptPlace,
+    ReceiptRow,
+    ReceiptSection,
     ReceiptWord,
     ReceiptWordLabel,
     Word,
+)
+from receipt_dynamo.entities.receipt_embedding import (
+    ReceiptLineEmbedding,
+    ReceiptWordEmbedding,
 )
 
 
@@ -99,6 +110,35 @@ def import_image(table_name: str, json_path: str) -> None:
             )
             for item in data.get("ocr_routing_decisions", [])
         ],
+        # Derived rows and vectors exported since 2026-09 (#1649). Flat
+        # dataclasses rebuild with **item; the summary record is nested and
+        # goes through the shared reconstruction next to the exporter.
+        "receipt_rows": [
+            ReceiptRow(**item) for item in data.get("receipt_rows", [])
+        ],
+        "receipt_sections": [
+            ReceiptSection(**item) for item in data.get("receipt_sections", [])
+        ],
+        "receipt_line_items": [
+            ReceiptLineItem(**item)
+            for item in data.get("receipt_line_items", [])
+        ],
+        "receipt_summaries": [
+            receipt_summary_record_from_export(item)
+            for item in data.get("receipt_summaries", [])
+        ],
+        "receipt_fact_overrides": [
+            ReceiptFactOverride(**item)
+            for item in data.get("receipt_fact_overrides", [])
+        ],
+        "receipt_embeddings": [
+            (
+                ReceiptWordEmbedding(**item)
+                if "word_vector" in item
+                else ReceiptLineEmbedding(**item)
+            )
+            for item in data.get("receipt_embeddings", [])
+        ],
     }
 
     # Import data in batches using existing DynamoClient methods
@@ -159,13 +199,71 @@ def import_image(table_name: str, json_path: str) -> None:
             entities["ocr_routing_decisions"]
         )
 
+    # Dependency order: rows -> sections (reference row_ids) -> line items.
+    if entities["receipt_rows"]:
+        dynamo_client.add_receipt_rows(entities["receipt_rows"])
+    if entities["receipt_sections"]:
+        dynamo_client.add_receipt_sections(entities["receipt_sections"])
+    if entities["receipt_line_items"]:
+        dynamo_client.add_receipt_line_items(entities["receipt_line_items"])
+    if entities["receipt_summaries"]:
+        dynamo_client.add_receipt_summaries(entities["receipt_summaries"])
+    for override in entities["receipt_fact_overrides"]:
+        # Owner facts are stated on the dev table only; the DAL refuses
+        # them elsewhere. A restore into a protected table keeps the rest
+        # of the snapshot rather than aborting on this row.
+        try:
+            dynamo_client.restore_receipt_fact_override(override)
+        except EntityValidationError as exc:
+            if "owner facts are stated on the dev table only" not in str(exc):
+                raise
+    if entities["receipt_embeddings"]:
+        dynamo_client.add_receipt_embeddings(entities["receipt_embeddings"])
+
+
+# Every TYPE import_image can write back. restore_image deletes ONLY these,
+# so a row of any other type in the partition (e.g. a nutrition snapshot
+# the export does not carry) survives the restore instead of being swept
+# and never re-created.
+IMPORTABLE_TYPES: frozenset[str] = frozenset(
+    {
+        "IMAGE",
+        "LINE",
+        "WORD",
+        "LETTER",
+        "RECEIPT",
+        "RECEIPT_LINE",
+        "RECEIPT_WORD",
+        "RECEIPT_LETTER",
+        "RECEIPT_WORD_LABEL",
+        "RECEIPT_PLACE",
+        "RECEIPT_BARCODE",
+        "OCR_JOB",
+        "OCR_ROUTING_DECISION",
+        "RECEIPT_ROW",
+        "RECEIPT_SECTION",
+        "RECEIPT_LINE_ITEM",
+        "RECEIPT_SUMMARY",
+        "RECEIPT_FACT_OVERRIDE",
+        "RECEIPT_LINE_EMBEDDING",
+        "RECEIPT_WORD_EMBEDDING",
+    }
+)
+
 
 def restore_image(table_name: str, json_path: str) -> None:
-    """Delete existing records then import from backup.
+    """Delete the records the backup can re-create, then import it.
+
+    Only TYPEs in :data:`IMPORTABLE_TYPES` are deleted first; anything else
+    under the partition is left in place because the import could not
+    bring it back. (``delete_image_data`` remains the unconditional sweep
+    for callers that want everything gone.)
 
     Warning: not atomic — if import fails after deletion, data may be lost.
     Re-run with the same JSON to recover.
     """
     image_id = os.path.splitext(os.path.basename(json_path))[0]
-    delete_image_data(table_name, image_id)
+    DynamoClient(table_name).delete_image_details(
+        image_id, entity_types=set(IMPORTABLE_TYPES)
+    )
     import_image(table_name, json_path)

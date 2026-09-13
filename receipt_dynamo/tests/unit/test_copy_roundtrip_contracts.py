@@ -18,7 +18,9 @@ still breaks the rebuild.
 """
 
 import json
-from dataclasses import asdict
+import types
+import typing
+from dataclasses import asdict, fields, is_dataclass
 
 import pytest
 
@@ -139,3 +141,68 @@ def test_flat_entities_survive_a_real_kwargs_rebuild(entity):
         "explicit reconstruction for it, like "
         "receipt_summary_record_from_export."
     )
+
+
+def _nested_dataclass_types(tp) -> set:
+    """Every dataclass reachable through a field annotation.
+
+    Walks Optional/Union, list/tuple/dict/set args and string forward refs
+    so ``Details | None`` and ``list[Details]`` are found, not just a bare
+    ``Details`` annotation.
+    """
+    found = set()
+    if isinstance(tp, str):
+        return found
+    if is_dataclass(tp):
+        found.add(tp)
+        return found
+    origin = typing.get_origin(tp)
+    if origin is typing.Union or isinstance(tp, types.UnionType):
+        for arg in typing.get_args(tp):
+            found |= _nested_dataclass_types(arg)
+    elif origin is not None:
+        for arg in typing.get_args(tp):
+            found |= _nested_dataclass_types(arg)
+    return found
+
+
+@pytest.mark.parametrize(
+    "entity_cls",
+    [ReceiptRow, ReceiptSection, ReceiptLineItem],
+    ids=lambda c: c.__name__,
+)
+def test_flat_entities_declare_no_nested_dataclass_anywhere(entity_cls):
+    """Static complement to the round trip above.
+
+    The round trip only exercises fields the fixture populates, so an
+    optional or container-held nested dataclass left at its empty default
+    would pass it. This walks the resolved annotations instead and fails
+    the moment such a field is declared, populated or not.
+    """
+    hints = typing.get_type_hints(entity_cls)
+    nested = {
+        f.name: sorted(
+            t.__name__ for t in _nested_dataclass_types(hints[f.name])
+        )
+        for f in fields(entity_cls)
+        if _nested_dataclass_types(hints.get(f.name, f.type))
+    }
+    assert not nested, (
+        f"{entity_cls.__name__} declares nested dataclass field(s) {nested}; "
+        "Class(**asdict(x)) will not rebuild them -- add explicit "
+        "reconstruction like receipt_summary_record_from_export and copy "
+        "it into copy_dynamodb_dev_to_prod / import_image."
+    )
+
+
+def test_nested_type_walker_sees_optional_and_container_forms():
+    """Guard the guard: the walker must catch the shapes Codex named."""
+    assert _nested_dataclass_types(MonetaryTotals | None) == {MonetaryTotals}
+    assert _nested_dataclass_types(list[MonetaryTotals]) == {MonetaryTotals}
+    assert _nested_dataclass_types(dict[str, MonetaryTotals]) == {
+        MonetaryTotals
+    }
+    assert _nested_dataclass_types(typing.Optional[list[MonetaryTotals]]) == {
+        MonetaryTotals
+    }
+    assert _nested_dataclass_types(int | None) == set()
