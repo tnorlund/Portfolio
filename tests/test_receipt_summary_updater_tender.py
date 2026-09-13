@@ -18,6 +18,9 @@ import pytest
 from infra.receipt_summary_updater import summary_processor
 
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.data._receipt_fact_override import (
+    PROTECTED_FACT_TABLE_MARKERS,
+)
 from receipt_dynamo.entities.receipt_fact_override import (
     ReceiptFactOverride,
 )
@@ -32,6 +35,10 @@ from receipt_dynamo.entities.receipt_summary_record import (
 # isort: on
 
 IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
+# Synthetic table names. The fact-override guard matches on a marker
+# substring, so the behaviour is covered without embedding a real resource id.
+PROTECTED_TABLE = f"synthetic-{PROTECTED_FACT_TABLE_MARKERS[0]}-table"
+WRITABLE_TABLE = "synthetic-writable-table"
 RECEIPT_ID = 7
 
 
@@ -406,7 +413,7 @@ def test_recompute_carries_owner_facts_when_no_override_row(monkeypatch):
         existing_overrides=["date", "merchant_name"],
     )
     client.fact_override = None  # what prod always returns
-    client.table_name = "ReceiptsTable-d7ff76a"  # protected: facts read-only
+    client.table_name = PROTECTED_TABLE  # facts read-only here
     monkeypatch.setattr(summary_processor, "dynamo_client", client)
 
     summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
@@ -437,7 +444,7 @@ def test_recompute_on_dev_does_not_carry_forward_a_deleted_override(
         existing_overrides=["date", "merchant_name"],
     )
     client.fact_override = None
-    client.table_name = "ReceiptsTable-dc5be22"  # dev: facts are writable
+    client.table_name = WRITABLE_TABLE  # facts are writable here
     monkeypatch.setattr(summary_processor, "dynamo_client", client)
 
     summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
@@ -457,7 +464,7 @@ def test_recompute_does_not_resurrect_a_retracted_override(monkeypatch):
     )
     client = FakeClient(existing_summary=stored, existing_overrides=[])
     client.fact_override = None
-    client.table_name = "ReceiptsTable-d7ff76a"
+    client.table_name = PROTECTED_TABLE
     monkeypatch.setattr(summary_processor, "dynamo_client", client)
 
     summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
