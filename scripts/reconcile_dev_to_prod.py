@@ -127,6 +127,11 @@ RESTORABLE_TYPES = {
 }
 
 
+def _opt(value) -> str:
+    """Fingerprint an optional scalar so None and 0 hash differently."""
+    return "" if value is None else str(value)
+
+
 def _fingerprint_env(client: DynamoClient) -> dict:
     """Return {image_id: {"fp": <hex>, "has_receipts": bool}} for one env.
 
@@ -287,10 +292,12 @@ def _fingerprint_env(client: DynamoClient) -> dict:
             summaries[s.image_id].append(
                 (
                     s.receipt_id,
-                    str(getattr(s, "ledger", "") or ""),
-                    str(getattr(s, "bank_amount", "") or ""),
-                    str(getattr(s, "bank_date", "") or ""),
-                    str(getattr(s, "bank_match_confidence", "") or ""),
+                    # None and 0/0.0 are distinct stored states; `or ""`
+                    # would collapse them and hide a real change.
+                    _opt(getattr(s, "ledger", None)),
+                    _opt(getattr(s, "bank_amount", None)),
+                    _opt(getattr(s, "bank_date", None)),
+                    _opt(getattr(s, "bank_match_confidence", None)),
                     # owner-stated facts: the field NAMES and their applied
                     # VALUES. An owner changing an already-overridden date
                     # keeps the same name, so names alone never move prod.

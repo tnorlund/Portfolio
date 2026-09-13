@@ -57,6 +57,12 @@ def receipt_summary_record_from_export(
     totals = inner.get("totals")
     if isinstance(totals, dict):
         inner["totals"] = MonetaryTotals(**totals)
+    # JSON turned the datetimes into ISO strings. The copier's loader
+    # converts them back before calling here, import_image does not; be
+    # correct for both rather than depend on the caller.
+    for name in ("date", "bank_date"):
+        if isinstance(inner.get(name), str):
+            inner[name] = datetime.fromisoformat(inner[name])
     return ReceiptSummaryRecord(
         summary=ReceiptSummary(**inner),
         timestamp_computed=raw.get("timestamp_computed"),

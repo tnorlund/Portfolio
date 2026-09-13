@@ -415,7 +415,6 @@ class _Receipt(FlattenedStandardMixin):
         )
         self._client.transact_write_items(TransactItems=transact_items)
 
-    @handle_dynamodb_errors("delete_receipt_items")
     def _receipt_prefix_keys(
         self, image_id: str, receipt_id: int, *, include_parent: bool
     ) -> list[dict[str, Any]]:
@@ -480,6 +479,7 @@ class _Receipt(FlattenedStandardMixin):
                 unique.append(item)
         return unique
 
+    @handle_dynamodb_errors("delete_receipt_items")
     def delete_receipt_items(
         self,
         image_id: str,

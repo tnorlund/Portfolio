@@ -406,6 +406,7 @@ def test_recompute_carries_owner_facts_when_no_override_row(monkeypatch):
         existing_overrides=["date", "merchant_name"],
     )
     client.fact_override = None  # what prod always returns
+    client.table_name = "ReceiptsTable-d7ff76a"  # protected: facts read-only
     monkeypatch.setattr(summary_processor, "dynamo_client", client)
 
     summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
@@ -414,6 +415,36 @@ def test_recompute_carries_owner_facts_when_no_override_row(monkeypatch):
     assert record.date == datetime(2026, 9, 9)
     assert record.merchant_name == "Owner Stated Name"
     assert sorted(record.overrides_applied) == ["date", "merchant_name"]
+
+
+def test_recompute_on_dev_does_not_carry_forward_a_deleted_override(
+    monkeypatch,
+):
+    """On an unprotected table, a missing row means the owner deleted it.
+
+    The maintenance API can hard-delete a dev override; the next recompute
+    must not resurrect its values from the stored summary (Codex, #1656).
+    """
+    stored = ReceiptSummary(
+        image_id=IMAGE_ID,
+        receipt_id=RECEIPT_ID,
+        totals=MonetaryTotals(grand_total=47.18),
+        date=datetime(2026, 9, 9),
+        merchant_name="Deleted Override Value",
+    )
+    client = FakeClient(
+        existing_summary=stored,
+        existing_overrides=["date", "merchant_name"],
+    )
+    client.fact_override = None
+    client.table_name = "ReceiptsTable-dc5be22"  # dev: facts are writable
+    monkeypatch.setattr(summary_processor, "dynamo_client", client)
+
+    summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)
+
+    record = client.upserted[0]
+    assert record.overrides_applied == []
+    assert record.merchant_name != "Deleted Override Value"
 
 
 def test_recompute_does_not_resurrect_a_retracted_override(monkeypatch):
@@ -426,6 +457,7 @@ def test_recompute_does_not_resurrect_a_retracted_override(monkeypatch):
     )
     client = FakeClient(existing_summary=stored, existing_overrides=[])
     client.fact_override = None
+    client.table_name = "ReceiptsTable-d7ff76a"
     monkeypatch.setattr(summary_processor, "dynamo_client", client)
 
     summary_processor.update_receipt_summary(IMAGE_ID, RECEIPT_ID)

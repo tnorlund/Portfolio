@@ -293,16 +293,21 @@ class _Image(FlattenedStandardMixin):
         self._delete_entities(images)
 
     @handle_dynamodb_errors("delete_image_details")
-    def delete_image_details(self, image_id: str) -> dict[str, int]:
+    def delete_image_details(
+        self, image_id: str, entity_types: set[str] | None = None
+    ) -> dict[str, int]:
         """Deletes ALL records under an image partition key.
 
         Queries every item with PK = IMAGE#{image_id} and batch-deletes them.
         This removes the Image entity plus every child (receipts, lines, words,
         letters, labels, places, summaries, OCR jobs, routing decisions, etc.)
-        regardless of entity type.
+        regardless of entity type -- unless ``entity_types`` is given, in
+        which case only rows whose TYPE is in that set are deleted and the
+        rest are left untouched.
 
         Args:
             image_id: UUID of the image whose data should be deleted.
+            entity_types: optional TYPE allowlist restricting the sweep.
 
         Returns:
             A dict mapping entity type names to the number of records deleted.
@@ -323,6 +328,12 @@ class _Image(FlattenedStandardMixin):
             last_evaluated_key=None,
         )
 
+        if entity_types is not None:
+            items = [
+                item
+                for item in items
+                if item.get("TYPE", {}).get("S") in entity_types
+            ]
         if not items:
             return {}
 

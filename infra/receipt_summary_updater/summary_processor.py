@@ -10,6 +10,10 @@ import os
 from dataclasses import replace
 from typing import Any, NamedTuple
 
+from receipt_dynamo.data._receipt_fact_override import (
+    PROTECTED_FACT_TABLE_MARKERS,
+)
+
 # receipt_dynamo ships in the Lambda layer; receipt_upload.tender is
 # bundled into this Lambda's archive as a FileAsset referencing the
 # canonical source (stdlib-only module, same pattern as the line-item
@@ -178,7 +182,15 @@ def compute_receipt_summary(
         getattr(existing, "overrides_applied", None) if existing else None
     )
     stored_summary = getattr(existing, "summary", existing)
-    if override is None and stored_overrides:
+    # Only on a protected table (prod), where an override row can never
+    # exist, does its absence mean "carry the stored values forward". On
+    # dev, absence can mean the maintenance API deleted the row on purpose
+    # -- carrying forward there would resurrect a retracted fact.
+    table_name = str(getattr(dynamo, "table_name", "") or "")
+    facts_are_readonly_here = any(
+        marker in table_name for marker in PROTECTED_FACT_TABLE_MARKERS
+    )
+    if override is None and facts_are_readonly_here and stored_overrides:
         # Owner facts are stated on the dev table only, so on prod there is
         # never an override row -- but the stored record, copied from dev by
         # the promotion, says which fields the owner stated and carries
@@ -197,8 +209,8 @@ def compute_receipt_summary(
             summary = replace(summary, **carried)
             overrides_applied = list(carried)
             logger.info(
-                "Carried stored owner facts %s forward for %s:%d (no "
-                "override row on this table)",
+                "Carried stored owner facts %s forward for %s:%d (facts "
+                "are read-only on this table)",
                 overrides_applied,
                 image_id[:8],
                 receipt_id,
