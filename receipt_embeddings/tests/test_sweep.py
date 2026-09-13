@@ -79,6 +79,34 @@ def test_sweeper_filters_embedding_sks_and_paginates() -> None:
     }
 
 
+def test_sweeper_sees_committed_embeddings_despite_read_replica_lag(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each cleanup page sees stale vectors before skip-existing writes."""
+    client = SweepDynamo(
+        [
+            [_key(1, "RECEIPT#00001#LINE#00001#EMBEDDING")],
+            [_key(1, "RECEIPT#00001#LINE#00002#EMBEDDING")],
+        ]
+    )
+    consistent_query = client.query
+
+    def lagging_query(**kwargs: Any) -> dict[str, Any]:
+        if not kwargs.get("ConsistentRead"):
+            return {"Items": []}
+        return consistent_query(**kwargs)
+
+    monkeypatch.setattr(client, "query", lagging_query)
+
+    deleted = delete_native_embedding_items(
+        client, TABLE, IMAGE_ID, 1, sleep=client.sleeps.append
+    )
+
+    assert deleted == 2
+    assert client.queries == 2
+    assert len(client.writes[0]) == 2
+
+
 def test_sweeper_retries_unprocessed_items() -> None:
     client = SweepDynamo(
         [[_key(1, "RECEIPT#00001#LINE#00001#EMBEDDING")]],
