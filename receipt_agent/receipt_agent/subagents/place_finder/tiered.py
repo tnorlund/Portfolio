@@ -234,10 +234,24 @@ def _normalized_text(value: str | None) -> str:
     ).strip()
 
 
+def _name_tokens(value: str | None) -> set[str]:
+    return set(_normalized_text(value).split())
+
+
 def _names_match(left: str | None, right: str | None) -> bool:
     first = "".join(_normalized_text(left).split())
     second = "".join(_normalized_text(right).split())
-    return bool(first and second) and (first in second or second in first)
+    if not (first and second):
+        return False
+    if first in second or second in first:
+        return True
+    # Google often pads a business name with descriptors the receipt omits
+    # ("Rise Henderson" vs "RISE Recreational Dispensary Henderson").  Every
+    # word of the shorter name appearing in the longer one is still a match.
+    shorter, longer = sorted(
+        (_name_tokens(left), _name_tokens(right)), key=len
+    )
+    return bool(shorter) and shorter <= longer
 
 
 def _street(value: str | None) -> str:
@@ -512,6 +526,40 @@ def _tier0_is_consistent(
     return bool(checks) and all(checks)
 
 
+def _localized_text_query(clues: ReceiptClues) -> str | None:
+    """Anchor the merchant text search to the receipt's own address."""
+    if not (clues.merchant_name and clues.address):
+        return None
+    return _clean(f"{clues.merchant_name} {clues.address}")
+
+
+def _accept_search_result(
+    candidates: dict[str, PlaceCandidate],
+    clues: ReceiptClues,
+    method: str,
+    query: str,
+    search: Any,
+) -> PlaceCandidate | None:
+    """Run one Places search and merge its result when it holds up."""
+    try:
+        place = search(query)
+    except Exception:  # pylint: disable=broad-exception-caught
+        logger.exception("Tier 1 Places %s search failed", method)
+        return None
+    if not _place_is_usable(place, clues):
+        return None
+    if not _primary_evidence_matches(place, clues, method):
+        logger.warning(
+            "Tier 1 rejected %s result because returned place did not "
+            "match the receipt's primary clue",
+            method,
+        )
+        return None
+    candidate = _to_candidate(place, clues, method)
+    _merge_candidate(candidates, candidate)
+    return candidate
+
+
 def collect_candidates(
     places_client: Any,
     clues: ReceiptClues,
@@ -526,24 +574,31 @@ def collect_candidates(
         ("address", clues.address, places_client.search_by_address),
         ("text", clues.merchant_name, places_client.search_by_text),
     )
+    corroborated = False
     for method, query, search in searches:
         if not query:
             continue
-        try:
-            place = search(query)
-        except Exception:  # pylint: disable=broad-exception-caught
-            logger.exception("Tier 1 Places %s search failed", method)
-            continue
-        if not _place_is_usable(place, clues):
-            continue
-        if not _primary_evidence_matches(place, clues, method):
-            logger.warning(
-                "Tier 1 rejected %s result because returned place did not "
-                "match the receipt's primary clue",
-                method,
-            )
-            continue
-        _merge_candidate(candidates, _to_candidate(place, clues, method))
+        candidate = _accept_search_result(
+            candidates, clues, method, query, search
+        )
+        if candidate and candidate.deterministic_eligible:
+            corroborated = True
+    # A bare merchant query ("WHOLE FOODS") is unanchored: it can land on a
+    # branch in another state (rejected) or another branch in the same city
+    # (accepted on name, but its address conflicts with the receipt).  The
+    # address query alone often returns the street address rather than the
+    # business.  Unless one of those searches produced a candidate whose
+    # secondary evidence agrees with the receipt, retry the text search
+    # anchored to the receipt's own address.
+    localized = _localized_text_query(clues)
+    if localized and not corroborated:
+        _accept_search_result(
+            candidates,
+            clues,
+            "text",
+            localized,
+            places_client.search_by_text,
+        )
     return sorted(
         candidates.values(),
         key=lambda candidate: candidate.score,
