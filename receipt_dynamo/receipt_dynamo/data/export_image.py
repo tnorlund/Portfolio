@@ -7,6 +7,13 @@ from decimal import Decimal
 from typing import Any
 
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.entities.receipt_summary import (
+    MonetaryTotals,
+    ReceiptSummary,
+)
+from receipt_dynamo.entities.receipt_summary_record import (
+    ReceiptSummaryRecord,
+)
 
 
 def datetime_handler(obj: Any) -> Any:
@@ -27,6 +34,33 @@ def datetime_handler(obj: Any) -> Any:
     if isinstance(obj, (set, frozenset)):
         return sorted(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+
+def receipt_summary_record_from_export(
+    raw: dict[str, Any],
+) -> ReceiptSummaryRecord:
+    """Rebuild a ReceiptSummaryRecord from its exported ``asdict`` form.
+
+    ``asdict()`` flattens nested dataclasses into plain dicts and
+    ``Class(**d)`` does not rebuild them, so a record has to be
+    reassembled level by level: ReceiptSummaryRecord wraps a
+    ReceiptSummary, which holds a MonetaryTotals.
+
+    This lives here, next to the exporter that produced the dict, so the
+    dev->prod copier and its tests share one implementation. Rebuilding
+    the record as a bare ReceiptSummary, or the summary without restoring
+    MonetaryTotals, is what broke a 749-image promotion after 661 prod
+    partitions had already been deleted.
+    """
+    inner = dict(raw["summary"])
+    totals = inner.get("totals")
+    if isinstance(totals, dict):
+        inner["totals"] = MonetaryTotals(**totals)
+    return ReceiptSummaryRecord(
+        summary=ReceiptSummary(**inner),
+        timestamp_computed=raw.get("timestamp_computed"),
+        overrides_applied=raw.get("overrides_applied") or [],
+    )
 
 
 def export_image(table_name: str, image_id: str, output_dir: str) -> None:

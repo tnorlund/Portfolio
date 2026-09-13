@@ -43,6 +43,9 @@ sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.export_image import (
+    receipt_summary_record_from_export,
+)
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.letter import Letter
 from receipt_dynamo.entities.line import Line
@@ -53,7 +56,6 @@ from receipt_dynamo.entities.receipt_embedding import (
     ReceiptLineEmbedding,
     ReceiptWordEmbedding,
 )
-from receipt_dynamo.entities.receipt_fact_override import ReceiptFactOverride
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
 from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
@@ -61,7 +63,6 @@ from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_row import ReceiptRow
 from receipt_dynamo.entities.receipt_section import ReceiptSection
-from receipt_dynamo.entities.receipt_summary import ReceiptSummary
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo.entities.word import Word
@@ -313,7 +314,19 @@ def copy_image_entities(
                 batch_size = 25
                 for i in range(0, len(receipt_word_labels), batch_size):
                     batch = receipt_word_labels[i : i + batch_size]
-                    prod_client.add_receipt_word_labels(batch)
+                    # This mirror restores labels that already exist on dev,
+                    # including legacy values retired from CORE_LABELS
+                    # (OTHER, PHONE, BUSINESS_NAME, ADDRESS, AMOUNT,
+                    # WEIGHT, TENDER, ITEM_QUANTITY, REGISTER, ...). The
+                    # core-label guard exists to stop NEW non-core labels
+                    # being minted; refusing them here instead drops real
+                    # dev labels on the floor, and because the guard raises
+                    # for the whole image it also aborts every entity the
+                    # copy would have written after this point. This is the
+                    # "controlled legacy restoration" the guard carves out.
+                    prod_client.add_receipt_word_labels(
+                        batch, allow_non_core_labels=True
+                    )
             stats["receipt_word_labels"] = len(receipt_word_labels)
 
         # Preserve legacy ReceiptMetadata rows during whole-image mirroring.
@@ -389,24 +402,35 @@ def copy_image_entities(
         # is re-run against prod. Everything else on the row is recomputed
         # from the destination's own words within ~30s of the copy.
         if export_data.get("receipt_summaries"):
+            # The stored row is a ReceiptSummaryRecord, which WRAPS a
+            # ReceiptSummary in `summary` alongside timestamp_computed and
+            # overrides_applied. Reconstructing the inner ReceiptSummary
+            # here instead of the record is a type mismatch against what
+            # get_image_details read and what add_receipt_summaries takes.
+            # Rebuilt by the helper that lives next to the exporter, so
+            # this copier and its contract tests exercise one
+            # implementation. ReceiptSummaryRecord wraps a ReceiptSummary
+            # which holds a MonetaryTotals, and asdict() flattens both.
             receipt_summaries = [
-                ReceiptSummary(**s) for s in export_data["receipt_summaries"]
+                receipt_summary_record_from_export(s)
+                for s in export_data["receipt_summaries"]
             ]
             if not dry_run:
                 prod_client.add_receipt_summaries(receipt_summaries)
             stats["receipt_summaries"] = len(receipt_summaries)
 
-        # Owner-stated facts outrank every extracted value, so they must
-        # survive promotion; nothing recomputes them.
-        if export_data.get("receipt_fact_overrides"):
-            receipt_fact_overrides = [
-                ReceiptFactOverride(**o)
-                for o in export_data["receipt_fact_overrides"]
-            ]
-            if not dry_run:
-                for override in receipt_fact_overrides:
-                    prod_client.add_receipt_fact_override(override)
-            stats["receipt_fact_overrides"] = len(receipt_fact_overrides)
+        # ReceiptFactOverride rows are deliberately NOT written. Owner facts
+        # are stated on the dev table only: the DAL refuses the write on any
+        # protected table (_assert_fact_override_writable), and the refusal
+        # raises out of this function, aborting every entity queued after it
+        # (embeddings, routing decisions). Their EFFECT still reaches prod --
+        # the summary updater applies the override on dev and bakes the
+        # result into the ReceiptSummaryRecord (see overrides_applied),
+        # which is copied above. Counted so the operator can see they were
+        # present and intentionally left behind.
+        stats["receipt_fact_overrides"] = len(
+            export_data.get("receipt_fact_overrides") or []
+        )
 
         # Vectors are copied, not regenerated: OpenAI embeddings are not
         # bit-stable across calls or model revisions, so copying is the only
