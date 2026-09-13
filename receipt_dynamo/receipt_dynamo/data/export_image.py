@@ -1,7 +1,6 @@
 # infra/lambda_layer/python/dynamo/data/export_image.py
 import json
 import os
-import uuid
 from dataclasses import asdict
 from datetime import datetime
 from decimal import Decimal
@@ -15,6 +14,7 @@ from receipt_dynamo.entities.receipt_summary import (
 from receipt_dynamo.entities.receipt_summary_record import (
     ReceiptSummaryRecord,
 )
+from receipt_dynamo.entities.util import assert_valid_uuid
 
 
 def datetime_handler(obj: Any) -> Any:
@@ -204,9 +204,12 @@ def delete_image_data(table_name: str, image_id: str) -> dict[str, int]:
         Both embedding TYPEs report under ``receipt_embeddings``. An id
         that is not a valid UUIDv4 cannot address any row and returns ``{}``.
     """
+    # Same validator the DAL applies. uuid.UUID(x, version=4) would coerce
+    # the version/variant bits and accept compact or v6 text that the sweep
+    # then rejects with OperationError instead of the documented {}.
     try:
-        uuid.UUID(image_id, version=4)
-    except (ValueError, AttributeError, TypeError):
+        assert_valid_uuid(image_id)
+    except (ValueError, TypeError):
         return {}
     by_type = DynamoClient(table_name).delete_image_details(image_id)
     counts: dict[str, int] = {}
