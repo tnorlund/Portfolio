@@ -94,3 +94,60 @@ def test_fact_overrides_are_never_written_to_prod():
     client.add_receipt_fact_overrides.assert_not_called()
     # still reported so the operator can see they were left behind
     assert stats["receipt_fact_overrides"] == 1
+
+
+def _ocr_job(job_id, bucket="devraw"):
+    return {
+        "image_id": IMAGE_ID,
+        "job_id": job_id,
+        "s3_bucket": bucket,
+        "s3_key": f"raw/{IMAGE_ID}.png",
+        "created_at": TS,
+        "updated_at": TS,
+        "status": "COMPLETED",
+        "job_type": "REGIONAL_REOCR",
+        "receipt_id": 1,
+        "reocr_region": {"x": 0.1, "y": 0.4, "width": 0.4, "height": 0.2},
+        "reocr_reason": "line_items_recon",
+        "reocr_strategy": "plain",
+        "reocr_mechanism": None,
+        "reocr_words_accepted": 3,
+        "reocr_words_rejected": 0,
+        "reocr_delta_before": 1.5,
+        "reocr_delta_after": 1.5,
+        "refine_summary": None,
+        "refine_merchant_name": None,
+    }
+
+
+def test_ocr_jobs_are_copied_before_anything_that_wakes_the_updater():
+    """The line-item updater caps re-OCR by counting REGIONAL_REOCR jobs in
+    the destination table. On 2026-09-13 the copy landed partitions without
+    that ledger and prod re-OCR'd ~31 receipts within minutes, rewriting
+    words dev had already reviewed. The jobs must be written, with the raw
+    bucket rewritten, and before summaries/sections reach the stream."""
+    client, stats = _copy(
+        {
+            "ocr_jobs": [
+                _ocr_job("11111111-1111-4111-8111-111111111111"),
+                _ocr_job("22222222-2222-4222-8222-222222222222", "other"),
+            ],
+            "receipt_summaries": [],
+            "receipt_sections": [],
+        }
+    )
+    assert stats["errors"] == []
+    assert stats["ocr_jobs"] == 2
+    client.add_ocr_jobs.assert_called_once()
+    (jobs,), _ = client.add_ocr_jobs.call_args
+    buckets = {j.job_id[:1]: j.s3_bucket for j in jobs}
+    assert buckets == {"1": "prodraw", "2": "other"}
+    assert all(j.reocr_reason == "line_items_recon" for j in jobs)
+    assert jobs[0].reocr_strategy == "plain"
+    order = [name for name, _, _ in client.mock_calls]
+    ocr_at = order.index("add_ocr_jobs")
+    for later in ("add_receipt_summaries", "add_receipt_sections"):
+        if later in order:
+            assert order.index(later) > ocr_at
+    # images (no stream consumer) are the only rows allowed before the ledger
+    assert set(order[:ocr_at]) <= {"add_images"}

@@ -98,7 +98,10 @@ RESTORABLE_TYPES = {
     "RECEIPT_PLACE",
     "RECEIPT_BARCODE",
     "OCR_ROUTING_DECISION",
-    # restored by the filtered sync_ocr_jobs step
+    # The re-OCR attempt ledger. copy_image_entities writes dev's jobs first
+    # (before anything that wakes the line-item updater) and a REPLACE keeps
+    # prod's own rows (see apply_plan) so the updater's attempt cap holds
+    # across promotions; sync_ocr_jobs_dev_to_prod.py adds the S3 artifacts.
     "OCR_JOB",
     # Derived rows and vectors — restored by copy_image_entities. Rows,
     # sections, summaries and vectors are NOT regenerated in the destination
@@ -543,8 +546,22 @@ def apply_plan(p: dict, dev_client, prod_client, dev_config, prod_config):
             f"Deleting {len(to_delete)} prod images (pure + replace)..."
         )
 
+        # A REPLACE keeps prod's OCR_JOB rows: they are the line-item
+        # updater's re-OCR attempt ledger (REOCR_MAX_ATTEMPTS counts prior
+        # REGIONAL_REOCR jobs in the destination table). Sweeping them re-arms
+        # the cap, and on 2026-09-13 prod re-OCR'd ~31 receipts minutes after
+        # the copy, diverging from dev again. guard_replaces already proved
+        # the partition holds only RESTORABLE_TYPES, so this allowlist is
+        # "everything except the ledger". Pure DELETEs still sweep everything.
+        replace_ids = set(p["replace"])
+
         def _del(iid):
-            res = prod_client.delete_image_details(iid)
+            if iid in replace_ids:
+                res = prod_client.delete_image_details(
+                    iid, entity_types=RESTORABLE_TYPES - {"OCR_JOB"}
+                )
+            else:
+                res = prod_client.delete_image_details(iid)
             return iid, (sum(res.values()) if res else 0)
 
         done = 0

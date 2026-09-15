@@ -46,9 +46,11 @@ from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.export_image import (
     receipt_summary_record_from_export,
 )
+from receipt_dynamo.data.import_image import _parse_datetimes
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.letter import Letter
 from receipt_dynamo.entities.line import Line
+from receipt_dynamo.entities.ocr_job import OCRJob
 from receipt_dynamo.entities.ocr_routing_decision import OCRRoutingDecision
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_barcode import ReceiptBarcode
@@ -211,6 +213,7 @@ def copy_image_entities(
         "receipt_summaries": 0,
         "receipt_fact_overrides": 0,
         "receipt_embeddings": 0,
+        "ocr_jobs": 0,
         "ocr_routing_decisions": 0,
         "errors": [],
     }
@@ -233,6 +236,30 @@ def copy_image_entities(
             if not dry_run:
                 prod_client.add_images(images)
             stats["images"] = len(images)
+
+        # Process OCRJobs FIRST, before any row that can wake prod's
+        # line-item updater (summaries / ITEMS sections). The updater's
+        # re-OCR cap (REOCR_MAX_ATTEMPTS) is counted from the REGIONAL_REOCR
+        # jobs already in the *destination* table, so a partition copied
+        # without its ledger looks never-attempted: on 2026-09-13 prod burned
+        # two fresh re-OCRs on ~31 permanently-mismatched receipts within
+        # minutes of the copy, rewrote their words and re-minted the reviewed
+        # labels as PENDING. Only s3_bucket is rewritten; the ocr_results/
+        # S3 artifact is still copied by sync_ocr_jobs_dev_to_prod.py.
+        if export_data.get("ocr_jobs"):
+            ocr_jobs = []
+            for raw in export_data["ocr_jobs"]:
+                job = dict(raw)
+                if job.get("s3_bucket") == dev_raw_bucket:
+                    job["s3_bucket"] = prod_raw_bucket
+                ocr_jobs.append(
+                    OCRJob(
+                        **_parse_datetimes(job, ["created_at", "updated_at"])
+                    )
+                )
+            if not dry_run:
+                prod_client.add_ocr_jobs(ocr_jobs)
+            stats["ocr_jobs"] = len(ocr_jobs)
 
         # Process Receipts (update bucket names)
         if export_data.get("receipts"):
@@ -448,10 +475,6 @@ def copy_image_entities(
             if not dry_run:
                 prod_client.add_receipt_embeddings(receipt_embeddings)
             stats["receipt_embeddings"] = len(receipt_embeddings)
-
-        # NOTE: OCRJobs are intentionally NOT copied here. sync_ocr_jobs_dev_to_prod.py
-        # owns them because it also rewrites OCRJob.s3_bucket (dev→prod) and copies
-        # the ocr_results/ S3 artifact, which a raw DynamoDB copy would not do.
 
         # Process OCRRoutingDecisions
         if export_data.get("ocr_routing_decisions"):
