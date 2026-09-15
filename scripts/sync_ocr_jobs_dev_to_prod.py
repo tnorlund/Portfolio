@@ -230,6 +230,10 @@ def main():
     # 2. Filter dev jobs to sync
     # -------------------------------------------------------------------------
     jobs_to_sync: list[OCRJob] = []
+    # (image_id, job_id) pairs whose row the reconcile copy already wrote.
+    # Their DynamoDB write is skipped below, but the ocr_results/ artifact
+    # is still copied: the copy rewrites only the row, never S3.
+    rows_present: set[tuple[str, str]] = set()
     orphan_skipped = 0
     for job in dev_jobs:
         # Filter by job type
@@ -245,13 +249,11 @@ def main():
             orphan_skipped += 1
             continue
 
-        # Skip if already in prod (strongly consistent so a just-replaced
-        # image's deleted OCR jobs are correctly seen as absent and re-synced).
+        # A row already in prod (strongly consistent, so a just-replaced
+        # image's swept jobs are correctly seen as absent) still goes
+        # through the S3 leg; only its DynamoDB write is skipped.
         if _prod_ocrjob_exists(job.image_id, job.job_id):
-            logger.debug(
-                "  Skipping %s/%s - already in prod", job.image_id[:8], job.job_id[:8]
-            )
-            continue
+            rows_present.add((job.image_id, job.job_id))
 
         jobs_to_sync.append(job)
 
@@ -326,7 +328,13 @@ def main():
                 )
                 stats["s3_not_found"] += 1
 
-            # 4b. Rewrite s3_bucket and write OCRJob to prod
+            # 4b. Rewrite s3_bucket and write OCRJob to prod (unless the
+            # reconcile copy already wrote this row).
+            if (job.image_id, job.job_id) in rows_present:
+                logger.info("    Dynamo: OCRJob already in prod (row kept)")
+                stats["jobs_skipped"] += 1
+                continue
+
             # The s3_key stays the same (it points to the raw source image,
             # which is synced by sync_images_dev_to_prod_fast.sh).
             # We only need to rewrite s3_bucket from dev to prod.
