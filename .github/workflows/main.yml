@@ -33,7 +33,9 @@ jobs:
   # standard hosted runners are free and 20 jobs run concurrently; nothing
   # below needs macOS (Swift CI uses hosted macos-latest in its own
   # workflow). Runners are ephemeral, so jobs do not clean up after
-  # themselves; pip/npm caches come from actions/setup-python and
+  # themselves. Python jobs install with uv (astral-sh/setup-uv caches
+  # ~/.cache/uv between runs; a full editable stack resolves in seconds
+  # instead of the ~30-40 s pip needed) and npm caches come from
   # actions/setup-node. Every job keeps a `timeout-minutes` so a hung job
   # cannot pin a concurrency slot.
 
@@ -49,8 +51,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: "**/pyproject.toml"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: lambda-syntax
+          cache-dependency-glob: "**/pyproject.toml"
 
       - name: Compile all Lambda handler sources
         run: |
@@ -67,9 +74,9 @@ jobs:
 
       - name: Test Lambda trust and API contracts
         run: |
-          python -m venv .venv-email-receipt
+          uv venv --quiet --python "$(command -v python)" .venv-email-receipt
           source .venv-email-receipt/bin/activate
-          python -m pip install --quiet boto3 pytest "pulumi>=3.261.0,<4" "pulumi-aws>=7.44.0,<8"
+          uv pip install --quiet boto3 pytest "pulumi>=3.261.0,<4" "pulumi-aws>=7.44.0,<8"
           python -m pytest -q \
             infra/tests/test_email_receipt_inbox_handler.py \
             infra/tests/test_ats_verification_ingest.py \
@@ -124,21 +131,31 @@ jobs:
       - uses: actions/checkout@v7
         with:
           clean: true
-          fetch-depth: 0
+          # Only the receipt_agent leg diffs against origin/<base> (changed-file
+          # lint); every other leg is fine with a shallow clone, which is
+          # several seconds faster on this repo.
+          fetch-depth: ${{ matrix.package != 'receipt_agent' && 1 || 0 }}
 
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: "**/pyproject.toml"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: ${{ matrix.package }}-py${{ matrix.python-version }}
+          cache-dependency-glob: "**/pyproject.toml"
 
       - name: Install and test
         run: |
           # setup-python pins the interpreter to the matrix minor, which is
-          # also what the Lambda images run.
-          python -m venv .venv-${{ matrix.package }}
+          # also what the Lambda images run; uv builds the venv from it.
+          # `pip` below is an alias for `uv pip` so the per-package recipes
+          # read the same as a local install.
+          uv venv --quiet --python "$(command -v python)" .venv-${{ matrix.package }}
           source .venv-${{ matrix.package }}/bin/activate
-          pip install --upgrade pip wheel
+          pip() { uv pip "$@"; }
 
           # Install based on package dependencies
           case "${{ matrix.package }}" in
@@ -266,7 +283,7 @@ jobs:
           source .venv-receipt_agent/bin/activate
           # Existing offline degradation/metric tests use scipy; the deployed
           # glyph MCP image retains its numpy + Pillow dependency contract.
-          pip install -e tools/glyph-studio/py scipy
+          uv pip install -e tools/glyph-studio/py scipy
           python -m pytest tools/glyph-studio/py/tests -n auto \
             --timeout=120 --tb=short --maxfail=5
 
@@ -294,14 +311,19 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: "**/pyproject.toml"
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: repository-tests
+          cache-dependency-glob: "**/pyproject.toml"
 
       - name: Install editable local stack
         run: |
-          python -m venv .venv-repository-tests
+          uv venv --quiet --python "$(command -v python)" .venv-repository-tests
           source .venv-repository-tests/bin/activate
-          pip install --upgrade pip wheel
+          pip() { uv pip "$@"; }
           pip install -e receipt_dynamo
           pip install --no-deps -e receipt_embeddings
           pip install --no-deps -e receipt_dynamo_stream
@@ -389,8 +411,12 @@ jobs:
         run: |
           npm ci --prefer-offline
           npm run build
-          # --with-deps installs the browsers' apt dependencies on the
-          # hosted Ubuntu image (WebKit needs the most).
+          # --with-deps installs the browsers' apt dependencies (~50 s, most
+          # of it WebKit's). Measured alternative: running the job in
+          # mcr.microsoft.com/playwright:<ver>-noble trades that for a
+          # 26-49 s image pull plus a version pin to keep in step with
+          # @playwright/test, so it was not worth the coupling. This job is
+          # not on the run's critical path either way.
           npx playwright install --with-deps chromium firefox webkit
           # Bind the dev server to a free port rather than a fixed one so
           # the test is independent of anything else on the runner.
@@ -527,6 +553,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: deploy
+          cache-dependency-glob: "infra/pyproject.toml"
 
       - uses: actions/setup-node@v7
         with:
@@ -540,8 +573,6 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-
-      - uses: docker/setup-buildx-action@v4
 
       - name: Export public analytics build config
         run: |
@@ -561,7 +592,9 @@ jobs:
       - name: Deploy infrastructure
         run: |
           cd infra
-          pip install -e .
+          # Pulumi.yaml declares no virtualenv, so the program runs on the
+          # setup-python interpreter; install the infra package into it.
+          uv pip install --python "$(command -v python)" -e .
           pulumi stack select tnorlund/portfolio/prod
           pulumi up --yes
         env:
