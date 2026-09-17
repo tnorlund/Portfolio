@@ -8,6 +8,18 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
+    groups:
+      # Packages that peer-depend on each other at an exact minor: bumping
+      # one alone makes `npm ci` fail with ERESOLVE (dependabot #1666) or
+      # skews jest against its jsdom environment (#868).
+      typescript-eslint:
+        patterns:
+          - "@typescript-eslint/*"
+      jest:
+        patterns:
+          - "jest"
+          - "jest-environment-jsdom"
+          - "@types/jest"
     labels:
       - "dependencies"
       - "javascript"
