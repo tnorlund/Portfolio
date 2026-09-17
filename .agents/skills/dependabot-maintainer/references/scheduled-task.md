@@ -4,7 +4,7 @@ Use this reference when creating a recurring Codex scheduled task or a Claude ro
 
 ## GitHub Actions workflow
 
-The workflow runs on `ubuntu-latest`, using Python 3.13 and Node 22. Its Thursday 13:40 UTC schedule follows the historical weekly batch; Dependabot does not currently pin an exact day/time. Manual dispatch defaults to report mode. Scheduled merges require `DEPENDABOT_AUTOMERGE=true`; that opt-in is separate from merging this workflow.
+The workflow runs on `ubuntu-latest`, using Python 3.14 and Node 22. Its Thursday 13:40 UTC schedule follows the historical weekly batch; Dependabot does not currently pin an exact day/time. Manual dispatch defaults to report mode. Scheduled merges require `DEPENDABOT_AUTOMERGE=true`; that opt-in is separate from merging this workflow.
 
 Merge mode requires a user PAT in `DEPENDABOT_MAINTAINER_TOKEN`: Contents and Pull requests read/write, Actions, Checks and Commit statuses read (or classic `repo`). Its pushes trigger the deployment workflow; pushes made with the built-in token do not. See [GitHub's workflow-trigger documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow). The verifier subprocess receives only the read-only `GITHUB_TOKEN`, never this write token. Report mode requires no PAT.
 

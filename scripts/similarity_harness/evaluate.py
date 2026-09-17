@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.13
+#!/usr/bin/env python3.14
 """Score a vector-search backend against the captured golden reference."""
 
 from __future__ import annotations

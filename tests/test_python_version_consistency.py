@@ -9,7 +9,7 @@ import scripts.check_python_version_consistency as checker
 
 
 def test_python_version_declarations_are_consistent() -> None:
-    """Package tooling keeps its baseline while container docs may name 3.14."""
+    """Package tooling sits on the 3.14 baseline; LayoutLM files may name 3.13."""
     assert checker.check_repository() == []
 
 
@@ -20,7 +20,7 @@ def test_python_version_declarations_are_consistent() -> None:
         "python-version: '3." + "12'",
         "Python 3." + "11 is required.",
         "Create the environment with python3." + "10.",
-        "Python 3." + "14 is required.",
+        "Python 3." + "13 is required.",
         "Python 3." + "15 is required.",
         "Python 2." + "7 is unsupported.",
     ],
@@ -58,21 +58,27 @@ def test_supported_runtime_documentation_is_accepted(
     guide = tmp_path / "docs" / "development" / f"setup{suffix}"
     guide.parent.mkdir(parents=True)
     guide.write_text(
-        "Python 3.13 is required; use python3.13 for this target.\n",
+        "Python 3.14 is required; use python3.14 for this target.\n",
         encoding="utf-8",
     )
 
     assert checker._check_runtime_files() == []
 
 
-def test_container_runtime_exception_is_limited_to_reviewed_guide(
+def test_layoutlm_runtime_exception_is_limited_to_reviewed_guide(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
     guide = tmp_path / "AGENTS.md"
-    guide.write_text("Baseline Python 3.13; containers use Python 3.14.\n")
+    floor = "Python 3." + "13"
+    guide.write_text(f"Baseline Python 3.14; LayoutLM stays on {floor}.\n")
     assert checker._check_runtime_files() == []
-    guide.write_text("Baseline Python 3.13; containers use Python 3.15.\n")
+    guide.write_text("Baseline Python 3.14; LayoutLM stays on Python 3.12.\n")
+    assert len(checker._check_runtime_files()) == 1
+    guide.write_text("Baseline Python 3.14.\n")
+    other = tmp_path / "docs" / "guide.md"
+    other.parent.mkdir()
+    other.write_text(f"Use {floor} here.\n")
     assert len(checker._check_runtime_files()) == 1
 
 

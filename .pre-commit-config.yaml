@@ -7,7 +7,7 @@ repos:
     rev: 25.1.0
     hooks:
       - id: black
-        language_version: python3.13
+        language_version: python3.14
         files: '\.(py|pyi)$'
         args: ["--line-length=79"]
 
@@ -58,7 +58,7 @@ repos:
 
 # Configuration
 default_language_version:
-  python: python3.13
+  python: python3.14
 
 # Files to exclude
 exclude: |

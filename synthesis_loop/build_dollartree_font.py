@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.13
+#!/usr/bin/env python3.14
 """Build the staged Dollar Tree atlas: bitMatrix-B2 chart + double-strike.
 
 The raw B2 ROM renders ~0.69 of the real receipts' ink density (the dev

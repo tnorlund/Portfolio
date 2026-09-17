@@ -23,7 +23,7 @@ concurrency:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
-  PYTHON_VERSION: "3.13"
+  PYTHON_VERSION: "3.14"
 
 jobs:
   # ============================================================================
@@ -92,15 +92,15 @@ jobs:
     uses: ./.github/workflows/lambda-images.yml
 
   python-tests:
-    # 3.13 legs keep their historical check names ("Python (<package>)") so
-    # branch protection keeps matching them; 3.14 legs get a suffix.
-    name: Python (${{ matrix.package }}${{ matrix.python-version != '3.13' && format(', {0}', matrix.python-version) || '' }}${{ matrix.shard && format(', shard {0}/2', matrix.shard) || '' }})
+    # Legs keep their historical check names ("Python (<package>)"); a leg on
+    # a non-baseline runtime would get a version suffix.
+    name: Python (${{ matrix.package }}${{ matrix.python-version != '3.14' && format(', {0}', matrix.python-version) || '' }}${{ matrix.shard && format(', shard {0}/2', matrix.shard) || '' }})
     runs-on: ubuntu-latest
-    # Both runtimes must pass before deploy.
+    # Every leg must pass before deploy.
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13"]
+        python-version: ["3.14"]
         package:
           - receipt_embeddings
           - receipt_dynamo_stream
@@ -108,25 +108,17 @@ jobs:
           - receipt_nutrition
           - receipt_upload
           - receipt_agent
-        # The container Lambdas run public.ecr.aws/lambda/python:3.14, so the
-        # packages those images ship are also exercised on 3.14. Everything
-        # else stays 3.13-only: receipt_layoutlm's image is pinned to 3.13
-        # (torch has no cp314 wheels) and the remaining packages are not
-        # shipped in a 3.14 image.
-        # receipt_dynamo runs as two shards on each runtime: its ~1,400 moto
-        # integration tests are the whole run's critical path (3+ min on a
-        # 4-vCPU runner) while its ~1,960 unit tests finish in ~2 s. See the
-        # sharding note in "Install and test".
+        # Every deployed Python runtime is 3.14 (ZIP Lambdas, their layers and
+        # the container images), so each package gets one leg. The only 3.13
+        # runtime left is receipt_layoutlm's image (its pinned torch has no
+        # cp314 wheels); that package has no leg here.
+        # receipt_dynamo runs as two shards: its ~1,400 moto integration tests
+        # are the whole run's critical path (3+ min on a 4-vCPU runner) while
+        # its ~1,960 unit tests finish in ~2 s. See the sharding note in
+        # "Install and test".
         include:
-          - { python-version: "3.13", package: receipt_dynamo, shard: 1 }
-          - { python-version: "3.13", package: receipt_dynamo, shard: 2 }
           - { python-version: "3.14", package: receipt_dynamo, shard: 1 }
           - { python-version: "3.14", package: receipt_dynamo, shard: 2 }
-          - { python-version: "3.14", package: receipt_dynamo_stream }
-          - { python-version: "3.14", package: receipt_embeddings }
-          - { python-version: "3.14", package: receipt_places }
-          - { python-version: "3.14", package: receipt_upload }
-          - { python-version: "3.14", package: receipt_agent }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -291,7 +283,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           # Artifact names must be unique per run; only the 3.14 legs are suffixed.
-          name: coverage-${{ matrix.package }}${{ matrix.python-version != '3.13' && format('-py{0}', matrix.python-version) || '' }}${{ matrix.shard && format('-shard{0}', matrix.shard) || '' }}
+          name: coverage-${{ matrix.package }}${{ matrix.python-version != '3.14' && format('-py{0}', matrix.python-version) || '' }}${{ matrix.shard && format('-shard{0}', matrix.shard) || '' }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
     # Job-level key; placed after `steps` so it stays clear of the matrix

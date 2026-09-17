@@ -186,7 +186,7 @@ class QAAgentStepFunction(ComponentResource):
         # ============================================================
         self.query_metadata_lambda = aws.lambda_.Function(
             f"{name}-query-receipt-metadata",
-            runtime="python3.13",
+            runtime="python3.14",
             architectures=["arm64"],
             role=lambda_role.arn,
             code=AssetArchive(
@@ -303,7 +303,7 @@ class QAAgentStepFunction(ComponentResource):
 
         self.build_cache_lambda = aws.lambda_.Function(
             f"{name}-build-viz-cache",
-            runtime="python3.13",
+            runtime="python3.14",
             architectures=["arm64"],
             role=lambda_role.arn,
             code=AssetArchive(

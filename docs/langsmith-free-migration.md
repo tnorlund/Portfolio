@@ -93,7 +93,7 @@ native writer supplies these fields; malformed foreign records need repair
 before that sample can be published. Explicitly failed spans remain excluded.
 
 The `Native tracing quality` workflow runs these checks and focused regression
-tests on Python 3.13 and 3.14 for pull requests against any base branch, including
+tests on Python 3.14 for pull requests against any base branch, including
 stacked PRs. It installs neither the retired analytics package nor Spark/Arrow.
 
 ## Rollout and cancellation checklist

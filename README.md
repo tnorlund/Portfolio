@@ -11,7 +11,7 @@ Full-stack applications demonstrating modern web development, machine learning, 
 ```bash
 # Required
 node 22 (matches CI)
-python >= 3.13
+python >= 3.14
 aws-cli (configured)
 
 # Optional
@@ -93,7 +93,7 @@ pulumi up --stack tnorlund/portfolio/dev
 ## 🛠 Tech Stack
 
 **Frontend**: Next.js 16, React 19, TypeScript, CSS Modules
-**Backend**: Python 3.13, API Gateway, AWS Lambda
+**Backend**: Python 3.14, API Gateway, AWS Lambda
 **Database**: DynamoDB (including native vector indexes), S3  
 **Infrastructure**: AWS (CloudFront, Lambda, API Gateway, Step Functions), Pulumi  
 **ML/AI**: Ollama, Hugging Face, Custom OCR pipelines  
@@ -301,7 +301,7 @@ See [CI/CD Documentation](docs/development/ci-cd.md) and [`.github/README.md`](.
 - **Package Separation**: Each `receipt_*` package has specific responsibilities. Don't mix concerns.
 - **AWS Resources**: Most operations use DynamoDB, S3, and Lambda
 - **Cost Optimization**: Keep AWS costs under $5/month
-- **Python Version**: Requires Python 3.13+
+- **Python Version**: Requires Python 3.14+
 
 ## 📄 License
 

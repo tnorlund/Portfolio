@@ -116,7 +116,7 @@ class EpochEvalInfra(ComponentResource):
 
         self.trigger_lambda = aws.lambda_.Function(
             f"{name}-trigger",
-            runtime="python3.13",
+            runtime="python3.14",
             handler="index.handler",
             role=self.lambda_role.arn,
             timeout=30,

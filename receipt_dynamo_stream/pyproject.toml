@@ -13,7 +13,7 @@ authors = [
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Development Status :: 4 - Beta",
@@ -102,7 +102,7 @@ exclude_lines = [
 
 [tool.black]
 line-length = 79
-target-version = ["py313"]
+target-version = ["py314"]
 include = '\\.pyi?$'
 
 [tool.pylint.format]
@@ -121,7 +121,7 @@ line_length = 79
 known_first_party = ["receipt_dynamo_stream", "receipt_dynamo"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.14"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
