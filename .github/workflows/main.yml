@@ -385,6 +385,14 @@ jobs:
           # Concurrent runners on one Mac must not share a fixed port or
           # kill each other's servers. Playwright owns server teardown.
           export PLAYWRIGHT_PORT="$(node -e 'const server = require("node:net").createServer(); server.listen(0, "127.0.0.1", () => { console.log(server.address().port); server.close(); });')"
+          # macOS 27 denies launchd-spawned processes (our runner services)
+          # access to app folders under ~/Library/Application Support, and
+          # Playwright's Firefox reads its Application Support dir at startup
+          # even with an explicit -profile, so it dies with "Could not find
+          # profile folder". CFFIXED_USER_HOME redirects CoreFoundation's
+          # home lookup to a scratch dir; Node/npm use $HOME and are unaffected.
+          export CFFIXED_USER_HOME="$RUNNER_TEMP/cf-home"
+          mkdir -p "$CFFIXED_USER_HOME"
           npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
 
       - name: Upload test results
