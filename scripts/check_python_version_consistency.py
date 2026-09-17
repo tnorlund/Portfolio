@@ -9,11 +9,12 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 PYTHON_VERSION = "3.14"
-PYTHON_TARGET = "py314"
 # The oldest runtime still deployed. Only the LayoutLM containers run it
-# (their pinned torch has no 3.14 wheels), and they install receipt_dynamo,
-# so shared packages keep a >=3.13 floor while every other runtime, CI leg
-# and tool target sits on the 3.14 baseline.
+# (their pinned torch has no 3.14 wheels), and they install receipt_dynamo.
+# Every other runtime and CI leg sits on the 3.14 baseline, but package
+# metadata follows the floor: requires-python, and the black/ruff/mypy
+# targets (which declare the oldest interpreter the code must parse on).
+# When LayoutLM moves, raise PYTHON_FLOOR and everything follows.
 PYTHON_FLOOR = "3.13"
 PYTHON_FLOOR_TARGET = "py" + PYTHON_FLOOR.replace(".", "")
 # Files that legitimately name the LayoutLM 3.13 runtime. General setup
@@ -29,8 +30,8 @@ SECONDARY_RUNTIME_FILES = {
     Path("tests/test_lambda_image_inventory.py"),
     Path("tests/test_sagemaker_training_runtime.py"),
 }
-# receipt_layoutlm is packaged for the 3.13 image, so its tooling targets
-# the floor rather than the baseline.
+# receipt_layoutlm is packaged only for the 3.13 image, so it advertises
+# the floor alone.
 SECONDARY_RUNTIME_PYPROJECTS = {Path("receipt_layoutlm/pyproject.toml")}
 
 SCAN_ROOTS = (
@@ -208,7 +209,6 @@ def _check_pyprojects() -> list[str]:
             continue
         secondary = relative in SECONDARY_RUNTIME_PYPROJECTS
         expected_version = PYTHON_FLOOR if secondary else PYTHON_VERSION
-        expected_target = PYTHON_FLOOR_TARGET if secondary else PYTHON_TARGET
         requires_python = str(project.get("requires-python"))
         if not (
             requires_python.startswith(f">={PYTHON_FLOOR}")
@@ -242,21 +242,21 @@ def _check_pyprojects() -> list[str]:
             relative,
             "Black target-version",
             tools.get("black", {}).get("target-version"),
-            [expected_target],
+            [PYTHON_FLOOR_TARGET],
         )
         _check_tool_version(
             errors,
             relative,
             "Ruff target-version",
             tools.get("ruff", {}).get("target-version"),
-            expected_target,
+            PYTHON_FLOOR_TARGET,
         )
         _check_tool_version(
             errors,
             relative,
             "mypy python_version",
             tools.get("mypy", {}).get("python_version"),
-            expected_version,
+            PYTHON_FLOOR,
         )
     return errors
 

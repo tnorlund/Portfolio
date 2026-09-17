@@ -102,7 +102,7 @@ exclude_lines = [
 
 [tool.black]
 line-length = 79
-target-version = ["py314"]
+target-version = ["py313"]
 include = '\\.pyi?$'
 
 [tool.pylint.format]
@@ -121,7 +121,7 @@ line_length = 79
 known_first_party = ["receipt_dynamo_stream", "receipt_dynamo"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.13"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

@@ -46,7 +46,7 @@ python_files = ["test_*.py"]
 
 [tool.black]
 line-length = 79
-target-version = ["py314"]
+target-version = ["py313"]
 
 [tool.isort]
 profile = "black"

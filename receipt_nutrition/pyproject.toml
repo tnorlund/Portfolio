@@ -23,7 +23,7 @@ packages = ["receipt_nutrition"]
 
 [tool.black]
 line-length = 79
-target-version = ["py314"]
+target-version = ["py313"]
 
 [tool.isort]
 profile = "black"
