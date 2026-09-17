@@ -385,6 +385,13 @@ jobs:
   browser-tests:
     name: Browser Tests
     runs-on: ubuntu-latest
+    # Playwright's official image ships Chromium, Firefox and WebKit plus
+    # their system libraries, so the job skips both the browser download and
+    # the ~50 s `playwright install --with-deps` apt run. The tag must match
+    # portfolio/package.json's @playwright/test version: bump both together
+    # (a mismatch falls back to downloading browsers into /ms-playwright).
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -395,17 +402,6 @@ jobs:
           cache: npm
           cache-dependency-path: portfolio/package-lock.json
 
-      # Next.js keeps its compiler cache in .next/cache; restoring it turns
-      # the ~50 s production build into an incremental one. The key includes
-      # the lockfile and every source file, with a prefix fallback so a source
-      # change still restores the previous cache.
-      - uses: actions/cache@v6
-        with:
-          path: portfolio/.next/cache
-          key: nextjs-${{ runner.os }}-${{ hashFiles('portfolio/package-lock.json') }}-${{ hashFiles('portfolio/**/*.js', 'portfolio/**/*.jsx', 'portfolio/**/*.ts', 'portfolio/**/*.tsx', '!portfolio/node_modules/**', '!portfolio/.next/**') }}
-          restore-keys: |
-            nextjs-${{ runner.os }}-${{ hashFiles('portfolio/package-lock.json') }}-
-
       - name: Build and test
         working-directory: portfolio
         env:
@@ -413,9 +409,9 @@ jobs:
         run: |
           npm ci --prefer-offline
           npm run build
-          # --with-deps installs the browsers' apt dependencies on the
-          # hosted Ubuntu image (WebKit needs the most).
-          npx playwright install --with-deps chromium firefox webkit
+          # No-op when the container tag matches @playwright/test; otherwise
+          # downloads the missing browser builds (see the job comment).
+          npx playwright install chromium firefox webkit
           # Bind the dev server to a free port rather than a fixed one so
           # the test is independent of anything else on the runner.
           # Playwright owns server teardown.
@@ -561,14 +557,6 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: "portfolio/package-lock.json"
-
-      # Same Next.js compiler cache as Browser Tests (see that job's note).
-      - uses: actions/cache@v6
-        with:
-          path: portfolio/.next/cache
-          key: nextjs-${{ runner.os }}-${{ hashFiles('portfolio/package-lock.json') }}-${{ hashFiles('portfolio/**/*.js', 'portfolio/**/*.jsx', 'portfolio/**/*.ts', 'portfolio/**/*.tsx', '!portfolio/node_modules/**', '!portfolio/.next/**') }}
-          restore-keys: |
-            nextjs-${{ runner.os }}-${{ hashFiles('portfolio/package-lock.json') }}-
 
       - name: Configure AWS
         uses: aws-actions/configure-aws-credentials@v4
