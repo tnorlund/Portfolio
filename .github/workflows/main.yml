@@ -394,13 +394,6 @@ jobs:
   browser-tests:
     name: Browser Tests
     runs-on: ubuntu-latest
-    # Playwright's official image ships Chromium, Firefox and WebKit plus
-    # their system libraries, so the job skips both the browser download and
-    # the ~50 s `playwright install --with-deps` apt run. The tag must match
-    # portfolio/package.json's @playwright/test version: bump both together
-    # (a mismatch falls back to downloading browsers into /ms-playwright).
-    container:
-      image: mcr.microsoft.com/playwright:v1.63.0-noble
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -415,17 +408,16 @@ jobs:
         working-directory: portfolio
         env:
           CI: true
-          # GitHub runs container jobs with HOME=/github/home, which the
-          # container user does not own; Firefox refuses to start unless
-          # $HOME is owned by the current user (Playwright's documented
-          # workaround for its image on Actions).
-          HOME: /root
         run: |
           npm ci --prefer-offline
           npm run build
-          # No-op when the container tag matches @playwright/test; otherwise
-          # downloads the missing browser builds (see the job comment).
-          npx playwright install chromium firefox webkit
+          # --with-deps installs the browsers' apt dependencies (~50 s, most
+          # of it WebKit's). Measured alternative: running the job in
+          # mcr.microsoft.com/playwright:<ver>-noble trades that for a
+          # 26-49 s image pull plus a version pin to keep in step with
+          # @playwright/test, so it was not worth the coupling. This job is
+          # not on the run's critical path either way.
+          npx playwright install --with-deps chromium firefox webkit
           # Bind the dev server to a free port rather than a fixed one so
           # the test is independent of anything else on the runner.
           # Playwright owns server teardown.
