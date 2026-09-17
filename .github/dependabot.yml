@@ -43,6 +43,7 @@ updates:
       - "/receipt_embeddings"
       - "/receipt_layoutlm"
       - "/receipt_logo"
+      - "/receipt_nutrition"
       - "/receipt_places"
       - "/receipt_upload"
       - "/scripts"
