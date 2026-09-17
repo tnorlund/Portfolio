@@ -87,7 +87,7 @@ jobs:
   python-tests:
     # 3.13 legs keep their historical check names ("Python (<package>)") so
     # branch protection keeps matching them; 3.14 legs get a suffix.
-    name: Python (${{ matrix.package }}${{ matrix.python-version != '3.13' && format(', {0}', matrix.python-version) || '' }})
+    name: Python (${{ matrix.package }}${{ matrix.python-version != '3.13' && format(', {0}', matrix.python-version) || '' }}${{ matrix.shard && format(', shard {0}/2', matrix.shard) || '' }})
     runs-on: ubuntu-latest
     # Both runtimes must pass before deploy.
     strategy:
@@ -96,7 +96,6 @@ jobs:
         python-version: ["3.13"]
         package:
           - receipt_embeddings
-          - receipt_dynamo
           - receipt_dynamo_stream
           - receipt_places
           - receipt_nutrition
@@ -107,8 +106,15 @@ jobs:
         # else stays 3.13-only: receipt_layoutlm's image is pinned to 3.13
         # (torch has no cp314 wheels) and the remaining packages are not
         # shipped in a 3.14 image.
+        # receipt_dynamo runs as two shards on each runtime: its ~1,400 moto
+        # integration tests are the whole run's critical path (3+ min on a
+        # 4-vCPU runner) while its ~1,960 unit tests finish in ~2 s. See the
+        # sharding note in "Install and test".
         include:
-          - { python-version: "3.14", package: receipt_dynamo }
+          - { python-version: "3.13", package: receipt_dynamo, shard: 1 }
+          - { python-version: "3.13", package: receipt_dynamo, shard: 2 }
+          - { python-version: "3.14", package: receipt_dynamo, shard: 1 }
+          - { python-version: "3.14", package: receipt_dynamo, shard: 2 }
           - { python-version: "3.14", package: receipt_dynamo_stream }
           - { python-version: "3.14", package: receipt_embeddings }
           - { python-version: "3.14", package: receipt_places }
@@ -199,8 +205,11 @@ jobs:
               ;;
           esac
 
-          # Lint (uses versions from pyproject.toml [lint] dependency)
-          if [ "${{ matrix.package }}" = "receipt_agent" ]; then
+          # Lint (uses versions from pyproject.toml [lint] dependency).
+          # Sharded packages lint once, in shard 1.
+          if [ -n "${{ matrix.shard }}" ] && [ "${{ matrix.shard }}" != "1" ]; then
+            :
+          elif [ "${{ matrix.package }}" = "receipt_agent" ]; then
             pip install black isort
             BASE_REF="${{ github.base_ref || 'main' }}"
             CHANGED_PY="$(git diff --name-only --diff-filter=ACMRT \
@@ -225,7 +234,26 @@ jobs:
           # under pytest-xdist). Real test failures still fail
           # the build after the retry; only transient failures get masked.
           cd ${{ matrix.package }}
-          python -m pytest tests -n auto --timeout=120 --tb=short --maxfail=5 \
+          # Sharding (receipt_dynamo): integration test files alternate
+          # between the two shards by sorted position, so a new file lands in
+          # exactly one shard and the split needs no durations file or
+          # plugin. Shard 1 also carries every non-integration directory.
+          # Measured locally: 2,645 vs 710 tests but ~17 s vs ~16 s wall.
+          TEST_ARGS=(tests)
+          if [ -n "${{ matrix.shard }}" ]; then
+            TEST_ARGS=()
+            i=0
+            while IFS= read -r test_file; do
+              if [ $(( i % 2 )) -eq $(( ${{ matrix.shard }} - 1 )) ]; then
+                TEST_ARGS+=("$test_file")
+              fi
+              i=$(( i + 1 ))
+            done < <(find tests/integration -name 'test_*.py' | sort)
+            if [ "${{ matrix.shard }}" = "1" ]; then
+              TEST_ARGS+=(tests/unit tests/end_to_end)
+            fi
+          fi
+          python -m pytest "${TEST_ARGS[@]}" -n auto --timeout=120 --tb=short --maxfail=5 \
             --reruns 1 --reruns-delay 2 \
             -m "not end_to_end and not slow and not performance and not unused_in_production" \
             --cov --cov-report=xml
@@ -246,7 +274,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           # Artifact names must be unique per run; only the 3.14 legs are suffixed.
-          name: coverage-${{ matrix.package }}${{ matrix.python-version != '3.13' && format('-py{0}', matrix.python-version) || '' }}
+          name: coverage-${{ matrix.package }}${{ matrix.python-version != '3.13' && format('-py{0}', matrix.python-version) || '' }}${{ matrix.shard && format('-shard{0}', matrix.shard) || '' }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
     # Job-level key; placed after `steps` so it stays clear of the matrix
