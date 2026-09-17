@@ -54,6 +54,9 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: lambda-syntax
           cache-dependency-glob: "**/pyproject.toml"
 
       - name: Compile all Lambda handler sources
@@ -139,6 +142,9 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: ${{ matrix.package }}-py${{ matrix.python-version }}
           cache-dependency-glob: "**/pyproject.toml"
 
       - name: Install and test
@@ -308,6 +314,9 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: repository-tests
           cache-dependency-glob: "**/pyproject.toml"
 
       - name: Install editable local stack
@@ -406,6 +415,11 @@ jobs:
         working-directory: portfolio
         env:
           CI: true
+          # GitHub runs container jobs with HOME=/github/home, which the
+          # container user does not own; Firefox refuses to start unless
+          # $HOME is owned by the current user (Playwright's documented
+          # workaround for its image on Actions).
+          HOME: /root
         run: |
           npm ci --prefer-offline
           npm run build
@@ -550,6 +564,9 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: deploy
           cache-dependency-glob: "infra/pyproject.toml"
 
       - uses: actions/setup-node@v7
