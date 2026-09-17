@@ -29,28 +29,28 @@ jobs:
   # ============================================================================
   # STAGE 1: All tests run in parallel
   # ============================================================================
-  # Self-hosted jobs share a persistent Mac. Every job below has a
-  # `timeout-minutes` (so a hung job releases the runner) and a final
-  # `if: always()` cleanup that removes the venv / node_modules / build output
-  # it created inside the workspace. Host-level caches (~/Library/Caches/pip,
-  # ~/.npm, ~/Library/Caches/ms-playwright) are intentionally kept warm across
-  # jobs; pruning them when disk runs low is an ops task on the runner host.
+  # Test jobs run on GitHub-hosted `ubuntu-latest`. The repo is public, so
+  # standard hosted runners are free and 20 jobs run concurrently; nothing
+  # below needs macOS (Swift CI uses hosted macos-latest in its own
+  # workflow). Runners are ephemeral, so jobs do not clean up after
+  # themselves; pip/npm caches come from actions/setup-python and
+  # actions/setup-node. Every job keeps a `timeout-minutes` so a hung job
+  # cannot pin a concurrency slot.
 
   lambda-syntax:
     name: Lambda Syntax
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
           clean: true
 
-      - name: Resolve Python
-        run: |
-          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "$PYTHON_VERSION")"
-          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
-          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
-          "$PYTHON_BIN" --version
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: "**/pyproject.toml"
 
       - name: Compile all Lambda handler sources
         run: |
@@ -59,15 +59,15 @@ jobs:
           # guards against `keyword argument repeated`-class regressions like
           # the one that crashed unified_evaluator after #861's rebase.
           find infra -name '*.py' -not -path '*/node_modules/*' -not -path '*/.venv*/*' -print0 \
-            | xargs -0 "$PYTHON_BIN" -m py_compile
+            | xargs -0 python -m py_compile
 
       - name: Verify Python version declarations
         run: |
-          "$PYTHON_BIN" scripts/check_python_version_consistency.py
+          python scripts/check_python_version_consistency.py
 
       - name: Test Lambda trust and API contracts
         run: |
-          "$PYTHON_BIN" -m venv .venv-email-receipt
+          python -m venv .venv-email-receipt
           source .venv-email-receipt/bin/activate
           python -m pip install --quiet boto3 pytest "pulumi>=3.261.0,<4" "pulumi-aws>=7.44.0,<8"
           python -m pytest -q \
@@ -80,10 +80,6 @@ jobs:
             infra/routes/images/handler/test_handler.py \
             infra/routes/receipts/handler/test_handler.py
 
-      - name: Clean up job workspace
-        if: always()
-        run: rm -rf .venv-email-receipt .pytest_cache
-
   lambda-images:
     name: Lambda image compatibility
     uses: ./.github/workflows/lambda-images.yml
@@ -92,7 +88,7 @@ jobs:
     # 3.13 legs keep their historical check names ("Python (<package>)") so
     # branch protection keeps matching them; 3.14 legs get a suffix.
     name: Python (${{ matrix.package }}${{ matrix.python-version != '3.13' && format(', {0}', matrix.python-version) || '' }})
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
     # Both runtimes must pass before deploy.
     strategy:
       fail-fast: false
@@ -124,18 +120,17 @@ jobs:
           clean: true
           fetch-depth: 0
 
-      - name: Setup Python
-        run: |
-          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "${{ matrix.python-version }}")"
-          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
-          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
-          "$PYTHON_BIN" --version
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: "**/pyproject.toml"
 
       - name: Install and test
         run: |
-          # Never fall back to the system interpreter: packages and Lambda use
-          # the same Python minor as CI.
-          "$PYTHON_BIN" -m venv .venv-${{ matrix.package }}
+          # setup-python pins the interpreter to the matrix minor, which is
+          # also what the Lambda images run.
+          python -m venv .venv-${{ matrix.package }}
           source .venv-${{ matrix.package }}/bin/activate
           pip install --upgrade pip wheel
 
@@ -254,19 +249,13 @@ jobs:
           name: coverage-${{ matrix.package }}${{ matrix.python-version != '3.13' && format('-py{0}', matrix.python-version) || '' }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
-
-      - name: Clean up job workspace
-        if: always()
-        run: |
-          rm -rf .venv-${{ matrix.package }}
-          rm -rf ${{ matrix.package }}/coverage.xml ${{ matrix.package }}/.pytest_cache
     # Job-level key; placed after `steps` so it stays clear of the matrix
     # header, which other branches edit.
     timeout-minutes: 30
 
   repository-tests:
     name: Python (repository tests)
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -274,16 +263,15 @@ jobs:
           clean: true
           fetch-depth: 0
 
-      - name: Setup Python
-        run: |
-          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "$PYTHON_VERSION")"
-          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
-          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
-          "$PYTHON_BIN" --version
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: "**/pyproject.toml"
 
       - name: Install editable local stack
         run: |
-          "$PYTHON_BIN" -m venv .venv-repository-tests
+          python -m venv .venv-repository-tests
           source .venv-repository-tests/bin/activate
           pip install --upgrade pip wheel
           pip install -e receipt_dynamo
@@ -325,13 +313,9 @@ jobs:
             -n auto --timeout=120 --tb=short --maxfail=5 \
             --reruns 1 --reruns-delay 2
 
-      - name: Clean up job workspace
-        if: always()
-        run: rm -rf .venv-repository-tests .pytest_cache
-
   typescript-tests:
     name: TypeScript
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -339,6 +323,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: portfolio/package-lock.json
 
       - name: Lint and test
         working-directory: portfolio
@@ -355,13 +341,9 @@ jobs:
           path: portfolio/coverage
           retention-days: 1
 
-      - name: Clean up job workspace
-        if: always()
-        run: rm -rf portfolio/node_modules portfolio/coverage
-
   browser-tests:
     name: Browser Tests
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -369,6 +351,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: portfolio/package-lock.json
 
       - name: Build and test
         working-directory: portfolio
@@ -377,22 +361,13 @@ jobs:
         run: |
           npm ci --prefer-offline
           npm run build
-          # Idempotent: playwright-core skips any browser whose
-          # INSTALLATION_COMPLETE marker already exists under
-          # ~/Library/Caches/ms-playwright, so this only downloads after a
-          # Playwright version bump changes the pinned browser revisions.
-          npx playwright install chromium firefox webkit
-          # Concurrent runners on one Mac must not share a fixed port or
-          # kill each other's servers. Playwright owns server teardown.
+          # --with-deps installs the browsers' apt dependencies on the
+          # hosted Ubuntu image (WebKit needs the most).
+          npx playwright install --with-deps chromium firefox webkit
+          # Bind the dev server to a free port rather than a fixed one so
+          # the test is independent of anything else on the runner.
+          # Playwright owns server teardown.
           export PLAYWRIGHT_PORT="$(node -e 'const server = require("node:net").createServer(); server.listen(0, "127.0.0.1", () => { console.log(server.address().port); server.close(); });')"
-          # macOS 27 denies launchd-spawned processes (our runner services)
-          # access to app folders under ~/Library/Application Support, and
-          # Playwright's Firefox reads its Application Support dir at startup
-          # even with an explicit -profile, so it dies with "Could not find
-          # profile folder". CFFIXED_USER_HOME redirects CoreFoundation's
-          # home lookup to a scratch dir; Node/npm use $HOME and are unaffected.
-          export CFFIXED_USER_HOME="$RUNNER_TEMP/cf-home"
-          mkdir -p "$CFFIXED_USER_HOME"
           npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
 
       - name: Upload test results
@@ -402,12 +377,6 @@ jobs:
           name: playwright-report
           path: portfolio/playwright-report/
           retention-days: 7
-
-      - name: Clean up job workspace
-        if: always()
-        run: |
-          rm -rf portfolio/node_modules portfolio/.next portfolio/out
-          rm -rf portfolio/playwright-report portfolio/test-results
 
   # ============================================================================
   # MANUAL: targeted dev API profiling (never runs on push or pull_request)
