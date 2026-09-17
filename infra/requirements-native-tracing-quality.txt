@@ -8,4 +8,4 @@ boto3-stubs[s3]>=1.43.89,<1.44.0
 # Test runners used directly by the native tracing CI job.
 pytest>=9.1.1,<10.0.0
 pytest-asyncio>=0.23.0,<2.0.0
-moto>=5.1.0,<6.0.0
+moto>=5.2.3,<6.0.0
