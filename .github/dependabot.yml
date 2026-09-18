@@ -51,7 +51,6 @@ updates:
   - package-ecosystem: "pip"
     directories:
       - "/infra"
-      - "/infra/upload_images/container_ocr"
       - "/receipt_agent"
       - "/receipt_dynamo"
       - "/receipt_dynamo_stream"
@@ -119,4 +118,16 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "ci"
+      include: "scope"
+
+  # Swift package manifest for the Mac OCR worker.
+  - package-ecosystem: "swift"
+    directory: "/receipt_ocr_swift"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+    commit-message:
+      prefix: "chore"
       include: "scope"
