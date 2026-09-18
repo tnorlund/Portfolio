@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(REPO, "scripts"))
 sys.path.insert(0, os.path.join(REPO, "receipt_dynamo"))
 
 import sync_ocr_jobs_dev_to_prod as sync  # noqa: E402
+
 from receipt_dynamo.entities.ocr_job import OCRJob  # noqa: E402
 
 IMAGE_ID = "550e8400-e29b-41d4-a716-446655440000"

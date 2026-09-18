@@ -101,7 +101,9 @@ def copy_s3_object(
         return False
 
 
-def find_ocr_result_key(s3_client, bucket: str, image_id: str, job_id: str) -> str | None:
+def find_ocr_result_key(
+    s3_client, bucket: str, image_id: str, job_id: str
+) -> str | None:
     """Find the ocr_results JSON for a given job.
 
     The Swift worker uploads to: ocr_results/{name}-{job_id}-reocr.json
@@ -161,7 +163,9 @@ def main():
     mode = "DRY RUN" if args.dry_run else "LIVE SYNC"
     logger.info("Mode: %s", mode)
     if args.dry_run:
-        logger.info("No changes will be made. Use --no-dry-run to actually sync.")
+        logger.info(
+            "No changes will be made. Use --no-dry-run to actually sync."
+        )
 
     # Load environment configs
     logger.info("Loading configurations from Pulumi...")
@@ -220,8 +224,10 @@ def main():
         # reconcile just made, which would wrongly skip re-syncing a job.
         resp = _ddb.get_item(
             TableName=prod_table,
-            Key={"PK": {"S": f"IMAGE#{image_id}"},
-                 "SK": {"S": f"OCR_JOB#{job_id}"}},
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {"S": f"OCR_JOB#{job_id}"},
+            },
             ConsistentRead=True,
             ProjectionExpression="PK",
         )
@@ -237,7 +243,10 @@ def main():
     orphan_skipped = 0
     for job in dev_jobs:
         # Filter by job type
-        if not args.all_job_types and job.job_type != OCRJobType.REGIONAL_REOCR.value:
+        if (
+            not args.all_job_types
+            and job.job_type != OCRJobType.REGIONAL_REOCR.value
+        ):
             continue
 
         # Filter by image IDs if specified
@@ -259,7 +268,10 @@ def main():
 
     logger.info(
         "Jobs to sync: %d (filtered from %d dev jobs; %d skipped as orphans "
-        "with no prod image)", len(jobs_to_sync), len(dev_jobs), orphan_skipped
+        "with no prod image)",
+        len(jobs_to_sync),
+        len(dev_jobs),
+        orphan_skipped,
     )
 
     if not jobs_to_sync:
@@ -314,7 +326,11 @@ def main():
                     logger.info("    %sS3 copy: %s", prefix, ocr_key)
                     if not args.dry_run:
                         if copy_s3_object(
-                            s3_client, dev_raw_bucket, ocr_key, prod_raw_bucket, ocr_key
+                            s3_client,
+                            dev_raw_bucket,
+                            ocr_key,
+                            prod_raw_bucket,
+                            ocr_key,
                         ):
                             stats["s3_copied"] += 1
                         else:
@@ -377,7 +393,9 @@ def main():
     logger.info("SYNC SUMMARY")
     logger.info("=" * 60)
     logger.info("OCRJob records synced:    %d", stats["jobs_synced"])
-    logger.info("OCRJob records skipped:   %d (already in prod)", stats["jobs_skipped"])
+    logger.info(
+        "OCRJob records skipped:   %d (already in prod)", stats["jobs_skipped"]
+    )
     logger.info("S3 objects copied:        %d", stats["s3_copied"])
     logger.info("S3 objects already exist: %d", stats["s3_already_exists"])
     logger.info("S3 objects not found:     %d", stats["s3_not_found"])
