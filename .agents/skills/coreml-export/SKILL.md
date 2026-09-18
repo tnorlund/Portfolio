@@ -12,10 +12,16 @@ description: >-
 Pipeline: S3 checkpoint → SQS job queue → Mac export worker → CoreML bundle in
 S3. The worker must run on macOS (coremltools requirement).
 
+> **Python 3.14 / modern torch:** the base `receipt_layoutlm` package no longer
+> caps torch at 2.7. The Core ML pin (`torch<=2.7.0` + `coremltools==9.0`) lives
+> only in the `[coreml]` extra. For experimental Apple Core AI (`.aimodel`)
+> export, see the `coreai-export` skill (`~/.coreai-venv`, `[coreai]`).
+
 ## Key files
 
 - `receipt_layoutlm/receipt_layoutlm/export_coreml.py` PyTorch → CoreML conversion.
 - `receipt_layoutlm/receipt_layoutlm/export_worker.py` SQS-driven export job processor.
+- `receipt_layoutlm/receipt_layoutlm/model_wrappers.py` shared LayoutLM wrappers.
 - `infra/coreml_export/queue_export.py` Lambda that queues exports on training completion.
 
 ## Auto-export (default, since #646)
@@ -76,6 +82,8 @@ Worker environment variables: `COREML_EXPORT_JOB_QUEUE_URL`,
 coremltools 9.0 supports PyTorch through 2.7.0 and scikit-learn only through
 1.5.1, but Python 3.13 macOS ARM wheels for scikit-learn start above that. The
 worker converts PyTorch models only, so scikit-learn must not be installed there.
+The `[coreml]` extra pins `torch>=2.6.0,<=2.7.0` so the main package can use
+newer torch on Python 3.14.
 
 ```bash
 /usr/local/bin/python3.13 -m venv ~/.coreml-venv
@@ -86,6 +94,10 @@ worker converts PyTorch models only, so scikit-learn must not be installed there
 Do not add the `training` extra to this venv (it pulls scikit-learn 1.6+ and
 `seqeval`). A clean install resolves coremltools 9.0 with PyTorch 2.7.0 and no
 unsupported-version warning.
+
+For Core AI (`.aimodel`) export use a separate `~/.coreai-venv` — see the
+`coreai-export` skill. Never install `[coreml]` and `[coreai]` into the same
+venv (conflicting torch ceilings).
 
 ## Output bundle
 
