@@ -400,7 +400,7 @@ class ReceiptUpdateQueues(ComponentResource):
         _stream_lambdas = _LOCAL_LAMBDAS
         self.stream_processor_function = aws.lambda_.Function(
             f"{lambdas_name}-stream-processor",
-            runtime="python3.13",
+            runtime="python3.14",
             architectures=["arm64"],
             code=pulumi.AssetArchive(
                 {
@@ -502,7 +502,7 @@ class ReceiptUpdateQueues(ComponentResource):
         )
         self.summary_updater_function = aws.lambda_.Function(
             f"{lambdas_name}-summary-updater",
-            runtime="python3.13",
+            runtime="python3.14",
             architectures=["arm64"],
             code=summary_updater_code,
             handler="handler.lambda_handler",
@@ -615,7 +615,7 @@ class ReceiptUpdateQueues(ComponentResource):
         )
         self.line_item_updater_function = aws.lambda_.Function(
             f"{lambdas_name}-line-item-updater",
-            runtime="python3.13",
+            runtime="python3.14",
             architectures=["arm64"],
             code=line_item_updater_code,
             handler="handler.lambda_handler",

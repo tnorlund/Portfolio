@@ -8,6 +8,18 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
+    groups:
+      # Packages that peer-depend on each other at an exact minor: bumping
+      # one alone makes `npm ci` fail with ERESOLVE (dependabot #1666) or
+      # skews jest against its jsdom environment (#868).
+      typescript-eslint:
+        patterns:
+          - "@typescript-eslint/*"
+      jest:
+        patterns:
+          - "jest"
+          - "jest-environment-jsdom"
+          - "@types/jest"
     labels:
       - "dependencies"
       - "javascript"
@@ -31,6 +43,7 @@ updates:
       - "/receipt_embeddings"
       - "/receipt_layoutlm"
       - "/receipt_logo"
+      - "/receipt_nutrition"
       - "/receipt_places"
       - "/receipt_upload"
       - "/scripts"
@@ -38,6 +51,11 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 6
+    # Only bump a requirement when the new release falls outside its current
+    # range. Ranged specs like "boto3>=1.43.89,<1.44.0" already admit every
+    # 1.43.x patch, so raising the floor each week was churn (#1659, #1660,
+    # #1663 ...). Exact pins (black==, isort==) are still bumped as usual.
+    versioning-strategy: increase-if-necessary
     groups:
       python-formatters:
         group-by: dependency-name

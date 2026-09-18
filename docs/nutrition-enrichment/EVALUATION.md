@@ -26,7 +26,7 @@ evaluation results. No live model, dev deployment, or public release claimed.
 | Gate | Status | Evidence / next action |
 |---|---|---|
 | P contract review | PASS | two MEDIUM findings fixed; full-diff second pass found none |
-| A schema/≥30 dimensional cases | PASS (local) | 92 Python 3.13 tests; 35 independent arithmetic cases |
+| A schema/≥30 dimensional cases | PASS (local) | 92 tests; 35 independent arithmetic cases |
 | A honest harness/fixture validation | PASS | synthetic labelled explicitly; offline/live return NOT RUN and exit 2 |
 | B1 immutable catalog/conditional aliases | PASS (local) | 52 entity/moto tests + 1 domain roundtrip; review clean |
 | B2 prototype | SUPERSEDED | initial tests missed reproduced compatibility/freshness failures |
@@ -91,7 +91,7 @@ their resolution before committing.
   ambiguous integer-rate/total sequences and check separate printed totals.
   Eighth full-diff pass: no remaining HIGH/MEDIUM findings.
 - Wheel builds successfully; this does not prove the later ARM64 Lambda runtime.
-- New package is wired into the Python 3.13 CI matrix and local/repository
+- New package is wired into the Python 3.14 CI matrix and local/repository
   installation lists. Provider/persistence/stream/UI are subsequent stages.
 
 ## Review corrections incorporated

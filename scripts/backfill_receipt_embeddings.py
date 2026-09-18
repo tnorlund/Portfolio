@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.13
+#!/usr/bin/env python3.14
 """Safely backfill receipt embedding items into the judge's dev table.
 
 The command is read-only unless ``--apply`` is passed. Applied runs require an

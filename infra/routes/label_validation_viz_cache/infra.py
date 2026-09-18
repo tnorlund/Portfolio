@@ -156,7 +156,7 @@ class LabelValidationVizCache(ComponentResource):
         # ============================================================
         self.api_lambda = aws.lambda_.Function(
             f"{name}-api-lambda",
-            runtime="python3.13",
+            runtime="python3.14",
             architectures=["arm64"],
             role=self.api_lambda_role.arn,
             code=AssetArchive({".": FileArchive(LAMBDAS_DIR)}),
@@ -287,7 +287,7 @@ class LabelValidationVizCache(ComponentResource):
 
         self.dynamo_query_lambda = aws.lambda_.Function(
             f"{name}-dynamo-query-lambda",
-            runtime="python3.13",
+            runtime="python3.14",
             architectures=["arm64"],
             role=self.dynamo_query_role.arn,
             code=AssetArchive(

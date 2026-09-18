@@ -25,7 +25,7 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 
 ## Environment
 
-- Python 3.13 venv at `.venv/` (created by `.cursor/install.sh`) with the same
+- Python 3.14 venv at `.venv/` (created by `.cursor/install.sh`) with the same
   editable package set as CI's `repository-tests` job: `receipt_dynamo`,
   `receipt_embeddings`, `receipt_dynamo_stream`, `receipt_places`, `receipt_agent`,
   `receipt_upload`, `receipt_nutrition`. Activate with `source .venv/bin/activate`.
@@ -45,9 +45,11 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
   `receipt_dynamo` uses markers `unit`, `integration`, `end_to_end`.
 - Frontend: `cd portfolio && npm run lint && npm run type-check && npm test`.
   CI runs `npm run test:ci`.
-- Baseline CI pins Python 3.13 and Node 22. Container Lambda packages also
-  have required Python 3.14 tests and native Linux ARM64 image import checks.
-  LayoutLM containers and ZIP Lambdas remain on Python 3.13.
+- Baseline CI pins Python 3.14 and Node 22. Every deployed runtime is 3.14:
+  ZIP Lambdas, their layers, and the container Lambda images (which also get
+  native Linux ARM64 import checks). The LayoutLM containers are the one
+  exception and remain on Python 3.13 because their pinned torch has no 3.14
+  wheels; `scripts/check_python_version_consistency.py` carves them out.
 - Format only the files you touch; do not reformat unrelated packages. CI lints
   `receipt_agent` on changed `.py` files only; every other package is linted whole.
 - The CI matrix runs only for PRs targeting `main`. A PR based on another PR
@@ -69,7 +71,7 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 - Commit messages: `feat:`, `fix:`, `chore:`, `docs:` prefix with a short imperative
   subject (see `git log`). One logical change per commit.
 - Timestamps that cross Swift ↔ Python use the project's `+00:00` convention.
-  Python 3.13 accepts `Z`; do not describe that convention as a parser limitation.
+  `datetime.fromisoformat` accepts `Z`; do not describe that convention as a parser limitation.
 
 ## Hard rules
 

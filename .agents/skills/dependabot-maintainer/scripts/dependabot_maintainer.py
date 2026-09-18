@@ -89,7 +89,7 @@ PYTHON_TEST_DEPS = (
     "moto",
     "responses",
 )
-MINIMUM_PYTHON_VERSION = (3, 13)
+MINIMUM_PYTHON_VERSION = (3, 14)
 VERSION_PAIR_RE = re.compile(
     r"\bfrom\s+`?([^`\s]+)`?\s+to\s+`?([^`\s]+)`?",
     re.IGNORECASE,
@@ -799,10 +799,10 @@ def _python_version(python: str) -> tuple[int, int, int]:
 
 
 def python_bin() -> str:
-    """Resolve an executable running Python 3.13 or newer."""
+    """Resolve an executable running Python 3.14 or newer."""
     candidates: list[str] = []
     problems: list[str] = []
-    for command in ("python3.13", "python3"):
+    for command in ("python3.14", "python3"):
         candidate = shutil.which(command)
         if candidate:
             if candidate not in candidates:
@@ -832,7 +832,7 @@ def python_bin() -> str:
     raise RuntimeError(
         f"Python {required} or newer is required for Dependabot verification. "
         f"Checked: {detail}. Install Python {required}+ and ensure "
-        "python3.13 is available on PATH."
+        "python3.14 is available on PATH."
     )
 
 

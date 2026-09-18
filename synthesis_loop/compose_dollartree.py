@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.13
+#!/usr/bin/env python3.14
 """compose_dollartree.py -- canonical Dollar Tree composition from real content.
 
 All 5 dev Dollar Tree receipts are curled PHOTOS whose OCR shears every item

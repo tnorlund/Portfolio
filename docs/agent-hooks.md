@@ -37,5 +37,5 @@ only, using available Black/isort binaries. Missing tools are a no-op.
 Run the offline contract tests with:
 
 ```sh
-python3.13 -m pytest tests/test_agent_hooks.py
+python3.14 -m pytest tests/test_agent_hooks.py
 ```

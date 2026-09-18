@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.13", "3.14"]
+        python: ["3.14"]
     env:
       AWS_EC2_METADATA_DISABLED: "true"
       AWS_DEFAULT_REGION: us-east-1
