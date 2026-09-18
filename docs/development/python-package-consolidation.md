@@ -101,13 +101,13 @@ an owner decision, not a mechanical cleanup.
 
 ## CI matrix today
 
-`python-tests` (`main.yml:87-254`) runs seven packages on 3.13 and six on
+`python-tests` (`main.yml:87-254`) runs seven packages on Python 3.14 (until 2026-09-17 it ran seven on 3.13 and six of them again on
 3.14 (all but `receipt_nutrition`): thirteen legs. Glyph Studio tests run
 as an extra step of the `receipt_agent` legs. `repository-tests`
 (`main.yml:256-314`) installs the whole stack once more for root `tests/`
 and `scripts/test_*.py`.
 
-| Leg | 3.13 | 3.14 | Notes |
+| Leg | 3.13 (retired) | 3.14 | Notes |
 |---|---|---|---|
 | receipt_dynamo | yes | yes | |
 | receipt_dynamo_stream | yes | yes | Installs only receipt_dynamo. Would vanish under Stage 3. |
@@ -134,7 +134,7 @@ and `scripts/test_*.py`.
    `receipt_agent` without `receipt_upload` and works only because its
    handler path never reaches the four affected modules.
 3. **`receipt_layoutlm` has no CI leg.** The comment at `main.yml:105-109`
-   explains why it is not on 3.14, but nothing runs its unit tests on 3.13
+   explains why it stays on 3.13, but nothing runs its unit tests on that runtime
    either.
 4. **`structlog`** is declared by `receipt_places` and never imported.
 5. **`infra/upload_images/container_ocr/pyproject.toml`** contains only a
@@ -161,8 +161,8 @@ tools/receipt-logo/      receipt_logo moved beside glyph-studio, or deleted
 ```
 
 Resulting `python-tests` matrix: receipt_dynamo, receipt_embeddings,
-receipt_upload, receipt_agent on 3.13 and 3.14, receipt_nutrition on 3.13,
-plus a new receipt_layoutlm 3.13 unit leg: ten legs including the new one,
+receipt_upload, receipt_agent, receipt_nutrition on 3.14,
+plus a new receipt_layoutlm 3.13 unit leg: eight legs including the new one,
 nine without it.
 
 ## Staged migration plan
@@ -187,7 +187,7 @@ workflow leg changes.
   explicit pip lines at `main.yml:159,175,191,287`.
 - Remove `/infra/upload_images/container_ocr` from dependabot, or give it a
   real manifest.
-- Add a `receipt_layoutlm` 3.13 leg that installs torch from the CPU index
+- Add a `receipt_layoutlm` 3.13 leg (its runtime carve-out) that installs torch from the CPU index
   and runs `tests/unit`. Cost: one more leg, roughly two to three minutes
   for the torch wheel.
 

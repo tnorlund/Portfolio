@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.13
+#!/usr/bin/env python3.14
 """Evaluate nutrition contracts without claiming unevaluated real accuracy."""
 
 from __future__ import annotations

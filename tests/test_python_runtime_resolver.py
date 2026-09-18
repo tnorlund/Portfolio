@@ -91,13 +91,13 @@ def test_ensure_runtime_serializes_homebrew_bootstrap(
         "PYTHON_INSTALL_POLL_SECONDS": "0.05",
     }
     with subprocess.Popen(
-        [ENSURE_RUNTIME, "3.13"],
+        [ENSURE_RUNTIME, "3.14"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         env=environment,
     ) as first_process, subprocess.Popen(
-        [ENSURE_RUNTIME, "3.13"],
+        [ENSURE_RUNTIME, "3.14"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -108,9 +108,9 @@ def test_ensure_runtime_serializes_homebrew_bootstrap(
 
     assert [process.returncode for process in processes] == [0, 0]
     assert [stdout.strip() for stdout, _ in results] == [
-        "/managed/python3.13",
-        "/managed/python3.13",
+        "/managed/python3.14",
+        "/managed/python3.14",
     ]
     assert brew_arguments.read_text(encoding="utf-8").strip() == (
-        "install python@3.13"
+        "install python@3.14"
     )

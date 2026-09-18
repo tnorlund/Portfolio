@@ -428,7 +428,7 @@ class McpAuthGateway(ComponentResource):
             )
             rotation_lambda = aws.lambda_.Function(
                 f"{name}-ats-secret-rotation",
-                runtime="python3.13",
+                runtime="python3.14",
                 handler="rotation.lambda_handler",
                 role=rotation_role.arn,
                 timeout=180,
@@ -554,7 +554,7 @@ class McpAuthGateway(ComponentResource):
             )
             canary_lambda = aws.lambda_.Function(
                 f"{name}-ats-auth-canary",
-                runtime="python3.13",
+                runtime="python3.14",
                 handler="canary.lambda_handler",
                 role=canary_role.arn,
                 timeout=45,
@@ -804,7 +804,7 @@ class McpAuthGateway(ComponentResource):
         metadata_lambda = aws.lambda_.Function(
             f"{name}-metadata",
             role=metadata_role.arn,
-            runtime="python3.13",
+            runtime="python3.14",
             handler="metadata.lambda_handler",
             timeout=5,
             memory_size=128,

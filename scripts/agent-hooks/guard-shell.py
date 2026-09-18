@@ -82,7 +82,7 @@ OWNER_ONLY_SCRIPTS = {
     "promote_merchant_truth.py",
     "start_ingestion_prod.sh",
 }
-INTERPRETERS = {"python", "python3", "python3.13", "bash", "sh", "zsh"}
+INTERPRETERS = {"python", "python3", "python3.14", "bash", "sh", "zsh"}
 
 
 def _tokenize(command: str) -> list[str]:

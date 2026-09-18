@@ -243,7 +243,7 @@ class AtsVerificationInbox(ComponentResource):
         )
         self.ingest_lambda = aws.lambda_.Function(
             f"{name}-ingest",
-            runtime="python3.13",
+            runtime="python3.14",
             handler="ingest.lambda_handler",
             role=ingest_role.arn,
             timeout=30,
@@ -386,7 +386,7 @@ class AtsVerificationInbox(ComponentResource):
         )
         self.mcp_lambda = aws.lambda_.Function(
             f"{name}-mcp",
-            runtime="python3.13",
+            runtime="python3.14",
             handler="mcp.lambda_handler",
             role=mcp_role.arn,
             timeout=10,
