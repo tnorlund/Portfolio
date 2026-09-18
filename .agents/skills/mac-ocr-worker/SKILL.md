@@ -30,7 +30,7 @@ cd receipt_ocr_swift
 swift build --configuration release
 ```
 
-Binary: `receipt_ocr_swift/.build/arm64-apple-macosx/release/receipt-ocr`.
+Binary: `receipt_ocr_swift/.build/release/receipt-ocr`.
 
 ## Run against the dev stack
 
@@ -38,7 +38,7 @@ Binary: `receipt_ocr_swift/.build/arm64-apple-macosx/release/receipt-ocr`.
 downloads the model from S3 into the local cache.
 
 ```bash
-BIN=./receipt_ocr_swift/.build/arm64-apple-macosx/release/receipt-ocr
+BIN=./receipt_ocr_swift/.build/release/receipt-ocr
 
 $BIN --env dev                                   # one batch (up to 10 images)
 $BIN --env dev --continuous --log-level info     # drain the queue

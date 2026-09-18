@@ -54,7 +54,7 @@ worker_script() {
 set -uo pipefail
 CHECKOUT="$1"; LABEL="$2"; DRY_RUN="$3"; SKIP_BUILD="$4"
 SWIFT_DIR="${CHECKOUT}/receipt_ocr_swift"
-BIN="${SWIFT_DIR}/.build/arm64-apple-macosx/release/receipt-ocr"
+BIN="${SWIFT_DIR}/.build/release/receipt-ocr"
 HOST="$(hostname -s)"
 fail() { echo "  FAIL  $*"; exit 1; }
 run() {

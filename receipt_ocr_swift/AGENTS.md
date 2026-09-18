@@ -4,7 +4,7 @@ Deltas to the root `AGENTS.md`. macOS only: Vision and CoreML are unavailable
 on Linux agents, so build and run steps happen on the user's Mac.
 
 - Build: `swift build --configuration release` (binary at
-  `.build/arm64-apple-macosx/release/receipt-ocr`). Unit tests:
+  `.build/release/receipt-ocr`). Unit tests:
   `swift test --filter ReceiptOCRCoreTests`. Integration tests need LocalStack
   (`make localstack-up`, `make localstack-bootstrap`).
 - Layout: `Sources/ReceiptOCRCLI/` (argument parsing, entry point) and

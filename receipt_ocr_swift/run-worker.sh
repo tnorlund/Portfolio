@@ -31,7 +31,7 @@ CRASH_BACKOFF_INIT=5     # initial crash backoff seconds
 CRASH_BACKOFF_MAX=120    # max crash backoff seconds
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BINARY="$SCRIPT_DIR/.build/arm64-apple-macosx/release/receipt-ocr"
+BINARY="$SCRIPT_DIR/.build/release/receipt-ocr"
 
 # ---------- build if needed ----------
 if [[ ! -x "$BINARY" ]]; then
