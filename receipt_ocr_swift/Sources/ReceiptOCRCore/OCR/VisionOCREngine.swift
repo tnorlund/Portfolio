@@ -586,10 +586,16 @@ public struct VisionOCREngine: OCREngineProtocol {
     public init() {}
 
     /// Initialize with optional LayoutLM model for inference
-    public init(layoutLMBundlePath: URL?) {
+    public init(
+        layoutLMBundlePath: URL?,
+        layoutLMBackend: LayoutLMBackendKind = .coreml
+    ) {
         if let bundlePath = layoutLMBundlePath {
             do {
-                self.layoutLMInference = try LayoutLMInference(bundlePath: bundlePath)
+                self.layoutLMInference = try LayoutLMInference(
+                    bundlePath: bundlePath,
+                    backendKind: layoutLMBackend
+                )
             } catch {
                 print("Warning: Failed to load LayoutLM model: \(error)")
             }

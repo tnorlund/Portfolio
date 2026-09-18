@@ -74,10 +74,11 @@ updates:
       # servers to the v2 API.
       - dependency-name: "mcp"
         update-types: ["version-update:semver-major"]
-      # torch is capped <=2.7.0 in receipt_layoutlm: coremltools 9.0 (latest)
-      # validates PyTorch only through 2.7.0 and the [coreml] extra has no
-      # torch pin of its own. Raise the cap only alongside a coremltools
-      # release that certifies a newer torch.
+      # torch<=2.7.0 is pinned only in receipt_layoutlm[coreml] for
+      # coremltools 9.0. The base package allows torch>=2.6,<3 and
+      # [coreai] requires torch>=2.8. Ignore base torch bumps that would
+      # fight the [coreml] ceiling; raise that ceiling only alongside a
+      # newer coremltools release.
       - dependency-name: "torch"
 
   # Monitor base-image tags in Dockerfiles throughout the repository.

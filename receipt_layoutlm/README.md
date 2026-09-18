@@ -111,10 +111,16 @@ pip install -e 'receipt_layoutlm[training]'
 ```
 
 The `training` extra installs `seqeval` and scikit-learn for evaluation
-metrics. Do not install it in the CoreML export worker: CoreMLtools 9.0 only
-supports scikit-learn through 1.5.1, which has no Python 3.13 macOS ARM wheel.
-The worker uses the separate `coreml` extra documented in the repository
-runbook.
+metrics. Do not install it in the CoreML or Core AI export workers.
+
+Extras:
+
+- base / `[training]` / `[dev]`: Python 3.13 or 3.14, `torch>=2.6,<3`
+- `[coreml]`: isolated Python 3.13 worker — `torch<=2.7` + `coremltools==9.0`
+- `[coreai]`: isolated Python 3.13 exporter — `torch>=2.8` + `coreai-torch`
+
+See the `coreml-export` and `coreai-export` skills for venv setup. Never
+combine `[coreml]` and `[coreai]` in one venv.
 
 Train locally against DynamoDB:
 

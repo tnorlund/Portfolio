@@ -16,5 +16,6 @@ on Linux agents, so build and run steps happen on the user's Mac.
 - Configuration comes from Pulumi stack outputs via `--env dev`; agents never
   use `--env prod`. `--stub-ocr` exercises the queue flow without Vision.
 - Operating the worker (queues, model cache, flags) is documented in the
-  `mac-ocr-worker` skill; export of the CoreML model it loads is in
-  `coreml-export`.
+  `mac-ocr-worker` skill; Core ML export is in `coreml-export`; experimental
+  Core AI (`.aimodel`) export/runtime is in `coreai-export`. Core ML remains
+  the default backend (`LAYOUTLM_BACKEND=coreml`); Core AI is opt-in.

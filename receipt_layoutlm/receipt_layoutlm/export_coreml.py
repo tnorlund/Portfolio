@@ -2,69 +2,30 @@
 
 from __future__ import annotations
 
-import json
-import shutil
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import torch
-from torch import nn
 
 from receipt_layoutlm.exceptions import (
     CoreMLExportError,
     MissingDependencyError,
     NaNWeightsError,
 )
+from receipt_layoutlm.export_bundle import write_export_sidecars
+from receipt_layoutlm.model_wrappers import (
+    LayoutLMv3Wrapper,
+    LayoutLMWrapper,
+)
 
-__all__ = ["CoreMLExportError", "MissingDependencyError", "NaNWeightsError"]
-
-
-class LayoutLMWrapper(nn.Module):
-    """Wrapper to trace LayoutLM with explicit input order."""
-
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(
-        self,
-        input_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
-        bbox: torch.Tensor,
-        token_type_ids: torch.Tensor,
-    ) -> torch.Tensor:
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            bbox=bbox,
-            token_type_ids=token_type_ids,
-        )
-        return outputs.logits
-
-
-class LayoutLMv3Wrapper(nn.Module):
-    """Wrapper for LayoutLMv3 CoreML export with image input."""
-
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(
-        self,
-        input_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
-        bbox: torch.Tensor,
-        token_type_ids: torch.Tensor,
-        pixel_values: torch.Tensor,
-    ) -> torch.Tensor:
-        outputs = self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            bbox=bbox,
-            pixel_values=pixel_values,
-        )
-        return outputs.logits
+__all__ = [
+    "CoreMLExportError",
+    "LayoutLMWrapper",
+    "LayoutLMv3Wrapper",
+    "MissingDependencyError",
+    "NaNWeightsError",
+]
 
 
 def export_coreml(
@@ -298,87 +259,16 @@ def export_coreml(
             raise NaNWeightsError(bad_count, weight_path)
         print(f"Weight validation passed: {len(fp16_arr):,} values, 0 NaN/Inf")
 
-    # Copy vocab.txt for tokenizer
-    # NOTE: v3 uses RoBERTa BPE tokenizer, not BERT WordPiece. The Swift
-    # BertTokenizer.swift is not compatible with v3 vocab. A v3-specific
-    # Swift tokenizer is needed before v3 CoreML inference works end-to-end.
-    vocab_src = checkpoint_path / "vocab.txt"
-    vocab_dst = output_path / "vocab.txt"
-    if model_version == "v3":
-        print(
-            "WARNING: v3 uses RoBERTa BPE tokenizer — vocab.txt is not compatible with Swift BertTokenizer"
-        )
-        print(
-            "         v3 Swift inference requires a BPE tokenizer implementation (follow-up PR)"
-        )
-        # Still write it for reference, but save the full tokenizer too
-        tokenizer.save_pretrained(str(output_path))
-        print(f"Saved v3 tokenizer files to {output_path}")
-    elif vocab_src.exists():
-        shutil.copy(vocab_src, vocab_dst)
-        print(f"Copied vocab.txt to {vocab_dst}")
-    else:
-        vocab = tokenizer.get_vocab()
-        sorted_tokens = sorted(vocab.items(), key=lambda kv: kv[1])
-        with open(vocab_dst, "w", encoding="utf-8") as f:
-            for token, _ in sorted_tokens:
-                f.write(token + "\n")
-        print(f"Wrote vocab.txt to {vocab_dst} ({len(sorted_tokens)} tokens)")
-
-    # Sort label IDs for consistent ordering in JSON output
-    sorted_ids = sorted(id2label.keys())
-
-    # Copy config.json, ensuring num_labels is present
-    config_src = checkpoint_path / "config.json"
-    config_dst = output_path / "config.json"
-    if config_src.exists():
-        # Read existing config and ensure num_labels is present
-        with open(config_src, "r", encoding="utf-8") as f:
-            config_data = json.load(f)
-        # Add num_labels if missing (required by Swift LayoutLMConfig)
-        if "num_labels" not in config_data:
-            config_data["num_labels"] = num_labels
-            print(f"Added num_labels={num_labels} to config.json")
-        with open(config_dst, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, indent=2)
-            f.write("\n")  # Trailing newline
-        print(f"Saved config.json to {config_dst}")
-    else:
-        # Save config manually with sorted id2label
-        with open(config_dst, "w", encoding="utf-8") as f:
-            json.dump(
-                {
-                    "id2label": {str(k): id2label[k] for k in sorted_ids},
-                    "label2id": label2id,
-                    "num_labels": num_labels,
-                    "max_position_embeddings": config.max_position_embeddings,
-                    "vocab_size": config.vocab_size,
-                },
-                f,
-                indent=2,
-            )
-            f.write("\n")  # Trailing newline
-        print(f"Saved config.json to {config_dst}")
-
-    # Create label_map.json for easy label lookup
-    label_map_path = output_path / "label_map.json"
-    with open(label_map_path, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "id2label": {str(k): id2label[k] for k in sorted_ids},
-                "label2id": label2id,
-                "labels": [id2label[k] for k in sorted_ids],
-            },
-            f,
-            indent=2,
-        )
-    print(f"Saved label_map.json to {label_map_path}")
-
-    # Copy tokenizer config for reference
-    tokenizer_config_src = checkpoint_path / "tokenizer_config.json"
-    tokenizer_config_dst = output_path / "tokenizer_config.json"
-    if tokenizer_config_src.exists():
-        shutil.copy(tokenizer_config_src, tokenizer_config_dst)
+    write_export_sidecars(
+        checkpoint_path=checkpoint_path,
+        output_path=output_path,
+        tokenizer=tokenizer,
+        config=config,
+        id2label=id2label,
+        label2id=label2id,
+        num_labels=num_labels,
+        model_version=model_version,
+    )
 
     print(f"\nCoreML bundle created at: {output_path}")
     print("Contents:")
