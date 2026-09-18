@@ -15,7 +15,6 @@ import numpy as np
 
 from receipt_layoutlm.export_coreai import COREAI_SEQ_LENGTH
 from receipt_layoutlm.validate_coreml import (
-    _generate_synthetic_samples,
     _load_test_samples,
 )
 from receipt_layoutlm.validate_parity import (
