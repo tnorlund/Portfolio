@@ -140,31 +140,40 @@ struct ReceiptOCR: AsyncParsableCommand {
         cacheLogger.logLevel = .from(string: effectiveConfig.logLevel)
 
         let worker = try await OCRWorker.make(config: effectiveConfig, stubOCR: stubOCR)
-        if continuous {
-            print("Running continuously until queue is empty...")
-            var batchCount = 0
-            // Purge every 50 batches (~500 receipts) to keep cache bounded
-            let purgeCadence = 50
-            while true {
-                batchCount += 1
-                print("Processing batch \(batchCount)...")
-                let hadMessages = try await worker.processBatch()
-                if !hadMessages {
-                    print("Queue is empty, stopping.")
-                    break
+        do {
+            if continuous {
+                print("Running continuously until queue is empty...")
+                var batchCount = 0
+                // Purge every 50 batches (~500 receipts) to keep cache bounded
+                let purgeCadence = 50
+                while true {
+                    batchCount += 1
+                    print("Processing batch \(batchCount)...")
+                    let hadMessages = try await worker.processBatch()
+                    if !hadMessages {
+                        print("Queue is empty, stopping.")
+                        break
+                    }
+                    if batchCount % purgeCadence == 0 {
+                        purgeE5RTCache(logger: cacheLogger)
+                    }
+                    // Small delay between batches to avoid tight loops
+                    try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
                 }
-                if batchCount % purgeCadence == 0 {
-                    purgeE5RTCache(logger: cacheLogger)
-                }
-                // Small delay between batches to avoid tight loops
-                try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                // Final purge before exit
+                purgeE5RTCache(logger: cacheLogger)
+            } else {
+                _ = try await worker.processBatch()
+                purgeE5RTCache(logger: cacheLogger)
             }
-            // Final purge before exit
-            purgeE5RTCache(logger: cacheLogger)
-        } else {
-            _ = try await worker.processBatch()
-            purgeE5RTCache(logger: cacheLogger)
+        } catch {
+            // Flush the AWS client even when a batch failed, then surface
+            // the original error to the runner script.
+            try? await worker.shutdown()
+            throw error
         }
+        // soto 7: shut the AWS client down explicitly before exit.
+        try await worker.shutdown()
     }
 }
 

@@ -262,6 +262,14 @@ public final class OCRWorker {
         return worker
     }
 
+    /// Flush the AWS client before the process exits. soto 7 removed the
+    /// synchronous shutdown the factory used to run from `deinit`, so the
+    /// CLI awaits this once its batch loop ends (including on error). No-op
+    /// when the worker was built on injected test clients.
+    public func shutdown() async throws {
+        try await sotoFactory?.shutdown()
+    }
+
     #if os(macOS)
     private func cropImageData(_ imageData: Data, region: ReOCRRegion, strategy: ReOCRStrategy) throws -> Data {
         // trigger_reocr always sends full-width (x=0..1) with line-based
