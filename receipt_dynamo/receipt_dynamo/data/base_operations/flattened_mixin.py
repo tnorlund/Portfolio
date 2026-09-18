@@ -604,8 +604,13 @@ class FlattenedStandardMixin:
         last_evaluated_key: dict[str, Any] | None = None,
         filter_expression: str | None = None,
         scan_index_forward: bool | None = None,
+        consistent_read: bool = False,
     ) -> tuple[list[T], dict[str, Any] | None]:
         """Query entities with pagination support."""
+        if consistent_read and index_name:
+            raise EntityValidationError(
+                "Consistent reads require a primary-table query."
+            )
         entities = []
         current_last_key = last_evaluated_key
 
@@ -622,6 +627,8 @@ class FlattenedStandardMixin:
                 limit=None,  # Will be set separately below
                 scan_index_forward=scan_index_forward,
             )
+            if consistent_read:
+                query_params["ConsistentRead"] = True
 
             # Set query limit
             if limit:

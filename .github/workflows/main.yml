@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # Validate children against their immediate parent in a PR stack too.
   workflow_dispatch:
     inputs:
       profile_dev_api:
