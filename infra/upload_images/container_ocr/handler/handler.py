@@ -73,8 +73,8 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     total_embedding_duration = 0.0
     dual_write_written_count = 0
     dual_write_failed_count = 0
-    # Messages to redrive (the llm-validation mapping reports these so SQS
-    # retries / DLQs them instead of silently deleting on a swallowed error).
+    # Both source mappings redrive these records instead of deleting them.
+    # Only failures without a durable outcome qualify (see _redrive_record).
     batch_item_failures: list[Dict[str, str]] = []
     llm_validation_failures = 0
 
@@ -100,6 +100,10 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                     embedding_count += 1
             else:
                 error_count += 1
+                if _redrive_record(result):
+                    batch_item_failures.append(
+                        {"itemIdentifier": record["messageId"]}
+                    )
 
             # Aggregate per-record metrics
             if result.get("ocr_failed"):
@@ -128,15 +132,23 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
                 exc,
                 exc_info=True,
             )
-            results.append({"success": False, "error": str(exc)})
+            # An exception escaping the record processor left no durable
+            # outcome (no FAILED routing marker, no PENDING label resolved),
+            # so redrive it; the DLQ surfaces persistent failures.
+            results.append(
+                {"success": False, "error": str(exc), "retryable": True}
+            )
             error_count += 1
             if is_llm_record:
                 # Report for redrive instead of swallowing — otherwise the
                 # message is deleted and the labels stay PENDING forever.
                 llm_validation_failures += 1
-                mid = record.get("messageId")
-                if mid:
-                    batch_item_failures.append({"itemIdentifier": mid})
+            message_id = record.get("messageId")
+            if not message_id:
+                raise ValueError(
+                    "Cannot redrive failed record without messageId"
+                ) from exc
+            batch_item_failures.append({"itemIdentifier": message_id})
 
     # Record aggregated metrics
     execution_time = time.time() - start_time
@@ -203,9 +215,9 @@ def lambda_handler(event: Dict[str, Any], _context: Any) -> Dict[str, Any]:
     # This ensures all validation/merchant resolution decisions are logged
     flush_traces()
 
-    # The llm-validation mapping has ReportBatchItemFailures enabled, so SQS
-    # redrives any messageId returned here (and DLQs it after maxReceiveCount).
-    # The OCR-results mapping does not enable it, so this field is ignored there.
+    # Both mappings enable ReportBatchItemFailures: SQS retries these message
+    # IDs and sends exhausted messages to the configured DLQ. Acknowledged
+    # failures were marked FAILED on their routing decision instead.
     return {
         "statusCode": 200,
         "batchItemFailures": batch_item_failures,
@@ -297,6 +309,19 @@ def _emit_section_observability(
             image_id,
             receipt_id,
         )
+
+
+def _redrive_record(result: Dict[str, Any]) -> bool:
+    """Report a failed record to SQS only when a redelivery can finish it.
+
+    The processor marks a failure ``retryable`` when nothing durable records
+    the attempt: a busy or released regional re-OCR claim, an incomplete
+    native refresh, a failed summary enqueue, or a transient DynamoDB error.
+    Every other failure was written to its routing decision as FAILED and is
+    acknowledged, matching the pre-redrive contract for first-pass, Swift
+    single-pass, and refinement jobs.
+    """
+    return not result.get("success") and bool(result.get("retryable"))
 
 
 def _is_llm_validation_record(record: Dict[str, Any]) -> bool:
@@ -580,9 +605,10 @@ def _process_single_record(
 
             # One incomplete receipt makes the image's embedding step a
             # failure: it feeds UploadLambdaEmbeddingFailed, which is the
-            # detection path. Nothing retries the OCR message today -- only
-            # llm-validation records are reported for redrive -- so the
-            # metric and its alarm are what surface this.
+            # detection path. The record still returns success, so SQS
+            # acknowledges it: the OCR writes are durable and replaying them
+            # would collide with the conditional adds. Only regional re-OCR
+            # failures are redriven (see _redrive_record).
             failed_receipts = [
                 entry["receipt_id"]
                 for entry in all_embedding_results

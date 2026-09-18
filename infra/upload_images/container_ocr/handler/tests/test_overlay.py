@@ -17,6 +17,7 @@ import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, call, patch
 
 # Ensure container_ocr is on sys.path so `handler` resolves directly
@@ -169,6 +170,8 @@ def _make_processor():
             ocr_results_queue_url="https://sqs/ocr-results",
         )
     proc.dynamo = MagicMock()
+    proc.dynamo.claim_ocr_routing_decision.return_value = "claimed"
+    proc.dynamo.list_receipt_word_labels_for_receipt.return_value = ([], None)
     # Default receipt corners: unit square (identity transform).
     # Receipt-relative coords == full-image Vision coords.
     # width/height must be set for the perspective coefficient computation.
@@ -184,6 +187,33 @@ def _make_processor():
         width=1000,
         height=2000,
     )
+
+    def receipt_details(*_args: Any, **_kwargs: Any) -> SimpleNamespace:
+        """Collect existing test entities into the consistent-read result."""
+        labels, last_key = proc.dynamo.list_receipt_word_labels_for_receipt()
+        labels = list(labels)
+        while last_key:
+            page, last_key = proc.dynamo.list_receipt_word_labels_for_receipt(
+                last_evaluated_key=last_key
+            )
+            labels.extend(page)
+        letter_mock = proc.dynamo.list_receipt_letters_from_word
+        if letter_mock.side_effect is not None:
+            letters = [
+                letter for page in letter_mock.side_effect for letter in page
+            ]
+        else:
+            letters = list(letter_mock.return_value)
+        return SimpleNamespace(
+            receipt=proc.dynamo.get_receipt.return_value,
+            words=list(proc.dynamo.list_receipt_words_from_receipt()),
+            lines=list(proc.dynamo.list_receipt_lines_from_receipt()),
+            letters=letters,
+            labels=labels,
+            place=None,
+        )
+
+    proc.dynamo.get_receipt_details.side_effect = receipt_details
     return proc
 
 
@@ -487,6 +517,7 @@ class TestCandidateSelection:
             region = {"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0}
 
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=1,
             reocr_region=region,
@@ -663,6 +694,7 @@ class TestUnmatchedWordAddition:
             new_letters = []
 
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id=_IMG_ID,
             receipt_id=1,
             reocr_region=region,
@@ -885,6 +917,7 @@ class TestLineTextRebuild:
         """Line text is rebuilt from updated words joined by spaces."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -987,6 +1020,7 @@ class TestLineTextRebuild:
         """Lines without overlaid words should not be updated."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -1007,7 +1041,10 @@ class TestLineTextRebuild:
         line1 = _make_line(text="99.98", line_id=1)
         line2 = _make_line(text="OTHER LINE", line_id=2, y=0.5)
 
-        proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_w]
+        proc.dynamo.list_receipt_words_from_receipt.return_value = [
+            existing_w,
+            _make_word(text="OTHER LINE", x=0.1, y=0.5, line_id=2),
+        ]
         proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
             [],
             None,
@@ -1084,6 +1121,7 @@ class TestLineTextRebuild:
         """Words should be ordered by word_id when rebuilding text."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -1186,6 +1224,7 @@ class TestLetterReplacement:
     def _run_with_letters(self, proc, old_letters, new_letters_from_ocr):
         """Run overlay and return (letters_to_add, letters_to_delete) from mock calls."""
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -1363,6 +1402,7 @@ class TestWriteOrdering:
         """
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -1482,6 +1522,7 @@ class TestWriteOrdering:
 class TestIsNoiseRecomputation:
     def _run_overlay_with_text(self, proc, new_text):
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -1642,6 +1683,7 @@ class TestIntegrationEndToEnd:
         """End-to-end: one new word overlays one existing word, letters replaced, line rebuilt."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -1713,12 +1755,13 @@ class TestIntegrationEndToEnd:
         assert proc.dynamo.put_receipt_letters.called
         assert proc.dynamo.remove_receipt_letters.called
         assert proc.dynamo.update_receipt_lines.called
-        assert proc.dynamo.update_ocr_routing_decision.called
+        assert proc.dynamo.complete_ocr_routing_decision.called
 
     def test_no_existing_words_error(self):
         """Should return error when no existing words found."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -1761,6 +1804,7 @@ class TestIntegrationEndToEnd:
         """If regional words don't match any existing words, overlay still succeeds with 0 replacements."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -1818,6 +1862,7 @@ class TestIntegrationEndToEnd:
         """Should return error when receipt_id is None."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=None,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -1831,6 +1876,7 @@ class TestIntegrationEndToEnd:
         """Should return error when reocr_region is missing/empty."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
             receipt_id=1,
             reocr_region=None,
@@ -1904,6 +1950,7 @@ class TestOrphanDeletion:
         """An existing word in the re-OCR region that no new word matches should be deleted."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id=_IMG_ID,
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -2006,6 +2053,7 @@ class TestOrphanDeletion:
         """Rebuilt ReceiptLine.text must not contain orphaned words."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id=_IMG_ID,
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -2111,6 +2159,7 @@ class TestOrphanDeletion:
         """Orphan letters must be removed before orphan words are deleted."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id=_IMG_ID,
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -2198,6 +2247,7 @@ class TestOrphanDeletion:
         """When every candidate word matches a re-OCR word, nothing should be deleted."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id=_IMG_ID,
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -2255,6 +2305,7 @@ class TestOrphanDeletion:
         """A word straddling the region edge (<80% contained) must NOT be deleted."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id=_IMG_ID,
             receipt_id=1,
             # Region covers x=[0.70, 1.0], y=[0.0, 1.0]
@@ -2329,6 +2380,7 @@ class TestOrphanDeletion:
         """A word fully inside the region (100% contained) that isn't matched SHOULD be deleted."""
         proc = _make_processor()
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id=_IMG_ID,
             receipt_id=1,
             reocr_region={"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0},
@@ -2405,6 +2457,7 @@ class TestReocrCompletionMetrics:
         if region is None:
             region = {"x": 0.70, "y": 0.0, "width": 0.30, "height": 1.0}
         ocr_job = SimpleNamespace(
+            job_id=_IMG_ID,
             image_id=_IMG_ID,
             receipt_id=1,
             reocr_region=region,
