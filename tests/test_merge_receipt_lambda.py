@@ -215,28 +215,21 @@ def merge_env(db, monkeypatch):
         queues[env] = sqs.create_queue(QueueName=env)["QueueUrl"]
         monkeypatch.setenv(env, queues[env])
     monkeypatch.setattr(receipt_dynamo, "DynamoClient", lambda table_name: db)
-    monkeypatch.setattr(
-        db,
-        "get_receipt_details",
-        lambda *args: SimpleNamespace(
-            lines=[], words=[], labels=[], place=None
-        ),
-    )
-    monkeypatch.setattr(
-        db,
-        "get_image",
-        lambda *args: SimpleNamespace(
+    db.add_image(
+        Image(
+            image_id=IMAGE_ID,
             width=10,
             height=10,
+            timestamp_added="2026-09-10T00:00:00+00:00",
             raw_s3_bucket="merge-originals",
             raw_s3_key="original.png",
-        ),
+            receipt_count=3,
+        )
     )
-    monkeypatch.setattr(db, "update_image", Mock())
     monkeypatch.setattr(
         combine,
         "combine_receipt_words_to_image_coords",
-        lambda *args: [object()],
+        lambda *args, **kwargs: [object()],
     )
     monkeypatch.setattr(
         combine,
@@ -261,12 +254,16 @@ def merge_env(db, monkeypatch):
         ),
     )
     monkeypatch.setattr(
-        combine, "combine_receipt_letters_to_image_coords", lambda *args: []
+        combine,
+        "combine_receipt_letters_to_image_coords",
+        lambda *args, **kwargs: [],
     )
     monkeypatch.setattr(
-        combine, "migrate_receipt_word_labels", lambda *args: []
+        combine, "migrate_receipt_word_labels", lambda *args, **kwargs: []
     )
-    monkeypatch.setattr(combine, "get_best_receipt_place", lambda *args: None)
+    monkeypatch.setattr(
+        combine, "get_best_receipt_place", lambda *args, **kwargs: None
+    )
     monkeypatch.setattr(
         upload_utils,
         "upload_png_to_s3",
@@ -361,7 +358,7 @@ def test_merge_collects_before_deletion_and_cleans_after(
         assert json.loads(messages[0]["Body"]) == {
             "entity_data": {"image_id": IMAGE_ID, "receipt_id": 4}
         }
-    assert env.db.update_image.call_args.args[0].receipt_count == 2
+    assert env.db.get_image(IMAGE_ID).receipt_count == 2
 
 
 def test_dry_run_does_not_send_or_delete(merge_env, monkeypatch):
@@ -384,7 +381,7 @@ def test_dry_run_does_not_send_or_delete(merge_env, monkeypatch):
 @pytest.mark.parametrize(
     "step", ["collect", "purge", "s3", "summary_queue", "line_item_queue"]
 )
-def test_cleanup_failures_log_and_continue(
+def test_cleanup_failures_remain_retryable(
     merge_env, monkeypatch, caplog, step
 ):
     env = merge_env
@@ -428,17 +425,21 @@ def test_cleanup_failures_log_and_continue(
         )
         env.sqs.delete_queue(QueueUrl=env.queues[env_name])
     result = merge.handler(EVENT, None)
-    assert result["status"] == "success"
-    assert result["deleted_receipts"] == [2, 1]
-    assert "Failed to" in caplog.text
+    assert result["status"] == "error"
+    assert env.db.get_receipt_merge(IMAGE_ID, [1, 2]).status != "COMPLETED"
+    assert "Error merging receipts" in caplog.text
     for queue in env.queues:
         if step == "summary_queue" and queue == "SUMMARY_QUEUE_URL":
             continue
         if step == "line_item_queue" and queue == "LINE_ITEM_QUEUE_URL":
             continue
-        assert len(queue_messages(env, queue)) == 1
+        messages = queue_messages(env, queue)
+        assert len(messages) == int(
+            step in ("summary_queue", "line_item_queue")
+        )
     if step == "s3":
-        assert env.s3.list_objects_v2(Bucket="merge-site")["KeyCount"] == 12
+        # All objects for the interrupted source are attempted before failure.
+        assert env.s3.list_objects_v2(Bucket="merge-site")["KeyCount"] == 24
 
 
 def test_failed_parent_delete_retains_children_and_assets(
@@ -453,8 +454,8 @@ def test_failed_parent_delete_retains_children_and_assets(
         ),
     )
     result = merge.handler(EVENT, None)
-    assert result["status"] == "success"
-    assert result["deleted_receipts"] == []
+    assert result["status"] == "error"
+    assert "Failed to delete receipt" in result["error"]
     assert "RECEIPT#00001#UNKNOWN" in keys(env.db)
     assert env.s3.list_objects_v2(Bucket="merge-site")["KeyCount"] == 36
 
@@ -505,7 +506,7 @@ def test_inflight_summary_cannot_survive_parent_deletion(
         "get_receipt_sections_from_receipt",
         "get_receipt_line_items_from_receipt",
     ):
-        monkeypatch.setattr(db, method, lambda *args: [])
+        monkeypatch.setattr(db, method, lambda *args, **kwargs: [])
     write = db.upsert_receipt_summary
 
     def race(record):
@@ -575,7 +576,7 @@ def test_merge_iam_scopes_asset_deletes_and_queue_sends():
             node.targets[0], ast.Name
         ):
             name = node.targets[0].id
-            if name not in ("s3_policy", "sqs_policy"):
+            if name not in ("s3_policy", "sqs_policy", "dynamodb_policy"):
                 continue
             builder = next(
                 n for n in ast.walk(node.value) if isinstance(n, ast.Lambda)
@@ -584,6 +585,11 @@ def test_merge_iam_scopes_asset_deletes_and_queue_sends():
                 compile(ast.Expression(builder), str(path), "eval"),
                 {"json": json},
             )
+    table_arn = "arn:aws:dynamodb:us-east-1:123456789012:table/merge-test"
+    dynamo = json.loads(policies["dynamodb_policy"](table_arn))["Statement"]
+    assert "dynamodb:ConditionCheckItem" in dynamo[0]["Action"]
+    assert "dynamodb:TransactWriteItems" not in dynamo[0]["Action"]
+    assert set(dynamo[0]["Resource"]) == {table_arn, f"{table_arn}/index/*"}
     s3 = policies["s3_policy"](["raw", "site", "originals"])
     statements = json.loads(s3)["Statement"]
     deletes = [s for s in statements if "s3:DeleteObject" in s["Action"]]
@@ -826,7 +832,7 @@ def test_real_merge_preserves_metadata_assets_and_final_item_count(
     [
         "add_receipt_sections",
         "add_receipt_barcodes",
-        "list_receipt_barcodes_from_receipt_consistent",
+        "get_receipt_details",
     ],
 )
 def test_metadata_failure_retains_sources(lifecycle_env, monkeypatch, method):
@@ -914,7 +920,8 @@ def test_unknown_asset_ownership_retains_source_objects(
         Mock(side_effect=RuntimeError("ownership unavailable")),
     )
     result = merge.handler(EVENT, None)
-    assert result["status"] == "success", result
+    assert result["status"] == "error", result
+    assert "ownership unavailable" in result["error"]
     for source in env.sources.values():
         for bucket, key in merge._collect_receipt_assets(source):
             env.s3.head_object(Bucket=bucket, Key=key)

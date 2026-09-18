@@ -94,6 +94,7 @@ def receipt_to_api(item: Item) -> Item:
         "top_right": _point(item, "top_right"),
         "bottom_left": _point(item, "bottom_left"),
         "bottom_right": _point(item, "bottom_right"),
+        "merge_operation": _string(item, "merge_operation"),
     }
 
 
