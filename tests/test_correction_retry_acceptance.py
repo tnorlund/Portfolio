@@ -233,18 +233,28 @@ def test_disjoint_merges_serialize_image_count_updates(
     nested_results = []
     entered = False
 
-    def update_after_another_merge(operation: Any, image: Any) -> Any:
+    def update_after_another_merge(
+        operation: Any, image: Any, **kwargs: Any
+    ) -> Any:
         nonlocal entered
         if not entered:
             entered = True
             nested_results.append(merge.handler(other_event, None))
-        return update_image(operation, image)
+        return update_image(operation, image, **kwargs)
 
     monkeypatch.setattr(
         env.db, "update_receipt_merge_image", update_after_another_merge
     )
+    # The nested merge changes the image's receipt count between this
+    # merge's consistent read and its fenced write, so the first attempt is
+    # rejected instead of clobbering the count; the journal is READY and the
+    # retry recounts and finishes.
     first = merge.handler(EVENT, None)
-    assert first["status"] == "success", first
+    assert first["status"] == "error", first
+    assert len(nested_results) == 1
+    assert nested_results[0]["status"] == "success", nested_results[0]
+    second = merge.handler(EVENT, None)
+    assert second["status"] == "success", second
     survivors = env.db.get_receipts_from_image_consistent(IMAGE_ID)
     assert env.db.get_image(IMAGE_ID).receipt_count == len(survivors)
     assert len(nested_results) == 1
