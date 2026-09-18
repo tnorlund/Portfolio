@@ -95,9 +95,9 @@ else
   echo ""
 
   # OCR jobs run AFTER reconcile so the prod-image filter sees the final image
-  # set (rewrites OCRJob.s3_bucket dev→prod and copies the ocr_results/ artifact).
-  # --all-job-types: copy no longer writes any OCRJob rows, so this is the sole
-  # restore path — it must cover FIRST_PASS/refinement jobs, not just REGIONAL_REOCR.
+  # set. The reconcile copy already wrote every OCRJob row (bucket rewritten)
+  # so the line-item updater's re-OCR cap holds the moment the partition lands;
+  # this step adds the ocr_results/ S3 artifacts and any row the copy missed.
   echo -e "${GREEN}[3/3] Syncing OCR jobs (dev → prod; all types, prod-image filtered)...${NC}"
   if [[ "$DRY_RUN" == "true" ]]; then
     run python3 "$SCRIPT_DIR/sync_ocr_jobs_dev_to_prod.py" --all-job-types
