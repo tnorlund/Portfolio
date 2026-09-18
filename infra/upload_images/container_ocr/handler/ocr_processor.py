@@ -844,15 +844,46 @@ class OCRProcessor:
                     ocr_job.image_id, ocr_job.job_id, owner
                 )
 
+    def _fail_regional_reocr(
+        self, ocr_job: Any, ocr_routing_decision: Any, reason: str
+    ) -> Dict[str, Any]:
+        """Record a permanent regional failure so SQS acknowledges it.
+
+        Redelivering cannot change a job without a receipt, region, or
+        receipt content, so the routing decision is marked FAILED while this
+        invocation still owns the claim. That write replaces the whole item
+        and drops the lease attributes; the caller's release then has nothing
+        left to release.
+        """
+        logger.error(
+            "Regional re-OCR for %s#%s cannot run: %s",
+            ocr_job.image_id,
+            ocr_job.receipt_id,
+            reason,
+        )
+        self._update_routing_decision_with_error(ocr_routing_decision)
+        return {
+            "success": False,
+            "retryable": False,
+            "error": reason,
+            "image_id": ocr_job.image_id,
+            "receipt_id": ocr_job.receipt_id,
+            "image_type": "REGIONAL_REOCR",
+        }
+
     def _apply_regional_reocr_overlay(
         self, ocr_job: Any, ocr_routing_decision: Any, owner: str
     ) -> Dict[str, Any]:
         """Apply an overlay while this invocation owns the routing claim."""
         logger.info("Regional re-OCR overlay for receipt %s", ocr_job.image_id)
         if ocr_job.receipt_id is None:
-            return {"success": False, "error": "Receipt ID is None"}
+            return self._fail_regional_reocr(
+                ocr_job, ocr_routing_decision, "Receipt ID is None"
+            )
         if not ocr_job.reocr_region:
-            return {"success": False, "error": "reocr_region is missing"}
+            return self._fail_regional_reocr(
+                ocr_job, ocr_routing_decision, "reocr_region is missing"
+            )
 
         region = {
             "x": float(ocr_job.reocr_region.get("x", 0.70)),
@@ -970,10 +1001,11 @@ class OCRProcessor:
 
         existing_words = details.words
         if not existing_words and not details.lines:
-            return {
-                "success": False,
-                "error": "No existing receipt words found for overlay",
-            }
+            return self._fail_regional_reocr(
+                ocr_job,
+                ocr_routing_decision,
+                "No existing receipt words found for overlay",
+            )
 
         labels = details.labels
         existing_letters_by_word: dict[

@@ -543,3 +543,32 @@ def test_native_refresh_failure_result_is_retryable(overlay: Any) -> None:
     assert result["retryable"] is True
     overlay.processor.dynamo.update_ocr_routing_decision.assert_not_called()
     assert overlay.store.owner is None
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    ["receipt_id", "reocr_region", "receipt_content"],
+)
+def test_permanent_regional_error_is_marked_failed_and_acknowledged(
+    overlay: Any, corruption: str
+) -> None:
+    """Redelivery cannot repair a job with no receipt, region, or content."""
+    if corruption == "receipt_id":
+        overlay.job.receipt_id = None
+    elif corruption == "reocr_region":
+        overlay.job.reocr_region = None
+    else:
+        overlay.store.words = []
+        overlay.store.lines = []
+    result = run_overlay(overlay)
+    assert result["success"] is False
+    assert result["retryable"] is False
+    assert handler_module._redrive_record(result) is False
+    dynamo = overlay.processor.dynamo
+    dynamo.update_ocr_routing_decision.assert_called_once()
+    failed = dynamo.update_ocr_routing_decision.call_args.args[0]
+    assert failed.status == OCRStatus.FAILED.value
+    assert failed.receipt_count == 0
+    dynamo.complete_ocr_routing_decision.assert_not_called()
+    overlay.writer.assert_not_called()
+    assert overlay.store.owner is None
