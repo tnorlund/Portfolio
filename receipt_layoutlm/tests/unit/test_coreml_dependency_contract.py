@@ -77,6 +77,7 @@ def test_coreai_extra_requires_modern_torch_and_coreai_torch() -> None:
 
     torch_requirement = _torch_requirement(coreai)
     assert torch_requirement.startswith("torch>=2.8.0")
+    assert "<=2.13.0" in torch_requirement
     assert "<=2.7" not in torch_requirement
 
 

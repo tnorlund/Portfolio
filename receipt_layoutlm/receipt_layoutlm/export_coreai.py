@@ -140,7 +140,8 @@ def export_coreai(
 
     print(f"Saving Core AI asset to {aimodel_path}...")
     try:
-        program.save_asset(str(aimodel_path))
+        # coreai-core expects a pathlib.Path (checks .suffix).
+        program.save_asset(aimodel_path)
     except Exception as e:
         raise CoreAIExportError(f"Failed to save .aimodel asset: {e}") from e
 
