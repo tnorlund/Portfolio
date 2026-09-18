@@ -131,3 +131,9 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    ignore:
+      # soto 7 changed AWSClient's initializer, AWSHTTPBody and the error
+      # context API; the OCR worker (SotoAWSClients.swift) must be migrated
+      # deliberately (#1688 closed 2026-09-18). Drop this when it is.
+      - dependency-name: "github.com/soto-project/soto"
+        update-types: ["version-update:semver-major"]
