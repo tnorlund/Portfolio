@@ -68,53 +68,59 @@ def validate_coreai(
     tokenizer = LayoutLMTokenizerFast.from_pretrained(checkpoint_dir)
 
     print(f"Loading Core AI model from {coreai_bundle_dir}...")
-    coreai_fn = _load_coreai_function(coreai_bundle_dir)
+    with _load_coreai_runner(coreai_bundle_dir) as coreai_runner:
+        if test_samples is None:
+            test_samples = _load_test_samples(
+                dynamo_table, region, num_samples
+            )
 
-    if test_samples is None:
-        test_samples = _load_test_samples(dynamo_table, region, num_samples)
+        print(f"Validating on {len(test_samples)} samples...")
 
-    print(f"Validating on {len(test_samples)} samples...")
+        all_pytorch_labels: List[str] = []
+        all_backend_labels: List[str] = []
+        all_pytorch_confs: List[float] = []
+        all_backend_confs: List[float] = []
+        all_logit_rmses: List[float] = []
+        mismatches: List[Dict[str, Any]] = []
+        nan_inf_count = 0
+        id2label = pytorch_model.config.id2label
 
-    all_pytorch_labels: List[str] = []
-    all_backend_labels: List[str] = []
-    all_pytorch_confs: List[float] = []
-    all_backend_confs: List[float] = []
-    all_logit_rmses: List[float] = []
-    mismatches: List[Dict[str, Any]] = []
-    nan_inf_count = 0
-    id2label = pytorch_model.config.id2label
+        for sample in test_samples:
+            tokens = sample["tokens"]
+            bboxes = sample["bboxes"]
+            if not tokens:
+                continue
 
-    for sample in test_samples:
-        tokens = sample["tokens"]
-        bboxes = sample["bboxes"]
-        if not tokens:
-            continue
+            pytorch_labels, pytorch_confs, pytorch_logits = _pytorch_inference(
+                pytorch_model, tokenizer, tokens, bboxes, seq_length
+            )
+            backend_labels, backend_confs, backend_logits = _coreai_inference(
+                coreai_runner,
+                tokenizer,
+                tokens,
+                bboxes,
+                id2label,
+                seq_length,
+            )
 
-        pytorch_labels, pytorch_confs, pytorch_logits = _pytorch_inference(
-            pytorch_model, tokenizer, tokens, bboxes, seq_length
-        )
-        backend_labels, backend_confs, backend_logits = _coreai_inference(
-            coreai_fn, tokenizer, tokens, bboxes, id2label, seq_length
-        )
-
-        sample_cmp = compare_predictions(
-            tokens=tokens,
-            pytorch_labels=pytorch_labels,
-            backend_labels=backend_labels,
-            pytorch_confs=pytorch_confs,
-            backend_confs=backend_confs,
-            pytorch_logits=pytorch_logits,
-            backend_logits=backend_logits,
-            backend_name="CoreAI",
-            raise_on_nonfinite=raise_on_nonfinite,
-        )
-        all_pytorch_labels.extend(sample_cmp["pytorch_labels"])
-        all_backend_labels.extend(sample_cmp["backend_labels"])
-        all_pytorch_confs.extend(sample_cmp["pytorch_confs"])
-        all_backend_confs.extend(sample_cmp["backend_confs"])
-        all_logit_rmses.extend(sample_cmp["logit_rmses"])
-        mismatches.extend(sample_cmp["mismatches"])
-        nan_inf_count += sample_cmp["nan_inf_count"]
+            sample_cmp = compare_predictions(
+                tokens=tokens,
+                pytorch_labels=pytorch_labels,
+                backend_labels=backend_labels,
+                pytorch_confs=pytorch_confs,
+                backend_confs=backend_confs,
+                pytorch_logits=pytorch_logits,
+                backend_logits=backend_logits,
+                backend_name="CoreAI",
+                raise_on_nonfinite=raise_on_nonfinite,
+            )
+            all_pytorch_labels.extend(sample_cmp["pytorch_labels"])
+            all_backend_labels.extend(sample_cmp["backend_labels"])
+            all_pytorch_confs.extend(sample_cmp["pytorch_confs"])
+            all_backend_confs.extend(sample_cmp["backend_confs"])
+            all_logit_rmses.extend(sample_cmp["logit_rmses"])
+            mismatches.extend(sample_cmp["mismatches"])
+            nan_inf_count += sample_cmp["nan_inf_count"]
 
     return summarize_comparisons(
         all_pytorch_labels=all_pytorch_labels,
@@ -139,66 +145,77 @@ def _find_aimodel(bundle_dir: str) -> Path:
     raise FileNotFoundError(f"No .aimodel found in {bundle_dir}")
 
 
-def _load_coreai_function(bundle_dir: str):
-    """Load a callable Core AI function from an ``.aimodel`` asset.
+class _CoreAIRunner:
+    """Sync wrapper around the async Core AI Python runtime."""
 
-    Uses the installed coreai-core / coreai-torch runtime APIs. Exact symbol
-    names vary by version; try the documented paths and fail clearly.
-    """
+    def __init__(self, aimodel_path: Path) -> None:
+        self.aimodel_path = aimodel_path
+        self._asset = None
+        self._model_cm = None
+        self._model = None
+        self._fn = None
+
+    def __enter__(self) -> "_CoreAIRunner":
+        import asyncio
+
+        from coreai.authoring.asset import AIModelAsset
+
+        self._asset = AIModelAsset.load(self.aimodel_path)
+        self._loop = asyncio.new_event_loop()
+        self._model_cm = self._asset.executable()
+        self._model = self._loop.run_until_complete(
+            self._model_cm.__aenter__()
+        )
+        self._fn = self._model.load_function("main")
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        try:
+            if self._model_cm is not None:
+                self._loop.run_until_complete(
+                    self._model_cm.__aexit__(exc_type, exc, tb)
+                )
+        finally:
+            self._loop.close()
+
+    def predict(
+        self,
+        input_ids: np.ndarray,
+        attention_mask: np.ndarray,
+        bbox: np.ndarray,
+        token_type_ids: np.ndarray,
+    ) -> np.ndarray:
+        from coreai.runtime import NDArray
+
+        outputs = self._loop.run_until_complete(
+            self._fn(
+                {
+                    "input_ids": NDArray(input_ids),
+                    "attention_mask": NDArray(attention_mask),
+                    "bbox": NDArray(bbox),
+                    "token_type_ids": NDArray(token_type_ids),
+                }
+            )
+        )
+        logits = outputs["logits"]
+        if hasattr(logits, "numpy"):
+            return np.asarray(logits.numpy())
+        return np.asarray(logits)
+
+
+def _load_coreai_runner(bundle_dir: str) -> _CoreAIRunner:
+    """Open a Core AI runner context for an ``.aimodel`` bundle."""
     aimodel_path = _find_aimodel(bundle_dir)
-
-    # Path 1: coreai_core high-level asset load.
     try:
-        from coreai_core import AIProgram  # type: ignore
-
-        program = AIProgram.load_asset(str(aimodel_path))
-        if hasattr(program, "executable"):
-            return program.executable()
-        if hasattr(program, "load_function"):
-            return program.load_function("main")
-        return program
-    except Exception:
-        pass
-
-    # Path 2: asset returned by save_asset may itself be executable.
-    try:
-        from coreai_torch import load_asset  # type: ignore
-
-        asset = load_asset(str(aimodel_path))
-        if hasattr(asset, "executable"):
-            return asset.executable()
-        return asset
-    except Exception:
-        pass
-
-    # Path 3: inspect package for a load helper.
-    try:
-        import coreai_core
-
-        for attr in ("load_asset", "AIModel", "Asset"):
-            loader = getattr(coreai_core, attr, None)
-            if loader is None:
-                continue
-            if attr == "load_asset":
-                asset = loader(str(aimodel_path))
-            else:
-                asset = loader(str(aimodel_path))
-            if hasattr(asset, "executable"):
-                return asset.executable()
-            if hasattr(asset, "load_function"):
-                return asset.load_function("main")
-            return asset
-    except Exception as e:
+        from coreai.authoring.asset import AIModelAsset  # noqa: F401
+        from coreai.runtime import NDArray  # noqa: F401
+    except ImportError as e:
         raise ImportError(
-            "Unable to load Core AI runtime for validation. Install "
-            "receipt_layoutlm[coreai] in a Python 3.13 environment and ensure "
-            f"the .aimodel at {aimodel_path} is readable. Last error: {e}"
+            "Unable to import Core AI runtime for validation. Install "
+            "receipt_layoutlm[coreai] in a Python 3.13 environment. "
+            f"Last error: {e}"
         ) from e
-
-    raise ImportError(
-        f"Loaded {aimodel_path} but could not obtain an executable function. "
-        "Inspect the installed coreai-core API on this machine."
-    )
+    return _CoreAIRunner(aimodel_path)
 
 
 def _encode_sample(
@@ -269,7 +286,7 @@ def _as_numpy_logits(raw: Any) -> np.ndarray:
 
 
 def _coreai_inference(
-    coreai_fn,
+    coreai_runner: _CoreAIRunner,
     tokenizer,
     tokens: List[str],
     bboxes: List[List[int]],
@@ -288,38 +305,13 @@ def _coreai_inference(
     bbox_array = np.array(bbox_aligned, dtype=np.int32).reshape(1, seq_len, 4)
     token_type_ids = np.zeros((1, seq_len), dtype=np.int32)
 
-    # Try keyword / dict call conventions used by Core AI runtimes.
-    raw = None
-    call_errors: List[str] = []
-    for kwargs in (
-        {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "bbox": bbox_array,
-            "token_type_ids": token_type_ids,
-        },
-    ):
-        try:
-            raw = coreai_fn(**kwargs)
-            break
-        except TypeError as e:
-            call_errors.append(str(e))
-        except Exception as e:
-            call_errors.append(str(e))
-
-    if raw is None:
-        try:
-            raw = coreai_fn(
-                input_ids, attention_mask, bbox_array, token_type_ids
-            )
-        except Exception as e:
-            call_errors.append(str(e))
-            raise RuntimeError(
-                "Core AI function call failed. Tried keyword and positional "
-                f"invocations. Errors: {call_errors}"
-            ) from e
-
-    logits = _as_numpy_logits(raw)
+    logits = coreai_runner.predict(
+        input_ids=input_ids,
+        attention_mask=attention_mask,
+        bbox=bbox_array,
+        token_type_ids=token_type_ids,
+    )
+    logits = _as_numpy_logits(logits)
     assert_finite_logits(logits, "CoreAI")
     return aggregate_word_predictions(logits, word_ids, len(tokens), id2label)
 

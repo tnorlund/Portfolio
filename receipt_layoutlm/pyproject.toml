@@ -58,8 +58,9 @@ coreml = [
 ]
 coreai = [
   # Isolated Python 3.13 exporter. coreai-core currently requires
-  # Python <3.14; torch>=2.8 is required by coreai-torch.
-  "torch>=2.8.0,<3.0.0",
+  # Python <3.14; torch>=2.8 is required by coreai-torch. Pin the upper
+  # bound to the range coreai-torch documents as validated.
+  "torch>=2.8.0,<=2.13.0",
   "coreai-torch",
 ]
 dev = [
