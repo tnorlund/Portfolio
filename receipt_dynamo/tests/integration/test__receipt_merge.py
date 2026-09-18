@@ -200,7 +200,9 @@ def test_output_rewrite_requires_its_own_operation_marker(
     client.put_receipt_merge_output(operation, output)
     updated = replace(output, raw_s3_key="rewritten.png")
     client.put_receipt_merge_output(operation, updated)
-    assert client.get_receipt(IMAGE_ID, operation.output_id) == updated
+    assert client.get_receipt(IMAGE_ID, operation.output_id) == replace(
+        updated, merge_operation="MERGE#00001#00002"
+    )
     with pytest.raises(EntityValidationError, match="match a preparing"):
         client.put_receipt_merge_output(operation, _receipt(1))
 
@@ -233,6 +235,25 @@ def test_ids_remain_reserved_when_output_is_deleted(
     client.release_receipt_merge(first)
     second = client.claim_receipt_merge(IMAGE_ID, [3, 4], "second")
     assert second.output_id == first.output_id + 1
+
+
+def test_output_marker_survives_read_modify_write_updates(
+    client: DynamoClient,
+) -> None:
+    """A full-item update_receipt must not strip the recovery marker."""
+    operation = client.claim_receipt_merge(IMAGE_ID, [1, 2], "first")
+    client.put_receipt_merge_output(operation, _receipt(operation.output_id))
+    stored = client.get_receipt(IMAGE_ID, operation.output_id)
+    assert stored.merge_operation == "MERGE#00001#00002"
+    client.update_receipt(replace(stored, raw_s3_key="edited.png"))
+    client.assert_receipt_merge_output(operation)
+    ready = client.checkpoint_receipt_merge(
+        operation, replace(operation, status="READY")
+    )
+    client.assert_receipt_merge_output(ready)
+    assert client.get_receipt(IMAGE_ID, operation.output_id).raw_s3_key == (
+        "edited.png"
+    )
 
 
 ERROR_CASES = [

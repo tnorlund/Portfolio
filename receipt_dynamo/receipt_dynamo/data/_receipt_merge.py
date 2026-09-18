@@ -1,6 +1,7 @@
 """Conditional merge claims, output reservations, and recovery checkpoints."""
 
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from botocore.exceptions import ClientError
@@ -363,10 +364,9 @@ class _ReceiptMerge(FlattenedStandardMixin):
                 {
                     "Put": {
                         "TableName": self.table_name,
-                        "Item": {
-                            **receipt.to_item(),
-                            "merge_operation": merge.key["SK"],
-                        },
+                        "Item": replace(
+                            receipt, merge_operation=merge.key["SK"]["S"]
+                        ).to_item(),
                         "ConditionExpression": (
                             "attribute_not_exists(PK) OR "
                             "merge_operation = :operation"

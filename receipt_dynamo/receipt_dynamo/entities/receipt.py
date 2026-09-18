@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
@@ -72,6 +72,9 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
             CDN-hosted receipt image.
         cdn_avif_s3_key (str, optional): S3 key for the AVIF version of the
             CDN-hosted receipt image.
+        merge_operation (str, optional): Sort key of the merge journal that
+            produced this receipt. Carried through every full-item write so
+            merge recovery can still recognise its own output.
     """
 
     REQUIRED_KEYS = {
@@ -100,6 +103,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
     top_right: dict[str, Any]
     bottom_left: dict[str, Any]
     bottom_right: dict[str, Any]
+    merge_operation: str | None = field(default=None, kw_only=True)
     # Optional CDN fields inherited from CDNFieldsMixin
 
     def __post_init__(self) -> None:
@@ -125,6 +129,11 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
         # Use CDNFieldsMixin to validate sha256 and all CDN fields
         if self.sha256 is not None and not isinstance(self.sha256, str):
             raise ValueError("sha256 must be a string")
+        if self.merge_operation is not None and (
+            not isinstance(self.merge_operation, str)
+            or not self.merge_operation
+        ):
+            raise ValueError("merge_operation must be a nonempty string")
         self.validate_cdn_fields()
 
     @property
@@ -208,6 +217,11 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
                 else {"NULL": True}
             ),
             **self.cdn_fields_to_dynamodb_item(),
+            **(
+                {"merge_operation": {"S": self.merge_operation}}
+                if self.merge_operation is not None
+                else {}
+            ),
         }
 
     def __repr__(self) -> str:
@@ -314,6 +328,7 @@ class Receipt(DynamoDBEntity, CDNFieldsMixin):
                     key: float(value["N"])
                     for key, value in item["bottom_right"]["M"].items()
                 },
+                merge_operation=item.get("merge_operation", {}).get("S"),
                 **cls._cdn_fields_from_item(item),
             )
         except Exception as e:
