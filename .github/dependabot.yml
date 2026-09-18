@@ -20,9 +20,24 @@ updates:
           - "jest"
           - "jest-environment-jsdom"
           - "@types/jest"
+      # React refuses a react/react-dom version mismatch at import, so a
+      # lone `react` bump fails 36 jest suites (dependabot #1677).
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
     labels:
       - "dependencies"
       - "javascript"
+    ignore:
+      # eslint 10 is blocked until eslint-plugin-react (peers eslint ^9.7)
+      # and eslint-plugin-jsx-a11y (peers ^9) declare support; eslint 10
+      # also stopped bundling @eslint/js. Closed as #869 (May) and #1678
+      # (Sep 2026). Drop this once both plugins list eslint ^10.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore"
       include: "scope"
