@@ -80,7 +80,8 @@ jobs:
           python -m pytest -q \
             infra/tests/test_email_receipt_inbox_handler.py \
             infra/tests/test_ats_verification_ingest.py \
-            infra/tests/test_ats_verification_mcp.py
+            infra/tests/test_ats_verification_mcp.py \
+            infra/tests/test_ocr_results_redrive_mapping.py
           python -m pytest -q --import-mode=importlib \
             infra/components/test_lambda_profiler.py \
             infra/components/test_route_lambda.py \
@@ -352,6 +353,19 @@ jobs:
             ! -name 'test_noise_detection.py' \
             ! -name 'test_realtime_embedding.py' -print)
           python -m pytest tests "${SCRIPT_TESTS[@]}" \
+            -n auto --timeout=120 --tb=short --maxfail=5 \
+            --reruns 1 --reruns-delay 2
+
+      - name: Test container OCR handler contracts
+        run: |
+          # The container OCR image ships the same local stack this job
+          # installs, so its failure-injection suite (re-OCR retry, overlay,
+          # CDN, Swift payload contracts) runs here. Keep it a separate
+          # invocation: listing it alongside infra/tests makes infra/ the
+          # rootdir and pytest then imports infra/upload_images/__init__.py
+          # (Pulumi) during collection.
+          source .venv-repository-tests/bin/activate
+          python -m pytest infra/upload_images/container_ocr/handler/tests \
             -n auto --timeout=120 --tb=short --maxfail=5 \
             --reruns 1 --reruns-delay 2
 
