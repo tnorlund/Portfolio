@@ -169,7 +169,12 @@ class UploadImages(ComponentResource):
         self.ocr_results_queue = Queue(
             f"{name}-ocr-results-queue",
             name=f"{name}-{stack}-ocr-results-queue",
-            visibility_timeout_seconds=900,  # Must be >= Lambda timeout (900s for container-based process_ocr)
+            # Must cover the 900 s process_ocr Lambda timeout AND the 960 s
+            # regional re-OCR routing lease (claim_ocr_routing_decision).
+            # A redelivery that arrives while a crashed attempt's lease is
+            # still held is rejected as busy and wastes a receive, so match
+            # the llm-validation queue's headroom.
+            visibility_timeout_seconds=960,
             message_retention_seconds=345600,  # 4 days
             receive_wait_time_seconds=0,  # Short polling
             redrive_policy=self.ocr_results_dlq.arn.apply(
