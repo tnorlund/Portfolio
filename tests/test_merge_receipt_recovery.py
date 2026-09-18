@@ -183,6 +183,42 @@ def test_failed_word_transform_never_deletes_a_partial_source(
     env.native.assert_not_called()
 
 
+def test_retry_after_foreign_id_allocation_remints_the_output(
+    merge_case: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed merge must not be pinned to an ID another producer took."""
+    env = merge_case
+    create = combine.create_combined_receipt_records
+    monkeypatch.setattr(
+        combine,
+        "create_combined_receipt_records",
+        Mock(side_effect=RuntimeError("transient geometry failure")),
+    )
+    first = merge.handler(EVENT, None)
+    assert first["status"] == "error", first
+    assert env.db.get_receipt_merge(IMAGE_ID, [1, 2]).output_id == 4
+    raw_key = f"raw/{IMAGE_ID}_RECEIPT_00004.png"
+    unrelated = replace(receipt(4), raw_s3_key=raw_key)
+    env.db.add_receipt(unrelated)
+    env.s3.put_object(Bucket="merge-raw", Key=raw_key, Body=b"unrelated")
+    monkeypatch.setattr(combine, "create_combined_receipt_records", create)
+    result = merge.handler(EVENT, None)
+    assert result["status"] == "success", result
+    assert result["new_receipt_id"] == 5
+    assert env.db.get_receipt(IMAGE_ID, 4) == unrelated
+    assert (
+        env.s3.get_object(Bucket="merge-raw", Key=raw_key)["Body"].read()
+        == b"unrelated"
+    )
+    assert env.db.get_receipt(IMAGE_ID, 5).merge_operation == (
+        "MERGE#00001#00002"
+    )
+    assert not any(
+        env.db.receipt_exists_consistent(IMAGE_ID, rid) for rid in (1, 2)
+    )
+    assert env.db.get_image(IMAGE_ID).receipt_count == 3
+
+
 def test_merge_lease_outlives_the_lambda_hard_timeout() -> None:
     """An expired lease cannot be reclaimed while its Lambda still executes."""
     path = (

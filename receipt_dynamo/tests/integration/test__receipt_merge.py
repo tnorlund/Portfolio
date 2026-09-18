@@ -12,6 +12,7 @@ from receipt_dynamo.data.shared_exceptions import (
     DynamoDBError,
     DynamoDBServerError,
     DynamoDBThroughputError,
+    EntityNotFoundError,
     EntityValidationError,
     OperationError,
     ReceiptDynamoError,
@@ -36,6 +37,20 @@ def _receipt(receipt_id: int) -> Receipt:
         bottom_left={"x": 0, "y": 0},
         bottom_right={"x": 1, "y": 0},
     )
+
+
+def _sort_keys(client: DynamoClient, prefix: str) -> set[str]:
+    response = getattr(client, "_client").query(
+        TableName=client.table_name,
+        KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
+        ExpressionAttributeValues={
+            ":pk": {"S": f"IMAGE#{IMAGE_ID}"},
+            ":prefix": {"S": prefix},
+        },
+        ProjectionExpression="SK",
+        ConsistentRead=True,
+    )
+    return {item["SK"]["S"] for item in response["Items"]}
 
 
 @pytest.fixture(name="client")
@@ -256,6 +271,129 @@ def test_output_marker_survives_read_modify_write_updates(
     )
 
 
+def test_reclaim_remints_output_taken_by_unrelated_producer(
+    client: DynamoClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A released PREPARING pair is not stuck behind a foreign receipt."""
+    first = client.claim_receipt_merge(IMAGE_ID, [1, 2], "first")
+    assert first.output_id == 5
+    client.release_receipt_merge(first)
+    unrelated = replace(_receipt(5), raw_s3_key="unrelated.png")
+    client.add_receipt(unrelated)
+    # Race: another allocator grabs the first candidate ID mid-reclaim.
+    allocate = getattr(client, "_next_merge_output_id")
+    minted: list[int] = []
+
+    def contested(image_id: str) -> int:
+        candidate = allocate(image_id)
+        minted.append(candidate)
+        if len(minted) == 1:
+            client.add_receipt(replace(_receipt(candidate), raw_s3_key="x"))
+        return candidate
+
+    monkeypatch.setattr(client, "_next_merge_output_id", contested)
+    second = client.claim_receipt_merge(IMAGE_ID, [2, 1], "second")
+    assert minted == [6, 7]
+    assert second.output_id == 7
+    assert second.source_ids == (1, 2)
+    assert _sort_keys(client, "MERGE_OUTPUT#") == {"MERGE_OUTPUT#00007"}
+    assert client.get_receipt(IMAGE_ID, 5) == unrelated
+    client.put_receipt_merge_output(second, _receipt(7))
+    client.release_receipt_merge(second)
+    # The journal keeps the re-minted ID on later retries.
+    assert client.claim_receipt_merge(IMAGE_ID, [1, 2], "third").output_id == 7
+
+
+def test_reclaim_keeps_own_staged_output_id(client: DynamoClient) -> None:
+    first = client.claim_receipt_merge(IMAGE_ID, [1, 2], "first")
+    client.put_receipt_merge_output(first, _receipt(first.output_id))
+    client.release_receipt_merge(first)
+    second = client.claim_receipt_merge(IMAGE_ID, [1, 2], "second")
+    assert second.output_id == first.output_id
+    assert _sort_keys(client, "MERGE_OUTPUT#") == {"MERGE_OUTPUT#00005"}
+
+
+def test_abandon_removes_journal_reservations_and_staged_output(
+    client: DynamoClient,
+) -> None:
+    first = client.claim_receipt_merge(IMAGE_ID, [1, 2], "first")
+    client.put_receipt_merge_output(first, _receipt(first.output_id))
+    getattr(client, "_client").put_item(
+        TableName=client.table_name,
+        Item={
+            "PK": {"S": f"IMAGE#{IMAGE_ID}"},
+            "SK": {"S": f"RECEIPT#{first.output_id:05d}#LINE#00001"},
+        },
+    )
+    client.release_receipt_merge(first)
+    staged = client.abandon_receipt_merge(IMAGE_ID, [2, 1])
+    assert staged is not None
+    assert staged.receipt_id == first.output_id
+    assert staged.merge_operation == "MERGE#00001#00002"
+    assert client.get_receipt_merge(IMAGE_ID, [1, 2]) is None
+    assert _sort_keys(client, "MERGE") == set()
+    assert _sort_keys(client, f"RECEIPT#{first.output_id:05d}") == set()
+    assert all(
+        client.receipt_exists_consistent(IMAGE_ID, rid) for rid in (1, 2)
+    )
+    # Both sources and the output ID are usable again.
+    assert client.claim_receipt_merge(IMAGE_ID, [1, 3], "next").output_id == 5
+
+
+def test_abandon_requires_expired_lease_or_the_named_owner(
+    client: DynamoClient,
+) -> None:
+    first = client.claim_receipt_merge(IMAGE_ID, [1, 2], "first")
+    with pytest.raises(OperationError, match="still owned"):
+        client.abandon_receipt_merge(IMAGE_ID, [1, 2])
+    assert client.get_receipt_merge(IMAGE_ID, [1, 2]) == first
+    with pytest.raises(OperationError, match="still owned"):
+        client.abandon_receipt_merge(IMAGE_ID, [1, 2], owner="someone-else")
+    assert client.abandon_receipt_merge(IMAGE_ID, [1, 2], "first") is None
+    assert client.get_receipt_merge(IMAGE_ID, [1, 2]) is None
+    assert _sort_keys(client, "MERGE") == set()
+
+
+def test_abandon_refuses_missing_ready_and_completed_journals(
+    client: DynamoClient,
+) -> None:
+    with pytest.raises(EntityNotFoundError):
+        client.abandon_receipt_merge(IMAGE_ID, [1, 2])
+    operation = client.claim_receipt_merge(IMAGE_ID, [1, 2], "first")
+    client.put_receipt_merge_output(operation, _receipt(operation.output_id))
+    ready = client.checkpoint_receipt_merge(
+        operation, replace(operation, status="READY")
+    )
+    with pytest.raises(OperationError, match="READY"):
+        client.abandon_receipt_merge(IMAGE_ID, [1, 2], owner="first")
+    done = client.checkpoint_receipt_merge(
+        ready, replace(ready, status="COMPLETED")
+    )
+    with pytest.raises(OperationError, match="COMPLETED"):
+        client.abandon_receipt_merge(IMAGE_ID, [1, 2], owner="first")
+    assert client.get_receipt_merge(IMAGE_ID, [1, 2]) == done
+    assert client.receipt_exists_consistent(IMAGE_ID, operation.output_id)
+
+
+def test_abandon_keeps_unrelated_output_and_another_merges_lock(
+    client: DynamoClient,
+) -> None:
+    first = client.claim_receipt_merge(IMAGE_ID, [1, 2], "first")
+    client.release_receipt_merge(first)
+    unrelated = replace(_receipt(first.output_id), raw_s3_key="other.png")
+    client.add_receipt(unrelated)
+    other = client.claim_receipt_merge(IMAGE_ID, [3, 4], "other")
+    assert other.output_id == first.output_id + 1
+    assert client.abandon_receipt_merge(IMAGE_ID, [1, 2]) is None
+    assert client.get_receipt(IMAGE_ID, first.output_id) == unrelated
+    assert client.get_receipt_merge(IMAGE_ID, [1, 2]) is None
+    assert _sort_keys(client, "MERGE_SOURCE#") == {
+        "MERGE_SOURCE#00003",
+        "MERGE_SOURCE#00004",
+    }
+    client.assert_receipt_merge_owner(other)
+
+
 ERROR_CASES = [
     ("ValidationException", EntityValidationError),
     ("ResourceNotFoundException", OperationError),
@@ -267,7 +405,7 @@ ERROR_CASES = [
 
 @pytest.mark.parametrize("code,exception_type", ERROR_CASES)
 @pytest.mark.parametrize(
-    "operation", ["get", "claim", "put", "checkpoint", "release"]
+    "operation", ["get", "claim", "put", "checkpoint", "release", "abandon"]
 )
 def test_operations_map_infrastructure_errors(
     client: DynamoClient,
@@ -283,7 +421,10 @@ def test_operations_map_infrastructure_errors(
         "put": "transact_write_items",
         "checkpoint": "transact_write_items",
         "release": "transact_write_items",
+        "abandon": "update_item",
     }[operation]
+    if operation == "abandon":
+        client.release_receipt_merge(journal)
     monkeypatch.setattr(
         getattr(client, "_client"),
         method,
@@ -302,5 +443,7 @@ def test_operations_map_infrastructure_errors(
             client.checkpoint_receipt_merge(
                 journal, replace(journal, status="READY")
             )
+        elif operation == "abandon":
+            client.abandon_receipt_merge(IMAGE_ID, [1, 2])
         else:
             client.release_receipt_merge(journal)
