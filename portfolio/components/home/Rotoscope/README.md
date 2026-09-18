@@ -23,8 +23,9 @@ reusable for future portraits.
 Homepage processing stays 960×720. `portraitConfig.ts` sets a periocular
 `focus.face` ellipse around both Vision eyes (plus lid/brow) so the face quota
 lands in the irises instead of the whole skull; leftover head/shoulders sit on
-`focus.body` at coarser spacing. Quotas are `{face: 0.30, body: 0.64,
-background: 0.06}` with spacing `{face: 1, body: 4, background: 8}`. Engine
+`focus.body` at coarser spacing. Homepage pass is blurRadius 2, markerBudget
+1800, periocular ellipse radius 0.075×0.05. Quotas are `{face: 0.30, body: 0.65,
+background: 0.05}` with spacing `{face: 1, body: 4, background: 8}`. Engine
 defaults in `algorithm.ts` stay `{face: 0.5, body: 0.3, background: 0.2}` for
 the explainer and lab.
 

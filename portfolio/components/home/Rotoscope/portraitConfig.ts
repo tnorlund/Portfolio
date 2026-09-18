@@ -10,16 +10,16 @@ export const PORTRAIT_PROCESSING_SIZE = { width: 960, height: 720 } as const;
  * the head is body. Engine defaults stay in `algorithm.ts`.
  */
 export const PORTRAIT_ROTOSCOPE_OPTIONS: Partial<RotoscopeOptions> = {
-  blurRadius: 3,
-  markerBudget: 1600,
-  quotas: { face: 0.3, body: 0.64, background: 0.06 },
+  blurRadius: 2,
+  markerBudget: 1800,
+  quotas: { face: 0.3, body: 0.65, background: 0.05 },
   spacing: { face: 1, body: 4, background: 8 },
   focus: {
     face: {
       centerX: 0.4112,
       centerY: 0.5218,
-      radiusX: 0.085,
-      radiusY: 0.055,
+      radiusX: 0.075,
+      radiusY: 0.05,
     },
     body: [
       [0.26, 0.3],
