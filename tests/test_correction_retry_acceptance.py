@@ -245,19 +245,21 @@ def test_disjoint_merges_serialize_image_count_updates(
     monkeypatch.setattr(
         env.db, "update_receipt_merge_image", update_after_another_merge
     )
-    # The nested merge changes the image's receipt count between this
-    # merge's consistent read and its fenced write, so the first attempt is
-    # rejected instead of clobbering the count; the journal is READY and the
-    # retry recounts and finishes.
+    # The image-level merge lock serializes merges per image: the nested
+    # merge is rejected as busy, so it cannot change the receipt count
+    # between this merge's consistent read and its fenced write, and the
+    # outer merge completes with an accurate count.
     first = merge.handler(EVENT, None)
-    assert first["status"] == "error", first
+    assert first["status"] == "success", first
     assert len(nested_results) == 1
-    assert nested_results[0]["status"] == "success", nested_results[0]
-    second = merge.handler(EVENT, None)
-    assert second["status"] == "success", second
+    assert nested_results[0]["status"] == "error", nested_results[0]
     survivors = env.db.get_receipts_from_image_consistent(IMAGE_ID)
     assert env.db.get_image(IMAGE_ID).receipt_count == len(survivors)
-    assert len(nested_results) == 1
+    # Once the lock is released the other pair merges normally.
+    later = merge.handler(other_event, None)
+    assert later["status"] == "success", later
+    survivors = env.db.get_receipts_from_image_consistent(IMAGE_ID)
+    assert env.db.get_image(IMAGE_ID).receipt_count == len(survivors)
     assert nested_results[0]["status"] == "error", nested_results
 
     second = merge.handler(other_event, None)
