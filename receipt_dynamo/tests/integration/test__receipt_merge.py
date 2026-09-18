@@ -39,6 +39,18 @@ def _receipt(receipt_id: int) -> Receipt:
     )
 
 
+def _image(receipt_count: int | None) -> Image:
+    return Image(
+        image_id=IMAGE_ID,
+        width=10,
+        height=20,
+        timestamp_added="2026-09-10T00:00:00+00:00",
+        raw_s3_bucket="offline-merge",
+        raw_s3_key="original.png",
+        receipt_count=receipt_count,
+    )
+
+
 def _sort_keys(client: DynamoClient, prefix: str) -> set[str]:
     response = getattr(client, "_client").query(
         TableName=client.table_name,
@@ -146,10 +158,12 @@ def test_expired_owner_cannot_overwrite_another_merges_image_count(
     second = client.checkpoint_receipt_merge(
         second, replace(second, status="READY")
     )
-    client.update_receipt_merge_image(second, replace(image, receipt_count=2))
+    client.update_receipt_merge_image(
+        second, replace(image, receipt_count=2), expected_receipt_count=4
+    )
     with pytest.raises(ReceiptDynamoError):
         client.update_receipt_merge_image(
-            first, replace(image, receipt_count=3)
+            first, replace(image, receipt_count=3), expected_receipt_count=2
         )
     assert client.get_image(IMAGE_ID).receipt_count == 2
     client.release_receipt_merge(first)
@@ -392,6 +406,49 @@ def test_abandon_keeps_unrelated_output_and_another_merges_lock(
         "MERGE_SOURCE#00004",
     }
     client.assert_receipt_merge_owner(other)
+
+
+def test_image_count_write_requires_the_observed_count(
+    client: DynamoClient,
+) -> None:
+    client.add_image(_image(4))
+    operation = client.claim_receipt_merge(IMAGE_ID, [1, 2], "first")
+    ready = client.checkpoint_receipt_merge(
+        operation, replace(operation, status="READY")
+    )
+    observed = client.get_receipt_merge_image(ready)
+    assert observed.receipt_count == 4
+    client.update_image(replace(observed, receipt_count=7))
+    with pytest.raises(ReceiptDynamoError):
+        client.update_receipt_merge_image(
+            ready, replace(observed, receipt_count=3), expected_receipt_count=4
+        )
+    assert client.get_image(IMAGE_ID).receipt_count == 7
+    client.update_receipt_merge_image(
+        ready, replace(observed, receipt_count=3), expected_receipt_count=7
+    )
+    assert client.get_image(IMAGE_ID).receipt_count == 3
+
+
+def test_image_count_write_accepts_a_previously_unset_count(
+    client: DynamoClient,
+) -> None:
+    operation = client.claim_receipt_merge(IMAGE_ID, [1, 2], "first")
+    ready = client.checkpoint_receipt_merge(
+        operation, replace(operation, status="READY")
+    )
+    with pytest.raises(EntityNotFoundError):
+        client.get_receipt_merge_image(ready)
+    client.add_image(_image(None))
+    assert client.get_receipt_merge_image(ready).receipt_count is None
+    with pytest.raises(ReceiptDynamoError):
+        client.update_receipt_merge_image(
+            ready, _image(3), expected_receipt_count=0
+        )
+    client.update_receipt_merge_image(
+        ready, _image(3), expected_receipt_count=None
+    )
+    assert client.get_image(IMAGE_ID).receipt_count == 3
 
 
 ERROR_CASES = [

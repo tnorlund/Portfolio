@@ -32,8 +32,12 @@ remains an error until the operation can finish.
 The 15-minute execution lease exceeds the Lambda's hard 10-minute timeout.
 An active duplicate returns an error without changing the owner's work.
 Caught failures release the lease immediately; an interrupted invocation can
-be retried after its lease expires. The owner and lease fence output writes, image count writes,
-and state transitions. Completion releases the image lock atomically. Do not increase the Lambda timeout beyond the lease.
+be retried after its lease expires. The owner and lease fence output writes,
+image count writes, and state transitions; the image count write is also
+conditioned on the `receipt_count` observed by a consistent read, so a
+concurrent non-merge writer's update is retried rather than overwritten.
+Completion releases the image lock atomically. Do not increase the Lambda
+timeout beyond the lease.
 
 Reservations and completed journals have no TTL because duplicates can arrive
 after source deletion. A failed operation retains its reservations, which also

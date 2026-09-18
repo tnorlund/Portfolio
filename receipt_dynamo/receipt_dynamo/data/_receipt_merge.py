@@ -16,7 +16,7 @@ from receipt_dynamo.data.shared_exceptions import (
     EntityValidationError,
     OperationError,
 )
-from receipt_dynamo.entities.image import Image
+from receipt_dynamo.entities.image import Image, item_to_image
 from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
 from receipt_dynamo.entities.receipt_merge import (
     ReceiptMerge,
@@ -474,25 +474,59 @@ class _ReceiptMerge(FlattenedStandardMixin):
             ]
         )
 
+    @handle_dynamodb_errors("get_receipt_merge_image")
+    def get_receipt_merge_image(self, merge: ReceiptMerge) -> Image:
+        """Read the committed Image row before recomputing its count."""
+        item = self._client.get_item(
+            TableName=self.table_name,
+            Key={"PK": merge.key["PK"], "SK": {"S": "IMAGE"}},
+            ConsistentRead=True,
+        ).get("Item")
+        if item is None:
+            raise EntityNotFoundError(
+                f"Image with ID {merge.image_id} not found"
+            )
+        return item_to_image(item)
+
     @handle_dynamodb_errors("update_receipt_merge_image")
     def update_receipt_merge_image(
-        self, merge: ReceiptMerge, image: Image
+        self,
+        merge: ReceiptMerge,
+        image: Image,
+        *,
+        expected_receipt_count: int | None,
     ) -> None:
-        """Require the active image lease when writing the receipt count."""
+        """Require the active image lease when writing the receipt count.
+
+        Pass the ``receipt_count`` observed on the row that ``image`` was
+        derived from; the write is refused if another writer changed it in
+        between, so the caller recounts instead of clobbering that update.
+        """
         self._validate_entity(image, Image, "image")
         if image.image_id != merge.image_id or merge.status != "READY":
             raise EntityValidationError("image must match a ready merge")
+        condition = "attribute_exists(PK)"
+        values: dict[str, Any] = {}
+        if expected_receipt_count is None:
+            condition += (
+                " AND (attribute_not_exists(receipt_count)"
+                " OR attribute_type(receipt_count, :null))"
+            )
+            values[":null"] = {"S": "NULL"}
+        else:
+            condition += " AND receipt_count = :expected"
+            values[":expected"] = {"N": str(expected_receipt_count)}
+        put: dict[str, Any] = {
+            "TableName": self.table_name,
+            "Item": image.to_item(),
+            "ConditionExpression": condition,
+            "ExpressionAttributeValues": values,
+        }
         self._client.transact_write_items(
             TransactItems=[
                 {"ConditionCheck": self._merge_owner_condition(merge)},
                 {"ConditionCheck": self._image_merge_owner_condition(merge)},
-                {
-                    "Put": {
-                        "TableName": self.table_name,
-                        "Item": image.to_item(),
-                        "ConditionExpression": "attribute_exists(PK)",
-                    }
-                },
+                {"Put": put},
             ]
         )
 

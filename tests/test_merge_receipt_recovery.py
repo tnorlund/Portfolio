@@ -219,6 +219,32 @@ def test_retry_after_foreign_id_allocation_remints_the_output(
     assert env.db.get_image(IMAGE_ID).receipt_count == 3
 
 
+def test_concurrent_image_count_change_is_retried_not_clobbered(
+    merge_case: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-merge writer bumping the count between read and write wins."""
+    env = merge_case
+    read_image = env.db.get_receipt_merge_image
+    raced = False
+
+    def bump_after_read(operation: Any) -> Any:
+        nonlocal raced
+        image = read_image(operation)
+        if not raced:
+            raced = True
+            env.db.update_image(replace(image, receipt_count=9))
+        return image
+
+    monkeypatch.setattr(env.db, "get_receipt_merge_image", bump_after_read)
+    first = merge.handler(EVENT, None)
+    assert first["status"] == "error", first
+    assert env.db.get_image(IMAGE_ID).receipt_count == 9
+    assert env.db.get_receipt_merge(IMAGE_ID, [1, 2]).status == "READY"
+    result = merge.handler(EVENT, None)
+    assert result["status"] == "success", result
+    assert env.db.get_image(IMAGE_ID).receipt_count == 2
+
+
 def test_merge_lease_outlives_the_lambda_hard_timeout() -> None:
     """An expired lease cannot be reclaimed while its Lambda still executes."""
     path = (

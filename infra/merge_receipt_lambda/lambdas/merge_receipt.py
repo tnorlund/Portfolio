@@ -153,11 +153,16 @@ def _finish_merge(
 
     client.assert_receipt_merge_owner(operation)
     _enqueue_recompute(image_id, operation.output_id)
-    image_entity = client.get_image(image_id)
+    # Read the committed row first, then recount; the write is fenced on the
+    # count observed here so a concurrent non-merge writer is not clobbered.
+    image_entity = client.get_receipt_merge_image(operation)
+    observed_count = image_entity.receipt_count
     image_entity.receipt_count = len(
         client.get_receipts_from_image_consistent(image_id)
     )
-    client.update_receipt_merge_image(operation, image_entity)
+    client.update_receipt_merge_image(
+        operation, image_entity, expected_receipt_count=observed_count
+    )
     result = {
         **operation.result,
         "status": "success",
