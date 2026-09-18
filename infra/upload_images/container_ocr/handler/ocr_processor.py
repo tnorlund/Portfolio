@@ -31,6 +31,7 @@ from receipt_dynamo.constants import (
     OCRStatus,
     ValidationStatus,
 )
+from receipt_dynamo.data.shared_exceptions import DynamoRetryableException
 from receipt_dynamo.entities import (
     Image,
     Letter,
@@ -77,6 +78,29 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+class RetryableOCRError(RuntimeError):
+    """A failure whose effects are not durable yet, so SQS must redeliver."""
+
+
+def _failure_is_retryable(ocr_job: Any, exc: BaseException) -> bool:
+    """Decide whether a failed OCR job should be redriven by SQS.
+
+    Regional corrections release their claim on failure, so nothing durable
+    records the attempt and a redelivery completes it. First-pass, Swift
+    single-pass, and refinement jobs keep the pre-redrive contract: their
+    routing decision is marked FAILED and the message is acknowledged.
+    Transient DynamoDB errors are retried regardless of job type.
+    """
+    if isinstance(exc, (RetryableOCRError, DynamoRetryableException)):
+        return True
+    return (
+        ocr_job is not None
+        and getattr(ocr_job, "job_type", None)
+        == OCRJobType.REGIONAL_REOCR.value
+    )
+
+
 # C0 control characters + DEL, stripped from barcode payload ends (Vision
 # prepends a mode/ECI control byte to some QR/byte-mode payloads).
 _BARCODE_CTRL_CHARS = "".join(chr(i) for i in range(0x20)) + "\x7f"
@@ -114,8 +138,12 @@ class OCRProcessor:
         Process an OCR job: download, parse, classify, and store.
 
         Returns:
-            Dict with success status, image_type, and receipt_id
+            Dict with success status, image_type, and receipt_id. Failures
+            carry ``retryable``: the handler reports only retryable records
+            to SQS for redelivery and acknowledges the rest.
         """
+        ocr_job: Any = None
+        ocr_routing_decision: Any = None
         try:
             # Get job and routing decision
             ocr_job = get_ocr_job(self.table_name, image_id, job_id)
@@ -183,9 +211,28 @@ class OCRProcessor:
 
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("OCR processing failed: %s", exc, exc_info=True)
+            retryable = _failure_is_retryable(ocr_job, exc)
+            if (
+                not retryable
+                and ocr_routing_decision is not None
+                and ocr_routing_decision.status != OCRStatus.COMPLETED.value
+            ):
+                # Acknowledged failures must leave a durable FAILED marker;
+                # nothing else will revisit this routing decision. A decision
+                # already published as COMPLETED keeps its receipts' status.
+                try:
+                    self._update_routing_decision_with_error(
+                        ocr_routing_decision
+                    )
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.exception(
+                        "Failed to mark routing decision FAILED for %s",
+                        job_id,
+                    )
             return {
                 "success": False,
                 "error": str(exc),
+                "retryable": retryable,
             }
 
     def _process_refinement_job(
@@ -780,7 +827,9 @@ class OCRProcessor:
                 "receipt_id": ocr_job.receipt_id,
             }
         if claim != "claimed":
-            raise RuntimeError("Regional re-OCR is already being processed")
+            raise RetryableOCRError(
+                "Regional re-OCR is already being processed"
+            )
 
         completed = False
         try:
@@ -1403,6 +1452,7 @@ class OCRProcessor:
         if native_refresh_error is not None:
             return {
                 "success": False,
+                "retryable": True,
                 "error": (
                     "native vector refresh failed after re-OCR "
                     f"(retryable): {native_refresh_error}"

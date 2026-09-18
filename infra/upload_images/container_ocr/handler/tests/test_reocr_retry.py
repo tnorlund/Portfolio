@@ -19,7 +19,8 @@ from handler.tests.test_overlay import (
     _make_processor,
     _make_word,
 )
-from receipt_dynamo.constants import OCRJobType
+from receipt_dynamo.constants import OCRJobType, OCRStatus
+from receipt_dynamo.data.shared_exceptions import DynamoDBThroughputError
 from receipt_upload.merchant_resolution import dynamo_embedding_write
 
 
@@ -314,12 +315,13 @@ def test_native_refresh_uses_updated_entities_not_lagging_indexes(
 def test_ocr_mixed_batch_redrives_false_results_and_exceptions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Only unsuccessful records are returned to SQS for redelivery."""
+    """Only retryable failures are returned to SQS for redelivery."""
     monkeypatch.setattr(handler_module, "flush_traces", lambda: None)
     processor = MagicMock(
         side_effect=[
             {"success": True},
-            {"success": False, "error": "native incomplete"},
+            {"success": False, "retryable": True, "error": "incomplete"},
+            {"success": False, "retryable": False, "error": "geometry"},
             RuntimeError("dependency unavailable"),
         ]
     )
@@ -329,14 +331,16 @@ def test_ocr_mixed_batch_redrives_false_results_and_exceptions(
             "messageId": identifier,
             "body": json.dumps({"job_id": identifier, "image_id": _IMG_ID}),
         }
-        for identifier in ("success", "incomplete", "exception")
+        for identifier in ("success", "incomplete", "acked", "exception")
     ]
     response = handler_module.lambda_handler({"Records": records}, None)
     assert response["batchItemFailures"] == [
         {"itemIdentifier": "incomplete"},
         {"itemIdentifier": "exception"},
     ]
-    assert len(json.loads(response["body"])["results"]) == 3
+    body = json.loads(response["body"])
+    assert len(body["results"]) == 4
+    assert body["results"][2]["success"] is False
 
 
 def test_failed_record_without_message_id_fails_invocation(
@@ -346,7 +350,7 @@ def test_failed_record_without_message_id_fails_invocation(
     monkeypatch.setattr(
         handler_module,
         "_process_single_record",
-        lambda *_args: {"success": False},
+        lambda *_args: {"success": False, "retryable": True},
     )
     with pytest.raises(ValueError, match="messageId"):
         handler_module.lambda_handler(
@@ -401,9 +405,12 @@ def test_consistent_read_failure_does_not_refresh_or_complete(
     dynamo.get_receipt_details.side_effect = RuntimeError(
         "snapshot unavailable"
     )
-    assert run_overlay(overlay)["success"] is False
+    result = run_overlay(overlay)
+    assert result["success"] is False
+    assert result["retryable"] is True
     overlay.writer.assert_not_called()
     dynamo.complete_ocr_routing_decision.assert_not_called()
+    dynamo.update_ocr_routing_decision.assert_not_called()
     assert overlay.store.owner is None
 
 
@@ -442,3 +449,97 @@ def test_partial_addition_does_not_duplicate_words_on_redelivery(
     assert run_overlay(overlay)["success"] is True
     assert [word.text for word in overlay.store.words] == ["ITEM", "2", "9.99"]
     assert overlay.store.lines[0].text == "ITEM 2 9.99"
+
+
+def _first_pass_job(job_type: str = OCRJobType.FIRST_PASS.value) -> Any:
+    """A non-regional job whose OCR payload download will be stubbed."""
+    return SimpleNamespace(
+        image_id=_IMG_ID,
+        receipt_id=1 if job_type == OCRJobType.REFINEMENT.value else None,
+        job_id="job-1",
+        job_type=job_type,
+        reocr_region=None,
+        status="PENDING",
+        s3_bucket="bucket",
+        s3_key="input.json",
+    )
+
+
+@pytest.mark.parametrize(
+    "job_type",
+    [
+        OCRJobType.FIRST_PASS.value,
+        OCRJobType.REFINEMENT.value,
+    ],
+)
+def test_non_regional_failure_is_acknowledged_and_marked_failed(
+    monkeypatch: pytest.MonkeyPatch, job_type: str
+) -> None:
+    """Pre-redrive contract: mark FAILED, acknowledge, never replay."""
+    processor = _make_processor()
+    routing = SimpleNamespace(
+        status="PENDING", s3_bucket="bucket", s3_key="result.json"
+    )
+    monkeypatch.setattr(
+        ocr_module, "get_ocr_job", lambda *_args: _first_pass_job(job_type)
+    )
+    monkeypatch.setattr(
+        ocr_module, "get_ocr_routing_decision", lambda *_args: routing
+    )
+
+    def unavailable(*_args: Any, **_kwargs: Any) -> Any:
+        raise RuntimeError("payload unavailable")
+
+    monkeypatch.setattr(ocr_module, "download_file_from_s3", unavailable)
+    monkeypatch.setattr(ocr_module, "download_image_from_s3", unavailable)
+    result = processor.process_ocr_job(_IMG_ID, "job-1")
+    assert result["success"] is False
+    assert result["retryable"] is False
+    processor.dynamo.update_ocr_routing_decision.assert_called_once_with(
+        routing
+    )
+    assert routing.status == OCRStatus.FAILED.value
+    assert handler_module._redrive_record(result) is False
+
+
+def test_transient_dynamo_error_is_retryable_for_any_job(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A throttled job read leaves no marker, so the message must redrive."""
+    processor = _make_processor()
+
+    def throttled(*_args: Any) -> Any:
+        raise DynamoDBThroughputError("throttled")
+
+    monkeypatch.setattr(ocr_module, "get_ocr_job", throttled)
+    result = processor.process_ocr_job(_IMG_ID, "job-1")
+    assert result["success"] is False
+    assert result["retryable"] is True
+    processor.dynamo.update_ocr_routing_decision.assert_not_called()
+    assert handler_module._redrive_record(result) is True
+
+
+def test_busy_regional_claim_is_redriven_without_failing_the_job(
+    overlay: Any,
+) -> None:
+    """A held lease defers this delivery; it must not write FAILED."""
+    overlay.store.owner = "another-invocation"
+    result = run_overlay(overlay)
+    assert result["success"] is False
+    assert result["retryable"] is True
+    assert "already being processed" in result["error"]
+    dynamo = overlay.processor.dynamo
+    dynamo.update_ocr_routing_decision.assert_not_called()
+    dynamo.release_ocr_routing_decision.assert_not_called()
+    assert overlay.store.owner == "another-invocation"
+    assert handler_module._redrive_record(result) is True
+
+
+def test_native_refresh_failure_result_is_retryable(overlay: Any) -> None:
+    """An incomplete native refresh returns a retryable failure result."""
+    overlay.writer.return_value = {"requests": 1, "written": 0, "failed": 1}
+    result = run_overlay(overlay)
+    assert result["success"] is False
+    assert result["retryable"] is True
+    overlay.processor.dynamo.update_ocr_routing_decision.assert_not_called()
+    assert overlay.store.owner is None
