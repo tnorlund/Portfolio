@@ -37,7 +37,7 @@ if [ -z "$SWIFT_DIR" ]; then
   exit 1
 fi
 
-BIN="${SWIFT_DIR}/.build/arm64-apple-macosx/release/receipt-ocr"
+BIN="${SWIFT_DIR}/.build/release/receipt-ocr"
 
 # mkdir is atomic; keeps a slow drain from overlapping the next scheduled start.
 if ! mkdir "$LOCK" 2>/dev/null; then
