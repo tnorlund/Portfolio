@@ -614,15 +614,17 @@ class _Receipt(FlattenedStandardMixin):
     ) -> ReceiptDetails:
         """Get a receipt and its details, optionally from the primary table.
 
-        The default GSI4 query excludes letters to reduce read costs.
-        Corrections can read committed primary-table values, including letters,
-        without waiting for GSI propagation. All pages are read consistently;
-        this does not provide snapshot isolation against concurrent writers.
+        The default GSI4 query excludes letters and sections to reduce read
+        costs. Corrections can read committed primary-table values,
+        including letters and sections, without waiting for GSI
+        propagation. All pages are read consistently; this does not
+        provide snapshot isolation against concurrent writers.
 
         Args:
             image_id (str): The ID of the image the receipt belongs to
             receipt_id (int): The ID of the receipt to get
-            consistent_read: Read committed primary-table values and letters.
+            consistent_read: Read committed primary-table values,
+                including letters and sections (absent from GSI4).
 
         Returns:
             ReceiptDetails: Dataclass with receipt and related data.

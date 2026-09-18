@@ -19,8 +19,11 @@ if TYPE_CHECKING:
 class ReceiptDetails:
     """Container for a receipt and its related data.
 
-    The default GSI4 query does not fetch letters. Calling get_receipt_details
-    with consistent_read=True reads the primary table and includes letters.
+    The default GSI4 query does not fetch letters or sections. Calling
+    get_receipt_details with consistent_read=True reads the primary table
+    and includes both. ``sections`` is a plain attribute: ``__iter__``
+    keeps yielding the original seven groups so existing tuple-unpacking
+    callers are unaffected.
     """
 
     receipt: Receipt
