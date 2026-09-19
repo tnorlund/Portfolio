@@ -1,6 +1,6 @@
 /**
  * Shared label palette + display names for receipt-token visualizations
- * (LayoutLMBatchVisualization, AugmentationShowcase). Extracted so figures can
+ * (LayoutLMBatchVisualization, SynthesisPipeline). Extracted so figures can
  * share one visual language without bundling each other's components.
  */
 

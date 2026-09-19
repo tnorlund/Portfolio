@@ -3,7 +3,12 @@ import fs from "fs";
 import path from "path";
 import SynthesisPipeline, { advanceAutoplay } from ".";
 import { knockOutReceiptPaper } from "./Acts";
-import { ACT_COUNT, ACTS } from "./pipelineData";
+import {
+  ACT_COUNT,
+  ACTS,
+  MERCHANT_COUNT_WORD,
+  MERCHANTS,
+} from "./pipelineData";
 import { LABEL_COLORS } from "../labelStyles";
 import { LabelLegend } from "../labelBoxOverlay";
 
@@ -17,7 +22,7 @@ const PIPELINE_DIR = path.join(
 );
 
 // Serve real committed JSON (skeleton, dot_params) through fetch; JSON assets
-// that have not been generated yet (style/compose/final) resolve to !ok so the
+// that have not been generated yet (compose/final) resolve to !ok so the
 // missing-asset fallbacks are exercised exactly as production would hit them.
 const mockFetch = () =>
   jest.fn((input: RequestInfo | URL) => {
@@ -214,7 +219,15 @@ describe("SynthesisPipeline (autoplay mode)", () => {
 });
 
 describe("SynthesisPipeline finale act", () => {
-  test("renders one receipt card per merchant (all six, in order)", async () => {
+  test("the finale copy spells out the merchant count from MERCHANTS", () => {
+    const finale = ACTS[ACT_COUNT - 1];
+    expect(MERCHANTS).toHaveLength(8);
+    expect(MERCHANT_COUNT_WORD).toBe("eight");
+    expect(finale.headline).toBe("Same machine, eight merchants");
+    expect(finale.caption).toContain("minted all eight:");
+  });
+
+  test("renders one receipt card per merchant (all eight, in order)", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
@@ -222,7 +235,7 @@ describe("SynthesisPipeline finale act", () => {
     await flushAssets();
 
     const cards = screen.getAllByTestId("finale-card");
-    expect(cards).toHaveLength(8);
+    expect(cards).toHaveLength(MERCHANTS.length);
     expect(cards.map((c) => c.getAttribute("data-merchant"))).toEqual([
       "sprouts",
       "costco",
@@ -358,8 +371,8 @@ describe("SynthesisPipeline (reduced motion)", () => {
     expect(screen.getByTestId("static-act-finale")).toBeInTheDocument();
     // The merged character act still draws the pen path over the cloud.
     expect(screen.getByTestId("act-character")).toBeInTheDocument();
-    // The finale fans out to six merchant cards.
-    expect(screen.getAllByTestId("finale-card")).toHaveLength(8);
+    // The finale fans out to one card per merchant.
+    expect(screen.getAllByTestId("finale-card")).toHaveLength(MERCHANTS.length);
   });
 
   test("the font atlas marks exactly one hero cell (the FLIP target)", async () => {

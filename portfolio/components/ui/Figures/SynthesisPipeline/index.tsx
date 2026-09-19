@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useInView } from "react-intersection-observer";
-import { ShowcaseLabelFile } from "../AugmentationShowcase/labelGeometry";
+import { ShowcaseLabelFile } from "./labelGeometry";
 import { GlyphSkeleton } from "./geometry";
 import { ActView } from "./Acts";
 import { useActTransition } from "./actTransition";
@@ -21,8 +21,6 @@ import {
   MerchantAssets,
   PIPELINE_MERCHANT,
   skeletonSrc,
-  styleAnnotatedSrc,
-  StyleAnnotated,
 } from "./pipelineData";
 import styles from "./SynthesisPipeline.module.css";
 
@@ -138,10 +136,9 @@ const SynthesisPipeline: React.FC = () => {
       fetchJson<GlyphSkeleton>(skeletonSrc(PIPELINE_MERCHANT)),
       fetchJson<DotParams>(dotParamsSrc(PIPELINE_MERCHANT)),
       fetchJson<FontMetrics>(fontMetricsSrc(PIPELINE_MERCHANT)),
-      fetchJson<StyleAnnotated>(styleAnnotatedSrc(PIPELINE_MERCHANT)),
       fetchJson<ComposeSteps>(composeStepsSrc(PIPELINE_MERCHANT)),
       fetchJson<ShowcaseLabelFile>(finalLabelsSrc(PIPELINE_MERCHANT)),
-    ]).then(([skeleton, dotParams, fontMetrics, style, compose, finalLabels]) => {
+    ]).then(([skeleton, dotParams, fontMetrics, compose, finalLabels]) => {
       if (cancelled) {
         return;
       }
@@ -149,7 +146,6 @@ const SynthesisPipeline: React.FC = () => {
         skeleton,
         dotParams,
         fontMetrics,
-        style,
         compose,
         finalLabels,
       });
