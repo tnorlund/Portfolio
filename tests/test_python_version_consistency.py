@@ -160,6 +160,63 @@ def test_maintained_pyprojects_are_still_validated(
     assert any("Black target-version" in error for error in errors)
 
 
+def _write_pyproject(path: Path, name: str, classifiers: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["[project]", f'name = "{name}"', 'requires-python = ">=3.13"']
+    lines.append("classifiers = [")
+    lines.extend(
+        f'  "Programming Language :: Python :: {version}",'
+        for version in classifiers
+    )
+    lines.append("]")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_floor_pyproject_may_advertise_both_runtimes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The LayoutLM package deploys on 3.13 but its base deps run on 3.14."""
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
+    floor_only = Path("receipt_layoutlm/pyproject.toml")
+    monkeypatch.setattr(checker, "SECONDARY_RUNTIME_PYPROJECTS", {floor_only})
+    pyproject = tmp_path / floor_only
+
+    _write_pyproject(pyproject, "receipt_layoutlm", ["3.13"])
+    assert checker._check_pyprojects() == []
+
+    _write_pyproject(pyproject, "receipt_layoutlm", ["3.13", "3.14"])
+    assert checker._check_pyprojects() == []
+
+    _write_pyproject(pyproject, "receipt_layoutlm", ["3.14"])
+    errors = checker._check_pyprojects()
+    assert len(errors) == 1
+    assert "expected 3.13 (optionally with 3.14)" in errors[0]
+
+    _write_pyproject(pyproject, "receipt_layoutlm", ["3.13", "3." + "15"])
+    assert len(checker._check_pyprojects()) == 1
+
+
+def test_baseline_pyproject_may_advertise_floor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shared packages must name 3.14 and may add 3.13, nothing else."""
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
+    pyproject = tmp_path / "receipt_dynamo" / "pyproject.toml"
+
+    _write_pyproject(pyproject, "receipt_dynamo", ["3.14"])
+    assert checker._check_pyprojects() == []
+
+    _write_pyproject(pyproject, "receipt_dynamo", ["3.13", "3.14"])
+    assert checker._check_pyprojects() == []
+
+    _write_pyproject(pyproject, "receipt_dynamo", ["3.13"])
+    errors = checker._check_pyprojects()
+    assert len(errors) == 1
+    assert "expected 3.14 (optionally with 3.13)" in errors[0]
+
+
 def test_malformed_maintained_pyproject_is_not_silently_ignored(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

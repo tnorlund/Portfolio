@@ -20,7 +20,9 @@ records to DynamoDB, and posts to the OCR results queue.
 - `receipt_ocr_swift/Sources/ReceiptOCRCore/Config/Config.swift` Pulumi-output config loader.
 - `receipt_ocr_swift/Sources/ReceiptOCRCore/Worker/OCRWorker.swift` queue worker.
 - `receipt_ocr_swift/Sources/ReceiptOCRCore/OCR/VisionOCREngine.swift` Vision OCR.
-- `receipt_ocr_swift/Sources/ReceiptOCRCore/LayoutLM/LayoutLMInference.swift` CoreML inference.
+- `receipt_ocr_swift/Sources/ReceiptOCRCore/LayoutLM/LayoutLMInference.swift` shared tokenization/windowing + backend dispatch.
+- `receipt_ocr_swift/Sources/ReceiptOCRCore/LayoutLM/CoreMLLayoutLMBackend.swift` default Core ML backend.
+- `receipt_ocr_swift/Sources/ReceiptOCRCore/LayoutLM/CoreAILayoutLMBackend.swift` opt-in Core AI backend (macOS 27+).
 - `receipt_ocr_swift/Sources/ReceiptOCRCore/AWS/ModelDownloader.swift` S3 model download + cache.
 
 ## Build
@@ -59,9 +61,15 @@ $BIN --process-local-image ~/test-receipt.png \
 - `--env <dev|prod>` load config from the Pulumi stack. Agents use `dev` only.
 - `--continuous` process until the queue is empty.
 - `--log-level` trace, debug, info, warn, error.
-- `--layoutlm-model` path to a local CoreML model bundle.
+- `--layoutlm-model` path to a local model bundle (`.mlpackage` or `.aimodel` + sidecars).
+- `--layoutlm-backend` `coreml` (default) or `coreai` (opt-in; requires macOS 27 and a
+  worker built with `RECEIPT_OCR_COREAI=1`, see the `coreai-export` skill).
 - `--layoutlm-cache-path` where to cache the downloaded model (default `.models/layoutlm`).
 - `--stub-ocr` skip real OCR.
+
+Environment overrides (same as Python training): `LAYOUTLM_WINDOW_SIZE` (200),
+`LAYOUTLM_WINDOW_STRIDE` (150), `LAYOUTLM_INFERENCE_MODE` (`windowed`),
+`LAYOUTLM_BACKEND` (`coreml`|`coreai`).
 
 ## Model location
 
@@ -70,7 +78,12 @@ $BIN --process-local-image ~/test-receipt.png \
 - Local cache: `.models/layoutlm/<env>/` relative to the worker's working
   directory (or the explicit `--layoutlm-cache-path`). Verify the process cwd.
 
-Bundle contents: `LayoutLM.mlpackage/`, `vocab.txt`, `config.json`, `label_map.json`.
+Core ML bundle contents: `LayoutLM.mlpackage/`, `vocab.txt`, `config.json`,
+`label_map.json`.
+
+Core AI local bundles (experimental): `LayoutLM.aimodel/` plus the same
+sidecars. See the `coreai-export` skill. Production S3 pointers still serve
+Core ML only.
 
 ## Gotchas
 

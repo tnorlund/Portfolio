@@ -30,6 +30,9 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
   `receipt_embeddings`, `receipt_dynamo_stream`, `receipt_places`, `receipt_agent`,
   `receipt_upload`, `receipt_nutrition`. Activate with `source .venv/bin/activate`.
 - NOT installed (torch, CoreML): `receipt_layoutlm`, `receipt_logo`. Run `pip install -e "<package>[test]"` before working on those.
+  LayoutLM uses three deliberate environments: main (Python 3.14, modern
+  torch), `~/.coreml-venv` (3.13 + `[coreml]`), and `~/.coreai-venv`
+  (3.13 + `[coreai]`). See `coreml-export` / `coreai-export` skills.
 - Node 22 with `portfolio/node_modules` installed via `npm ci`. Run every npm
   command from `portfolio/`, never from the repo root.
 - Do not assume credentials or AWS access. Unit tests and `receipt_dynamo`'s
@@ -118,6 +121,7 @@ Grok). `CLAUDE.md` only imports it; edit this file, never `CLAUDE.md`.
 
 - `layoutlm-training` starting and monitoring SageMaker LayoutLM jobs, hyperparameters, label merge presets.
 - `coreml-export` queueing and running CoreML exports, the isolated export-worker venv, quantization.
+- `coreai-export` experimental Core AI (`.aimodel`) export/validation in an isolated Python 3.13 venv.
 - `mac-ocr-worker` building and running the Swift Vision OCR + LayoutLM worker, model cache.
 - `qa-agent-eval` the deploy → step function → viz cache → parallel grading → `SCORECARD.md` loop.
 - `pr-screenshots` Playwright before/after screenshots for `portfolio/` PRs and how to host them.

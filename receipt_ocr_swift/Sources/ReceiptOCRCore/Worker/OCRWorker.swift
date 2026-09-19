@@ -245,7 +245,12 @@ public final class OCRWorker {
         #endif
 
         #if os(macOS)
-        let engine: OCREngineProtocol = stubOCR ? StubOCREngine() : VisionOCREngine(layoutLMBundlePath: layoutLMBundlePath)
+        let engine: OCREngineProtocol = stubOCR
+            ? StubOCREngine()
+            : VisionOCREngine(
+                layoutLMBundlePath: layoutLMBundlePath,
+                layoutLMBackend: config.layoutLMBackend
+            )
         #else
         let engine: OCREngineProtocol = StubOCREngine()
         #endif
