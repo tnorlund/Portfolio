@@ -164,6 +164,97 @@ def squeeze_wide(
     return squeezed
 
 
+def _tight(mask: np.ndarray) -> np.ndarray | None:
+    ys, xs = np.where(mask)
+    if len(ys) == 0:
+        return None
+    return mask[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
+
+
+def suggest_donor(
+    samples: str,
+    fonts_root: str,
+    *,
+    exclude: set[str],
+    min_samples: int = 8,
+    max_chars: int = 40,
+) -> list[dict[str, Any]]:
+    """Rank sibling fonts by letterform agreement with this corpus.
+
+    For every well-sampled char, the donor glyph is rasterized at the
+    corpus cap height, both masks are tight-cropped and the donor is resized
+    onto the consensus box, so only the SHAPE is compared (IoU). A thin
+    corpus has too few good glyphs to judge a donor by eye; this says which
+    sibling face the receipts were most likely printed in.
+    """
+    from PIL import Image
+
+    from .raster import rasterize_glyph
+    from .samples import canvas_geometry, consensus
+    from .schema import merged_params
+
+    stacks = []
+    for cp in list_codepoints(samples):
+        stack = load_stack(samples, cp)
+        if stack is None or len(stack) < min_samples:
+            continue
+        stacks.append((cp, stack))
+    stacks.sort(key=lambda t: -len(t[1]))
+    stacks = stacks[:max_chars]
+    out = []
+    for name in sorted(os.listdir(fonts_root)):
+        fdir = os.path.join(fonts_root, name)
+        if name in exclude or not os.path.exists(
+            os.path.join(fdir, "font.json")
+        ):
+            continue
+        try:
+            font = load_font(fdir)
+            glyphs = load_glyphs(fdir)
+        except Exception:  # noqa: BLE001
+            continue
+        scores = []
+        for cp, stack in stacks:
+            g = glyphs.get(cp)
+            if (
+                g is None
+                or g.get("provenance") != "traced"
+                and not g.get("strokes")
+            ):
+                continue
+            ref_cap, _ = canvas_geometry(stack.shape[1])
+            cons = _tight(consensus(stack))
+            try:
+                bitmap, _ = rasterize_glyph(g, merged_params(font, g), ref_cap)
+            except Exception:  # noqa: BLE001
+                continue
+            donor = _tight(bitmap.astype(bool))
+            if cons is None or donor is None:
+                continue
+            resized = (
+                np.asarray(
+                    Image.fromarray((donor * 255).astype(np.uint8)).resize(
+                        (cons.shape[1], cons.shape[0]), Image.BILINEAR
+                    )
+                )
+                > 127
+            )
+            inter = float(np.logical_and(cons, resized).sum())
+            union = float(np.logical_or(cons, resized).sum())
+            if union:
+                scores.append(inter / union)
+        if len(scores) >= 5:
+            out.append(
+                {
+                    "font": name,
+                    "iou": float(np.mean(scores)),
+                    "chars": len(scores),
+                }
+            )
+    out.sort(key=lambda r: -r["iou"])
+    return out
+
+
 def specimen(npz_path: str, out_png: str, cap: int = 40) -> None:
     """Every ASCII glyph through the renderer's BitmapFont, x2 NEAREST."""
     from PIL import Image
@@ -412,7 +503,22 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--fonts-root", default=FONTS_DIR, help="where --donor font dirs live"
     )
+    ap.add_argument(
+        "--suggest-donor",
+        action="store_true",
+        help="rank sibling fonts by shape agreement with this corpus and exit",
+    )
     args = ap.parse_args(argv)
+    if args.suggest_donor:
+        me = os.path.basename(os.path.abspath(args.font_dir))
+        ranked = suggest_donor(args.samples, args.fonts_root, exclude={me})
+        for r in ranked:
+            print(
+                f"  {r['font']:12s} shape IoU {r['iou']:.3f} over {r['chars']} well-sampled chars"
+            )
+        if ranked:
+            print(f"suggest --donor {ranked[0]['font']}")
+        return 0
 
     font_dir = os.path.abspath(args.font_dir)
     fonts_root = args.fonts_root
