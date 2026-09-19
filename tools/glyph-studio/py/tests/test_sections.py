@@ -9,7 +9,6 @@ import os
 import sys
 
 import pytest
-
 from glyphstudio import sections
 
 # receipt_dynamo lives as a sibling package, not pip-installed; add it so we can
