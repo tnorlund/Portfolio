@@ -1,13 +1,15 @@
 {
   "_comment": [
-    "Source receipts for the SynthesisPipeline figure assets, keyed by the",
-    "portfolio slug (pipelineData.ts Merchant). `merchant` is the canonical",
-    "name the ACTIVE merchant-truth bundle resolves; `font` is the",
-    "tools/glyph-studio/fonts/<font>/ directory and the merchant_fonts/<font>/",
-    "corpus.npz vault key; `hero` is the act-2 character. Receipt keys in the",
-    "dev table are NOT stable across re-OCR (the exporter checks the",
-    "ReceiptPlace merchant before rendering and lists the image's receipts",
-    "on a mismatch). Regenerate with tools/glyph-studio/py/export_pipeline_assets.py."
+    "Source of truth for the SynthesisPipeline finale, keyed by the portfolio",
+    "slug (object order = card order). `merchant` is the canonical name the",
+    "ACTIVE merchant-truth bundle resolves; `font` is tools/glyph-studio/fonts/<font>/",
+    "and the merchant_fonts/<font>/corpus.npz vault key; `hero` is the act-2",
+    "character; `label`, `dims` (760 x measured height) and `bold_callout` are",
+    "emitted into portfolio/.../SynthesisPipeline/merchants.generated.ts by",
+    "python -m glyphstudio.portfolio_wiring. Receipt keys in the dev table are",
+    "NOT stable across re-OCR (the exporter checks the ReceiptPlace merchant",
+    "before rendering and lists the image's receipts on a mismatch). Regenerate",
+    "assets with tools/glyph-studio/py/export_pipeline_assets.py."
   ],
   "merchants": {
     "sprouts": {
@@ -17,7 +19,13 @@
       "receipt": {
         "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
         "receipt_id": 1
-      }
+      },
+      "label": "Sprouts",
+      "dims": {
+        "w": 760,
+        "h": 2471
+      },
+      "bold_callout": "the measured BALANCE DUE weight"
     },
     "costco": {
       "merchant": "Costco Wholesale",
@@ -26,7 +34,13 @@
       "receipt": {
         "image_id": "57cb7f2c-7dcc-4974-9ef8-a460232f3b1d",
         "receipt_id": 1
-      }
+      },
+      "label": "Costco",
+      "dims": {
+        "w": 760,
+        "h": 2999
+      },
+      "bold_callout": "the chart heavy face"
     },
     "vons": {
       "merchant": "Vons",
@@ -35,7 +49,13 @@
       "receipt": {
         "image_id": "678a7c94-4948-4ebf-b8e9-9a17c13051ec",
         "receipt_id": 2
-      }
+      },
+      "label": "Vons",
+      "dims": {
+        "w": 760,
+        "h": 2732
+      },
+      "bold_callout": "the measured heading weight"
     },
     "traderjoes": {
       "merchant": "Trader Joe's",
@@ -44,7 +64,13 @@
       "receipt": {
         "image_id": "4c262079-4fec-4724-a8e1-2886f38ea454",
         "receipt_id": 1
-      }
+      },
+      "label": "Trader Joe's",
+      "dims": {
+        "w": 760,
+        "h": 2023
+      },
+      "bold_callout": "the measured heading weight"
     },
     "cvs": {
       "merchant": "CVS",
@@ -53,7 +79,13 @@
       "receipt": {
         "image_id": "8de52018-6bc6-40fb-8e4e-a880eda24e75",
         "receipt_id": 1
-      }
+      },
+      "label": "CVS",
+      "dims": {
+        "w": 760,
+        "h": 2771
+      },
+      "bold_callout": "the measured heading weight"
     },
     "target": {
       "merchant": "Target",
@@ -62,7 +94,13 @@
       "receipt": {
         "image_id": "249e7199-d09a-436b-97fa-f226f527f8a0",
         "receipt_id": 1
-      }
+      },
+      "label": "Target",
+      "dims": {
+        "w": 760,
+        "h": 1878
+      },
+      "bold_callout": "the measured department heading weight"
     },
     "innout": {
       "merchant": "In-N-Out Burger",
@@ -71,7 +109,13 @@
       "receipt": {
         "image_id": "9afeb902-28ff-436a-b69a-e0f5204eefa8",
         "receipt_id": 2
-      }
+      },
+      "label": "In-N-Out",
+      "dims": {
+        "w": 760,
+        "h": 1958
+      },
+      "bold_callout": "the measured heading weight"
     },
     "wildfork": {
       "merchant": "Wild Fork",
@@ -80,7 +124,13 @@
       "receipt": {
         "image_id": "f008ea77-272b-4554-b8a6-e1676ec6a088",
         "receipt_id": 2
-      }
+      },
+      "label": "Wild Fork",
+      "dims": {
+        "w": 760,
+        "h": 2678
+      },
+      "bold_callout": "the measured heading weight"
     },
     "speedway": {
       "merchant": "Speedway",
@@ -89,7 +139,13 @@
       "receipt": {
         "image_id": "6cd665ef-5659-405b-b63d-5d0317f204c1",
         "receipt_id": 1
-      }
+      },
+      "label": "Speedway",
+      "dims": {
+        "w": 760,
+        "h": 1711
+      },
+      "bold_callout": "the measured DEBIT tender-line weight"
     }
   }
 }
