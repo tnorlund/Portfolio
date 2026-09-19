@@ -23,6 +23,9 @@ SECONDARY_RUNTIME_DOCUMENTS = {
     Path("AGENTS.md"),
     Path("receipt_layoutlm/README.md"),
     Path(".agents/skills/coreml-export/SKILL.md"),
+    # The [coreai] extra needs coreai-core, which has no cp314 wheel, so
+    # its export venv is documented on the floor.
+    Path(".agents/skills/coreai-export/SKILL.md"),
 }
 SECONDARY_RUNTIME_FILES = {
     Path("infra/routes/layoutlm_inference_cache_generator/lambdas/Dockerfile"),
@@ -30,8 +33,10 @@ SECONDARY_RUNTIME_FILES = {
     Path("tests/test_lambda_image_inventory.py"),
     Path("tests/test_sagemaker_training_runtime.py"),
 }
-# receipt_layoutlm is packaged only for the 3.13 image, so it advertises
-# the floor alone.
+# receipt_layoutlm deploys on the 3.13 image, so it must advertise the
+# floor; its base package (torch>=2.6,<3) also runs on the 3.14 baseline
+# and may advertise that too. Only the [coreml] and [coreai] extras are
+# pinned to 3.13-only wheels.
 SECONDARY_RUNTIME_PYPROJECTS = {Path("receipt_layoutlm/pyproject.toml")}
 
 SCAN_ROOTS = (
@@ -224,9 +229,12 @@ def _check_pyprojects() -> list[str]:
             for classifier in classifiers
             if (match := PYTHON_CLASSIFIER.match(classifier))
         }
-        # Shared packages may advertise the floor as well (the LayoutLM
-        # image installs them), but must name the runtime they deploy on.
-        allowed = {PYTHON_FLOOR, expected_version}
+        # Every package must name the runtime it deploys on. Shared
+        # packages may also advertise the floor (the LayoutLM image installs
+        # them), and the floor package may also advertise the baseline (its
+        # base dependencies run there); nothing else is allowed.
+        allowed = {PYTHON_FLOOR, PYTHON_VERSION}
+        optional = (allowed - {expected_version}).pop()
         if version_classifiers and (
             expected_version not in version_classifiers
             or not version_classifiers <= allowed
@@ -234,7 +242,7 @@ def _check_pyprojects() -> list[str]:
             errors.append(
                 f"{relative}: Python classifiers are "
                 f"{sorted(version_classifiers)!r}; expected "
-                f"{expected_version} (optionally with {PYTHON_FLOOR})"
+                f"{expected_version} (optionally with {optional})"
             )
         tools = data.get("tool", {})
         _check_tool_version(
