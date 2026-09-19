@@ -178,8 +178,7 @@ def _check_runtime_files() -> list[str]:
             if match:
                 matched_text = match.group(0)
                 errors.append(
-                    f"{relative}: non-baseline Python target "
-                    f"{matched_text!r}"
+                    f"{relative}: non-baseline Python target " f"{matched_text!r}"
                 )
                 break
     return errors
@@ -193,9 +192,7 @@ def _check_tool_version(
     expected: object,
 ) -> None:
     if value is not None and value != expected:
-        errors.append(
-            f"{relative}: {tool_name} is {value!r}; expected {expected!r}"
-        )
+        errors.append(f"{relative}: {tool_name} is {value!r}; expected {expected!r}")
 
 
 def _check_pyprojects() -> list[str]:
@@ -273,8 +270,7 @@ def check_repository() -> list[str]:
     pinned_version = version_file.read_text(encoding="utf-8").strip()
     if pinned_version != PYTHON_VERSION:
         errors.append(
-            f".python-version is {pinned_version!r}; expected "
-            f"{PYTHON_VERSION!r}"
+            f".python-version is {pinned_version!r}; expected " f"{PYTHON_VERSION!r}"
         )
     errors.extend(_check_runtime_files())
     errors.extend(_check_pyprojects())
