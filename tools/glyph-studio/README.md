@@ -52,6 +52,35 @@ symlinks + our npz copied over `sprouts.glyphs.npz`) so nothing global
 changes. To publish for real, back up and copy the npz into `$BITMATRIX_DIR`
 (default `/tmp/bitmatrix`) under the profile's filename.
 
+## Portfolio figure assets (SynthesisPipeline)
+
+`py/export_pipeline_assets.py` rebuilds one merchant's tree under
+`portfolio/public/synthetic-receipts/pipeline/<slug>/` (the static files the
+`/receipt` figure plays back) from committed tooling: the production render
+path for `final.webp` + render-true `final.labels.json`, the CDN scan for
+`real.webp`, the vault logo, and for hero merchants the letterform corpus
+(`char_prints/`, `char_cloud.png`), the glyph JSON (`char_skeleton.json`,
+`dot_params.json`), the renderer's own `BitmapFont` masks (`font_grid/`,
+`font_metrics.json`), the stylemap (`style_annotated.json`, `style_crops/`)
+and act-1 `real_thumbs/`. Source receipts per slug live in
+`fixtures/pipeline_merchants.json`.
+
+```bash
+# dev AWS reads: DynamoDB (words, labels, ReceiptPlace, dims), S3 (scan,
+# fonts/logo via the ACTIVE truth bundle, merchant_fonts/<font>/corpus.npz)
+export DYNAMODB_TABLE_NAME=ReceiptsTable-dc5be22 AWS_REGION=us-east-1
+export RECEIPT_PAPER_STRENGTH=0.3 BITMATRIX_DIR=/tmp/bitmatrix
+$PY py/export_pipeline_assets.py sprouts costco --out-dir /tmp/pipeline
+$PY py/export_pipeline_assets.py --all --finale-only --out-dir /tmp/pipeline
+```
+
+Review `/tmp/pipeline/<slug>/`, copy it over `portfolio/public/...`, and
+update `RECEIPT_DIMS` in `pipelineData.ts` with the dims the tool prints
+(receipt crops move across re-OCR, so heights change). Offline logic is in
+`glyphstudio/pipeline_assets.py` (tests: `tests/test_pipeline_assets.py`).
+Merchants without a vault corpus or a bundle logo get finale files plus
+`font_grid/` only; `--corpus` / `--logo` supply local inputs.
+
 ## Conventions
 
 - Cap units: y-up, baseline y=0, cap ink line y=1000; 1 px @ REF_CAP 60 =

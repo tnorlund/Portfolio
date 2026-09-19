@@ -105,6 +105,102 @@ class TestLogoWordmarkBounds:
         assert len(cluster) == 1
 
 
+_SPROUTS_HEADER_PROFILE = {
+    "brand": "SPROUTS",
+    "exact": {"FARMERSMARKET", "8059174200", "STOREHOURSMONSUN7AM10PM"},
+    "contains": ["WESTLAKE"],
+    "body_anchors": {"DAIRY"},
+    "reflow": True,
+    "dedup": True,
+}
+
+
+class TestDuplicateHeaderRepair:
+    """Cloning OCR-missed header lines must never clone a line onto itself."""
+
+    @staticmethod
+    def _line(text, y, line_id, x0=300.0):
+        words = []
+        x = x0
+        for word_id, token in enumerate(text.split(), start=1):
+            width = 25.0 * len(token)
+            words.append(
+                {
+                    "text": token,
+                    "line_id": line_id,
+                    "word_id": word_id,
+                    "bbox": [x, y + 12.0, x + width, y],
+                    "labels": [],
+                }
+            )
+            x += width + 6.0
+        return words
+
+    def _receipt(self, top_lines):
+        words = []
+        y = 980.0
+        line_id = 1
+        for text in top_lines:
+            words += self._line(text, y, line_id)
+            y -= 16.0
+            line_id += 1
+        for text in (
+            "DAIRY",
+            "MILK 3.99",
+            "1012 WESTLAKE BLVD.",
+            "WESTLAKE, CA 91361",
+            "(805) 917-4200",
+            "Store Hours MON-SUN 7AM-10PM",
+        ):
+            words += self._line(text, y, line_id)
+            y -= 16.0
+            line_id += 1
+        return {"merchant_name": "Sprouts Farmers Market", "words": words}
+
+    def test_garbled_address_line_does_not_clone_present_lines(
+        self, monkeypatch
+    ):
+        # "WESILARE," is an OCR garble that breaks the contiguous header
+        # block; the phone and hours lines right below it are still printed
+        # once and must not be duplicated from the lower address block.
+        monkeypatch.setattr(
+            rsr, "_header_profile_for", lambda _m: _SPROUTS_HEADER_PROFILE
+        )
+        receipt = self._receipt(
+            [
+                "SPROUTS",
+                "1012 WESTLAKE BLVD.",
+                "WESILARE, CA 91361",
+                "(805) 917-4200",
+                "Store Hours MON-SUN 7AM-10PM",
+            ]
+        )
+        repaired = rsr._repair_missing_top_header_lines(receipt)
+        assert len(repaired["words"]) == len(receipt["words"])
+
+    def test_missing_hours_line_is_still_cloned(self, monkeypatch):
+        monkeypatch.setattr(
+            rsr, "_header_profile_for", lambda _m: _SPROUTS_HEADER_PROFILE
+        )
+        receipt = self._receipt(
+            ["SPROUTS", "1012 WESTLAKE BLVD.", "(805) 917-4200"]
+        )
+        repaired = rsr._repair_missing_top_header_lines(receipt)
+        clones = [
+            w
+            for w in repaired["words"]
+            if w.get("_synthetic_source") == "duplicate_header_repair"
+        ]
+        assert [w["text"] for w in clones] == [
+            "Store",
+            "Hours",
+            "MON-SUN",
+            "7AM-10PM",
+        ]
+        # The clone lands one line pitch below the phone line, in the header.
+        assert clones[0]["bbox"][3] > 900.0
+
+
 class TestPhraseRunMatch:
     def test_multiword_slogan_assembles_from_adjacent_tokens(self):
         assert rsr._phrase_run_match(
