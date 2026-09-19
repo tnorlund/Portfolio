@@ -12,7 +12,7 @@ describe("RotoscopePage", () => {
     expect(
       screen.getByRole("heading", { name: "How the rotoscope works" }),
     ).toBeInTheDocument();
-    expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(2);
+    expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Features" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Watershed" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Average color" })).toBeInTheDocument();
@@ -21,10 +21,28 @@ describe("RotoscopePage", () => {
       "https://doi.org/10.1109/ACSSC.2017.8335175",
     );
     expect(
-      screen.getByText(/50\/30\/20 shares are the paper and engine defaults/),
+      screen.getByText(/Paper and engine defaults stay 50\/30\/20/),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/homepage portrait overrides them to 70\/22\/8/),
+      screen.getByText(/homepage pass shown here uses 30\/64\/6/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Corners for markers, edges for the flood" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show Grayscale step" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show Sobel step" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show Score step" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show Local max step" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Show Tiers step" }),
     ).toBeInTheDocument();
   });
 
@@ -34,7 +52,7 @@ describe("RotoscopePage", () => {
       render(<RotoscopePage />);
 
       // Only the active stage is announced; the dots navigate.
-      expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(2);
+      expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(1);
       expect(
         screen.queryByText("Watershed", { selector: "figcaption" }),
       ).not.toBeInTheDocument();
@@ -60,7 +78,7 @@ describe("RotoscopePage", () => {
       act(() => {
         jest.advanceTimersByTime(3200);
       });
-      expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(2);
+      expect(screen.getAllByText("Difference", { selector: "figcaption" })).toHaveLength(1);
     } finally {
       jest.useRealTimers();
     }
@@ -69,13 +87,24 @@ describe("RotoscopePage", () => {
   it("illustrates every stage with real stills from the portrait pass", () => {
     render(<RotoscopePage />);
 
-    expect(screen.getByAltText("The source portrait")).toHaveAttribute(
-      "src",
-      "/rotoscope-portrait.jpg",
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Show Box blur step" }));
     expect(
-      screen.getByAltText("Blurred grayscale copy of the portrait"),
-    ).toHaveAttribute("src", "/rotoscope-blurred.webp");
+      screen.getByLabelText("Gray pixels under the box-blur kernel"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show Difference step" }));
+    expect(
+      screen.getByLabelText("Blurred pixels around the sample"),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show Local max step" }));
+    expect(
+      screen.getByAltText("Shi-Tomasi score field stretched for display"),
+    ).toHaveAttribute("src", "/rotoscope-shi-tomasi.webp");
+    fireEvent.click(screen.getByRole("button", { name: "Show Tiers step" }));
+    expect(
+      screen.getByAltText(
+        "Focus map: blue periocular ellipse, orange body polygon, gray background",
+      ),
+    ).toHaveAttribute("src", "/rotoscope-focus.webp");
     expect(
       screen.getByAltText(/markers over a lightened portrait/),
     ).toHaveAttribute("src", "/rotoscope-markers.webp");
