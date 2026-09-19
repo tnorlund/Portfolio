@@ -27,9 +27,35 @@ if TYPE_CHECKING:
 
 DEV_TABLE_NAME = "ReceiptsTable-dc5be22"
 ARTIFACT_BUCKET_ALIAS = "merchant-font-artifacts"
-EXPECTED_MERCHANT_COUNT = 17
+# The sixteen profiles the v1 migration was written for. Every one of them
+# must still be present (guards against loading the wrong document); newer
+# vendors appended to merchant_profiles.json are minted the same way and
+# need no pin bump.
+LEGACY_MERCHANT_SLUGS = frozenset(
+    {
+        "amazon_fresh",
+        "costco_wholesale",
+        "cvs",
+        "dollar_tree",
+        "gelson_s_westlake_village",
+        "in_n_out_burger",
+        "italia_deli___bakery",
+        "neighborly",
+        "smith_s",
+        "sprouts_farmers_market",
+        "target",
+        "the_home_depot",
+        "the_stand___american_classics_redefined",
+        "trader_joe_s",
+        "vons",
+        "wild_fork",
+    }
+)
+# Legacy profiles known to have no MerchantFont row. The coverage check only
+# concerns LEGACY_MERCHANT_SLUGS; a newer profile without a published font is
+# simply emitted as an asset-blocked payload.
 EXPECTED_MISSING_FONT_SLUGS = frozenset(
-    {"amazon_fresh", "smith_s", "dollar_tree", "speedway"}
+    {"amazon_fresh", "smith_s", "dollar_tree"}
 )
 
 MEASURED_TYPOGRAPHY_FIELDS = frozenset(
@@ -257,13 +283,16 @@ def classify_leaf(  # pylint: disable=too-many-return-statements
 
 
 def build_crosswalk(document: dict[str, Any]) -> list[LeafDisposition]:
-    """Classify every distinct leaf and enforce the 17-merchant source."""
+    """Classify every distinct leaf; the legacy sixteen must all be present."""
     profiles = document.get("profiles")
     if not isinstance(profiles, dict):
         raise ValueError("merchant profile document must contain profiles map")
-    if len(profiles) != EXPECTED_MERCHANT_COUNT:
+    present = {slugify_merchant(name) for name in profiles}
+    absent = LEGACY_MERCHANT_SLUGS - present
+    if absent:
         raise ValueError(
-            f"expected {EXPECTED_MERCHANT_COUNT} profiles, got {len(profiles)}"
+            f"merchant profile document is missing legacy profiles "
+            f"{sorted(absent)}"
         )
     paths = sorted(set(iter_leaf_paths(document)))
     return [classify_leaf(path) for path in paths]
@@ -402,11 +431,12 @@ def build_v1_payloads(
         for name in profiles
         if name not in fonts_by_name
     }
-    if missing_slugs != expected_missing:
+    missing_legacy = missing_slugs & LEGACY_MERCHANT_SLUGS
+    if missing_legacy != expected_missing:
         raise ValueError(
             "MerchantFont coverage changed; expected missing "
             f"{sorted(expected_missing)}, got "
-            f"{sorted(missing_slugs)}"
+            f"{sorted(missing_legacy)}"
         )
 
     payloads = [
@@ -663,6 +693,120 @@ def _build_assets_and_stylemap(
             "profile logo has no published MerchantFont S3 pointer"
         )
     return assets, stylemap, asset_sources
+
+
+def local_fixture_items(
+    payload: MerchantV1Payload,
+    asset_dir: Path,
+    *,
+    sealed_at: str,
+) -> list[dict[str, Any]]:
+    """A SEALED fixture bundle whose asset pointers name LOCAL bytes.
+
+    For a vendor that is not published/minted yet, the renderer can still
+    resolve it in ``MERCHANT_TRUTH_MODE=fixture``: the dry-run components are
+    kept verbatim except ``assets``, whose font (and logo) pointers are
+    rebuilt from the compiled files in ``asset_dir`` (``$BITMATRIX_DIR``) so
+    the renderer's hash verification passes against those exact bytes. The
+    manifest is SEALED with a bootstrap ``gate_status=PASS`` and a
+    ``local-fixture`` run id; nothing here is a mint.
+    """
+    components: dict[str, Any] = {}
+    provenance: dict[str, Any] = {}
+    for item in payload.items:
+        sk = item["SK"]["S"]
+        if "#C#" not in sk:
+            continue
+        name = sk.split("#C#", 1)[1]
+        components[name] = json.loads(item["payload"]["S"])
+        provenance[name] = MerchantTruthComponent.from_item(item).provenance
+
+    typography = (components.get("typography") or {}).get("typography") or {}
+    fonts: dict[str, Any] = {}
+    for face, filename in (typography.get("bitmap_font") or {}).items():
+        path = asset_dir / filename
+        if not path.exists():
+            raise FileNotFoundError(
+                f"{payload.slug}: compiled {face} face {filename!r} not in "
+                f"{asset_dir}; compile it before building a fixture"
+            )
+        digest = _sha256_bytes(path.read_bytes())
+        fonts[face] = {
+            "bucket_alias": ARTIFACT_BUCKET_ALIAS,
+            "s3_key": f"merchant_fonts/{payload.slug}/{face}-{digest[:12]}.npz",
+            "content_hash": digest,
+            "source_commit": "local-fixture",
+            "compiled_at": sealed_at,
+            "cap_h": None,
+            "advance_ratio": None,
+            "pitch_check": "LOCAL",
+            "glyph_count": None,
+            "cache_filename": filename,
+        }
+    assets = copy.deepcopy(components["assets"])
+    assets["fonts"] = fonts
+    assets["missing_merchant_font"] = not fonts
+    logo_name = (assets.get("profile") or {}).get("logo")
+    logo_path = asset_dir / logo_name if logo_name else None
+    if logo_path is not None and logo_path.exists():
+        content = logo_path.read_bytes()
+        digest = _sha256_bytes(content)
+        assets["logo"] = {
+            "bucket_alias": ARTIFACT_BUCKET_ALIAS,
+            "s3_key": f"merchant_fonts/{payload.slug}/logo-{digest[:8]}.png",
+            "content_hash": digest,
+            "size": len(content),
+        }
+    components["assets"] = assets
+
+    rebuilt = [
+        MerchantTruthComponent(
+            slug=payload.slug,
+            version=1,
+            name=name,
+            payload=components[name],
+            provenance=provenance[name],
+        )
+        for name in sorted(components)
+    ]
+    hashes = {item.name: item.content_hash for item in rebuilt}
+    manifest = MerchantTruthManifest(
+        slug=payload.slug,
+        version=1,
+        component_hashes=hashes,
+        bundle_hash=compute_bundle_hash(hashes),
+        status="SEALED",
+        provenance={
+            "written_by": {
+                "kind": "fixture",
+                "name": "merchant_truth_v1.local_fixture_items",
+                "version": "1",
+            },
+            "minted_at": sealed_at,
+            "run_id": f"local-fixture-{payload.slug}-v1",
+        },
+        mint_run_id=f"local-fixture-{payload.slug}-v1",
+        gate_status="PASS",
+        sealed_at=sealed_at,
+    )
+    return [manifest.to_item(), *[item.to_item() for item in rebuilt]]
+
+
+def write_local_fixtures(
+    fixture_dir: Path,
+    payloads: list[MerchantV1Payload],
+    asset_dir: Path,
+    *,
+    sealed_at: str,
+) -> list[Path]:
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    written = []
+    for payload in payloads:
+        items = local_fixture_items(payload, asset_dir, sealed_at=sealed_at)
+        path = fixture_dir / f"{payload.slug}.v1.json"
+        _write_json(path, {"items": items})
+        written.append(path)
+    return written
 
 
 def write_dry_run_payloads(
