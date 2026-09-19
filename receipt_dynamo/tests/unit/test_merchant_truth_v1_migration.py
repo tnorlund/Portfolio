@@ -36,6 +36,7 @@ MERCHANTS = [
     "Italia Deli & Bakery",
     "Neighborly",
     "Smith's",
+    "Speedway",
     "Sprouts Farmers Market",
     "Target",
     "The Home Depot",
@@ -203,7 +204,7 @@ def test_migration_emits_exact_nine_items_for_all_sixteen_merchants() -> None:
         generated_at=NOW,
     )
 
-    assert len(payloads) == 16
+    assert len(payloads) == 17
     assert all(len(payload.items) == 9 for payload in payloads)
     assert {
         payload.slug
@@ -264,10 +265,10 @@ def test_dry_run_writer_outputs_payload_crosswalk_and_summary(
         git_sha=GIT_SHA,
     )
 
-    assert len(list(tmp_path.glob("*.json"))) == 18
+    assert len(list(tmp_path.glob("*.json"))) == 19
     summary = json.loads((tmp_path / "_summary.json").read_text())
     assert summary["dry_run"] is True
-    assert summary["merchant_count"] == 16
+    assert summary["merchant_count"] == 17
     assert (
         set(summary["missing_merchant_font_slugs"])
         == EXPECTED_MISSING_FONT_SLUGS
@@ -277,8 +278,10 @@ def test_dry_run_writer_outputs_payload_crosswalk_and_summary(
 # Re-captured for the G1 round-trip fix: component payloads are now stored
 # as their canonical JSON string (hash-stable through DynamoDB number
 # normalization), which intentionally changed the payload-file bytes.
+# Re-captured again when Speedway became the 17th legacy profile (the
+# fixture MERCHANTS list grew by one merchant; no payload logic changed).
 DRY_RUN_GOLDEN_SHA256 = (
-    "8d4fec8ca60deb16361391bfd499d4698cc6b49fe239c6e4c2eb2a3bb982c94f"
+    "cda1ded475559645d09cfb99ccd916c622fa8e0604e7c42775b60fa13315be25"
 )
 
 
