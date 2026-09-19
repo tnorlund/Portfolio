@@ -164,9 +164,49 @@ _SMITHS_RULES: list[tuple[str, re.Pattern]] = [
         ),
     ),
 ]
+# Speedway (gas-station POS): every row is body weight except the tender
+# line ("DEBIT $13.38", "CREDIT $ 14.66"), which the in-store POS prints in
+# a double-width bold face. Rows are the renderer's word-joined line text,
+# so the tender amount sits on the same row as the tender word.
+_SPEEDWAY_RULES: list[tuple[str, re.Pattern]] = [
+    (
+        "tender_line",
+        re.compile(
+            r"^(DEBIT|CREDIT|CASH|MASTERCARD|VISA)\s*\$?\s*[\d.,]*\s*$", re.I
+        ),
+    ),
+    (
+        "store_header",
+        re.compile(r"^SPEE?D\s?WAY\b|STORE\s?#?:|THANKS FOR SHOPPING", re.I),
+    ),
+    (
+        "summary",
+        re.compile(
+            r"^SUB\.?\s?TOTAL|^SALES TAX|^TAX:?\b|^TOTAL( DUE)?:?\b", re.I
+        ),
+    ),
+    (
+        "payment",
+        re.compile(
+            r"ACCT#|APPROVAL#|AUTH\b|TERM#|REF#|APP ?NAME|AID:|ENTRY:|"
+            r"^APPROVED|PIN VERIFIED|CRYPTO|\*{4,}",
+            re.I,
+        ),
+    ),
+    ("items_sold", re.compile(r"#\s?ITEMS SOLD", re.I)),
+    (
+        "footer",
+        re.compile(
+            r"THANKS? (YOU )?FOR|DON'T FORGET|DRIVE SAFE|Now Hiring|"
+            r"speedway\.com|^T#\d+",
+            re.I,
+        ),
+    ),
+]
 _MERCHANT_RULES = {
     "innout": _INNOUT_RULES,
     "smiths": _SMITHS_RULES,
+    "speedway": _SPEEDWAY_RULES,
 }
 
 

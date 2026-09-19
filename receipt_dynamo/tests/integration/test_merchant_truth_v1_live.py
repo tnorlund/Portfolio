@@ -50,6 +50,7 @@ MERCHANTS = [
     "Italia Deli & Bakery",
     "Neighborly",
     "Smith's",
+    "Speedway",
     "Sprouts Farmers Market",
     "Target",
     "The Home Depot",
@@ -474,7 +475,7 @@ def seeded_dev_environment(tmp_path: Path):
 
 @pytest.fixture
 def published_dev_environment(tmp_path: Path):
-    """Publish-day state: all 16 merchants have MerchantFont rows."""
+    """Publish-day state: all 17 merchants have MerchantFont rows."""
     with mock_aws():
         _create_dev_named_table()
         _seed_dev_sources(publish_all=True)
@@ -531,9 +532,9 @@ def test_script_live_verify_end_to_end(
     assert "merchants: 13" in captured
     assert GIT_SHA in captured
     assert captured.count("MINTED+SEALED v1") == 13
-    assert captured.count("EXCLUDED (asset-blocked)") == 3
+    assert captured.count("EXCLUDED (asset-blocked)") == 4
     assert "VERIFY OK: 13 live bundles byte-match" in captured
-    assert len(list(output_dir.glob("*.json"))) == 18
+    assert len(list(output_dir.glob("*.json"))) == 19
     client = DynamoClient(DEV_TABLE_NAME)
     manifest = client.get_merchant_truth_manifest(
         "sprouts_farmers_market", 1, consistent_read=True
@@ -561,10 +562,10 @@ def test_script_default_stays_dry_run_and_write_free(
 
     captured = capsys.readouterr().out
     assert exit_code == 0
-    assert "DRY RUN: wrote 16 merchant payloads" in captured
+    assert "DRY RUN: wrote 17 merchant payloads" in captured
     assert "No DynamoDB or S3 writes were performed." in captured
     assert "LIVE" not in captured
-    assert len(list(output_dir.glob("*.json"))) == 18
+    assert len(list(output_dir.glob("*.json"))) == 19
     truth_rows = boto3.client("dynamodb", region_name="us-east-1").query(
         TableName=DEV_TABLE_NAME,
         IndexName="GSITYPE",
@@ -669,7 +670,7 @@ def test_script_replay_after_partial_mint_skips_and_verifies(
     assert exit_code == 0
     assert captured.count("MINTED+SEALED v1") == 11
     assert captured.count("SKIPPED (already sealed, bundle=") == 2
-    assert captured.count("EXCLUDED (asset-blocked)") == 3
+    assert captured.count("EXCLUDED (asset-blocked)") == 4
     assert "CONFLICT" not in captured
     assert "skipped 2 already-sealed" in captured
     assert "VERIFY OK: 13 live bundles byte-match" in captured

@@ -1,0 +1,47 @@
+{
+ "version": 1,
+ "char": "1",
+ "codepoint": 49,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "speedway.refined.npz",
+  "samples": 48,
+  "consensusHash": "7bcde8888e7f",
+  "date": "2026-09-19"
+ },
+ "width": 229.9,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 132.3,
+     "y": 838.9,
+     "type": "corner"
+    },
+    {
+     "x": 61.5,
+     "y": 825.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 144.8,
+     "y": 47.2,
+     "type": "corner"
+    },
+    {
+     "x": 136.5,
+     "y": 952.8,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

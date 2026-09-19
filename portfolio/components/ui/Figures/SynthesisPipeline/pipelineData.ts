@@ -19,7 +19,8 @@ export type Merchant =
   | "cvs"
   | "target"
   | "innout"
-  | "wildfork";
+  | "wildfork"
+  | "speedway";
 
 /** Every merchant the finale fans out to, in card order. */
 export const MERCHANTS: Merchant[] = [
@@ -31,6 +32,7 @@ export const MERCHANTS: Merchant[] = [
   "target",
   "innout",
   "wildfork",
+  "speedway",
 ];
 
 /** The single merchant acts 1-8 are built from. */
@@ -45,6 +47,7 @@ export const MERCHANT_LABELS: Record<Merchant, string> = {
   target: "Target",
   innout: "In-N-Out",
   wildfork: "Wild Fork",
+  speedway: "Speedway",
 };
 
 export const PIPELINE_BASE = "/synthetic-receipts/pipeline";
@@ -105,6 +108,7 @@ export const RECEIPT_DIMS: Record<Merchant, { w: number; h: number }> = {
   target: { w: 760, h: 1878 },
   innout: { w: 760, h: 1958 },
   wildfork: { w: 760, h: 2678 },
+  speedway: { w: 760, h: 1711 },
 };
 
 /** Trimmed alpha-mask logo mark, rendered in currentColor (theme-aware). The
@@ -314,4 +318,5 @@ export const BOLD_WEIGHT_CALLOUT: Record<Merchant, string> = {
   target: "the measured department heading weight",
   innout: "the measured heading weight",
   wildfork: "the measured heading weight",
+  speedway: "the measured DEBIT tender-line weight",
 };

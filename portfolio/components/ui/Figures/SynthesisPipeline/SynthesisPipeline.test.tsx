@@ -221,13 +221,13 @@ describe("SynthesisPipeline (autoplay mode)", () => {
 describe("SynthesisPipeline finale act", () => {
   test("the finale copy spells out the merchant count from MERCHANTS", () => {
     const finale = ACTS[ACT_COUNT - 1];
-    expect(MERCHANTS).toHaveLength(8);
-    expect(MERCHANT_COUNT_WORD).toBe("eight");
-    expect(finale.headline).toBe("Same machine, eight merchants");
-    expect(finale.caption).toContain("minted all eight:");
+    expect(MERCHANTS).toHaveLength(9);
+    expect(MERCHANT_COUNT_WORD).toBe("nine");
+    expect(finale.headline).toBe("Same machine, nine merchants");
+    expect(finale.caption).toContain("minted all nine:");
   });
 
-  test("renders one receipt card per merchant (all eight, in order)", async () => {
+  test("renders one receipt card per merchant (all nine, in order)", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
@@ -245,6 +245,7 @@ describe("SynthesisPipeline finale act", () => {
       "target",
       "innout",
       "wildfork",
+      "speedway",
     ]);
     // Each merchant is identified by its logo mark (currentColor mask), not a
     // text caption.
@@ -257,6 +258,7 @@ describe("SynthesisPipeline finale act", () => {
       "Target",
       "In-N-Out",
       "Wild Fork",
+      "Speedway",
     ].forEach((name) =>
       expect(
         screen.getByRole("img", { name: new RegExp(`${name} logo`, "i") }),
@@ -272,8 +274,8 @@ describe("SynthesisPipeline finale act", () => {
     await flushAssets();
 
     // Every card overlays the real scan on the synthesized render.
-    expect(screen.getAllByTestId("finale-image")).toHaveLength(8);
-    expect(screen.getAllByTestId("finale-real")).toHaveLength(8);
+    expect(screen.getAllByTestId("finale-image")).toHaveLength(9);
+    expect(screen.getAllByTestId("finale-real")).toHaveLength(9);
     const sprouts = screen.getByRole("img", {
       name: /synthetic sprouts receipt/i,
     });
@@ -306,6 +308,7 @@ describe("SynthesisPipeline finale act", () => {
     const target = frameFor("target").style.aspectRatio;
     const innout = frameFor("innout").style.aspectRatio;
     const wildfork = frameFor("wildfork").style.aspectRatio;
+    const speedway = frameFor("speedway").style.aspectRatio;
     expect(sprouts).toBe("760 / 2471");
     expect(costco).toBe("760 / 2999");
     expect(vons).toBe("760 / 2732");
@@ -314,11 +317,21 @@ describe("SynthesisPipeline finale act", () => {
     expect(target).toBe("760 / 1878");
     expect(innout).toBe("760 / 1958");
     expect(wildfork).toBe("760 / 2678");
+    expect(speedway).toBe("760 / 1711");
     // Distinct proportions -> visibly different heights at a common width.
     expect(
-      new Set([sprouts, costco, vons, traderjoes, cvs, target, innout, wildfork])
-        .size,
-    ).toBe(8);
+      new Set([
+        sprouts,
+        costco,
+        vons,
+        traderjoes,
+        cvs,
+        target,
+        innout,
+        wildfork,
+        speedway,
+      ]).size,
+    ).toBe(9);
   });
 
   test("a receipt image that fails to load degrades to a named fallback", async () => {
