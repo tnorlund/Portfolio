@@ -6,8 +6,50 @@
     "scan_dir": "/tmp/gridfix/speedway_studio/scans",
     "lines_measured": 139,
     "date": "2026-09-19",
-    "notes": "5 distinct Speedway receipts (2 Traverse City MI photos, 2 CA scans, 1 CA photo; 49a1a1e7 is a duplicate of 1746d34d and was excluded). Body face is all-caps single-width on every slip; only the Michigan in-store POS prints its tender line in the double-width bold face."
+    "notes": "5 distinct Speedway receipts (2 Traverse City MI photos, 2 CA scans, 1 CA photo; 49a1a1e7 is a duplicate of 1746d34d and was excluded). Body face is all-caps single-width on every slip; only the Michigan in-store POS prints its tender line in the double-width bold face. Section classifier rules live in `rules` below and are shared by stylescan and the renderer."
   },
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "^SPEE?D\\s?WAY\\b|^SPEFDWAY|STORE\\s?#?:|^Ph(one)?:|THANKS FOR SHOPPING|FRONT STREET|TRAVERSE CITY|KANAN RD|HEATHERCLI|Agoura|MALIBU|^\\d{5}(-\\d{4})?$|^\\(\\d{3}\\)"
+    },
+    {
+      "section": "sale_header",
+      "pattern": "^SALE$|CUSTOMER COPY|Sale Receipt"
+    },
+    {
+      "section": "tender_line",
+      "pattern": "^(DEBIT|CREDIT|CASH|MASTERCARD|VISA)\\s*\\$?\\s*[\\d.,]*\\s*$"
+    },
+    {
+      "section": "summary",
+      "pattern": "^SUB\\.?\\s?TOTAL|^SALES TAX|^TAX:?$|^TOTAL( DUE)?:?$|^Change\\b|FUEL TOTAL|^Sales tax|^CECET"
+    },
+    {
+      "section": "fuel",
+      "pattern": "PUMP\\b|^GRADE|GALLONS|PRICE/GAL|/Gal\\b|Prepay|Diesel|REGULAR|Speedy\\s?Rewards|Rollback"
+    },
+    {
+      "section": "payment",
+      "pattern": "ACCT#|APPROVAL#|AUTH\\b|TERM#|REF#?:|APP ?NAME|AID:|ENTRY\\s?:|^APPROVED|PIN VERIFIED|CRYPTO|ARQC|^TC\\s?:|COMPLETION|^US DEBIT|Batch:|Seq:|TID:|Stan:|Resp Code|Reference:|Acct/Card|Receipt #:|Trans#|TRAN#|\\*{4,}|Reg:\\s?\\d"
+    },
+    {
+      "section": "items_sold",
+      "pattern": "#\\s?ITEMS SOLD"
+    },
+    {
+      "section": "agreement",
+      "pattern": "CUSTOMER AGREES|TOTAL AMOUNT ACCORDING|HOLDERS AGREEMENT"
+    },
+    {
+      "section": "footer",
+      "pattern": "THANKS? (YOU )?FOR|YOUR BUSINESS|DON'T FORGET|DRIVE SAFE|Now Hiring|Apply at|speedway\\.com|text SPEEDWAY|COME AGAIN|CHOOSING|^T#\\d+|CSH:|SITE ID"
+    },
+    {
+      "section": "column_header",
+      "pattern": "^(Description|Qty|Amount)$"
+    }
+  ],
   "sections": {
     "store_header": {
       "sizeScale": 1.0,

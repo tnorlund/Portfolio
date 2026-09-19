@@ -86,6 +86,16 @@ def test_every_stylescan_rule_name_is_mapped():
     for rules in stylescan._MERCHANT_RULES.values():
         for name, _rx in rules:
             emitted.add(name)
+    # ...and every section a stylemap-declared rule list can emit.
+    import glob
+    import json
+    import os
+
+    from glyphstudio.stylerules import FONTS_DIR, rule_sections
+
+    for path in glob.glob(os.path.join(FONTS_DIR, "*", "stylemap.json")):
+        with open(path, encoding="utf-8") as fh:
+            emitted |= rule_sections(json.load(fh))
     # generic hardcoded returns of _classify()
     emitted |= {
         "barcode_caption",
