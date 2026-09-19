@@ -453,6 +453,10 @@ def cmd_init(args) -> int:
         v["donor"] = args.donor
     if args.logo:
         v["logo"] = os.path.relpath(os.path.abspath(args.logo), _ROOT)
+    if args.card_logo:
+        v["card_logo"] = os.path.relpath(
+            os.path.abspath(args.card_logo), _ROOT
+        )
     if args.gold:
         image_id, rid = args.gold.split("#")
         v["gold_receipt"] = {"image_id": image_id, "receipt_id": int(rid)}
@@ -812,6 +816,11 @@ def cmd_profile(args) -> int:
         }
     )
     rec["typography"] = typ
+    if "section_scale" in v:
+        # e.g. {"HEADER": 1.0} = no default 0.8 HEADER shrink. Use a
+        # non-empty map: the v1 mint collapses an explicit {} and the
+        # profile-parity test then fails the round-trip.
+        rec["section_scale"] = v["section_scale"]
     if v.get("logo"):
         rec["logo"] = f"{v['slug']}_logo.png"
         rec.setdefault(
@@ -948,35 +957,69 @@ def _set_profile_knob(merchant: str, key: str, value: Any) -> None:
         fh.write("\n")
 
 
+def _in_band(x: float) -> bool:
+    return H_BAND[0] <= x <= H_BAND[1]
+
+
 def cmd_calibrate(args) -> int:
     v = load_vendor(args.slug)
     with open(PROFILES, encoding="utf-8") as fh:
         typ = json.load(fh)["profiles"][v["merchant"]]["typography"]
     ratio = float(typ.get("ocr_cap_height_ratio", 0.72))
+    pitch_ratio = float(typ.get("pitch_ratio", 0.55))
+    fixture_mode = (
+        args.truth or _truth_env(v, args.truth).get("MERCHANT_TRUTH_MODE")
+    ) == "fixture"
     metrics = _render_review(v, "cal0", args.truth)
+    last_wpc = None
     for i in range(1, args.iterations + 1):
-        if H_BAND[0] <= metrics["h_ratio"] <= H_BAND[1]:
+        if _in_band(metrics["h_ratio"]) and _in_band(metrics["wpc_ratio"]):
             break
-        # cap_px = median(OCR box heights) * clamp(ratio, 0.65, 0.95): h_ratio
-        # is linear in the ratio, so one solve lands it (the renderer clamps).
-        solved = max(
-            CAP_RATIO_CLAMP[0],
-            min(CAP_RATIO_CLAMP[1], ratio / metrics["h_ratio"]),
+        changed = False
+        wpc_stuck = (
+            last_wpc is not None
+            and abs(metrics["wpc_ratio"] - last_wpc) < 0.005
         )
-        if abs(solved - ratio) < 1e-3:
-            print(
-                f"  ocr_cap_height_ratio is pinned at the renderer clamp {solved}; h_ratio {metrics['h_ratio']:.3f} needs a weight/glyph change, not this knob"
+        if not _in_band(metrics["h_ratio"]):
+            # cap_px = median(OCR box heights) * clamp(ratio, 0.65, 0.95):
+            # h_ratio is linear in the ratio, so one solve lands it (the
+            # renderer clamps).
+            solved = max(
+                CAP_RATIO_CLAMP[0],
+                min(CAP_RATIO_CLAMP[1], ratio / metrics["h_ratio"]),
             )
+            if abs(solved - ratio) < 1e-3:
+                print(
+                    f"  ocr_cap_height_ratio is pinned at the renderer clamp {solved}; h_ratio {metrics['h_ratio']:.3f} needs a weight/glyph change, not this knob"
+                )
+            else:
+                print(
+                    f"  ocr_cap_height_ratio {ratio} -> {solved:.3f} (h_ratio {metrics['h_ratio']:.3f})"
+                )
+                ratio = round(solved, 3)
+                _set_profile_knob(v["merchant"], "ocr_cap_height_ratio", ratio)
+                changed = True
+        if not _in_band(metrics["wpc_ratio"]) and wpc_stuck:
+            print(
+                f"  wpc_ratio did not respond to pitch_ratio (stuck at {metrics['wpc_ratio']:.3f}); the rendered glyph ink per char is bounded by the cell, not this knob. Leaving pitch_ratio at {pitch_ratio}."
+            )
+        elif not _in_band(metrics["wpc_ratio"]):
+            # Under ocr_font_sizing the grid pitch comes from the OCR word
+            # starts, clamped to profile pitch_ratio x cap x [0.85, 1.15];
+            # font.json condense is inert there. Moving pitch_ratio moves the
+            # clamp floor/ceiling, which is what binds on skewed photos.
+            solved_p = round(pitch_ratio / metrics["wpc_ratio"], 3)
+            print(
+                f"  pitch_ratio {pitch_ratio} -> {solved_p} (wpc_ratio {metrics['wpc_ratio']:.3f})"
+            )
+            pitch_ratio = solved_p
+            _set_profile_knob(v["merchant"], "pitch_ratio", pitch_ratio)
+            changed = True
+        if not changed:
             break
-        print(
-            f"  ocr_cap_height_ratio {ratio} -> {solved:.3f} (h_ratio {metrics['h_ratio']:.3f})"
-        )
-        ratio = round(solved, 3)
-        _set_profile_knob(v["merchant"], "ocr_cap_height_ratio", ratio)
-        if (
-            args.truth or _truth_env(v, args.truth).get("MERCHANT_TRUTH_MODE")
-        ) == "fixture":
+        if fixture_mode:
             cmd_fixture(argparse.Namespace(slug=v["slug"]))
+        last_wpc = metrics["wpc_ratio"]
         metrics = _render_review(v, f"cal{i}", args.truth)
     ok = (
         H_BAND[0] <= metrics["h_ratio"] <= H_BAND[1]
@@ -994,9 +1037,9 @@ def cmd_calibrate(args) -> int:
         print(
             f"  density high: lower font.json params.weight (~x{1 / metrics['density_ratio']:.2f}) or raise profile bitmap_thin; rerun `pitch`, `fixture`, `calibrate`"
         )
-    if not H_BAND[0] <= metrics["wpc_ratio"] <= H_BAND[1]:
+    if not _in_band(metrics["wpc_ratio"]):
         print(
-            f"  wpc off: adjust font.json preview.condense by x{1 / metrics['wpc_ratio']:.3f}"
+            f"  wpc still off after {args.iterations} iterations (pitch_ratio now {pitch_ratio}); check the gold receipt's OCR word boxes for skew"
         )
     print(f"  scorecard: {metrics['scorecard']}")
     return 0 if ok else 1
@@ -1036,8 +1079,12 @@ def cmd_export(args) -> int:
         cmd.append("--finale-only")
     elif os.path.exists(_refined_npz(v)):
         cmd += ["--corpus", _refined_npz(v)]
-    if v.get("logo"):
-        cmd += ["--logo", os.path.join(_ROOT, v["logo"])]
+    # `logo` is the print's own wordmark (renderer logo band + card);
+    # `card_logo` is a card-only mark for vendors whose print carries no
+    # logo graphic (Speedway, Burritt's) so the finale card still has one.
+    card_logo = v.get("card_logo") or v.get("logo")
+    if card_logo:
+        cmd += ["--logo", os.path.join(_ROOT, card_logo)]
     _clear_render_cache(v)
     text = _run(cmd, env=_sub_env(_truth_env(v, args.truth)), capture=True)
     sys.stdout.write(text)
@@ -1174,7 +1221,14 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--label", help="finale card label")
     i.add_argument("--callout", help="act-4 bold weight callout")
     i.add_argument(
-        "--logo", help="black-on-white L-mode wordmark PNG (repo path)"
+        "--logo",
+        help="black-on-white L-mode wordmark PNG (repo path) that the PRINT "
+        "carries -> renderer logo band + finale card",
+    )
+    i.add_argument(
+        "--card-logo",
+        help="card-only wordmark PNG for prints with no logo graphic "
+        "(no renderer band)",
     )
     i.add_argument(
         "--footer-codes",
