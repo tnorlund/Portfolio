@@ -62,7 +62,8 @@ $BIN --process-local-image ~/test-receipt.png \
 - `--continuous` process until the queue is empty.
 - `--log-level` trace, debug, info, warn, error.
 - `--layoutlm-model` path to a local model bundle (`.mlpackage` or `.aimodel` + sidecars).
-- `--layoutlm-backend` `coreml` (default) or `coreai` (opt-in; requires macOS 27 / Xcode 27).
+- `--layoutlm-backend` `coreml` (default) or `coreai` (opt-in; requires macOS 27 and a
+  worker built with `RECEIPT_OCR_COREAI=1`, see the `coreai-export` skill).
 - `--layoutlm-cache-path` where to cache the downloaded model (default `.models/layoutlm`).
 - `--stub-ocr` skip real OCR.
 

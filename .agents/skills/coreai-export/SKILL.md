@@ -73,16 +73,32 @@ NaN/Inf detection.
 
 ## Swift opt-in (macOS 27 / Xcode 27)
 
+The Core AI backend is compiled only when the package is built with
+`RECEIPT_OCR_COREAI=1`. Its Swift API (`AIModel`, `InferenceFunction`,
+`NDArray`) comes from the `CoreAIRuntime` module that `CoreAI` re-exports; it
+is beta and exists only in the macOS 27 SDK, which CI's macOS runner lacks, so
+the default build never references it. Without the flag the backend throws
+`backendUnavailable` at startup. To see the current API surface:
+`xcrun swift-symbolgraph-extract -module-name CoreAIRuntime -target
+arm64-apple-macos27.0 -sdk "$(xcrun --show-sdk-path)" -output-dir /tmp/sg`.
+
 ```bash
+cd receipt_ocr_swift
+RECEIPT_OCR_COREAI=1 swift build -c release
 LAYOUTLM_BACKEND=coreai \
-  ./.build/arm64-apple-macosx/release/receipt-ocr \
+  ./.build/release/receipt-ocr \
   --process-local-image ~/test-receipt.png \
   --layoutlm-model ./coreai-out \
   --layoutlm-backend coreai \
   --output-dir /tmp/ocr-out
 ```
 
-Default backend is still Core ML (`LAYOUTLM_BACKEND=coreml` or omit).
+`CoreAILayoutLMBackend.swift` compiles against the macOS 27.0 SDK
+(Command Line Tools, Swift 6.4) and has run a `.aimodel` exported from a tiny
+random LayoutLM v1 checkpoint through `--process-local-image`; a trained
+checkpoint has not been exercised yet. Default backend is still Core ML
+(`LAYOUTLM_BACKEND=coreml` or omit), and the default build never compiles the
+Core AI code.
 
 ## Key files
 
