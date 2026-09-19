@@ -9,7 +9,7 @@
  */
 
 import { CloudGeom, GlyphSkeleton } from "./geometry";
-import { ShowcaseLabelFile } from "../AugmentationShowcase/labelGeometry";
+import { ShowcaseLabelFile } from "./labelGeometry";
 
 export type Merchant =
   | "sprouts"
@@ -78,12 +78,6 @@ export const fontGlyphSrc = (merchant: Merchant, codepoint: number): string =>
 
 export const fontMetricsSrc = (merchant: Merchant): string =>
   `${assetRoot(merchant)}/font_metrics.json`;
-
-export const styleAnnotatedSrc = (merchant: Merchant): string =>
-  `${assetRoot(merchant)}/style_annotated.json`;
-
-export const styleCropSrc = (merchant: Merchant, section: string): string =>
-  `${assetRoot(merchant)}/style_crops/${section}.png`;
 
 export const composeStepsSrc = (merchant: Merchant): string =>
   `${assetRoot(merchant)}/compose_steps.json`;
@@ -169,29 +163,6 @@ export const WEIGHT_MAX = 1.4;
 export const WEIGHT_STEP = 0.01;
 
 /**
- * Schema for `style_annotated.json`: measured style treatments per receipt
- * section. `name` is a stable machine key, `display` the cited measured claim
- * (e.g. "Underlined ~41% of the time"), `crop` an optional example image. The
- * remaining measured fields are carried through untouched.
- */
-export interface StyleSection {
-  name: string;
-  display: string;
-  crop?: string;
-  sizeScale?: number;
-  weight?: string;
-  underline?: boolean | string;
-  underlineRate?: number;
-  notes?: string;
-  match?: string;
-}
-
-export interface StyleAnnotated {
-  merchant?: string;
-  sections: StyleSection[];
-}
-
-/**
  * Schema for `compose_steps.json`: the composed receipt's tokens (indices into
  * `final.labels.json` `tokens`) split into reveal groups, in reveal order.
  */
@@ -221,7 +192,6 @@ export interface MerchantAssets {
   skeleton: GlyphSkeleton | null;
   dotParams: DotParams | null;
   fontMetrics: FontMetrics | null;
-  style: StyleAnnotated | null;
   compose: ComposeSteps | null;
   finalLabels: ShowcaseLabelFile | null;
 }
@@ -230,7 +200,6 @@ export const EMPTY_ASSETS: MerchantAssets = {
   skeleton: null,
   dotParams: null,
   fontMetrics: null,
-  style: null,
   compose: null,
   finalLabels: null,
 };
@@ -246,8 +215,30 @@ export interface ActMeta {
   caption: string;
 }
 
+const COUNT_WORDS = [
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+  "ten",
+  "eleven",
+  "twelve",
+];
+
+/** Spelled-out count for prose (falls back to digits past twelve). */
+export const countWord = (n: number): string => COUNT_WORDS[n] ?? String(n);
+
+/** Spelled-out `MERCHANTS.length`, so the finale copy tracks the gallery. */
+export const MERCHANT_COUNT_WORD = countWord(MERCHANTS.length);
+
 /**
- * The eight acts, in scroll order. Copy anchors are lifted verbatim from the
+ * The acts, in scroll order. Copy anchors are lifted verbatim from the
  * spec so the tone stays measured and non-hyped.
  */
 export const ACTS: ActMeta[] = [
@@ -287,9 +278,8 @@ export const ACTS: ActMeta[] = [
     id: "finale",
     index: 4,
     eyebrow: "Same machine, every store",
-    headline: "Same machine, six merchants",
-    caption:
-      "The same machine minted all six: fonts, logos, and styles, mined from each merchant's own receipts.",
+    headline: `Same machine, ${MERCHANT_COUNT_WORD} merchants`,
+    caption: `The same machine minted all ${MERCHANT_COUNT_WORD}: fonts, logos, and styles, mined from each merchant's own receipts.`,
   },
 ];
 

@@ -8,7 +8,7 @@ import path from "path";
 import {
   buildLabelBoxes,
   ShowcaseLabelFile,
-} from "../AugmentationShowcase/labelGeometry";
+} from "./labelGeometry";
 import { MERCHANTS } from "./pipelineData";
 
 const PIPELINE = path.join(

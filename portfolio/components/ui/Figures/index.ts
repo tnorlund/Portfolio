@@ -161,20 +161,6 @@ export const BetweenReceiptVisualization = dynamic(
     loading: () => loadingShell("between"),
   }
 );
-export const SynthesisPrintReveal = dynamic(
-  () => import("./SynthesisPrintReveal"),
-  {
-    ssr: false,
-    loading: () => loadingShell("within"),
-  }
-);
-export const AugmentationShowcase = dynamic(
-  () => import("./AugmentationShowcase"),
-  {
-    ssr: false,
-    loading: () => loadingShell("within"),
-  }
-);
 export const SynthesisPipeline = dynamic(
   () => import("./SynthesisPipeline"),
   {

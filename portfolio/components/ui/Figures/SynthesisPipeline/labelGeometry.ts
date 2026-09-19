@@ -1,7 +1,7 @@
 /**
- * Pure geometry/label helpers for the AugmentationShowcase figure.
+ * Pure geometry/label helpers for the SynthesisPipeline figure.
  *
- * The showcase label files (`public/synthetic-receipts/showcase/*.labels.json`)
+ * The label files (`public/synthetic-receipts/pipeline/<merchant>/final.labels.json`)
  * are LayoutLM token-classification records: parallel `tokens`, `bboxes`, and
  * `ner_tags` arrays. Bboxes are `[x0, y0, x1, y1]` normalized to 0-1000 with
  * the y axis pointing UP (y=1000 is the top of the receipt), so converting to
@@ -125,75 +125,6 @@ export const familiesIn = (file: ShowcaseLabelFile): string[] => {
     }
   });
   return ordered;
-};
-
-/**
- * Token indices to highlight for an augmentation variant.
- *
- * The remove variants derive from different base receipts than the displayed
- * base, so cross-variant token diffing is unsound. Highlights instead come
- * from the manifest itself:
- *  - the recomputed total: GRAND_TOTAL-family tokens containing `newTotal`
- *  - for add operations, the injected item: tokens matching `itemWords`
- *    (the removed line is absent from a remove render, so there is nothing
- *    to outline for removes beyond the new total).
- */
-export const findHighlightIndices = (
-  file: ShowcaseLabelFile,
-  args: {
-    operation: string;
-    itemWords: string[];
-    newTotal: string | null;
-  },
-): number[] => {
-  const indices: number[] = [];
-  const itemSet = new Set(args.itemWords.map((w) => w.toUpperCase()));
-
-  file.tokens.forEach((token, index) => {
-    const family = familyOf(file.ner_tags[index]);
-    if (
-      args.newTotal &&
-      family === "GRAND_TOTAL" &&
-      token.includes(args.newTotal)
-    ) {
-      indices.push(index);
-      return;
-    }
-    if (
-      args.operation === "add_line_item" &&
-      itemSet.size > 0 &&
-      itemSet.has(token.toUpperCase())
-    ) {
-      indices.push(index);
-    }
-  });
-  return indices;
-};
-
-/**
- * The box the viewport should scroll to when an operation is applied: the
- * actual changed line, not just any highlight. Prefers boxes matching the
- * injected item's words (the GRAND_TOTAL highlights include a summary copy
- * that sits far from the edit); among candidates picks the spatially topmost.
- */
-export const pickScrollTarget = (
-  boxes: LabelBox[],
-  highlightIndices: number[],
-  itemWords: string[],
-): LabelBox | null => {
-  const highlightSet = new Set(highlightIndices);
-  const highlighted = boxes.filter((box) => highlightSet.has(box.index));
-  if (highlighted.length === 0) {
-    return null;
-  }
-  const itemSet = new Set(itemWords.map((w) => w.toUpperCase()));
-  const itemBoxes = highlighted.filter((box) =>
-    itemSet.has(box.token.toUpperCase()),
-  );
-  const pool = itemBoxes.length > 0 ? itemBoxes : highlighted;
-  return pool.reduce((best, box) =>
-    box.rect.top < best.rect.top ? box : best,
-  );
 };
 
 /**

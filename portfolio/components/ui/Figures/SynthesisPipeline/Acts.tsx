@@ -3,7 +3,7 @@ import {
   buildLabelBoxes,
   familiesIn,
   toCssRectInner,
-} from "../AugmentationShowcase/labelGeometry";
+} from "./labelGeometry";
 import { LABEL_COLORS } from "../labelStyles";
 import { LabelBoxOverlay, LabelLegend } from "../labelBoxOverlay";
 import sharedStyles from "../labelBoxOverlay.module.css";
