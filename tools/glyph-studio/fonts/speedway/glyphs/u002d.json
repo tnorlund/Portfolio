@@ -1,0 +1,32 @@
+{
+ "version": 1,
+ "char": "-",
+ "codepoint": 45,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "speedway.refined.npz",
+  "samples": 7,
+  "consensusHash": "f88ffe5892c3",
+  "date": "2026-09-19"
+ },
+ "width": 471.7,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 113.7,
+     "y": 444.4,
+     "type": "corner"
+    },
+    {
+     "x": 358.1,
+     "y": 444.4,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

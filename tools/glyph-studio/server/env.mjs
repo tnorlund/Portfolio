@@ -26,6 +26,7 @@ export const SAMPLES = {
   gelsons: "/tmp/gridfix/gelsons_studio/gelsons.refined.npz",
   thestand: "/tmp/gridfix/thestand_studio/thestand.refined.npz",
   dollartree: "/tmp/gridfix/dollartree_studio/dollartree.refined.npz",
+  speedway: "/tmp/gridfix/speedway_studio/speedway.refined.npz",
 };
 
 // Font dir -> canonical merchant name. The receipt renderer caches per-merchant
@@ -44,6 +45,7 @@ export const FONT_MERCHANTS = {
   gelsons: "Gelson's Westlake Village",
   thestand: "The Stand - American Classics Redefined",
   dollartree: "Dollar Tree",
+  speedway: "Speedway",
 };
 
 // Mirror _render_cache_path's slug: runs of non-alphanumerics -> single "_".

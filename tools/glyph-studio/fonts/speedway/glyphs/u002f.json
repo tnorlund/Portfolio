@@ -1,0 +1,93 @@
+{
+ "version": 1,
+ "char": "/",
+ "codepoint": 47,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "speedway.refined.npz",
+  "samples": 8,
+  "consensusHash": "0ccb58454a39",
+  "date": "2026-09-19"
+ },
+ "width": 488.5,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 72.2,
+     "y": 47.2,
+     "type": "corner"
+    },
+    {
+     "x": 44.4,
+     "y": -38.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 322.2,
+     "y": 452.8,
+     "type": "corner"
+    },
+    {
+     "x": 252.1,
+     "y": 452.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 444.1,
+     "y": 952.8,
+     "type": "corner",
+     "hOut": {
+      "x": 357.706245254235,
+      "y": 749.2
+     }
+    },
+    {
+     "x": 212.2,
+     "y": 348.9,
+     "type": "corner",
+     "hIn": {
+      "x": 257.4453015420902,
+      "y": 565.0719962566512
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 100.0,
+     "y": 47.2,
+     "type": "corner",
+     "hOut": {
+      "x": 100.02725745886671,
+      "y": 139.9
+     }
+    },
+    {
+     "x": 186.1,
+     "y": 341.7,
+     "type": "corner",
+     "hIn": {
+      "x": 154.26898572036941,
+      "y": 252.61896003758068
+     }
+    }
+   ]
+  }
+ ]
+}
