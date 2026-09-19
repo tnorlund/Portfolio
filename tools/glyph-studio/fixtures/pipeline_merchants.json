@@ -1,0 +1,86 @@
+{
+  "_comment": [
+    "Source receipts for the SynthesisPipeline figure assets, keyed by the",
+    "portfolio slug (pipelineData.ts Merchant). `merchant` is the canonical",
+    "name the ACTIVE merchant-truth bundle resolves; `font` is the",
+    "tools/glyph-studio/fonts/<font>/ directory and the merchant_fonts/<font>/",
+    "corpus.npz vault key; `hero` is the act-2 character. Receipt keys in the",
+    "dev table are NOT stable across re-OCR (the exporter checks the",
+    "ReceiptPlace merchant before rendering and lists the image's receipts",
+    "on a mismatch). Regenerate with tools/glyph-studio/py/export_pipeline_assets.py."
+  ],
+  "merchants": {
+    "sprouts": {
+      "merchant": "Sprouts Farmers Market",
+      "font": "sprouts",
+      "hero": "S",
+      "receipt": {
+        "image_id": "00ded398-af6f-4a49-86f7-c79ccb554e48",
+        "receipt_id": 1
+      }
+    },
+    "costco": {
+      "merchant": "Costco Wholesale",
+      "font": "costco",
+      "hero": "A",
+      "receipt": {
+        "image_id": "57cb7f2c-7dcc-4974-9ef8-a460232f3b1d",
+        "receipt_id": 1
+      }
+    },
+    "vons": {
+      "merchant": "Vons",
+      "font": "vons",
+      "hero": "V",
+      "receipt": {
+        "image_id": "678a7c94-4948-4ebf-b8e9-9a17c13051ec",
+        "receipt_id": 2
+      }
+    },
+    "traderjoes": {
+      "merchant": "Trader Joe's",
+      "font": "traderjoes",
+      "hero": "T",
+      "receipt": {
+        "image_id": "4c262079-4fec-4724-a8e1-2886f38ea454",
+        "receipt_id": 1
+      }
+    },
+    "cvs": {
+      "merchant": "CVS",
+      "font": "cvs",
+      "hero": "C",
+      "receipt": {
+        "image_id": "8de52018-6bc6-40fb-8e4e-a880eda24e75",
+        "receipt_id": 1
+      }
+    },
+    "target": {
+      "merchant": "Target",
+      "font": "target",
+      "hero": "T",
+      "receipt": {
+        "image_id": "249e7199-d09a-436b-97fa-f226f527f8a0",
+        "receipt_id": 1
+      }
+    },
+    "innout": {
+      "merchant": "In-N-Out Burger",
+      "font": "innout",
+      "hero": "N",
+      "receipt": {
+        "image_id": "9afeb902-28ff-436a-b69a-e0f5204eefa8",
+        "receipt_id": 2
+      }
+    },
+    "wildfork": {
+      "merchant": "Wild Fork",
+      "font": "wildfork",
+      "hero": "W",
+      "receipt": {
+        "image_id": "f008ea77-272b-4554-b8a6-e1676ec6a088",
+        "receipt_id": 2
+      }
+    }
+  }
+}

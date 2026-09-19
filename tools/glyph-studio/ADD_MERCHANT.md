@@ -245,7 +245,10 @@ the font sources (`fonts/<slug>/` — skeleton JSONs + font.json + stylemap
 are the source of truth; compiled npz and samples npz stay OUT of git),
 the stylescan rules, and the profile.
 
-Optional: showcase finale assets (`final.webp`/`real.webp`/labels) — see the
-existing `portfolio/public/synthetic-receipts/pipeline/<slug>/` sets for the
-format (760px width, render-true labels via `RenderConfig.box_sink`,
-margin 10).
+Optional: showcase finale assets (`final.webp`/`real.webp`/labels) — add
+the merchant to `fixtures/pipeline_merchants.json` and run
+`py/export_pipeline_assets.py <slug> --out-dir /tmp/pipeline` (see
+README "Portfolio figure assets"); it writes the
+`portfolio/public/synthetic-receipts/pipeline/<slug>/` set (760px width,
+render-true labels via `RenderConfig.box_sink`, margin 10) plus the hero-act
+files when a vault corpus exists.
