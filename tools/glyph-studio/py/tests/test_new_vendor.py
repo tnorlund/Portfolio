@@ -62,23 +62,37 @@ def test_register_env_mjs_is_idempotent(tmp_path, monkeypatch):
     assert 'sprouts: "/tmp/a.npz"' in text and text.count("};") == 2
 
 
-def test_committed_vendor_files_are_consistent():
-    """Every fonts/<slug>/vendor.json names its own dir and a gold receipt."""
-    found = 0
-    for slug in os.listdir(nv.FONTS_DIR):
-        path = nv.vendor_path(slug)
+def test_committed_vendor_files_are_consistent(monkeypatch):
+    """Every fonts/<slug>/vendor.json names its own dir and a gold receipt.
+
+    Resolve the font tree from this file, not CWD. CI runs pytest from the
+    repo root with rootdir ``tools/glyph-studio/py``; xdist workers may
+    chdir. This PR does not commit a vendor.json, so the path check is a
+    known font dir (speedway) rather than ``found >= 1``.
+    """
+    fonts_dir = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "fonts")
+    )
+    repo_root = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
+    )
+    monkeypatch.setattr(nv, "FONTS_DIR", fonts_dir)
+    monkeypatch.setattr(nv, "_ROOT", repo_root)
+    assert os.path.isdir(fonts_dir), fonts_dir
+    assert os.path.isdir(os.path.join(fonts_dir, "speedway"))
+
+    for slug in os.listdir(fonts_dir):
+        path = os.path.join(fonts_dir, slug, "vendor.json")
         if not os.path.exists(path):
             continue
-        found += 1
         v = nv.load_vendor(slug)
         assert v["slug"] == slug
         assert v["gold_receipt"]["image_id"]
         if v.get("logo"):
-            assert os.path.exists(os.path.join(nv._ROOT, v["logo"]))
+            assert os.path.exists(os.path.join(repo_root, v["logo"]))
         for donor in [v.get("donor"), *(v.get("donor_for") or {})]:
             if donor:
-                assert os.path.isdir(os.path.join(nv.FONTS_DIR, donor)), donor
-    assert found >= 1
+                assert os.path.isdir(os.path.join(fonts_dir, donor)), donor
 
 
 def test_calibrate_solve_is_linear_and_clamped():
