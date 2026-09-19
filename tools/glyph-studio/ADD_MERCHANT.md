@@ -135,6 +135,20 @@ python -m glyphstudio.styleagg /tmp/gridfix/<slug>_studio/scans stylemap-agg.jso
   "• CVS", `extend_left: false`, `center: true`), and `graphics`
   (`footer_codes: false` if the merchant prints no footer QR/barcode —
   check a real receipt).
+- The v1 parity mint pins the profile count
+  (`receipt_dynamo/receipt_dynamo/migrations/merchant_truth_v1.py`
+  `EXPECTED_MERCHANT_COUNT`, mirrored by `tests/test_fleet_status.py`,
+  `tests/test_merchant_truth_profile_parity.py` and the migration unit
+  tests). Bump it with the new profile and add the slug to
+  `EXPECTED_MISSING_FONT_SLUGS` until step 9 publishes its `MerchantFont`
+  rows (Speedway went 16 -> 17 this way).
+- Until the owner mints + activates the truth bundle, render locally with
+  `MERCHANT_TRUTH_MODE=fixture MERCHANT_TRUTH_FIXTURE=<dir>` pointing at a
+  SEALED bundle built from the `migrate_merchant_truth_v1.py --output-dir`
+  dry-run payload plus local `C#assets` pointers whose `content_hash` is the
+  sha256 of the compiled npz in `$BITMATRIX_DIR` (regular + heavy at
+  `weight x 1.33`); the renderer verifies those bytes exactly like a live
+  bundle.
 
 ## 7. Calibrate against a real receipt (the actual quality gate)
 

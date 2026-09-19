@@ -27,9 +27,9 @@ if TYPE_CHECKING:
 
 DEV_TABLE_NAME = "ReceiptsTable-dc5be22"
 ARTIFACT_BUCKET_ALIAS = "merchant-font-artifacts"
-EXPECTED_MERCHANT_COUNT = 16
+EXPECTED_MERCHANT_COUNT = 17
 EXPECTED_MISSING_FONT_SLUGS = frozenset(
-    {"amazon_fresh", "smith_s", "dollar_tree"}
+    {"amazon_fresh", "smith_s", "dollar_tree", "speedway"}
 )
 
 MEASURED_TYPOGRAPHY_FIELDS = frozenset(
@@ -257,7 +257,7 @@ def classify_leaf(  # pylint: disable=too-many-return-statements
 
 
 def build_crosswalk(document: dict[str, Any]) -> list[LeafDisposition]:
-    """Classify every distinct leaf and enforce the 16-merchant source."""
+    """Classify every distinct leaf and enforce the 17-merchant source."""
     profiles = document.get("profiles")
     if not isinstance(profiles, dict):
         raise ValueError("merchant profile document must contain profiles map")
