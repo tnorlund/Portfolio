@@ -403,6 +403,7 @@ class TestManifest:
             "target",
             "innout",
             "wildfork",
+            "speedway",
         }
         for slug, spec in merchants.items():
             assert os.path.isdir(

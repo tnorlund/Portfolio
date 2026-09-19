@@ -81,6 +81,15 @@
         "image_id": "f008ea77-272b-4554-b8a6-e1676ec6a088",
         "receipt_id": 2
       }
+    },
+    "speedway": {
+      "merchant": "Speedway",
+      "font": "speedway",
+      "hero": "S",
+      "receipt": {
+        "image_id": "6cd665ef-5659-405b-b63d-5d0317f204c1",
+        "receipt_id": 1
+      }
     }
   }
 }
