@@ -179,6 +179,59 @@ def test_amount_only_lane_keeps_quarter_cell_bearing():
     assert sink[0]["px"][2] == pytest.approx(0.9399 * 760 - 0.25 * spec.cell_w)
 
 
+def test_measured_amount_lane_end_uses_the_rightmost_amount_x():
+    spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=16, grid_left=10.0)
+    columns = [
+        {"role": "amount", "anchor": "right", "x": 0.3875},
+        {"role": "amount", "anchor": "right", "x": 0.9399},
+        {"role": "desc", "anchor": "left", "x": 0.01},
+    ]
+    lane = receipt_grid.measured_amount_lane_end(columns, spec, 760.0)
+    expected = round((0.9399 * 760.0 - spec.grid_left) / spec.cell_w)
+    assert lane == expected
+    assert expected > round((0.3875 * 760.0 - spec.grid_left) / spec.cell_w)
+
+
+def test_prefer_measured_amount_lane_falls_back_to_ocr_when_missing():
+    spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=16, grid_left=10.0)
+    assert (
+        receipt_grid.prefer_measured_amount_lane(
+            70, [{"role": "desc", "anchor": "left", "x": 0.02}], spec, 760.0
+        )
+        == 70
+    )
+
+
+def test_measured_amount_column_wins_over_ocr_amount_lane():
+    spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=16, grid_left=10.0)
+    line = [_word("ITEM", 20, 70), _word("12.99", 650, 710)]
+    columns = [{"role": "amount", "anchor": "right", "x": 0.80}]
+    placed = plan_grid_line(
+        line,
+        spec,
+        amount_lane=70,
+        measured_columns=columns,
+        paper_width=760,
+    )
+    by_text = {token.word.text: token for token in placed}
+    assert 10 + by_text["12.99"].end_col * 10 == pytest.approx(0.80 * 760)
+
+
+def test_desc_only_measured_columns_still_snap_unmatched_prices_to_lane():
+    spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=16, grid_left=10.0)
+    line = [_word("ITEM", 20, 70), _word("12.99", 660, 710)]
+    columns = [{"role": "desc", "anchor": "left", "x": 0.02}]
+    placed = plan_grid_line(
+        line,
+        spec,
+        amount_lane=70,
+        measured_columns=columns,
+        paper_width=760,
+    )
+    by_text = {token.word.text: token for token in placed}
+    assert by_text["12.99"].end_col == pytest.approx(70)
+
+
 def test_canonical_sections_use_labels_then_generic_payment_markers():
     rows = [
         [_word("COSTCO", 250, 360, top=40, labels=("MERCHANT_NAME",))],

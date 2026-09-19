@@ -30,9 +30,14 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for path in (
     os.path.join(REPO_ROOT, "receipt_agent"),
     os.path.join(REPO_ROOT, "receipt_upload"),
+    os.path.join(REPO_ROOT, "tools", "glyph-studio", "py"),
 ):
     if path not in sys.path:
         sys.path.insert(0, path)
+
+from glyphstudio.vendor_package import (  # noqa: E402
+    vendor_uses_measured_separators,
+)
 
 from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
     GlyphRenderConfig,
@@ -1920,6 +1925,28 @@ def _measured_layout_template(
     return copy.deepcopy(layout_template)
 
 
+def hybrid_layout_separators(
+    merchant: str | None,
+    layout_template: dict | None,
+    separators,
+):
+    """Copy ``layout_template.separators`` only when the vendor opts in.
+
+    Costco sets ``use_measured_separators`` in vendor.json. Gelson's / The
+    Stand / Dollar Tree keep heuristic separators even though they carry a
+    measured inventory. ``None`` still means heuristics; ``()`` / ``[]``
+    suppresses them.
+    """
+    if not vendor_uses_measured_separators(merchant):
+        return separators
+    if (
+        not isinstance(layout_template, dict)
+        or "separators" not in layout_template
+    ):
+        return separators
+    return layout_template.get("separators")
+
+
 def _render_cached_hybrid(
     receipt: dict,
     atlas,
@@ -1990,6 +2017,15 @@ def _render_cached_hybrid(
     # tokens just before drawing -- fixes the dominant remaining realism tell
     # without re-running synthesis. Mutates the per-render receipt dict in place.
     clean_for_render(receipt)
+    layout_template = _measured_layout_template(
+        merchant_profile,
+        compose_kind=compose_kind,
+    )
+    separators = hybrid_layout_separators(
+        receipt.get("merchant_name"),
+        layout_template,
+        separators,
+    )
     config = RenderConfig(
         bitmap_font=bitmap_font,
         width=width,
@@ -2041,10 +2077,7 @@ def _render_cached_hybrid(
         # remains a strict no-op for merchants without measured geometry.
         # Canonical composers already own their output geometry and therefore
         # do not reapply lanes measured from the source photos.
-        layout_template=_measured_layout_template(
-            merchant_profile,
-            compose_kind=compose_kind,
-        ),
+        layout_template=layout_template,
         # Optional body-font override. None -> the grid-font candidate list
         # (Andale -> vendored B612 -> legacy). The grid recalibrates cell_w / row
         # pitch from whatever face loads, so the SAME layout renders in any font.

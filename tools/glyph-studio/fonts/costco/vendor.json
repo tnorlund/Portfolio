@@ -1,0 +1,15 @@
+{
+  "merchant": "Costco Wholesale",
+  "slug": "costco",
+  "aliases": [
+    "COSTCO",
+    "Costco"
+  ],
+  "gold_receipt": {
+    "image_id": "57cb7f2c-7dcc-4974-9ef8-a460232f3b1d",
+    "receipt_id": 1
+  },
+  "use_measured_separators": true,
+  "ocr_cap_height_ratio": 0.72,
+  "bitmap_thin": 0.0
+}

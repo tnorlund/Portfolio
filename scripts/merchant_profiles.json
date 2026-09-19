@@ -45,7 +45,7 @@
    },
    "layout_template": {
     "version": 1,
-    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. Columns are live in the renderer. Separators copy into config.separators only when vendor.json sets use_measured_separators (Costco). full_fidelity_eval can still read columns via --columns-source profile.",
     "measured": {
      "receipts": 12,
      "tool_git_sha": "d9ce9cb82ecf",
@@ -481,7 +481,7 @@
    },
    "layout_template": {
     "version": 1,
-    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. Columns are live in the renderer. Separators copy into config.separators only when vendor.json sets use_measured_separators (Costco). full_fidelity_eval can still read columns via --columns-source profile.",
     "measured": {
      "receipts": 6,
      "tool_git_sha": "d9ce9cb82ecf",
@@ -837,7 +837,7 @@
    },
    "layout_template": {
     "version": 1,
-    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. Columns are live in the renderer. Separators copy into config.separators only when vendor.json sets use_measured_separators (Costco). full_fidelity_eval can still read columns via --columns-source profile.",
     "measured": {
      "receipts": 8,
      "tool_git_sha": "d9ce9cb82ecf",
@@ -1003,7 +1003,7 @@
    "compose": "dollartree",
    "layout_template": {
     "version": 1,
-    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. NOT yet consumed by the renderer (P3); full_fidelity_eval reads columns via --columns-source profile.",
+    "_comment": "Measured layout data (#1188 P2): columns/sections/separators from real receipts via glyphstudio.layout_template. Columns are live in the renderer. Separators copy into config.separators only when vendor.json sets use_measured_separators (Costco). full_fidelity_eval can still read columns via --columns-source profile.",
     "measured": {
      "receipts": 5,
      "tool_git_sha": "d9ce9cb82ecf",

@@ -1115,6 +1115,45 @@ def amount_lane_end(
     return int(round(median(cluster)))
 
 
+def measured_amount_lane_end(
+    columns: Sequence[Mapping[str, Any]] | None,
+    spec: GridSpec,
+    paper_width: float,
+) -> int | None:
+    """Grid column of the template's rightmost amount/right x, if any.
+
+    Speedway ``T`` flags and Costco overflow snap to this measured edge
+    instead of the OCR-jitter ``amount_lane_end`` cluster.
+    """
+    ends: list[int] = []
+    for column in columns or ():
+        if str(column.get("role") or "").lower() != "amount":
+            continue
+        if str(column.get("anchor") or "").lower() != "right":
+            continue
+        try:
+            x = float(column.get("x"))
+        except (TypeError, ValueError):
+            continue
+        if 0.0 <= x <= 1.0:
+            ends.append(
+                round((x * float(paper_width) - spec.grid_left) / spec.cell_w)
+            )
+    if not ends:
+        return None
+    return max(ends)
+
+
+def prefer_measured_amount_lane(
+    ocr_lane: int | None,
+    columns: Sequence[Mapping[str, Any]] | None,
+    spec: GridSpec,
+    paper_width: float,
+) -> int | None:
+    measured = measured_amount_lane_end(columns, spec, paper_width)
+    return measured if measured is not None else ocr_lane
+
+
 def _measured_lane_starts(
     line: Sequence[GridWord],
     spec: GridSpec,
@@ -1318,11 +1357,11 @@ def plan_grid_line(
         anchored.update(
             {index: start for index, start in measured.items() if is_p[index]}
         )
-        if anchored:
-            leftmost_price_start = min(anchored.values())
-    elif amount_lane is not None and price_idxs:
+    if amount_lane is not None and price_idxs:
         slot_right = amount_lane
         for i in reversed(price_idxs):
+            if i in anchored:
+                continue
             abs_end = round((line[i].right - spec.grid_left) / spec.cell_w)
             if (
                 abs(abs_end - slot_right) > _AMOUNT_LANE_TOL_CELLS
@@ -1345,8 +1384,8 @@ def plan_grid_line(
                 # right of the item lane): keep the SOURCE column
                 anchored[i] = abs_end - cell_of[i]
             slot_right = anchored[i] - 1
-        if anchored:
-            leftmost_price_start = min(anchored.values())
+    if anchored:
+        leftmost_price_start = min(anchored.values())
 
     placed: list[PlacedToken] = []
     cursor_col = None

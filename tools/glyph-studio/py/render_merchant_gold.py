@@ -19,7 +19,11 @@ Opt-in interventions (GOLD_STANDARD.md Part 2 + the ladder-green work):
                     applied to the rendered image before writing.
 
 The receipt payload is cached in ``--cache-dir`` after the first Dynamo pull,
-so subsequent renders are offline and fast.
+so subsequent renders are offline and fast. Gold/export size the grid from
+``fonts/<slug>/font.json`` (``pitchRatioTarget``, recorded cap) plus recorded
+``bitmap_thin`` in ``vendor.json`` -- they do not rebuild a 12-receipt font
+profile or solve thin live. ``--calibrate-from-corpus`` restores that
+authoring path.
 
 Usage:
     render_merchant_gold.py --merchant "Sprouts Farmers Market" \\
@@ -48,6 +52,39 @@ for _p in (
 ):
     if _p not in sys.path:
         sys.path.insert(0, _p)
+
+import render_synthetic_receipts as rsr  # noqa: E402
+from glyphstudio.vendor_package import resolve_gold_inputs  # noqa: E402
+
+from receipt_agent.agents.label_evaluator.rendering.font_profile import (  # noqa: E402
+    MerchantFontProfile,
+)
+
+_FALLBACK_FONT_HEIGHT = 0.018
+_FALLBACK_CHAR_WIDTH = 0.0125
+
+
+def closed_font_profile(merchant, pins=None):
+    """Deterministic ``MerchantFontProfile`` with no Dynamo 12-receipt build."""
+    pins = pins or {}
+    font_height = _FALLBACK_FONT_HEIGHT
+    pitch = pins.get("pitch_ratio")
+    char_width = (
+        float(pitch) * font_height
+        if pitch is not None
+        else _FALLBACK_CHAR_WIDTH
+    )
+    return MerchantFontProfile(
+        merchant_name=merchant,
+        receipt_count=0,
+        font_height=font_height,
+        char_width=char_width,
+        char_aspect=char_width / font_height,
+        line_pitch=None,
+        price_column_x=None,
+        dominant_style_label="BODY",
+        source_image_ids=(),
+    )
 
 
 def _load_receipt_payload(table, region, image_id, receipt_id):
@@ -95,9 +132,7 @@ def _load_receipt_payload(table, region, image_id, receipt_id):
         raise RuntimeError(f"receipt {receipt_id} not found for {image_id}")
     width, height = int(rec["width"]["N"]), int(rec["height"]["N"])
 
-    sk_re = _re.compile(
-        r"RECEIPT#\d+#LINE#(\d+)#WORD#(\d+)(?:#LABEL#(.+))?$"
-    )
+    sk_re = _re.compile(r"RECEIPT#\d+#LINE#(\d+)#WORD#(\d+)(?:#LABEL#(.+))?$")
     words, labels, skipped_words = {}, {}, 0
     for it in query(f"RECEIPT#{rid}#LINE"):
         t = it.get("TYPE", {}).get("S")
@@ -107,8 +142,11 @@ def _load_receipt_payload(table, region, image_id, receipt_id):
             # a plausible-but-incomplete receipt. Surface it loudly.
             if t == "RECEIPT_WORD":
                 skipped_words += 1
-                print(f"[render_merchant_gold] WARN: unparsable RECEIPT_WORD SK "
-                      f"{it['SK']['S']!r}", file=sys.stderr)
+                print(
+                    f"[render_merchant_gold] WARN: unparsable RECEIPT_WORD SK "
+                    f"{it['SK']['S']!r}",
+                    file=sys.stderr,
+                )
             continue
         line_id, word_id, label = int(m.group(1)), int(m.group(2)), m.group(3)
         if t == "RECEIPT_WORD" and label is None:
@@ -117,8 +155,12 @@ def _load_receipt_payload(table, region, image_id, receipt_id):
                 "text": it["text"]["S"],
                 "line_id": line_id,
                 "word_id": word_id,
-                "bbox": [tl["x"] * 1000, tl["y"] * 1000,
-                         br["x"] * 1000, br["y"] * 1000],
+                "bbox": [
+                    tl["x"] * 1000,
+                    tl["y"] * 1000,
+                    br["x"] * 1000,
+                    br["y"] * 1000,
+                ],
             }
         elif t == "RECEIPT_WORD_LABEL" and label not in (None, "O"):
             # Prefer a VALID label over PENDING/INVALID for the same word (the
@@ -148,14 +190,21 @@ def _load_receipt_payload(table, region, image_id, receipt_id):
     for it in query(f"RECEIPT#{rid}#BARCODE"):
         if it.get("TYPE", {}).get("S") != "RECEIPT_BARCODE":
             continue
-        barcodes.append({
-            "text": it.get("text", {}).get("S", "") or "",
-            "symbology": it.get("symbology", {}).get("S", ""),
-            "top_left": _pt(it["top_left"]) if "top_left" in it else None,
-            "bottom_right": _pt(it["bottom_right"]) if "bottom_right" in it else None,
-            "confidence": (float(it["confidence"]["N"])
-                           if "confidence" in it else None),
-        })
+        barcodes.append(
+            {
+                "text": it.get("text", {}).get("S", "") or "",
+                "symbology": it.get("symbology", {}).get("S", ""),
+                "top_left": _pt(it["top_left"]) if "top_left" in it else None,
+                "bottom_right": (
+                    _pt(it["bottom_right"]) if "bottom_right" in it else None
+                ),
+                "confidence": (
+                    float(it["confidence"]["N"])
+                    if "confidence" in it
+                    else None
+                ),
+            }
+        )
     return width, height, word_list, barcodes
 
 
@@ -189,6 +238,34 @@ def _cached_payload(cache_dir, table, region, merchant, image_id, receipt_id):
     return doc
 
 
+def closed_gold_inputs(
+    merchant,
+    typ,
+    *,
+    table,
+    region,
+    calibrate_from_corpus=False,
+    atlas=None,
+    section_scale=None,
+):
+    """Profile + typography for gold/export: git pins, no live 12-receipt thin.
+
+    ``--calibrate-from-corpus`` restores the authoring path
+    (``cached_font_profile(n=12)`` + ``resolve_bitmap_thin``).
+    """
+    return resolve_gold_inputs(
+        merchant,
+        typ,
+        table=table,
+        region=region,
+        rsr=rsr,
+        make_profile=closed_font_profile,
+        calibrate_from_corpus=calibrate_from_corpus,
+        atlas=atlas,
+        section_scale=section_scale,
+    )
+
+
 def render_gold(
     out,
     *,
@@ -203,13 +280,11 @@ def render_gold(
     vscale=None,
     face_overrides=None,
     labels_out=None,
+    calibrate_from_corpus=False,
 ):
-    import render_synthetic_receipts as rsr
-
-    doc = _cached_payload(cache_dir, table, region, merchant, image_id,
-                          receipt_id)
-    prof = rsr.cached_font_profile(table, merchant, region=region,
-                                   max_receipts=12)
+    doc = _cached_payload(
+        cache_dir, table, region, merchant, image_id, receipt_id
+    )
     # shallow-copy before mutating: never leak overrides into a shared/cached
     # profile dict
     typ = dict(rsr.merchant_typography(merchant))
@@ -223,6 +298,14 @@ def render_gold(
             bf[k] = v
         typ["bitmap_font"] = bf
     ss = rsr.section_scale_for_merchant(merchant)
+    prof, typ = closed_gold_inputs(
+        merchant,
+        typ,
+        table=table,
+        region=region,
+        calibrate_from_corpus=calibrate_from_corpus,
+        section_scale=ss,
+    )
     payload = {
         "words": doc["words"],
         "barcodes": doc["barcodes"],
@@ -235,15 +318,27 @@ def render_gold(
     # if _render_cached_hybrid does not accept it so the driver stays portable.
     try:
         rsr._render_cached_hybrid(
-            copy.deepcopy(payload), None, profile=prof, width=width,
-            height=height, path=out, section_scale=ss, **typ,
+            copy.deepcopy(payload),
+            None,
+            profile=prof,
+            width=width,
+            height=height,
+            path=out,
+            section_scale=ss,
+            **typ,
         )
     except TypeError as e:
         if "bitmap_glyph_vscale" in str(e):
             typ.pop("bitmap_glyph_vscale", None)
             rsr._render_cached_hybrid(
-                copy.deepcopy(payload), None, profile=prof, width=width,
-                height=height, path=out, section_scale=ss, **typ,
+                copy.deepcopy(payload),
+                None,
+                profile=prof,
+                width=width,
+                height=height,
+                path=out,
+                section_scale=ss,
+                **typ,
             )
         else:
             raise
@@ -273,8 +368,11 @@ def render_gold(
                     "metadata": {
                         "operation": "re_render_real_receipt",
                         "boxes": "render_true",
-                        "render": {"width": width, "height": height,
-                                   "margin": 10},
+                        "render": {
+                            "width": width,
+                            "height": height,
+                            "margin": 10,
+                        },
                     },
                 },
                 fh,
@@ -293,8 +391,10 @@ def _parse_face(items):
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     ap.add_argument("--merchant", required=True)
     ap.add_argument("--image-id", required=True)
     ap.add_argument("--receipt-id", type=int, required=True)
@@ -302,19 +402,34 @@ def main(argv=None) -> int:
     ap.add_argument("--height", type=int, required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--vscale", type=float, default=None)
-    ap.add_argument("--face", action="append", default=[],
-                    help="override a bitmap_font face: KEY=PATH (repeatable)")
-    ap.add_argument("--degrade", default=None,
-                    help="fitted degrade params JSON applied after render")
+    ap.add_argument(
+        "--face",
+        action="append",
+        default=[],
+        help="override a bitmap_font face: KEY=PATH (repeatable)",
+    )
+    ap.add_argument(
+        "--degrade",
+        default=None,
+        help="fitted degrade params JSON applied after render",
+    )
     ap.add_argument("--degrade-seed", type=int, default=0)
     ap.add_argument("--labels-out", default=None)
-    ap.add_argument("--table",
-                    default=os.environ.get("DYNAMODB_TABLE_NAME",
-                                           "ReceiptsTable-dc5be22"))
-    ap.add_argument("--region",
-                    default=os.environ.get("AWS_REGION", "us-east-1"))
-    ap.add_argument("--cache-dir",
-                    default=os.path.join(_ROOT, ".out", "merchant_gold"))
+    ap.add_argument(
+        "--table",
+        default=os.environ.get("DYNAMODB_TABLE_NAME", "ReceiptsTable-dc5be22"),
+    )
+    ap.add_argument(
+        "--region", default=os.environ.get("AWS_REGION", "us-east-1")
+    )
+    ap.add_argument(
+        "--cache-dir", default=os.path.join(_ROOT, ".out", "merchant_gold")
+    )
+    ap.add_argument(
+        "--calibrate-from-corpus",
+        action="store_true",
+        help="authoring: rebuild cached_font_profile(n=12) and live bitmap_thin",
+    )
     ap.add_argument("--expect-sha", default=None)
     args = ap.parse_args(argv)
 
@@ -331,12 +446,14 @@ def main(argv=None) -> int:
         vscale=args.vscale,
         face_overrides=_parse_face(args.face),
         labels_out=args.labels_out,
+        calibrate_from_corpus=args.calibrate_from_corpus,
     )
     if args.degrade:
         from glyphstudio.degrade import degrade_image_file
 
-        degrade_image_file(args.out, args.out, args.degrade,
-                           seed=args.degrade_seed)
+        degrade_image_file(
+            args.out, args.out, args.degrade, seed=args.degrade_seed
+        )
     sha = hashlib.sha256(open(args.out, "rb").read()).hexdigest()
     print(f"{args.out} sha256={sha}")
     if args.expect_sha and sha != args.expect_sha:

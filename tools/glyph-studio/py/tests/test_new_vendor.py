@@ -67,8 +67,7 @@ def test_committed_vendor_files_are_consistent(monkeypatch):
 
     Resolve the font tree from this file, not CWD. CI runs pytest from the
     repo root with rootdir ``tools/glyph-studio/py``; xdist workers may
-    chdir. This PR does not commit a vendor.json, so the path check is a
-    known font dir (speedway) rather than ``found >= 1``.
+    chdir.
     """
     fonts_dir = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..", "fonts")
