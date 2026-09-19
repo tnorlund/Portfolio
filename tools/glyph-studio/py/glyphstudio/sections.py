@@ -181,6 +181,8 @@ STYLESCAN_TO_SECTION: dict[str, Optional[str]] = {
     "tender_line": "payment",  # "DEBIT $13.38" double-width bold tender line
     "fuel": "items",  # pump / grade / gallons block on fuel slips
     "agreement": "footer",  # card-holder agreement lines
+    # Whole Foods Market
+    "promo": "footer",  # Prime Visa / amazon.com promo block
 }
 
 

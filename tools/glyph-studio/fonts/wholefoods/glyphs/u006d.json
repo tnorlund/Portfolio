@@ -1,0 +1,111 @@
+{
+ "version": 1,
+ "char": "m",
+ "codepoint": 109,
+ "provenance": "edited",
+ "width": 612.8,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50.0,
+     "y": 50.9,
+     "type": "corner"
+    },
+    {
+     "x": 50.0,
+     "y": 649.7,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50.0,
+     "y": 420.2,
+     "type": "corner",
+     "hOut": {
+      "x": 50.0,
+      "y": 569.9
+     }
+    },
+    {
+     "x": 175.7,
+     "y": 649.7,
+     "type": "smooth",
+     "hIn": {
+      "x": 95.9,
+      "y": 649.7
+     },
+     "hOut": {
+      "x": 237.8,
+      "y": 649.7
+     }
+    },
+    {
+     "x": 301.4,
+     "y": 420.2,
+     "type": "corner",
+     "hIn": {
+      "x": 301.4,
+      "y": 569.9
+     }
+    },
+    {
+     "x": 301.4,
+     "y": 50.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 301.4,
+     "y": 420.2,
+     "type": "corner",
+     "hOut": {
+      "x": 301.4,
+      "y": 569.9
+     }
+    },
+    {
+     "x": 427.1,
+     "y": 649.7,
+     "type": "smooth",
+     "hIn": {
+      "x": 365.0,
+      "y": 649.7
+     },
+     "hOut": {
+      "x": 506.9,
+      "y": 649.7
+     }
+    },
+    {
+     "x": 552.8,
+     "y": 420.2,
+     "type": "corner",
+     "hIn": {
+      "x": 552.8,
+      "y": 569.9
+     }
+    },
+    {
+     "x": 552.8,
+     "y": 50.9,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "homedepot",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the homedepot face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(50..950) -> (51..949); x 567 -> 503"
+}

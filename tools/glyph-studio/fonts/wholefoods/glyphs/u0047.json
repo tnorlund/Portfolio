@@ -1,0 +1,190 @@
+{
+ "version": 1,
+ "char": "G",
+ "codepoint": 71,
+ "provenance": "edited",
+ "width": 522.8,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 308.6,
+     "y": 466.1,
+     "type": "corner"
+    },
+    {
+     "x": 325.67204211044657,
+     "y": 449.2,
+     "type": "corner"
+    },
+    {
+     "x": 458.6,
+     "y": 449.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 230.9,
+     "y": 30.2,
+     "type": "corner"
+    },
+    {
+     "x": 218.6,
+     "y": 122.6,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 61.4,
+     "y": 203.4,
+     "type": "corner"
+    },
+    {
+     "x": 114.2,
+     "y": 169.5,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 269.8,
+     "y": 119.3,
+     "type": "corner"
+    },
+    {
+     "x": 218.6,
+     "y": 119.3,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 470.5,
+     "y": 206.2,
+     "type": "corner"
+    },
+    {
+     "x": 366.0,
+     "y": 181.7,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 458.6,
+     "y": 452.7,
+     "type": "corner"
+    },
+    {
+     "x": 486.4,
+     "y": 30.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 131.2,
+     "y": 969.8,
+     "type": "corner"
+    },
+    {
+     "x": 151.83197445241996,
+     "y": 969.8,
+     "type": "corner"
+    },
+    {
+     "x": 199.96408662849615,
+     "y": 969.8,
+     "type": "corner"
+    },
+    {
+     "x": 233.6,
+     "y": 969.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 131.2,
+     "y": 969.8,
+     "type": "corner",
+     "hOut": {
+      "x": 13.626573156618264,
+      "y": 686.0
+     }
+    },
+    {
+     "x": 61.39999999999999,
+     "y": 203.4,
+     "type": "corner",
+     "hIn": {
+      "x": 35.572162274664365,
+      "y": 495.1
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 233.6,
+     "y": 969.8,
+     "type": "corner",
+     "hOut": {
+      "x": 308.10467956292683,
+      "y": 964.4
+     }
+    },
+    {
+     "x": 440.05777796753296,
+     "y": 796.5,
+     "type": "corner",
+     "hIn": {
+      "x": 435.00735678064524,
+      "y": 874.2
+     }
+    },
+    {
+     "x": 465.9262875918596,
+     "y": 781.3,
+     "type": "corner"
+    },
+    {
+     "x": 475.3,
+     "y": 664.7,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "homedepot",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the homedepot face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(50..950) -> (42..958)"
+}
