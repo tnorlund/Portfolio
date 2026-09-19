@@ -392,22 +392,65 @@ class TestStyleAnnotated:
 
 class TestManifest:
     def test_manifest_covers_every_figure_merchant(self):
-        with open(MANIFEST, encoding="utf-8") as fh:
-            merchants = json.load(fh)["merchants"]
-        assert set(merchants) == {
-            "sprouts",
-            "costco",
-            "vons",
-            "traderjoes",
-            "cvs",
-            "target",
-            "innout",
-            "wildfork",
-            "speedway",
-        }
+        from glyphstudio import portfolio_wiring as pw
+
+        merchants = pw.load_manifest(MANIFEST)
+        # Every committed finale asset dir is declared, and vice versa.
+        assert set(merchants) == pw.asset_dirs()
+        assert "sprouts" in merchants and list(merchants)[0] == "sprouts"
+        assert pw.validate(merchants) == []
         for slug, spec in merchants.items():
             assert os.path.isdir(
                 os.path.join(_STUDIO, "fonts", spec["font"])
             ), slug
             assert len(spec["hero"]) == 1
             assert set(spec["receipt"]) == {"image_id", "receipt_id"}
+
+
+class TestPortfolioWiring:
+    def test_generated_ts_matches_manifest(self):
+        from glyphstudio import portfolio_wiring as pw
+
+        merchants = pw.load_manifest(MANIFEST)
+        with open(pw.GENERATED_TS, encoding="utf-8") as fh:
+            committed = fh.read()
+        assert committed == pw.render_ts(merchants), (
+            "merchants.generated.ts is stale: "
+            "python -m glyphstudio.portfolio_wiring"
+        )
+
+    def test_render_ts_emits_every_table_in_card_order(self):
+        from glyphstudio import portfolio_wiring as pw
+
+        merchants = {
+            "b_mart": {
+                "merchant": "B Mart",
+                "font": "bmart",
+                "hero": "B",
+                "receipt": {"image_id": "x", "receipt_id": 1},
+                "label": "B's",
+                "dims": {"w": 760, "h": 1200},
+                "bold_callout": "the measured heading weight",
+            },
+            "a_mart": {
+                "merchant": "A Mart",
+                "font": "amart",
+                "hero": "A",
+                "receipt": {"image_id": "y", "receipt_id": 2},
+                "label": "A",
+                "dims": {"w": 760, "h": 2000},
+                "bold_callout": "the chart heavy face",
+            },
+        }
+        ts = pw.render_ts(merchants)
+        assert ts.index('"b_mart"') < ts.index('"a_mart"')
+        assert 'export type Merchant =\n  | "b_mart"\n  | "a_mart";' in ts
+        assert "b_mart: { w: 760, h: 1200 }," in ts
+        assert 'b_mart: "B\'s",' in ts
+        assert pw.validate(merchants) == []
+        bad = json.loads(json.dumps(merchants))
+        bad["a_mart"]["dims"] = {"w": 700, "h": 10}
+        del bad["b_mart"]["label"]
+        problems = pw.validate(bad)
+        assert any("dims" in p for p in problems)
+        assert any("label" in p for p in problems)

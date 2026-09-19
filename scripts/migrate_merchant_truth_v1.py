@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,6 +27,7 @@ from receipt_dynamo.migrations.merchant_truth_v1 import (
     ReadOnlyMerchantTruthSource,
     build_v1_payloads,
     write_dry_run_payloads,
+    write_local_fixtures,
 )
 from receipt_dynamo.migrations.merchant_truth_v1_live import (
     bootstrap_gate_results,
@@ -84,6 +86,22 @@ def main(argv: list[str] | None = None) -> int:
             'string ("") once all fonts are published. Coverage differing '
             "from this expectation hard-fails before anything is written."
         ),
+    )
+    parser.add_argument(
+        "--fixture-out",
+        type=Path,
+        help=(
+            "Also write one SEALED local fixture bundle per (selected) "
+            "merchant into this directory for MERCHANT_TRUTH_MODE=fixture, "
+            "with C#assets pointing at the compiled faces in --asset-dir. "
+            "Not a mint; nothing is written to DynamoDB or S3."
+        ),
+    )
+    parser.add_argument(
+        "--asset-dir",
+        type=Path,
+        default=Path(os.environ.get("BITMATRIX_DIR", "/tmp/bitmatrix")),
+        help="where the compiled <font>.glyphs.npz / logo live (default $BITMATRIX_DIR)",
     )
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--git-sha")
@@ -149,6 +167,15 @@ def main(argv: list[str] | None = None) -> int:
         generated_at=generated_at,
         git_sha=git_sha,
     )
+    if args.fixture_out is not None:
+        fixtures = write_local_fixtures(
+            args.fixture_out,
+            payloads,
+            args.asset_dir,
+            sealed_at=generated_at,
+        )
+        for path in fixtures:
+            print(f"FIXTURE: {path} (local assets from {args.asset_dir})")
     minted_slugs = sorted(
         payload.slug for payload in payloads if not payload.blockers
     )

@@ -6,6 +6,36 @@ review against a real receipt. It was executed end-to-end for Vons, Trader
 Joe's, and CVS; Sprouts and Costco predate it. Budget roughly one focused
 session per merchant. Every command below is copy-paste runnable.
 
+## The short way: `new_vendor.py`
+
+`tools/glyph-studio/py/new_vendor.py` runs the whole loop below as one
+idempotent stage per command, driven by `fonts/<slug>/vendor.json`
+(Whole Foods Market went from census to a portfolio card with these, in
+about 15 minutes of tool time):
+
+```bash
+cd $WT/tools/glyph-studio/py
+python new_vendor.py census --min-receipts 6            # or --state MI / --name "X;Y"
+python new_vendor.py init wholefoods --merchant "Whole Foods Market" \
+    --alias "WHOLE FOODS MARKET" --hero W --donor homedepot --label "Whole Foods"
+python new_vendor.py corpus wholefoods                  # build + refine
+python new_vendor.py font wholefoods                    # mint -> specimen + strips
+python new_vendor.py font wholefoods --fix "DGHMWbcde"  # triage feedback (repeat)
+python new_vendor.py pitch wholefoods                   # pitchRatioTarget / weight / condense
+python new_vendor.py style wholefoods                   # stylescan+agg -> stylemap.json draft + lines_*.txt
+#   author `rules` in fonts/<slug>/stylemap.json, rerun `style`
+python new_vendor.py profile wholefoods                 # merchant_profiles.json + env.mjs
+python new_vendor.py fixture wholefoods                 # faces -> $BITMATRIX_DIR, local truth fixture
+python new_vendor.py calibrate wholefoods               # render, solve ocr_cap_height_ratio, re-render
+python new_vendor.py export wholefoods                  # manifest entry + pipeline/<slug>/ finale set
+python new_vendor.py wire wholefoods                    # merchants.generated.ts
+```
+
+What stays human: the glyph triage (`--fix`), the section `rules` regexes,
+confirming the drafted stylemap weights against the strips, the logo, and
+the owner-only publish / mint / flip. The long form below explains what
+each stage does and how to hand-tune it.
+
 **Environment** (all steps): `python` = `~/Portfolio/.venv/bin/python`.
 `WT` = this worktree root. AWS creds with access to `ReceiptsTable-dc5be22`
 and the `raw-image-bucket-c779c32` vault bucket. macOS required for OCR steps

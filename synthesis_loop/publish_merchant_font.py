@@ -114,7 +114,9 @@ def _compile(font_dir: str, out_npz: str, enforce_pitch: bool = True) -> dict:
     return report
 
 
-def _reject_copied_letterforms(font_dir: str) -> None:
+def _reject_copied_letterforms(
+    font_dir: str, allow_donor_glyphs: bool = False
+) -> None:
     """Refuse to publish a font whose glyph geometries duplicate another
     merchant's font.
 
@@ -142,6 +144,25 @@ def _reject_copied_letterforms(font_dir: str) -> None:
     mine = geometries(font_dir)
     if not mine:
         return
+    donor = sorted(
+        os.path.basename(gp)
+        for gp in glob.glob(os.path.join(font_dir, "glyphs", "u*.json"))
+        if json.load(open(gp, encoding="utf-8")).get("donor")
+    )
+    if donor:
+        limit = max(4, int(0.25 * len(mine)))
+        msg = (
+            f"donor glyphs: {len(donor)}/{len(mine)} substantial glyphs were "
+            f"adopted from a sibling face by glyphstudio.mint --donor "
+            f"(e.g. {', '.join(donor[:6])})."
+        )
+        if len(donor) > limit and not allow_donor_glyphs:
+            raise SystemExit(
+                f"anti-copy gate: {msg} That is more than the {limit} the "
+                "gate tolerates; re-trace from more receipts or pass "
+                "--allow-donor-glyphs to publish knowingly."
+            )
+        print(f"  {msg}")
     fonts_root = os.path.dirname(os.path.abspath(font_dir))
     for other in sorted(glob.glob(os.path.join(fonts_root, "*"))):
         if not os.path.isdir(other) or os.path.samefile(other, font_dir):
@@ -212,6 +233,15 @@ def main() -> int:
     ap.add_argument("--bucket", default=DEFAULT_BUCKET)
     ap.add_argument("--skip-heavy", action="store_true")
     ap.add_argument(
+        "--allow-donor-glyphs",
+        action="store_true",
+        help=(
+            "publish even when more than a quarter of the substantial glyphs "
+            "were adopted from a sibling face (glyphstudio.mint --donor); "
+            "an owner decision, recorded in the run output"
+        ),
+    )
+    ap.add_argument(
         "--npz",
         default=None,
         help="publish this prebuilt regular npz instead of "
@@ -234,7 +264,9 @@ def main() -> int:
         help="local cache filename base (default <font dir name>)",
     )
     args = ap.parse_args()
-    _reject_copied_letterforms(args.font_dir)
+    _reject_copied_letterforms(
+        args.font_dir, allow_donor_glyphs=args.allow_donor_glyphs
+    )
 
     from receipt_dynamo import DynamoClient  # noqa: PLC0415
     from receipt_dynamo.entities import MerchantFont  # noqa: PLC0415
