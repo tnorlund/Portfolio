@@ -146,6 +146,21 @@
         "h": 1711
       },
       "bold_callout": "the measured DEBIT tender-line weight"
+    },
+    "wholefoods": {
+      "merchant": "Whole Foods Market",
+      "font": "wholefoods",
+      "hero": "W",
+      "receipt": {
+        "image_id": "774066fd-3a00-48d7-bfe8-e3ca71cc4cc9",
+        "receipt_id": 1
+      },
+      "label": "Whole Foods",
+      "bold_callout": "the measured heading weight",
+      "dims": {
+        "w": 760,
+        "h": 1559
+      }
     }
   }
 }

@@ -1169,6 +1169,43 @@
      "max_count": 0
     }
    }
+  },
+  "Whole Foods Market": {
+   "_comment": "Minted by new_vendor.py from Whole Foods Market's dev receipts (font wholefoods). Edit typography knobs here; `new_vendor.py calibrate` solves ocr_cap_height_ratio.",
+   "aliases": [
+    "WHOLE FOODS MARKET"
+   ],
+   "typography": {
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "wholefoods.glyphs.npz",
+     "heavy": "wholefoods-heavy.glyphs.npz"
+    },
+    "condense": 1.007,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "bitmap_thin": 0.0,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.72,
+    "stylemap": "wholefoods.stylemap.json",
+    "pitch_ratio": 0.579
+   },
+   "logo": "wholefoods_logo.png",
+   "logo_anchor": {
+    "phrases": [
+     "WHOLE FOODS",
+     "MARKET",
+     "WHOLE FOODS MARKET"
+    ],
+    "extend_left": false,
+    "center": true
+   },
+   "graphics": {
+    "footer_codes": true,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
   }
  }
 }

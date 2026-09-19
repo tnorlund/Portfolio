@@ -1,0 +1,32 @@
+{
+  "merchant": "Whole Foods Market",
+  "slug": "wholefoods",
+  "portfolio_slug": "wholefoods",
+  "aliases": [
+    "WHOLE FOODS MARKET"
+  ],
+  "hero": "W",
+  "label": "Whole Foods",
+  "bold_callout": "the measured heading weight",
+  "graphics": {
+    "footer_codes": true,
+    "inbody_barcode": {
+      "max_count": 0
+    }
+  },
+  "studio_dir": "/tmp/gridfix/wholefoods_studio",
+  "donor": "homedepot",
+  "gold_receipt": {
+    "image_id": "774066fd-3a00-48d7-bfe8-e3ca71cc4cc9",
+    "receipt_id": 1
+  },
+  "donor_for": {
+    "vons": "*_~@h"
+  },
+  "logo": "synthesis_loop/logo_masters/wholefoods_logo.png",
+  "logo_phrases": [
+    "WHOLE FOODS",
+    "MARKET",
+    "WHOLE FOODS MARKET"
+  ]
+}
