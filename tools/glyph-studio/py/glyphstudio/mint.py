@@ -125,6 +125,7 @@ def adopt_donor(
         g = json.loads(json.dumps(g))
         g["provenance"] = "edited"
         g.pop("trace", None)
+        g["donor"] = os.path.basename(os.path.normpath(donor_dir))
         g["note"] = note
         _walk(g, lambda x, y: (x, round(t0 + (y - d0) * k, 1)))
         g["normalized"] = (
@@ -235,6 +236,7 @@ def mint(
     out_npz: str,
     report_dir: str | None,
     fonts_root: str,
+    donor_for: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     os.environ["GLYPH_CORPUS_NAME"] = _trace.corpus_label(samples)
     _trace.main([samples, font_dir])
@@ -285,21 +287,39 @@ def mint(
 
     leftover = wanted - set(handcrafted)
     adopted: list[str] = []
-    if donor and leftover:
-        traced_band = (
-            cap_band(load_glyphs(font_dir), only_traced=True)
-            or DEFAULT_TARGET_BAND
+    traced_band = (
+        cap_band(load_glyphs(font_dir), only_traced=True)
+        or DEFAULT_TARGET_BAND
+    )
+
+    def _note(name: str) -> str:
+        return (
+            "Corpus too thin/polluted for this char; skeleton adopted from "
+            f"the {name} face (y-remapped onto this font's cap band). "
+            "Replace with a trace once more receipts exist."
         )
-        adopted = adopt_donor(
+
+    # Per-char donor overrides first (a sibling whose symbols are cleaner
+    # than the primary donor's), then the primary donor for the rest.
+    for name, chars in (donor_for or {}).items():
+        pick = "".join(sorted(leftover & set(chars)))
+        if pick:
+            got = adopt_donor(
+                os.path.join(fonts_root, name),
+                font_dir,
+                pick,
+                target_band=traced_band,
+                note=_note(name),
+            )
+            adopted += got
+            leftover -= set(got)
+    if donor and leftover:
+        adopted += adopt_donor(
             os.path.join(fonts_root, donor),
             font_dir,
             "".join(sorted(leftover)),
             target_band=traced_band,
-            note=(
-                f"Corpus too thin/polluted for this char; skeleton adopted from the "
-                f"{donor} face (y-remapped onto this font's cap band). Replace with a "
-                f"trace once more receipts exist."
-            ),
+            note=_note(donor),
         )
     still_missing = set(ASCII) - {chr(cp) for cp in load_glyphs(font_dir)}
 
@@ -317,6 +337,18 @@ def mint(
         "thin_corpus": sorted(thin),
         "handcrafted": handcrafted,
         "adopted_from_donor": adopted,
+        "donors": {
+            name: "".join(
+                sorted(
+                    chr(cp)
+                    for cp, g in final.items()
+                    if g.get("donor") == name
+                )
+            )
+            for name in sorted(
+                {g.get("donor") for g in final.values() if g.get("donor")}
+            )
+        },
         "squeezed": squeezed,
         "still_missing": sorted(still_missing),
         "coverage": report["coverage"],
@@ -359,6 +391,13 @@ def main(argv: list[str] | None = None) -> int:
         help="restrict hand-authoring to these chars ('' disables)",
     )
     ap.add_argument(
+        "--donor-for",
+        action="append",
+        default=[],
+        metavar="FONT:CHARS",
+        help="adopt CHARS from FONT instead of --donor (repeatable)",
+    )
+    ap.add_argument(
         "--min-samples",
         type=int,
         default=6,
@@ -387,6 +426,11 @@ def main(argv: list[str] | None = None) -> int:
         donor=args.donor,
         fix=args.fix,
         handcraft_chars=args.handcraft,
+        donor_for={
+            d.split(":", 1)[0]: d.split(":", 1)[1]
+            for d in args.donor_for
+            if ":" in d
+        },
         min_samples=args.min_samples,
         out_npz=out_npz,
         report_dir=args.report_dir,
@@ -401,9 +445,10 @@ def main(argv: list[str] | None = None) -> int:
         f"  thin(<{args.min_samples} samples): {''.join(summary['thin_corpus']) or '-'}   simplify kept raw trace for: {''.join(summary['simplify_gate_rejected']) or '-'}"
     )
     print(f"  handcrafted: {''.join(summary['handcrafted']) or '-'}")
-    print(
-        f"  donor({args.donor}): {''.join(summary['adopted_from_donor']) or '-'}"
-    )
+    for name, chars in summary["donors"].items():
+        print(f"  donor({name}): {chars}")
+    if not summary["donors"]:
+        print("  donor: -")
     print(f"  squeezed to cell: {''.join(summary['squeezed']) or '-'}")
     if summary["still_missing"]:
         print(f"  STILL MISSING: {''.join(summary['still_missing'])}")

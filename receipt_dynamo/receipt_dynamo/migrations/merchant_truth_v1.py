@@ -362,10 +362,24 @@ def _font_payload(font: MerchantFont) -> dict[str, Any]:
 
 
 def _find_local_stylemap(
-    merchant_name: str, stylemap_root: Path | None
+    merchant_name: str,
+    stylemap_root: Path | None,
+    stylemap_filename: str | None = None,
 ) -> Path | None:
+    """``<root>/<font-dir>/stylemap.json`` for a merchant.
+
+    The profile's ``typography.stylemap`` (``"<font>.stylemap.json"``) names
+    the font dir directly, which is what a studio slug that is not the
+    merchant's full name needs (``wholefoods`` for "Whole Foods Market");
+    otherwise fall back to matching the folder to the merchant name.
+    """
     if stylemap_root is None or not stylemap_root.exists():
         return None
+    if stylemap_filename and stylemap_filename.endswith(".stylemap.json"):
+        font_dir = stylemap_filename[: -len(".stylemap.json")]
+        candidate = stylemap_root / font_dir / "stylemap.json"
+        if candidate.exists():
+            return candidate
     merchant_token = "".join(
         character
         for character in merchant_name.casefold()
@@ -661,7 +675,11 @@ def _build_assets_and_stylemap(
             f"s3://{regular.s3_bucket}/{regular.stylemap_s3_key}"
         )
     else:
-        local_stylemap = _find_local_stylemap(merchant_name, stylemap_root)
+        local_stylemap = _find_local_stylemap(
+            merchant_name,
+            stylemap_root,
+            profile.get("typography", {}).get("stylemap"),
+        )
         if local_stylemap is not None:
             content = local_stylemap.read_bytes()
             stylemap = {
