@@ -1,0 +1,81 @@
+{
+ "version": 1,
+ "char": "0",
+ "codepoint": 48,
+ "provenance": "edited",
+ "width": 576,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": true,
+   "nodes": [
+    {
+     "x": 50,
+     "y": 282.1,
+     "type": "smooth",
+     "hIn": {
+      "x": 50,
+      "y": 166.5
+     }
+    },
+    {
+     "x": 50,
+     "y": 752.7,
+     "type": "smooth",
+     "hOut": {
+      "x": 50,
+      "y": 868.3
+     }
+    },
+    {
+     "x": 275,
+     "y": 961.9,
+     "type": "smooth",
+     "hIn": {
+      "x": 150.7,
+      "y": 961.9
+     },
+     "hOut": {
+      "x": 399.3,
+      "y": 961.9
+     }
+    },
+    {
+     "x": 500,
+     "y": 752.7,
+     "type": "smooth",
+     "hIn": {
+      "x": 500,
+      "y": 868.3
+     }
+    },
+    {
+     "x": 500,
+     "y": 282.1,
+     "type": "smooth",
+     "hOut": {
+      "x": 500,
+      "y": 166.5
+     }
+    },
+    {
+     "x": 275,
+     "y": 72.9,
+     "type": "smooth",
+     "hIn": {
+      "x": 399.3,
+      "y": 72.9
+     },
+     "hOut": {
+      "x": 150.7,
+      "y": 72.9
+     }
+    }
+   ]
+  }
+ ],
+ "donor": "sprouts",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the sprouts face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(67..950) -> (38..962)"
+}

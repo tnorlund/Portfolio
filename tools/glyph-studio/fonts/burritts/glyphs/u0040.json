@@ -1,0 +1,156 @@
+{
+ "version": 1,
+ "char": "@",
+ "codepoint": 64,
+ "provenance": "edited",
+ "width": 633,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": true,
+   "nodes": [
+    {
+     "x": 290,
+     "y": 784.1,
+     "type": "smooth",
+     "hIn": {
+      "x": 138,
+      "y": 784.1
+     },
+     "hOut": {
+      "x": 442,
+      "y": 784.1
+     }
+    },
+    {
+     "x": 535,
+     "y": 402.4,
+     "type": "smooth",
+     "hIn": {
+      "x": 535,
+      "y": 638.7
+     },
+     "hOut": {
+      "x": 535,
+      "y": 166.0
+     }
+    },
+    {
+     "x": 290,
+     "y": 20.6,
+     "type": "smooth",
+     "hIn": {
+      "x": 442,
+      "y": 20.6
+     },
+     "hOut": {
+      "x": 138,
+      "y": 20.6
+     }
+    },
+    {
+     "x": 45,
+     "y": 402.4,
+     "type": "smooth",
+     "hIn": {
+      "x": 45,
+      "y": 166.0
+     },
+     "hOut": {
+      "x": 45,
+      "y": 638.7
+     }
+    }
+   ]
+  },
+  {
+   "closed": true,
+   "nodes": [
+    {
+     "x": 265,
+     "y": 554.0,
+     "type": "smooth",
+     "hIn": {
+      "x": 199,
+      "y": 554.0
+     },
+     "hOut": {
+      "x": 331,
+      "y": 554.0
+     }
+    },
+    {
+     "x": 385,
+     "y": 402.4,
+     "type": "smooth",
+     "hIn": {
+      "x": 385,
+      "y": 486.0
+     },
+     "hOut": {
+      "x": 385,
+      "y": 318.7
+     }
+    },
+    {
+     "x": 265,
+     "y": 250.7,
+     "type": "smooth",
+     "hIn": {
+      "x": 331,
+      "y": 250.7
+     },
+     "hOut": {
+      "x": 199,
+      "y": 250.7
+     }
+    },
+    {
+     "x": 145,
+     "y": 402.4,
+     "type": "smooth",
+     "hIn": {
+      "x": 145,
+      "y": 486.0
+     },
+     "hOut": {
+      "x": 145,
+      "y": 318.7
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 385,
+     "y": 554.0,
+     "type": "corner"
+    },
+    {
+     "x": 385,
+     "y": 261.2,
+     "type": "corner",
+     "hOut": {
+      "x": 385,
+      "y": 182.7
+     }
+    },
+    {
+     "x": 480,
+     "y": 167.1,
+     "type": "smooth",
+     "hIn": {
+      "x": 425,
+      "y": 167.1
+     }
+    }
+   ]
+  }
+ ],
+ "donor": "sprouts",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the sprouts face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(67..950) -> (38..962)"
+}

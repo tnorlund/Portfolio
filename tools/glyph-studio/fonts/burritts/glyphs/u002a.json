@@ -1,0 +1,89 @@
+{
+ "version": 1,
+ "char": "*",
+ "codepoint": 42,
+ "provenance": "edited",
+ "width": 596.1,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 300.9,
+     "y": 888.7,
+     "type": "corner"
+    },
+    {
+     "x": 300.9,
+     "y": 470.4,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50.0,
+     "y": 784.1,
+     "type": "corner"
+    },
+    {
+     "x": 300.9,
+     "y": 470.4,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 536.1,
+     "y": 771.6,
+     "type": "corner"
+    },
+    {
+     "x": 300.9,
+     "y": 470.4,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 106.5,
+     "y": 41.6,
+     "type": "corner"
+    },
+    {
+     "x": 300.9,
+     "y": 470.4,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 470.2,
+     "y": 41.6,
+     "type": "corner"
+    },
+    {
+     "x": 300.9,
+     "y": 470.4,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "sprouts",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the sprouts face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(67..950) -> (38..962); x 775 -> 486"
+}
