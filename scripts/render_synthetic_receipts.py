@@ -453,11 +453,28 @@ def _repair_missing_top_header_lines(receipt: dict) -> dict:
         top_end += 1
     top_block = line_infos[first_header : top_end + 1]
     top_texts = {info["text"] for info in top_block}
+    # An OCR garble inside the header ("WESILARE, CA 91361") ends the
+    # contiguous block early, so header lines printed right below it would
+    # look missing and get cloned onto themselves. Everything above the
+    # first body section anchor is still the top header; a marker printed
+    # there is present, whatever the block boundary says.
+    body_anchors = set(hp.get("body_anchors") or ())
+    first_body = next(
+        (
+            index
+            for index, info in enumerate(line_infos)
+            if info["text"] in body_anchors
+        ),
+        top_end + 1,
+    )
+    top_zone_texts = top_texts | {
+        info["text"] for info in line_infos[first_header:first_body]
+    }
     exact_markers = set(hp.get("exact") or ())
     missing = [
         marker
         for marker in exact_markers
-        if marker not in top_texts
+        if marker not in top_zone_texts
         and any(info["text"] == marker for info in line_infos[top_end + 1 :])
     ]
     if not missing:
