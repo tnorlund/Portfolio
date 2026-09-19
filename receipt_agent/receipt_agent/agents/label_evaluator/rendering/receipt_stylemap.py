@@ -164,50 +164,37 @@ _SMITHS_RULES: list[tuple[str, re.Pattern]] = [
         ),
     ),
 ]
-# Speedway (gas-station POS): every row is body weight except the tender
-# line ("DEBIT $13.38", "CREDIT $ 14.66"), which the in-store POS prints in
-# a double-width bold face. Rows are the renderer's word-joined line text,
-# so the tender amount sits on the same row as the tender word.
-_SPEEDWAY_RULES: list[tuple[str, re.Pattern]] = [
-    (
-        "tender_line",
-        re.compile(
-            r"^(DEBIT|CREDIT|CASH|MASTERCARD|VISA)\s*\$?\s*[\d.,]*\s*$", re.I
-        ),
-    ),
-    (
-        "store_header",
-        re.compile(r"^SPEE?D\s?WAY\b|STORE\s?#?:|THANKS FOR SHOPPING", re.I),
-    ),
-    (
-        "summary",
-        re.compile(
-            r"^SUB\.?\s?TOTAL|^SALES TAX|^TAX:?\b|^TOTAL( DUE)?:?\b", re.I
-        ),
-    ),
-    (
-        "payment",
-        re.compile(
-            r"ACCT#|APPROVAL#|AUTH\b|TERM#|REF#|APP ?NAME|AID:|ENTRY:|"
-            r"^APPROVED|PIN VERIFIED|CRYPTO|\*{4,}",
-            re.I,
-        ),
-    ),
-    ("items_sold", re.compile(r"#\s?ITEMS SOLD", re.I)),
-    (
-        "footer",
-        re.compile(
-            r"THANKS? (YOU )?FOR|DON'T FORGET|DRIVE SAFE|Now Hiring|"
-            r"speedway\.com|^T#\d+",
-            re.I,
-        ),
-    ),
-]
 _MERCHANT_RULES = {
     "innout": _INNOUT_RULES,
     "smiths": _SMITHS_RULES,
-    "speedway": _SPEEDWAY_RULES,
 }
+
+
+_RULE_FLAGS = {"i": re.IGNORECASE, "m": re.MULTILINE, "x": re.VERBOSE}
+
+
+def declared_rules(
+    stylemap: Mapping[str, Any] | None,
+) -> list[tuple[str, re.Pattern]] | None:
+    """Classifier rules the stylemap carries itself (``"rules"`` list).
+
+    Same schema as glyphstudio.stylerules: ordered ``{section, pattern,
+    flags?}`` entries, ``flags`` defaulting to ``"i"``. When present they are
+    the ONLY rules used, so the measuring side (stylescan) and this renderer
+    classify rows identically without a second regex list in code.
+    """
+    raw = (stylemap or {}).get("rules")
+    if not isinstance(raw, list) or not raw:
+        return None
+    out: list[tuple[str, re.Pattern]] = []
+    for entry in raw:
+        flags = 0
+        for ch in str(entry.get("flags", "i")):
+            flags |= _RULE_FLAGS[ch]
+        out.append(
+            (str(entry["section"]), re.compile(str(entry["pattern"]), flags))
+        )
+    return out
 
 
 def _merchant_key(stylemap: Mapping[str, Any] | None) -> str | None:
@@ -246,13 +233,18 @@ def _is_section_header(compact: str) -> bool:
     )
 
 
-def classify_row(text: str, merchant: str | None = None) -> str:
+def classify_row(
+    text: str,
+    merchant: str | None = None,
+    rules: list[tuple[str, re.Pattern]] | None = None,
+) -> str:
     compact = text.strip()
     if _BARCODE_RE.match(compact.replace(" ", "")):
         return "barcode_caption"
     if _is_section_header(compact):
         return "section_header"
-    rules = _MERCHANT_RULES.get((merchant or "").lower(), _RULES)
+    if rules is None:
+        rules = _MERCHANT_RULES.get((merchant or "").lower(), _RULES)
     for name, rx in rules:
         if rx.search(compact):
             return name
@@ -331,7 +323,11 @@ def row_style(
     if not stylemap:
         return style
     sections = stylemap.get("sections") or {}
-    section = classify_row(row_text, merchant=_merchant_key(stylemap))
+    section = classify_row(
+        row_text,
+        merchant=_merchant_key(stylemap),
+        rules=declared_rules(stylemap),
+    )
     rule = sections.get(section)
     if not rule:
         return style
