@@ -161,6 +161,21 @@
         "w": 760,
         "h": 1559
       }
+    },
+    "burritts": {
+      "merchant": "Burritt's Fresh Markets",
+      "font": "burritts",
+      "hero": "B",
+      "receipt": {
+        "image_id": "7737b9f6-a046-4b5a-8268-a1f2641031d6",
+        "receipt_id": 1
+      },
+      "label": "Burritt's",
+      "bold_callout": "the measured TOTAL SALE weight",
+      "dims": {
+        "w": 760,
+        "h": 2308
+      }
     }
   }
 }

@@ -1,0 +1,31 @@
+{
+ "version": 1,
+ "char": "/",
+ "codepoint": 47,
+ "provenance": "edited",
+ "width": 536.8,
+ "baselineNudgePx": 0,
+ "overrides": {
+  "weight": 0.85
+ },
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50,
+     "y": 80.0,
+     "type": "corner"
+    },
+    {
+     "x": 517,
+     "y": 902.8,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "sprouts",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the sprouts face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(67..950) -> (46..954)"
+}

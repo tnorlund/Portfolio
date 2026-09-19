@@ -1,0 +1,45 @@
+{
+ "version": 1,
+ "char": "l",
+ "codepoint": 108,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "burritts.refined.npz",
+  "samples": 11,
+  "consensusHash": "a90281dcb636",
+  "date": "2026-09-19"
+ },
+ "width": 205.2,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 55.4,
+     "y": 954.2,
+     "type": "corner"
+    },
+    {
+     "x": 118.79281071220913,
+     "y": 954.2,
+     "type": "corner",
+     "hOut": {
+      "x": 171.57518752685593,
+      "y": 933.7
+     }
+    },
+    {
+     "x": 149.8,
+     "y": 45.8,
+     "type": "corner",
+     "hIn": {
+      "x": 83.69649714700273,
+      "y": 109.3
+     }
+    }
+   ]
+  }
+ ]
+}

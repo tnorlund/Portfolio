@@ -1,0 +1,29 @@
+{
+  "merchant": "Burritt's Fresh Markets",
+  "slug": "burritts",
+  "portfolio_slug": "burritts",
+  "aliases": [
+    "Burritt's Fresh Market",
+    "BURRITT'S FRESH MARKETS"
+  ],
+  "hero": "B",
+  "label": "Burritt's",
+  "bold_callout": "the measured TOTAL SALE weight",
+  "graphics": {
+    "footer_codes": true,
+    "inbody_barcode": {
+      "max_count": 0
+    }
+  },
+  "studio_dir": "/tmp/gridfix/burritts_studio",
+  "gold_receipt": {
+    "image_id": "7737b9f6-a046-4b5a-8268-a1f2641031d6",
+    "receipt_id": 1
+  },
+  "donor": "sprouts",
+  "card_logo": "synthesis_loop/logo_masters/burritts_logo.png",
+  "owns_profile": true,
+  "section_scale": {
+    "HEADER": 1.0
+  }
+}
