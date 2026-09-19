@@ -99,6 +99,12 @@ IMAGES = [
         "handler.handler",
         ["receipt_dynamo"],
     ),
+    (
+        "layoutlm-cache",
+        "infra/routes/layoutlm_inference_cache_generator/lambdas/Dockerfile",
+        "index.handler",
+        ["receipt_layoutlm", "torch", "transformers"],
+    ),
 ]
 
 
@@ -190,7 +196,7 @@ def build_needed(root: Path, event: str, before: str = "") -> bool:
         Path(path).name in {"Dockerfile", "pyproject.toml", "setup.py"}
         or Path(path).name.startswith("requirements")
         # Deployment hashes handler/package sources and baked glyph assets,
-        # not just manifests. Keep this conservative across all twelve images.
+        # not just manifests. Keep this conservative across all thirteen images.
         or path.startswith(("infra/", "receipt_", "tools/glyph-studio/"))
         or path
         in {

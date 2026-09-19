@@ -17,8 +17,8 @@ PYTHON_VERSION = "3.14"
 # When LayoutLM moves, raise PYTHON_FLOOR and everything follows.
 PYTHON_FLOOR = "3.13"
 PYTHON_FLOOR_TARGET = "py" + PYTHON_FLOOR.replace(".", "")
-# Files that legitimately name the LayoutLM 3.13 runtime. General setup
-# guides and every other runtime file must say 3.14.
+# Files that legitimately name the 3.13 LayoutLM export/training runtimes.
+# General setup guides and every other runtime file must say 3.14.
 SECONDARY_RUNTIME_DOCUMENTS = {
     Path("AGENTS.md"),
     Path("receipt_layoutlm/README.md"),
@@ -28,15 +28,12 @@ SECONDARY_RUNTIME_DOCUMENTS = {
     Path(".agents/skills/coreai-export/SKILL.md"),
 }
 SECONDARY_RUNTIME_FILES = {
-    Path("infra/routes/layoutlm_inference_cache_generator/lambdas/Dockerfile"),
     Path("infra/sagemaker_training/Dockerfile"),
-    Path("tests/test_lambda_image_inventory.py"),
     Path("tests/test_sagemaker_training_runtime.py"),
 }
-# receipt_layoutlm deploys on the 3.13 image, so it must advertise the
-# floor; its base package (torch>=2.6,<3) also runs on the 3.14 baseline
-# and may advertise that too. Only the [coreml] and [coreai] extras are
-# pinned to 3.13-only wheels.
+# receipt_layoutlm deploys on the 3.14 inference image but its [coreml] and
+# [coreai] extras are pinned to 3.13-only wheels (export venvs, SageMaker
+# training), so it must keep advertising the floor alongside the baseline.
 SECONDARY_RUNTIME_PYPROJECTS = {Path("receipt_layoutlm/pyproject.toml")}
 
 SCAN_ROOTS = (
