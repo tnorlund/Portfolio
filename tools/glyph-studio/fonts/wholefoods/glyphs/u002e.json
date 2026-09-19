@@ -1,0 +1,32 @@
+{
+ "version": 1,
+ "char": ".",
+ "codepoint": 46,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "wholefoods.refined.npz",
+  "samples": 30,
+  "consensusHash": "238078a7a2b8",
+  "date": "2026-09-19"
+ },
+ "width": 155.1,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 77.5,
+     "y": 77.5,
+     "type": "corner"
+    },
+    {
+     "x": 77.5,
+     "y": 77.5,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

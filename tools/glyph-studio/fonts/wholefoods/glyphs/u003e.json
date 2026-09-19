@@ -1,0 +1,44 @@
+{
+ "version": 1,
+ "char": ">",
+ "codepoint": 62,
+ "provenance": "edited",
+ "width": 533.3,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 70.0,
+     "y": 723.7,
+     "type": "corner"
+    },
+    {
+     "x": 463.3,
+     "y": 500.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 463.3,
+     "y": 500.0,
+     "type": "corner"
+    },
+    {
+     "x": 70.0,
+     "y": 276.3,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "homedepot",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the homedepot face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(50..950) -> (42..958)"
+}

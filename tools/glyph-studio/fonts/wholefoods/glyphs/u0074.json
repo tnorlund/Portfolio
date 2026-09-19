@@ -1,0 +1,103 @@
+{
+ "version": 1,
+ "char": "t",
+ "codepoint": 116,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "wholefoods.refined.npz",
+  "samples": 20,
+  "consensusHash": "14ab3d5079cc",
+  "date": "2026-09-19"
+ },
+ "width": 438.0,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 221.8,
+     "y": 50.9,
+     "type": "corner"
+    },
+    {
+     "x": 240.33683796225898,
+     "y": 50.9,
+     "type": "corner"
+    },
+    {
+     "x": 270.32937873002976,
+     "y": 50.9,
+     "type": "corner"
+    },
+    {
+     "x": 280.1,
+     "y": 50.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 192.7,
+     "y": 801.3,
+     "type": "corner",
+     "hOut": {
+      "x": 100.43198157054037,
+      "y": 633.7339510402932
+     }
+    },
+    {
+     "x": 221.80000000000004,
+     "y": 50.9,
+     "type": "corner",
+     "hIn": {
+      "x": 189.34764155186156,
+      "y": 231.7
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 382.9,
+     "y": 649.1,
+     "type": "corner",
+     "hOut": {
+      "x": 340.47334241542643,
+      "y": 696.1
+     }
+    },
+    {
+     "x": 256.56126098753674,
+     "y": 649.1,
+     "type": "corner",
+     "hIn": {
+      "x": 304.8766670824731,
+      "y": 698.6
+     }
+    },
+    {
+     "x": 215.33060595813072,
+     "y": 649.1,
+     "type": "corner"
+    },
+    {
+     "x": 159.58854764562915,
+     "y": 649.1,
+     "type": "corner"
+    },
+    {
+     "x": 55.1,
+     "y": 649.1,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

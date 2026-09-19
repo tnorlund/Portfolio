@@ -12,7 +12,8 @@ export type Merchant =
   | "target"
   | "innout"
   | "wildfork"
-  | "speedway";
+  | "speedway"
+  | "wholefoods";
 
 /** Every merchant the finale fans out to, in card order. */
 export const MERCHANTS: Merchant[] = [
@@ -25,6 +26,7 @@ export const MERCHANTS: Merchant[] = [
   "innout",
   "wildfork",
   "speedway",
+  "wholefoods",
 ];
 
 export const MERCHANT_LABELS: Record<Merchant, string> = {
@@ -37,6 +39,7 @@ export const MERCHANT_LABELS: Record<Merchant, string> = {
   innout: "In-N-Out",
   wildfork: "Wild Fork",
   speedway: "Speedway",
+  wholefoods: "Whole Foods",
 };
 
 /**
@@ -55,6 +58,7 @@ export const RECEIPT_DIMS: Record<Merchant, { w: number; h: number }> = {
   innout: { w: 760, h: 1958 },
   wildfork: { w: 760, h: 2678 },
   speedway: { w: 760, h: 1711 },
+  wholefoods: { w: 760, h: 1559 },
 };
 
 /**
@@ -71,4 +75,5 @@ export const BOLD_WEIGHT_CALLOUT: Record<Merchant, string> = {
   innout: "the measured heading weight",
   wildfork: "the measured heading weight",
   speedway: "the measured DEBIT tender-line weight",
+  wholefoods: "the measured heading weight",
 };
