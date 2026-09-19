@@ -539,79 +539,9 @@ _GELSONS_RULES = [
     ),
 ]
 
-
-# Speedway (gas-station POS): all-caps body; the tender line ("DEBIT
-# $13.38", "CREDIT $", "Cash") prints in a double-width bold face; the
-# EMV block, the card-holder agreement and the "DON'T FORGET THE ICE"
-# footer are body weight. Pump slips add a fuel block.
-_SPEEDWAY_RULES = [
-    (
-        "store_header",
-        re.compile(
-            r"^SPEE?D\s?WAY\b|^SPEFDWAY|STORE\s?#?:|^Ph(one)?:|"
-            r"THANKS FOR SHOPPING|FRONT STREET|TRAVERSE CITY|KANAN RD|"
-            r"HEATHERCLI|Agoura|MALIBU|^\d{5}(-\d{4})?$|^\(\d{3}\)",
-            re.I,
-        ),
-    ),
-    ("sale_header", re.compile(r"^SALE$|CUSTOMER COPY|Sale Receipt", re.I)),
-    (
-        "tender_line",
-        re.compile(
-            r"^(DEBIT|CREDIT|CASH|MASTERCARD|VISA)\s*\$?\s*[\d.,]*\s*$", re.I
-        ),
-    ),
-    (
-        "summary",
-        re.compile(
-            r"^SUB\.?\s?TOTAL|^SALES TAX|^TAX:?$|^TOTAL( DUE)?:?$|^Change\b|"
-            r"FUEL TOTAL|^Sales tax|^CECET",
-            re.I,
-        ),
-    ),
-    (
-        "fuel",
-        re.compile(
-            r"PUMP\b|^GRADE|GALLONS|PRICE/GAL|/Gal\b|Prepay|Diesel|REGULAR|"
-            r"Speedy\s?Rewards|Rollback",
-            re.I,
-        ),
-    ),
-    (
-        "payment",
-        re.compile(
-            r"ACCT#|APPROVAL#|AUTH\b|TERM#|REF#?:|APP ?NAME|AID:|ENTRY\s?:|"
-            r"^APPROVED|PIN VERIFIED|CRYPTO|ARQC|^TC\s?:|COMPLETION|"
-            r"^US DEBIT|Batch:|Seq:|TID:|Stan:|Resp Code|Reference:|"
-            r"Acct/Card|Receipt #:|Trans#|TRAN#|\*{4,}|Reg:\s?\d",
-            re.I,
-        ),
-    ),
-    ("items_sold", re.compile(r"#\s?ITEMS SOLD", re.I)),
-    (
-        "agreement",
-        re.compile(
-            r"CUSTOMER AGREES|TOTAL AMOUNT ACCORDING|HOLDERS AGREEMENT", re.I
-        ),
-    ),
-    (
-        "footer",
-        re.compile(
-            r"THANKS? (YOU )?FOR|YOUR BUSINESS|DON'T FORGET|DRIVE SAFE|"
-            r"Now Hiring|Apply at|speedway\.com|text SPEEDWAY|COME AGAIN|"
-            r"CHOOSING|^T#\d+|CSH:|SITE ID",
-            re.I,
-        ),
-    ),
-    (
-        "column_header",
-        re.compile(r"^(Description|Qty|Amount)$", re.I),
-    ),
-]
 _MERCHANT_RULES = {
     "sprouts": _RULES,
     "gelsons": _GELSONS_RULES,
-    "speedway": _SPEEDWAY_RULES,
     "costco": _COSTCO_RULES,
     "vons": _VONS_RULES,
     "traderjoes": _TJ_RULES,
@@ -623,6 +553,21 @@ _MERCHANT_RULES = {
 }
 
 
+def rules_for_merchant(merchant: str) -> list[tuple[str, re.Pattern]]:
+    """Classifier rules for a font-dir slug.
+
+    ``fonts/<merchant>/stylemap.json`` ``rules`` win (one source shared with
+    the renderer, see glyphstudio.stylerules); merchants without them fall
+    back to the legacy in-code lists, then to the Sprouts rules.
+    """
+    from .stylerules import rules_for_font
+
+    declared = rules_for_font(merchant)
+    if declared:
+        return declared
+    return _MERCHANT_RULES.get(merchant, _RULES)
+
+
 def _classify(text: str, has_price: bool, merchant: str = "sprouts") -> str:
     compact = text.strip()
     if _BARCODE_RE.match(compact.replace(" ", "")):
@@ -630,7 +575,7 @@ def _classify(text: str, has_price: bool, merchant: str = "sprouts") -> str:
     up = compact.upper().strip(":")
     if merchant == "sprouts" and up in SECTION_TOKENS:
         return "section_header"
-    for name, rx in _MERCHANT_RULES.get(merchant, _RULES):
+    for name, rx in rules_for_merchant(merchant):
         if rx.search(compact):
             return name
     if has_price:

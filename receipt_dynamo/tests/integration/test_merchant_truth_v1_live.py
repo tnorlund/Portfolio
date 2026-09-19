@@ -59,6 +59,17 @@ MERCHANTS = [
     "Vons",
     "Wild Fork",
 ]
+# Speedway is on this fixture (and on main via #1700) and is not in
+# EXPECTED_MISSING_FONT_SLUGS, so the live mint seals it. Derive from the
+# fixture so a new unblocked vendor cannot drift these pins again.
+EXPECTED_MINTED_COUNT = sum(
+    1
+    for name in MERCHANTS
+    if slugify_merchant(name) not in EXPECTED_MISSING_FONT_SLUGS
+)
+EXPECTED_EXCLUDED_COUNT = len(EXPECTED_MISSING_FONT_SLUGS)
+EXPECTED_REPLAY_MINTED_COUNT = EXPECTED_MINTED_COUNT - 2  # cvs, vons
+EXPECTED_PAYLOAD_JSON_COUNT = len(MERCHANTS) + 2
 STYLEMAP_BYTES = b'{"version":1,"sections":{}}'
 LOGO_BYTES = b"logo-bytes"
 
@@ -196,7 +207,7 @@ def test_live_mint_seals_unblocked_and_excludes_blocked(
 
     minted = [r for r in results if r.action == "MINTED_SEALED"]
     excluded = [r for r in results if r.action == "EXCLUDED"]
-    assert len(minted) == 13
+    assert len(minted) == EXPECTED_MINTED_COUNT
     assert {r.slug for r in excluded} == EXPECTED_MISSING_FONT_SLUGS
     for result in excluded:
         assert result.blockers
@@ -225,7 +236,7 @@ def test_live_bundles_byte_match_dry_run_payloads(
         client, tmp_path, minted_slugs, work_dir=tmp_path / "_live_verify"
     )
 
-    assert len(verify_results) == 13
+    assert len(verify_results) == EXPECTED_MINTED_COUNT
     assert all(result.ok for result in verify_results)
     by_slug = {result.slug: result for result in verify_results}
     for result in results:
@@ -342,7 +353,7 @@ def test_full_replay_skips_sealed_merchants_instead_of_aborting(
     for result in results:
         by_action.setdefault(result.action, set()).add(result.slug)
     assert by_action["SKIPPED_SEALED"] == {"cvs", "vons"}
-    assert len(by_action["MINTED_SEALED"]) == 11
+    assert len(by_action["MINTED_SEALED"]) == EXPECTED_REPLAY_MINTED_COUNT
     assert by_action["EXCLUDED"] == set(EXPECTED_MISSING_FONT_SLUGS)
     assert "CONFLICT_SEALED" not in by_action
     skipped = next(r for r in results if r.action == "SKIPPED_SEALED")
@@ -529,12 +540,17 @@ def test_script_live_verify_end_to_end(
     assert exit_code == 0
     assert "LIVE MERCHANT-TRUTH V1 MINT" in captured
     assert DEV_TABLE_NAME in captured
-    assert "merchants: 13" in captured
+    assert f"merchants: {EXPECTED_MINTED_COUNT}" in captured
     assert GIT_SHA in captured
-    assert captured.count("MINTED+SEALED v1") == 13
-    assert captured.count("EXCLUDED (asset-blocked)") == 4
-    assert "VERIFY OK: 13 live bundles byte-match" in captured
-    assert len(list(output_dir.glob("*.json"))) == 19
+    assert captured.count("MINTED+SEALED v1") == EXPECTED_MINTED_COUNT
+    assert (
+        captured.count("EXCLUDED (asset-blocked)") == EXPECTED_EXCLUDED_COUNT
+    )
+    assert (
+        f"VERIFY OK: {EXPECTED_MINTED_COUNT} live bundles byte-match"
+        in captured
+    )
+    assert len(list(output_dir.glob("*.json"))) == EXPECTED_PAYLOAD_JSON_COUNT
     client = DynamoClient(DEV_TABLE_NAME)
     manifest = client.get_merchant_truth_manifest(
         "sprouts_farmers_market", 1, consistent_read=True
@@ -565,7 +581,7 @@ def test_script_default_stays_dry_run_and_write_free(
     assert "DRY RUN: wrote 17 merchant payloads" in captured
     assert "No DynamoDB or S3 writes were performed." in captured
     assert "LIVE" not in captured
-    assert len(list(output_dir.glob("*.json"))) == 19
+    assert len(list(output_dir.glob("*.json"))) == EXPECTED_PAYLOAD_JSON_COUNT
     truth_rows = boto3.client("dynamodb", region_name="us-east-1").query(
         TableName=DEV_TABLE_NAME,
         IndexName="GSITYPE",
@@ -668,12 +684,17 @@ def test_script_replay_after_partial_mint_skips_and_verifies(
 
     captured = capsys.readouterr().out
     assert exit_code == 0
-    assert captured.count("MINTED+SEALED v1") == 11
+    assert captured.count("MINTED+SEALED v1") == EXPECTED_REPLAY_MINTED_COUNT
     assert captured.count("SKIPPED (already sealed, bundle=") == 2
-    assert captured.count("EXCLUDED (asset-blocked)") == 4
+    assert (
+        captured.count("EXCLUDED (asset-blocked)") == EXPECTED_EXCLUDED_COUNT
+    )
     assert "CONFLICT" not in captured
     assert "skipped 2 already-sealed" in captured
-    assert "VERIFY OK: 13 live bundles byte-match" in captured
+    assert (
+        f"VERIFY OK: {EXPECTED_MINTED_COUNT} live bundles byte-match"
+        in captured
+    )
 
 
 def test_default_expectation_fails_once_all_fonts_are_published(
