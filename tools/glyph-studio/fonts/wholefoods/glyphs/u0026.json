@@ -1,0 +1,84 @@
+{
+ "version": 1,
+ "char": "&",
+ "codepoint": 38,
+ "provenance": "edited",
+ "width": 612.8,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 552.8,
+     "y": 100,
+     "type": "corner"
+    },
+    {
+     "x": 156.4,
+     "y": 700,
+     "type": "corner",
+     "hIn": {
+      "x": 340.1,
+      "y": 380
+     }
+    },
+    {
+     "x": 243.4,
+     "y": 950.0,
+     "type": "smooth",
+     "hIn": {
+      "x": 108.0,
+      "y": 930
+     },
+     "hOut": {
+      "x": 359.4,
+      "y": 970.0
+     }
+    },
+    {
+     "x": 388.4,
+     "y": 720,
+     "type": "corner",
+     "hIn": {
+      "x": 417.4,
+      "y": 850
+     }
+    },
+    {
+     "x": 50.0,
+     "y": 300,
+     "type": "corner",
+     "hIn": {
+      "x": 243.4,
+      "y": 520
+     }
+    },
+    {
+     "x": 262.7,
+     "y": 50.0,
+     "type": "smooth",
+     "hIn": {
+      "x": 50.0,
+      "y": 90
+     },
+     "hOut": {
+      "x": 359.4,
+      "y": 40.0
+     }
+    },
+    {
+     "x": 523.8,
+     "y": 280,
+     "type": "corner",
+     "hIn": {
+      "x": 465.8,
+      "y": 90
+     }
+    }
+   ]
+  }
+ ],
+ "normalized": "x 520 -> 503"
+}

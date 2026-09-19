@@ -1,0 +1,66 @@
+{
+ "version": 1,
+ "char": "|",
+ "codepoint": 124,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "wholefoods.refined.npz",
+  "samples": 1,
+  "consensusHash": "330b21fc1a52",
+  "date": "2026-09-19"
+ },
+ "width": 113.5,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 48.4,
+     "y": 951.6,
+     "type": "corner",
+     "hOut": {
+      "x": 48.4,
+      "y": 742.6
+     }
+    },
+    {
+     "x": 48.4,
+     "y": 394.4,
+     "type": "smooth",
+     "hIn": {
+      "x": 48.4,
+      "y": 568.5
+     },
+     "hOut": {
+      "x": 52.1,
+      "y": 383.5
+     }
+    },
+    {
+     "x": 65.1,
+     "y": 366.7,
+     "type": "smooth",
+     "hIn": {
+      "x": 61.4,
+      "y": 377.6
+     },
+     "hOut": {
+      "x": 65.1,
+      "y": 257.4
+     }
+    },
+    {
+     "x": 65.1,
+     "y": 48.4,
+     "type": "corner",
+     "hIn": {
+      "x": 65.1,
+      "y": 148.1
+     }
+    }
+   ]
+  }
+ ]
+}
