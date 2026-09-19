@@ -45,5 +45,6 @@
   }
  ],
  "note": "Speedway corpus too thin/polluted for this char (6 receipts); skeleton adopted from the vons face (same C1-heavy thermal ROM, overlay-verified against the Speedway consensus).",
- "normalized": "y: vons(100..935) -> speedway(50..950)"
+ "normalized": "y: vons(100..935) -> speedway(50..950)",
+ "donor": "vons"
 }
