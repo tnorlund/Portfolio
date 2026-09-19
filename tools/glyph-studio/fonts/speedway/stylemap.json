@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "source": {
+    "merchant": "speedway",
+    "receipts": 5,
+    "scan_dir": "/tmp/gridfix/speedway_studio/scans",
+    "lines_measured": 139,
+    "date": "2026-09-19",
+    "notes": "5 distinct Speedway receipts (2 Traverse City MI photos, 2 CA scans, 1 CA photo; 49a1a1e7 is a duplicate of 1746d34d and was excluded). Body face is all-caps single-width on every slip; only the Michigan in-store POS prints its tender line in the double-width bold face."
+  },
+  "sections": {
+    "store_header": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=22. SPEEDWAY wordmark + address + STORE#/Ph lines are body (cap_rel med 1.026, stroke 0.96). The wordmark is plain text on the print, no logo graphic."
+    },
+    "sale_header": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=5. Standalone SALE / CUSTOMER COPY heading, body size (cap_rel med 0.931)."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=11. Body (cap_rel 0.994, stroke 0.995)."
+    },
+    "summary": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=13. SUBTOTAL / SALES TAX / TOTAL DUE block is body weight (cap_rel med 0.919 is scan skew on the CA slips, not a smaller face)."
+    },
+    "tender_line": {
+      "sizeScale": 1.0,
+      "weight": "bold",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=7. The Michigan POS prints 'DEBIT $13.38' in a double-width bold face (6cd665ef: stroke 10.7 px vs body 6.35, stroke_rel 1.69, tier=bold). The CA slips print their Cash/CREDIT/MASTERCARD tender lines at body weight (fleet stroke_rel med 0.926); bold is the gold-receipt face."
+    },
+    "payment": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.03,
+      "notes": "n=37. EMV/auth block is body (cap_rel 1.0, stroke 1.017)."
+    },
+    "fuel": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=10. Pump/grade/gallons block on the fuel slips, body (stroke 0.945)."
+    },
+    "items_sold": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=1. '# ITEMS SOLD 1' measured stroke_rel 1.11 (below the 1.12 bold threshold) on a crumpled photo; kept normal."
+    },
+    "agreement": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=3. Card-holder agreement lines: cap_rel med 1.172 is the photo's bottom-of-frame perspective (the 'DON'T FORGET THE ICE' footer measures 2x for the same reason); the print is body size."
+    },
+    "footer": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.06,
+      "notes": "n=18. Now Hiring / speedway.com / THANKS FOR YOUR BUSINESS / T#.. trailer, body weight (stroke 1.0)."
+    },
+    "other": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=12. Body."
+    }
+  }
+}

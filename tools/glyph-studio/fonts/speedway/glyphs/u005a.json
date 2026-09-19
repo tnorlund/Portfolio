@@ -1,0 +1,58 @@
+{
+ "version": 1,
+ "char": "Z",
+ "codepoint": 90,
+ "provenance": "edited",
+ "width": 514.2,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 45,
+     "y": 950.0,
+     "type": "corner"
+    },
+    {
+     "x": 465,
+     "y": 950.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 465,
+     "y": 950.0,
+     "type": "corner"
+    },
+    {
+     "x": 45,
+     "y": 50.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 45,
+     "y": 50.0,
+     "type": "corner"
+    },
+    {
+     "x": 465,
+     "y": 50.0,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "note": "Speedway corpus too thin/polluted for this char (6 receipts); skeleton adopted from the vons face (same C1-heavy thermal ROM, overlay-verified against the Speedway consensus).",
+ "normalized": "y: vons(100..935) -> speedway(50..950)"
+}
