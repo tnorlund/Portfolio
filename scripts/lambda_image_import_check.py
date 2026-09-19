@@ -127,6 +127,8 @@ def import_image(name: str) -> None:
         "CURATED_BUCKET",
         "GA_PROPERTY_ID",
         "OCR_JOB_QUEUE_URL",
+        "S3_CACHE_BUCKET",
+        "LAYOUTLM_TRAINING_BUCKET",
     ):
         os.environ[key] = "ci-import-only"
     os.environ.update(
