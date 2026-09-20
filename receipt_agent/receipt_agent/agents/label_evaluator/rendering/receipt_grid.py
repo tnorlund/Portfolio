@@ -1150,6 +1150,12 @@ def prefer_measured_amount_lane(
     spec: GridSpec,
     paper_width: float,
 ) -> int | None:
+    """Prefer this section's measured amount x; else the OCR median.
+
+    Do not pass a receipt-wide max-over-sections lane as ``ocr_lane``:
+    unmeasured sections must keep the OCR fallback instead of stealing
+    another section's template x.
+    """
     measured = measured_amount_lane_end(columns, spec, paper_width)
     return measured if measured is not None else ocr_lane
 
@@ -1363,10 +1369,7 @@ def plan_grid_line(
             if i in anchored:
                 continue
             abs_end = round((line[i].right - spec.grid_left) / spec.cell_w)
-            if (
-                abs(abs_end - slot_right) > _AMOUNT_LANE_TOL_CELLS
-                and i not in anchored
-            ):
+            if abs(abs_end - slot_right) > _AMOUNT_LANE_TOL_CELLS:
                 # This price sits far from the lane in the source. If one is
                 # already anchored it's a further-left column -> stop the stack.
                 # If none is, this lone price is an INLINE value (e.g.

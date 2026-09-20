@@ -134,29 +134,8 @@ def receipt(
     region = os.environ.get("AWS_REGION", "us-east-1")
     c = DynamoClient(table_name=table, region=region)
     s3 = boto3.client("s3", region_name=region)
-    prof = rsr.cached_font_profile(
-        table, merchant, region=region, max_receipts=12
-    )
     ss = rsr.section_scale_for_merchant(merchant)
     typ = rsr.merchant_typography(merchant)
-    atlas = None
-    needs_atlas = "bitmap_font" not in typ or (
-        "bitmap_font" in typ and "bitmap_thin" not in typ
-    )
-    if needs_atlas:
-        atlas = rsr.cached_glyph_atlas(
-            table, merchant, region=region, max_receipts=8
-        )
-    if "bitmap_font" in typ and "bitmap_thin" not in typ:
-        typ["bitmap_thin"] = rsr.resolve_bitmap_thin(
-            table,
-            merchant,
-            region=region,
-            atlas=atlas,
-            profile=prof,
-            section_scale=ss,
-            typography=typ,
-        )
 
     d = None
     rec = None
@@ -212,6 +191,35 @@ def receipt(
             barcodes = []
     wt = 760
     ht = int(round(wt * rec.height / rec.width))
+    studio_py = os.path.join(
+        os.path.dirname(HERE), "tools", "glyph-studio", "py"
+    )
+    if studio_py not in sys.path:
+        sys.path.insert(0, studio_py)
+    from glyphstudio.vendor_package import resolve_gold_inputs  # noqa: E402
+    from render_merchant_gold import closed_font_profile  # noqa: E402
+
+    calibrate = os.environ.get("GOLD_CALIBRATE_FROM_CORPUS") == "1"
+    atlas = None
+    need_atlas = "bitmap_font" not in typ or (
+        calibrate and "bitmap_thin" not in typ
+    )
+    if need_atlas:
+        atlas = rsr.cached_glyph_atlas(
+            table, merchant, region=region, max_receipts=8
+        )
+    prof, typ = resolve_gold_inputs(
+        merchant,
+        typ,
+        table=table,
+        region=region,
+        rsr=rsr,
+        make_profile=closed_font_profile,
+        calibrate_from_corpus=calibrate,
+        atlas=atlas,
+        section_scale=ss,
+        canvas_height=ht,
+    )
     tmp = out_png + ".syn.png"
     rsr._render_cached_hybrid(
         {"words": words, "barcodes": barcodes, "merchant_name": merchant},

@@ -266,6 +266,7 @@ class Exporter:
             calibrate_from_corpus=self.calibrate_from_corpus,
             atlas=atlas,
             section_scale=ss,
+            canvas_height=height,
         )
         box_sink: list[dict[str, Any]] = []
         typ["box_sink"] = box_sink
@@ -283,14 +284,18 @@ class Exporter:
             section_scale=ss,
             **typ,
         )
-        return pa.label_file(
-            box_sink,
-            words,
-            width=width,
-            height=height,
-            merchant=merchant,
-            receipt_key=f"{image_id}#{rid}",
-        )
+        return {
+            "labels": pa.label_file(
+                box_sink,
+                words,
+                width=width,
+                height=height,
+                merchant=merchant,
+                receipt_key=f"{image_id}#{rid}",
+            ),
+            "payload": doc,
+            "bitmap_font_paths": list((typ.get("bitmap_font") or {}).values()),
+        }
 
     # -- hero-act inputs ------------------------------------------------
 
@@ -362,6 +367,7 @@ def export_merchant(
     corpus_path: str | None,
     logo_override: str | None,
     manifest_path: str | None = None,
+    allow_dirty: bool = False,
 ) -> dict[str, Any]:
     merchant = spec["merchant"]
     font = spec["font"]
@@ -380,9 +386,11 @@ def export_merchant(
     # Finale pair: final.webp + labels, real.webp, logo, compose steps.
     with tempfile.TemporaryDirectory(prefix="pipeline-final-") as tmp:
         png = os.path.join(tmp, "final.png")
-        labels = exporter.render_final(
+        rendered = exporter.render_final(
             merchant, image_id, rid, width=width, height=height, out_png=png
         )
+        labels = rendered["labels"]
+        payload = rendered["payload"]
         _save_webp(Image.open(png), os.path.join(out_dir, "final.webp"))
     _write_json(os.path.join(out_dir, "final.labels.json"), labels)
     _write_json(
@@ -397,6 +405,7 @@ def export_merchant(
         os.path.join(out_dir, "real.webp"),
     )
 
+    logo_used = False
     if logo_override:
         logo = Image.open(logo_override)
     else:
@@ -408,27 +417,21 @@ def export_merchant(
     else:
         source = logo.convert("L") if logo_override else _alpha_to_gray(logo)
         pa.logo_mask(source).save(os.path.join(out_dir, "logo.png"))
+        logo_used = True
 
     try:
         image = exporter.client.get_image(image_id)
         image_type = str(getattr(image.image_type, "value", image.image_type))
     except Exception:  # noqa: BLE001 - provenance is best-effort on type
         image_type = None
-    payload = _cached_payload(
-        exporter.cache_dir,
-        exporter.table,
-        exporter.region,
-        merchant,
-        image_id,
-        rid,
-    )
     provenance = card_provenance(
         payload=payload,
-        font_json_path=os.path.join(FONTS_DIR, font, "font.json"),
+        font_paths=rendered["bitmap_font_paths"],
         logo_path=os.path.join(out_dir, "logo.png"),
+        logo_used=logo_used,
         final_webp_path=os.path.join(out_dir, "final.webp"),
         image_type=image_type,
-        commit=exporter_commit(_ROOT),
+        commit=exporter_commit(_ROOT, allow_dirty=allow_dirty),
     )
     summary["provenance"] = provenance
     if manifest_path:
@@ -588,6 +591,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="authoring: rebuild cached_font_profile(n=12) and live bitmap_thin",
     )
+    ap.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="record {sha}-dirty in provenance instead of refusing a dirty HEAD",
+    )
     args = ap.parse_args(argv)
 
     manifest = load_manifest(args.manifest)
@@ -618,6 +626,7 @@ def main(argv: list[str] | None = None) -> int:
             corpus_path=args.corpus,
             logo_override=args.logo,
             manifest_path=args.manifest,
+            allow_dirty=args.allow_dirty,
         )
         summaries.append(summary)
         print(f"[export] {slug}: {json.dumps(summary, sort_keys=True)}")

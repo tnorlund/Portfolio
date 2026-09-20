@@ -815,12 +815,6 @@ def _render_grid(
     measured_columns = layout_columns_by_section(
         config.layout_template, canonical_sections, rows
     )
-    amount_lane = prefer_measured_amount_lane(
-        ocr_amount_lane,
-        [col for cols in measured_columns.values() for col in cols],
-        spec,
-        float(config.width),
-    )
 
     # Per-section typography: a row whose section has a scale != 1.0 or a font
     # override is drawn with its own (cached) spec/font. BODY/TOTALS stay at the
@@ -1006,7 +1000,7 @@ def _render_grid(
     ):
         row_columns = measured_columns.get(canonical_section or "") or None
         row_amount_lane = prefer_measured_amount_lane(
-            amount_lane, row_columns, spec, float(config.width)
+            ocr_amount_lane, row_columns, spec, float(config.width)
         )
         row_text = " ".join(w.text for w in line).upper()
         # A display heading (e.g. SELF-CHECKOUT, THANK YOU, ITEMS SOLD:) renders

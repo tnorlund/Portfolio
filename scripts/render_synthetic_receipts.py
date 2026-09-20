@@ -30,14 +30,9 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 for path in (
     os.path.join(REPO_ROOT, "receipt_agent"),
     os.path.join(REPO_ROOT, "receipt_upload"),
-    os.path.join(REPO_ROOT, "tools", "glyph-studio", "py"),
 ):
     if path not in sys.path:
         sys.path.insert(0, path)
-
-from glyphstudio.vendor_package import (  # noqa: E402
-    vendor_uses_measured_separators,
-)
 
 from receipt_agent.agents.label_evaluator.rendering import (  # noqa: E402
     GlyphRenderConfig,
@@ -61,6 +56,9 @@ from receipt_agent.agents.label_evaluator.rendering.price_tokens import (  # noq
 )
 from receipt_agent.agents.label_evaluator.rendering.row_bands import (  # noqa: E402
     group_rows_quantized as _group_rows_quantized,
+)
+from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
+    MerchantTruthIntegrityError,
 )
 
 
@@ -1925,26 +1923,62 @@ def _measured_layout_template(
     return copy.deepcopy(layout_template)
 
 
+# Canonical Costco opt-in until a reminted bundle carries
+# layout_template.use_measured_separators. Aliased OCR names
+# ("COSTCO WHOLESALE #1187") resolve here via get_merchant_profile_key.
+_MEASURED_SEPARATOR_CANONICAL = frozenset({"costco wholesale"})
+
+
+def _canonical_merchant_profile(
+    merchant: str | None,
+) -> tuple[str | None, dict]:
+    """Same registry resolution as layout_template, if the registry is live.
+
+    Does not build the truth registry: unit tests and checkouts without
+    glyph-studio / AWS must not hit Dynamo from separator opt-in.
+    """
+    if _MERCHANT_TRUTH_REGISTRY is None:
+        return merchant, {}
+    try:
+        return get_merchant_profile_key(merchant)
+    except MerchantTruthIntegrityError:
+        return merchant, {}
+
+
 def hybrid_layout_separators(
     merchant: str | None,
     layout_template: dict | None,
     separators,
 ):
-    """Copy ``layout_template.separators`` only when the vendor opts in.
+    """Copy ``layout_template.separators`` only when the resolved profile opts in.
 
-    Costco sets ``use_measured_separators`` in vendor.json. Gelson's / The
-    Stand / Dollar Tree keep heuristic separators even though they carry a
-    measured inventory. ``None`` still means heuristics; ``()`` / ``[]``
-    suppresses them.
+    The flag lives on the profile the renderer already resolves (canonical
+    merchant + ``layout_template.use_measured_separators``), not an
+    exact-match of the OCR string against ``fonts/<slug>/vendor.json``
+    aliases. Costco is the current opt-in; Gelson's / The Stand / Dollar
+    Tree keep heuristic separators even though they carry a measured
+    inventory. ``None`` still means heuristics; ``()`` / ``[]`` suppresses
+    them.
     """
-    if not vendor_uses_measured_separators(merchant):
+    canonical, rec = _canonical_merchant_profile(merchant)
+    layout = (
+        layout_template
+        if isinstance(layout_template, dict)
+        else rec.get("layout_template")
+    )
+    if not isinstance(layout, dict):
+        layout = None
+    if "use_measured_separators" in rec:
+        opted = bool(rec.get("use_measured_separators"))
+    elif isinstance(layout, dict) and "use_measured_separators" in layout:
+        opted = bool(layout.get("use_measured_separators"))
+    else:
+        opted = (canonical or "").casefold() in _MEASURED_SEPARATOR_CANONICAL
+    if not opted:
         return separators
-    if (
-        not isinstance(layout_template, dict)
-        or "separators" not in layout_template
-    ):
+    if layout is None or "separators" not in layout:
         return separators
-    return layout_template.get("separators")
+    return layout.get("separators")
 
 
 def _render_cached_hybrid(

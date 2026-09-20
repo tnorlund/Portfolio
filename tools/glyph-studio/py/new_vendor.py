@@ -948,11 +948,36 @@ def _set_profile_knob(merchant: str, key: str, value: Any) -> None:
         fh.write("\n")
 
 
+def _set_vendor_export_pin(slug: str, key: str, value: Any) -> None:
+    """Write an export pin into fonts/<slug>/vendor.json without load_vendor defaults."""
+    path = vendor_path(slug)
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    doc[key] = value
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+
+
+def _export_ocr_cap_pin(v: dict[str, Any], typ: dict[str, Any]) -> float:
+    """The pin export overlays: vendor.json, else the reviewed profile."""
+    raw = v.get("ocr_cap_height_ratio")
+    if raw is not None:
+        return float(raw)
+    return float(typ.get("ocr_cap_height_ratio", 0.72))
+
+
 def cmd_calibrate(args) -> int:
+    """Solve ocr_cap_height_ratio against the gold receipt.
+
+    ``vendor.json`` is the export pin. A passing calibration writes that pin
+    (and the merchant profile) so ``cmd_export`` without
+    ``--calibrate-from-corpus`` renders the same ratio the review just scored.
+    """
     v = load_vendor(args.slug)
     with open(PROFILES, encoding="utf-8") as fh:
         typ = json.load(fh)["profiles"][v["merchant"]]["typography"]
-    ratio = float(typ.get("ocr_cap_height_ratio", 0.72))
+    ratio = _export_ocr_cap_pin(v, typ)
     metrics = _render_review(v, "cal0", args.truth)
     for i in range(1, args.iterations + 1):
         if H_BAND[0] <= metrics["h_ratio"] <= H_BAND[1]:
@@ -973,11 +998,14 @@ def cmd_calibrate(args) -> int:
         )
         ratio = round(solved, 3)
         _set_profile_knob(v["merchant"], "ocr_cap_height_ratio", ratio)
+        _set_vendor_export_pin(v["slug"], "ocr_cap_height_ratio", ratio)
         if (
             args.truth or _truth_env(v, args.truth).get("MERCHANT_TRUTH_MODE")
         ) == "fixture":
             cmd_fixture(argparse.Namespace(slug=v["slug"]))
         metrics = _render_review(v, f"cal{i}", args.truth)
+    _set_profile_knob(v["merchant"], "ocr_cap_height_ratio", ratio)
+    _set_vendor_export_pin(v["slug"], "ocr_cap_height_ratio", ratio)
     ok = (
         H_BAND[0] <= metrics["h_ratio"] <= H_BAND[1]
         and H_BAND[0] <= metrics["wpc_ratio"] <= H_BAND[1]

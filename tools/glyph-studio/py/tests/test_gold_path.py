@@ -6,19 +6,25 @@ suite stays resolvable without the renderer / receipt_embeddings stack.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import subprocess
 from types import SimpleNamespace
 
 import pytest
 from glyphstudio.provenance import (
     PROVENANCE_KEYS,
     card_provenance,
+    exporter_commit,
     write_manifest_provenance,
 )
 from glyphstudio.vendor_package import (
+    CLOSED_PROFILE_MARGIN,
     apply_gold_pins,
+    closed_profile_geometry,
     gold_render_pins,
+    numeric_pin,
     resolve_gold_inputs,
     vendor_uses_measured_separators,
 )
@@ -55,11 +61,54 @@ def test_gold_pins_read_font_json_and_vendor_json():
     assert costco["bitmap_thin"] == 0.0
     assert costco["ocr_cap_height_ratio"] == pytest.approx(0.72)
     assert costco["use_measured_separators"] is True
+    assert costco["cap_px"] == pytest.approx(22)
+    assert costco["pin_pitch_ratio"] is False
 
     sprouts = gold_render_pins("sprouts")
     assert sprouts["pitch_ratio"] == pytest.approx(0.545)
     assert sprouts["bitmap_thin"] is None
     assert sprouts["use_measured_separators"] is False
+    assert sprouts["cap_px"] == pytest.approx(22)
+    assert sprouts["pin_pitch_ratio"] is False
+
+
+def test_font_json_auto_thin_is_not_a_pin():
+    assert numeric_pin("auto") is None
+    assert numeric_pin(0.31) == pytest.approx(0.31)
+    assert numeric_pin(0) == 0.0
+    assert numeric_pin(True) is None
+    sprouts = gold_render_pins("sprouts")
+    assert sprouts["bitmap_thin"] is None
+
+
+def test_closed_profile_geometry_uses_recorded_cap_px():
+    pins = gold_render_pins("sprouts")
+    pins["canvas_height"] = 2497
+    font_height, _char_width = closed_profile_geometry(pins)
+    inner_h = 2497 - 2 * CLOSED_PROFILE_MARGIN
+    assert font_height == pytest.approx(22.0 / inner_h)
+    assert round(font_height * inner_h) == 22
+    assert font_height * inner_h * 1.35 == pytest.approx(29.7)
+    fallback_h, _ = closed_profile_geometry({})
+    assert fallback_h == pytest.approx(0.018)
+
+
+def test_apply_gold_pins_does_not_overlay_font_json_pitch_ratio():
+    stand = apply_gold_pins(
+        {"pitch_ratio": 0.647, "condense": 0.9376},
+        gold_render_pins("thestand"),
+    )
+    assert stand["pitch_ratio"] == pytest.approx(0.647)
+    sprouts = apply_gold_pins(
+        {"condense": 0.895, "bitmap_thin": 0.225},
+        gold_render_pins("sprouts"),
+    )
+    assert "pitch_ratio" not in sprouts
+    opted = apply_gold_pins(
+        {"pitch_ratio": 0.647},
+        {"pitch_ratio": 0.7426, "pin_pitch_ratio": True},
+    )
+    assert opted["pitch_ratio"] == pytest.approx(0.7426)
 
 
 def test_closed_gold_inputs_do_not_call_live_profile_or_thin():
@@ -75,12 +124,16 @@ def test_closed_gold_inputs_do_not_call_live_profile_or_thin():
         region="us-east-1",
         rsr=rsr,
         make_profile=_make_profile,
+        canvas_height=1800,
     )
     assert out["bitmap_thin"] == 0.0
     assert out["ocr_cap_height_ratio"] == pytest.approx(0.72)
+    assert "pitch_ratio" not in out
     assert prof.receipt_count == 0
     assert prof.merchant_name == "Costco Wholesale"
     assert prof.pins["pitch_ratio"] is None
+    assert prof.pins["canvas_height"] == 1800
+    assert prof.pins["cap_px"] == pytest.approx(22)
 
 
 def test_calibrate_from_corpus_still_uses_live_profile():
@@ -117,7 +170,7 @@ def test_closed_profile_callback_receives_font_json_pitch():
         seen["pins"] = pins
         return SimpleNamespace(merchant_name=merchant, receipt_count=0)
 
-    resolve_gold_inputs(
+    _, out = resolve_gold_inputs(
         "Sprouts Farmers Market",
         {"condense": 0.93},
         table="t",
@@ -127,22 +180,29 @@ def test_closed_profile_callback_receives_font_json_pitch():
             resolve_bitmap_thin=_boom_thin,
         ),
         make_profile=make_profile,
+        canvas_height=2497,
     )
     assert seen["merchant"] == "Sprouts Farmers Market"
     assert seen["pins"]["pitch_ratio"] == pytest.approx(0.545)
+    assert seen["pins"]["cap_px"] == pytest.approx(22)
+    assert seen["pins"]["canvas_height"] == 2497
+    assert "pitch_ratio" not in out
 
 
-def test_card_provenance_writes_required_keys(tmp_path):
-    font = tmp_path / "font.json"
-    font.write_text("{}", encoding="utf-8")
-    logo = tmp_path / "logo.png"
-    logo.write_bytes(b"logo-bytes")
+def test_card_provenance_hashes_rendered_faces_not_skipped_logo(tmp_path):
+    regular = tmp_path / "bitMatrix-C2.glyphs.npz"
+    heavy = tmp_path / "bitMatrix-C2-heavy.glyphs.npz"
+    regular.write_bytes(b"regular-face")
+    heavy.write_bytes(b"heavy-face")
+    skipped_logo = tmp_path / "logo.png"
+    skipped_logo.write_bytes(b"should-not-hash")
     webp = tmp_path / "final.webp"
     webp.write_bytes(b"webp-bytes")
     block = card_provenance(
         payload={"words": [{"text": "A"}], "merchant": "X"},
-        font_json_path=str(font),
-        logo_path=str(logo),
+        font_paths=[str(regular), str(heavy)],
+        logo_path=str(skipped_logo),
+        logo_used=False,
         final_webp_path=str(webp),
         image_type="SCAN",
         commit="deadbeef",
@@ -150,10 +210,10 @@ def test_card_provenance_writes_required_keys(tmp_path):
     assert set(block) == set(PROVENANCE_KEYS)
     assert block["exporter_commit"] == "deadbeef"
     assert block["image_type"] == "SCAN"
-    assert len(block["source_snapshot_sha256"]) == 64
+    assert block["logo_sha256"] is None
+    assert block["font_sha256"] is not None
     assert len(block["font_sha256"]) == 64
-    assert len(block["logo_sha256"]) == 64
-    assert len(block["final_webp_sha256"]) == 64
+    assert block["font_sha256"] != hashlib.sha256(b"{}").hexdigest()
 
     manifest = tmp_path / "pipeline_merchants.json"
     manifest.write_text(
@@ -173,3 +233,34 @@ def test_card_provenance_writes_required_keys(tmp_path):
     saved = json.loads(manifest.read_text(encoding="utf-8"))
     assert saved["merchants"]["sprouts"]["provenance"] == block
     assert os.path.isdir(os.path.join(_STUDIO, "fonts", "costco"))
+
+
+def test_exporter_commit_refuses_dirty_head(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git = ["git", "-C", str(repo)]
+    subprocess.check_call(
+        [*git, "init"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    subprocess.check_call([*git, "config", "user.email", "t@example.com"])
+    subprocess.check_call([*git, "config", "user.name", "t"])
+    subprocess.check_call([*git, "config", "commit.gpgsign", "false"])
+    (repo / "f").write_text("a", encoding="utf-8")
+    subprocess.check_call([*git, "add", "f"])
+    subprocess.check_call(
+        [*git, "commit", "-m", "i"],
+        stdout=subprocess.DEVNULL,
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.com",
+        },
+    )
+    clean = exporter_commit(str(repo))
+    assert clean and "-dirty" not in clean
+    (repo / "f").write_text("dirty", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="refusing dirty HEAD"):
+        exporter_commit(str(repo))
+    assert exporter_commit(str(repo), allow_dirty=True).endswith("-dirty")

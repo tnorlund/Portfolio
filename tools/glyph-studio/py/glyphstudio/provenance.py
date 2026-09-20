@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import subprocess
+from collections.abc import Sequence
 from typing import Any
 
 PROVENANCE_KEYS = (
@@ -26,41 +27,90 @@ def sha256_file(path: str) -> str:
     return digest.hexdigest()
 
 
+def sha256_files(paths: Sequence[str] | None) -> str | None:
+    """Hash the NPZ faces actually rendered, in basename-stable order."""
+    files = [p for p in (paths or ()) if p and os.path.isfile(p)]
+    if not files:
+        return None
+    digest = hashlib.sha256()
+    for path in sorted(files, key=os.path.basename):
+        digest.update(os.path.basename(path).encode("utf-8"))
+        digest.update(b"\0")
+        with open(path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
 def sha256_json(obj: Any) -> str:
     blob = json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(blob).hexdigest()
 
 
-def exporter_commit(repo_root: str) -> str | None:
+def git_head_status(repo_root: str) -> tuple[str | None, bool]:
     try:
-        return subprocess.check_output(
+        sha = subprocess.check_output(
             ["git", "-C", repo_root, "rev-parse", "HEAD"],
             text=True,
         ).strip()
     except (OSError, subprocess.CalledProcessError):
+        return None, False
+    try:
+        dirty = bool(
+            subprocess.check_output(
+                ["git", "-C", repo_root, "status", "--porcelain"],
+                text=True,
+            ).strip()
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return sha, False
+    return sha, dirty
+
+
+def exporter_commit(
+    repo_root: str, *, allow_dirty: bool = False
+) -> str | None:
+    """Git HEAD for the provenance block.
+
+    Dirty trees refuse by default so a provenance commit cannot silently
+    describe bytes that were not what HEAD compiled. ``allow_dirty`` records
+    ``{sha}-dirty`` instead.
+    """
+    sha, dirty = git_head_status(repo_root)
+    if sha is None:
         return None
+    if not dirty:
+        return sha
+    if not allow_dirty:
+        raise RuntimeError(
+            f"refusing dirty HEAD {sha[:12]} for provenance; "
+            "commit your changes or pass --allow-dirty"
+        )
+    return f"{sha}-dirty"
 
 
 def card_provenance(
     *,
     payload: dict[str, Any],
-    font_json_path: str | None,
+    font_paths: Sequence[str] | None = None,
     logo_path: str | None,
     final_webp_path: str | None,
     image_type: str | None,
     commit: str | None,
+    logo_used: bool = True,
 ) -> dict[str, Any]:
-    """Closed-input audit trail written into ``pipeline_merchants.json``."""
+    """Closed-input audit trail written into ``pipeline_merchants.json``.
+
+    ``font_sha256`` hashes the regular/heavy NPZ faces the renderer actually
+    resolved (truth-bundle bitMatrix-C2 for Costco, not local font.json).
+    ``logo_sha256`` is omitted when this run skipped writing logo.png.
+    """
     return {
         "source_snapshot_sha256": sha256_json(payload),
-        "font_sha256": (
-            sha256_file(font_json_path)
-            if font_json_path and os.path.isfile(font_json_path)
-            else None
-        ),
+        "font_sha256": sha256_files(font_paths),
         "logo_sha256": (
             sha256_file(logo_path)
-            if logo_path and os.path.isfile(logo_path)
+            if logo_used and logo_path and os.path.isfile(logo_path)
             else None
         ),
         "final_webp_sha256": (

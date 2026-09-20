@@ -14,10 +14,10 @@ entry in ``scripts/merchant_profiles.json``:
   canonical section each rule follows, and receipt support.
 
 Measured columns are live in the hybrid renderer. Separators are copied
-into ``config.separators`` only when ``vendor.json`` sets
-``use_measured_separators: true`` (Costco); absent / false keeps the
-heuristic inventory (``None``). The eval's column metric can still read
-the block via ``--columns-source profile``.
+into ``config.separators`` only when the resolved merchant profile opts
+in (``layout_template.use_measured_separators``, Costco); absent / false
+keeps the heuristic inventory (``None``). The eval's column metric can
+still read the block via ``--columns-source profile``.
 
 Usage:
   python -m glyphstudio.layout_template <profile_key> <scan_dir> [--dry-run]
@@ -265,7 +265,7 @@ def build_layout_template(scans: list[dict]) -> dict:
             "Measured layout data (#1188 P2): columns/sections/separators "
             "from real receipts via glyphstudio.layout_template. Columns "
             "are live in the renderer. Separators copy into "
-            "config.separators only when vendor.json sets "
+            "config.separators when the resolved profile sets "
             "use_measured_separators (Costco). full_fidelity_eval can "
             "still read columns via --columns-source profile."
         ),

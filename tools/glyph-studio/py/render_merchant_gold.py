@@ -54,26 +54,23 @@ for _p in (
         sys.path.insert(0, _p)
 
 import render_synthetic_receipts as rsr  # noqa: E402
-from glyphstudio.vendor_package import resolve_gold_inputs  # noqa: E402
+from glyphstudio.vendor_package import (  # noqa: E402
+    closed_profile_geometry,
+    resolve_gold_inputs,
+)
 
 from receipt_agent.agents.label_evaluator.rendering.font_profile import (  # noqa: E402
     MerchantFontProfile,
 )
 
-_FALLBACK_FONT_HEIGHT = 0.018
-_FALLBACK_CHAR_WIDTH = 0.0125
-
 
 def closed_font_profile(merchant, pins=None):
-    """Deterministic ``MerchantFontProfile`` with no Dynamo 12-receipt build."""
-    pins = pins or {}
-    font_height = _FALLBACK_FONT_HEIGHT
-    pitch = pins.get("pitch_ratio")
-    char_width = (
-        float(pitch) * font_height
-        if pitch is not None
-        else _FALLBACK_CHAR_WIDTH
-    )
+    """Deterministic ``MerchantFontProfile`` with no Dynamo 12-receipt build.
+
+    Consumes recorded ``cap_px`` + ``canvas_height`` so ``build_grid_spec``
+    gets the measured ``font_px`` / ``cell_h`` instead of the 0.018 fallback.
+    """
+    font_height, char_width = closed_profile_geometry(pins)
     return MerchantFontProfile(
         merchant_name=merchant,
         receipt_count=0,
@@ -247,6 +244,7 @@ def closed_gold_inputs(
     calibrate_from_corpus=False,
     atlas=None,
     section_scale=None,
+    canvas_height=None,
 ):
     """Profile + typography for gold/export: git pins, no live 12-receipt thin.
 
@@ -263,6 +261,7 @@ def closed_gold_inputs(
         calibrate_from_corpus=calibrate_from_corpus,
         atlas=atlas,
         section_scale=section_scale,
+        canvas_height=canvas_height,
     )
 
 
@@ -305,6 +304,7 @@ def render_gold(
         region=region,
         calibrate_from_corpus=calibrate_from_corpus,
         section_scale=ss,
+        canvas_height=height,
     )
     payload = {
         "words": doc["words"],
