@@ -263,17 +263,40 @@ def validate_projection(conn: sqlite3.Connection) -> None:
 
 
 def _open(path: str) -> sqlite3.Connection:
+    """Open and validate; anything short of a valid projection is rejected.
+
+    A file that is not SQLite at all raises ``sqlite3.DatabaseError`` from
+    the first statement; that is the same failure as a schema mismatch for
+    our purposes and must take the same fail-closed path.
+    """
     conn = sqlite3.connect(
         f"file:{path}?mode=ro&immutable=1", uri=True, check_same_thread=False
     )
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA query_only = 1")
     try:
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only = 1")
         validate_projection(conn)
+    except sqlite3.DatabaseError as exc:
+        conn.close()
+        raise ProjectionInvalid(
+            "published object is not a readable SQLite database"
+        ) from exc
     except ProjectionInvalid:
         conn.close()
         raise
     return conn
+
+
+def _drop_served(path: str | None) -> None:
+    previous = _state["conn"]
+    _state.update(etag=None, conn=None, loaded_at=None)
+    if previous is not None:
+        previous.close()
+    if path is not None:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 
 def _connection() -> sqlite3.Connection:
@@ -292,20 +315,19 @@ def _connection() -> sqlite3.Connection:
     _refresh_manifest()
     if etag == _state["etag"] and _state["conn"] is not None:
         return _state["conn"]
-    path = _download(etag)
     try:
+        path = _download(etag)
         conn = _open(path)
+    except (gzip.BadGzipFile, EOFError, OSError) as exc:
+        # Not even a gzip stream: same fail-closed handling as a bad schema.
+        _drop_served(None)
+        raise ProjectionInvalid(
+            f"published object is not a gzip stream ({exc})"
+        ) from exc
     except ProjectionInvalid:
         # Never serve an invalid file, and never keep serving a previous one
         # as if it were current: drop it so every call reports the failure.
-        previous = _state["conn"]
-        _state.update(etag=None, conn=None, loaded_at=None)
-        if previous is not None:
-            previous.close()
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
+        _drop_served(path)
         raise
     previous = _state["conn"]
     _state.update(etag=etag, conn=conn, loaded_at=time.time())
@@ -378,8 +400,11 @@ _SQL_LITERALS = re.compile(
     re.S,
 )
 _SQL_DENY = re.compile(
+    # `replace` is deliberately absent: REPLACE(...) is a read-only scalar
+    # function, and `REPLACE INTO` already fails the SELECT/WITH prefix check
+    # and the authorizer.
     r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|vacuum|"
-    r"replace|reindex|analyze|begin|commit|rollback|savepoint|release)\b",
+    r"reindex|analyze|begin|commit|rollback|savepoint|release)\b",
     re.I,
 )
 

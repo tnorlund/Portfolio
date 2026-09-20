@@ -49,7 +49,9 @@ export function delayFor<Name extends string>(
     .reduce((acc, p) => acc + phaseLength(p) + STAGGER, 0);
 }
 
-export function totalCycleMs<Name extends string>(timeline: Phase<Name>[]): number {
+export function totalCycleMs<Name extends string>(
+  timeline: Phase<Name>[],
+): number {
   return (
     timeline.reduce((acc, p) => acc + phaseLength(p) + STAGGER, 0) + CYCLE_PAUSE
   );
@@ -136,13 +138,21 @@ export function BitStream({
     [pathRefs.length, chars, count],
   );
 
-  const springs = useSprings(bits.length, (i) => ({
-    from: { offset: dir === -1 ? 100 : 0 },
-    to: { offset: dir === -1 ? 0 : 100 },
-    config: { duration, ...OPTIMIZED_SPRING_CONFIG },
-    delay: initialDelay + i * launch,
-    pause,
-  }))[0];
+  // The callback form of useSprings defaults to an empty dependency list,
+  // which would freeze `pause` at its mount value (these diagrams mount
+  // out of view, so the streams would never start, and running streams
+  // would not stop when scrolled away).
+  const springs = useSprings(
+    bits.length,
+    (i) => ({
+      from: { offset: dir === -1 ? 100 : 0 },
+      to: { offset: dir === -1 ? 0 : 100 },
+      config: { duration, ...OPTIMIZED_SPRING_CONFIG },
+      delay: initialDelay + i * launch,
+      pause,
+    }),
+    [pause, dir, duration, launch, initialDelay, bits.length],
+  )[0];
 
   return (
     <>
@@ -202,7 +212,15 @@ export const LABEL_TEXT_PROPS = {
 /* ─── Shared AWS-style glyphs ─────────────────────────────────────── */
 
 /** The S3 bucket icon from UploadDiagram, re-centred on (0,0) in an 85×85 box. */
-export function S3Icon({ x, y, gradientId }: { x: number; y: number; gradientId: string }) {
+export function S3Icon({
+  x,
+  y,
+  gradientId,
+}: {
+  x: number;
+  y: number;
+  gradientId: string;
+}) {
   return (
     <g transform={`translate(${x - 42.5},${y - 42.5})`}>
       <rect width="85" height="85" fill={`url(#${gradientId})`} rx="6" />
@@ -310,7 +328,14 @@ export function ClientIcon({ x, y }: { x: number; y: number }) {
         stroke="var(--text-color)"
         strokeWidth="3.5"
       />
-      <rect x="-6" y="27" width="12" height="3" rx="1.5" fill="var(--text-color)" />
+      <rect
+        x="-6"
+        y="27"
+        width="12"
+        height="3"
+        rx="1.5"
+        fill="var(--text-color)"
+      />
       <path
         d="M-11,-16 h22 a4,4 0 0 1 4,4 v10 a4,4 0 0 1 -4,4 h-10 l-6,5 v-5 h-6 a4,4 0 0 1 -4,-4 v-10 a4,4 0 0 1 4,-4 z"
         fill="var(--text-color)"
@@ -351,7 +376,13 @@ export function GrokIcon({ x, y }: { x: number; y: number }) {
 /** The Claude app icon (public/claude-icon.svg), in the same 85×85 slot. */
 export function ClaudeIcon({ x, y }: { x: number; y: number }) {
   return (
-    <image href="/claude-icon.svg" x={x - 46} y={y - 46} width="92" height="92" />
+    <image
+      href="/claude-icon.svg"
+      x={x - 46}
+      y={y - 46}
+      width="92"
+      height="92"
+    />
   );
 }
 

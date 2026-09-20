@@ -46,15 +46,33 @@ const ADDRESS: Record<Destination, string> = {
 /* In iCloud's order, as of 2026-09-02. */
 const RULES: Rule[] = [
   ...[
-    "doordash.com", "amazon.com", "apple.com", "paypal.com", "venmo.com",
-    "uber.com", "toasttab.com", "squareup.com", "chownow.com", "equinox.com",
-    "github.com", "costco.com", "airbnb.com", "chase.com", "socalgas.com",
-    "scewebservices.com", "stripe.com", "digitalocean.com", "ebay.com",
-    "oftendining.com", "target.com",
+    "doordash.com",
+    "amazon.com",
+    "apple.com",
+    "paypal.com",
+    "venmo.com",
+    "uber.com",
+    "toasttab.com",
+    "squareup.com",
+    "chownow.com",
+    "equinox.com",
+    "github.com",
+    "costco.com",
+    "airbnb.com",
+    "chase.com",
+    "socalgas.com",
+    "scewebservices.com",
+    "stripe.com",
+    "digitalocean.com",
+    "ebay.com",
+    "oftendining.com",
+    "target.com",
   ].map((from) => ({ from, to: "receipts" as const })),
   ...[
-    "no-reply@greenhouse.io", "no-reply@us.greenhouse-mail.io",
-    "no-reply@eu.greenhouse-mail.io", "no-reply@anz.greenhouse.io",
+    "no-reply@greenhouse.io",
+    "no-reply@us.greenhouse-mail.io",
+    "no-reply@eu.greenhouse-mail.io",
+    "no-reply@anz.greenhouse.io",
     "login@us.greenhouse-jobs.com",
   ].map((from) => ({ from, to: "ats" as const })),
 ];
@@ -72,7 +90,6 @@ const SIDEBAR = [
   "Viewing",
   "Composing",
 ];
-
 
 /* Two palettes, both sampled from icloud.com's Settings modal. The site
  * switches theme with prefers-color-scheme (see globals.css), so we do too. */
@@ -111,7 +128,6 @@ const STYLE = `
 .efr-list li .efr-handle { color:var(--efr-muted); flex:none; display:flex; }
 .efr-note { border-top:1px solid var(--efr-line); margin-top:auto; padding-top:12px; color:var(--efr-muted); font-size:13px; line-height:1.45; }
 .efr-note a { color:var(--efr-link); text-decoration:none; display:inline-flex; align-items:center; gap:2px; }
-  color:var(--text-color); transition:border-color .15s ease, background-color .15s ease; }
 @media (max-width: 720px) {
   .efr-modal { grid-template-columns: 1fr; }
   .efr-side { display:none; }
@@ -148,12 +164,21 @@ const EmailForwardingRules: React.FC<EmailForwardingRulesProps> = ({
         <aside className="efr-side" aria-hidden="true">
           <div className="efr-close" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 18 18">
-              <path d="M3 3l12 12M15 3L3 15" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none" />
+              <path
+                d="M3 3l12 12M15 3L3 15"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                fill="none"
+              />
             </svg>
           </div>
           <ul>
             {SIDEBAR.map((item) => (
-              <li key={item} data-active={item === "Rules" ? "true" : undefined}>
+              <li
+                key={item}
+                data-active={item === "Rules" ? "true" : undefined}
+              >
                 <Glyph name={item} size={17} />
                 {item}
               </li>
