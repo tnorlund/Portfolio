@@ -964,6 +964,51 @@ def _set_profile_knob(merchant: str, key: str, value: Any) -> None:
         fh.write("\n")
 
 
+def _set_vendor_export_pin(slug: str, key: str, value: Any) -> None:
+    """Write an export pin into fonts/<slug>/vendor.json without load_vendor defaults."""
+    path = vendor_path(slug)
+    with open(path, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    doc[key] = value
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+
+
+def _export_ocr_cap_pin(v: dict[str, Any], typ: dict[str, Any]) -> float:
+    """The pin export overlays: vendor.json, else the reviewed profile."""
+    raw = v.get("ocr_cap_height_ratio")
+    if raw is not None:
+        return float(raw)
+    return float(typ.get("ocr_cap_height_ratio", 0.72))
+
+
+def _export_pitch_pin(v: dict[str, Any], typ: dict[str, Any]) -> float:
+    """The pitch_ratio export renders: vendor.json pin, else the profile.
+
+    A vendor.json ``pitch_ratio`` is an opt-in pin (``gold_render_pins``)
+    that wins over both the profile and font.json ``pitchRatioTarget``, so
+    calibrate must start from -- and write back to -- the same value.
+    """
+    raw = v.get("pitch_ratio")
+    if raw is not None:
+        return float(raw)
+    return float(typ.get("pitch_ratio", 0.55))
+
+
+def _record_calibrated_knob(v: dict[str, Any], key: str, value: float) -> None:
+    """Persist a solved knob where BOTH the review and the export read it.
+
+    The profile is what the review render resolves through the truth
+    registry; ``fonts/<slug>/vendor.json`` is the export pin that
+    ``apply_gold_pins`` overlays. Writing one without the other lets a
+    passing calibration describe a receipt the export does not render.
+    """
+    _set_profile_knob(v["merchant"], key, value)
+    _set_vendor_export_pin(v["slug"], key, value)
+    v[key] = value
+
+
 def _in_band(x: float) -> bool:
     return H_BAND[0] <= x <= H_BAND[1]
 
@@ -1065,11 +1110,18 @@ def next_pitch_step(
 
 
 def cmd_calibrate(args) -> int:
+    """Solve ocr_cap_height_ratio / pitch_ratio against the gold receipt.
+
+    ``vendor.json`` is the export pin. Every knob the loop solves is written
+    to that pin AND the merchant profile (``_record_calibrated_knob``) so
+    ``cmd_export`` without ``--calibrate-from-corpus`` renders the same
+    values the review just scored.
+    """
     v = load_vendor(args.slug)
     with open(PROFILES, encoding="utf-8") as fh:
         typ = json.load(fh)["profiles"][v["merchant"]]["typography"]
-    ratio = float(typ.get("ocr_cap_height_ratio", 0.72))
-    pitch_ratio = float(typ.get("pitch_ratio", 0.55))
+    ratio = _export_ocr_cap_pin(v, typ)
+    pitch_ratio = _export_pitch_pin(v, typ)
     fixture_mode = (
         args.truth or _truth_env(v, args.truth).get("MERCHANT_TRUTH_MODE")
     ) == "fixture"
@@ -1102,7 +1154,7 @@ def cmd_calibrate(args) -> int:
                     f"  ocr_cap_height_ratio {ratio} -> {solved:.3f} (h_ratio {metrics['h_ratio']:.3f})"
                 )
                 ratio = round(solved, 3)
-                _set_profile_knob(v["merchant"], "ocr_cap_height_ratio", ratio)
+                _record_calibrated_knob(v, "ocr_cap_height_ratio", ratio)
                 changed = True
         if not _in_band(metrics["wpc_ratio"]) and wpc_stuck:
             # An unmoved re-render is only saturation once the clamp edge
@@ -1118,7 +1170,7 @@ def cmd_calibrate(args) -> int:
                 )
                 last_pitch = pitch_ratio
                 pitch_ratio = stepped
-                _set_profile_knob(v["merchant"], "pitch_ratio", pitch_ratio)
+                _record_calibrated_knob(v, "pitch_ratio", pitch_ratio)
                 changed = True
             else:
                 print(
@@ -1135,7 +1187,7 @@ def cmd_calibrate(args) -> int:
             )
             last_pitch = pitch_ratio
             pitch_ratio = solved_p
-            _set_profile_knob(v["merchant"], "pitch_ratio", pitch_ratio)
+            _record_calibrated_knob(v, "pitch_ratio", pitch_ratio)
             changed = True
         if not changed:
             break

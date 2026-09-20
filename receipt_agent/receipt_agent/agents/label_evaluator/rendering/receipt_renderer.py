@@ -50,6 +50,7 @@ from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     is_price_token,
     layout_columns_by_section,
     line_baseline,
+    prefer_measured_amount_lane,
     section_for_labels,
 )
 from receipt_agent.agents.label_evaluator.rendering.receipt_stylemap import (
@@ -807,6 +808,11 @@ def _render_grid(
     min_pitch = cap_h * 1.12
 
     rows = group_words_into_grid_lines(grid_words, spec.cell_h)
+    # Receipt-wide decimal lane from the OCR price cluster. Rows whose
+    # canonical section carries a measured right-anchored amount column
+    # prefer THAT edge (per row, below); every other row keeps this lane, so
+    # a section without measured columns is never snapped to another
+    # section's template x.
     amount_lane = amount_lane_end(rows, spec)
     canonical_sections = effective_canonical_row_sections(
         rows, config.layout_template, config.height
@@ -998,6 +1004,10 @@ def _render_grid(
         rows, baselines, eff_sections, canonical_sections
     ):
         row_columns = measured_columns.get(canonical_section or "") or None
+        # Measured amount x for this row's section, else the OCR-median lane.
+        row_amount_lane = prefer_measured_amount_lane(
+            amount_lane, row_columns, spec, float(config.width)
+        )
         row_text = " ".join(w.text for w in line).upper()
         # A display heading (e.g. SELF-CHECKOUT, THANK YOU, ITEMS SOLD:) renders
         # heavy + enlarged; the heavy face is NOT applied to the whole TOTALS zone
@@ -1160,7 +1170,7 @@ def _render_grid(
                 baseline,
                 spec,
                 font,
-                amount_lane=amount_lane,
+                amount_lane=row_amount_lane,
                 measured_columns=row_columns,
                 paper_width=config.width,
                 stroke=config.stroke,
@@ -1210,7 +1220,7 @@ def _render_grid(
         # genuinely distinct layout, preserving the legacy no-lane behavior.
         shares_body_lane = sect_cond == 1.0 and abs(sc - 1.0) < 0.05
         lane = (
-            remap_grid_column(amount_lane, spec, row_spec)
+            remap_grid_column(row_amount_lane, spec, row_spec)
             if shares_body_lane
             else None
         )

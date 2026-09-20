@@ -187,6 +187,8 @@ SCAN type), then loop:
 
 ```bash
 python $WT/synthesis_loop/glyph_review.py receipt "<Merchant>" <image_id> <rid> /tmp/review.png
+# (renders from the closed font.json + vendor.json pins, exactly like the
+#  export; add --calibrate-from-corpus for the 12-receipt profile + live thin)
 ```
 
 with `RECEIPT_PAPER_STRENGTH=0.3` (texture at 1.0 inflates density and hides

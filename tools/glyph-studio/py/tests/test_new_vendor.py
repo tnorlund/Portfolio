@@ -68,8 +68,7 @@ def test_committed_vendor_files_are_consistent(monkeypatch):
 
     Resolve the font tree from this file, not CWD. CI runs pytest from the
     repo root with rootdir ``tools/glyph-studio/py``; xdist workers may
-    chdir. This PR does not commit a vendor.json, so the path check is a
-    known font dir (speedway) rather than ``found >= 1``.
+    chdir.
     """
     fonts_dir = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..", "fonts")
@@ -94,6 +93,28 @@ def test_committed_vendor_files_are_consistent(monkeypatch):
         for donor in [v.get("donor"), *(v.get("donor_for") or {})]:
             if donor:
                 assert os.path.isdir(os.path.join(fonts_dir, donor)), donor
+
+
+def test_calibrate_writes_vendor_json_export_pin(tmp_path, monkeypatch):
+    vendor_dir = tmp_path / "costco"
+    vendor_dir.mkdir()
+    vendor_path = vendor_dir / "vendor.json"
+    vendor_path.write_text(
+        json.dumps({"merchant": "Costco Wholesale", "slug": "costco"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(nv, "FONTS_DIR", str(tmp_path))
+    assert nv._export_ocr_cap_pin(
+        {"ocr_cap_height_ratio": 0.72}, {"ocr_cap_height_ratio": 0.88}
+    ) == pytest.approx(0.72)
+    assert nv._export_ocr_cap_pin({}, {"ocr_cap_height_ratio": 0.88}) == (
+        pytest.approx(0.88)
+    )
+    nv._set_vendor_export_pin("costco", "ocr_cap_height_ratio", 0.81)
+    saved = json.loads(vendor_path.read_text(encoding="utf-8"))
+    assert saved["ocr_cap_height_ratio"] == pytest.approx(0.81)
+    assert saved["merchant"] == "Costco Wholesale"
+    assert "portfolio_slug" not in saved
 
 
 def test_calibrate_solve_is_linear_and_clamped():

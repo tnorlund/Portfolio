@@ -10,21 +10,18 @@ GitHub API, and read-only DynamoDB queries. Citations are `file:line`.
 
 ## The one-paragraph diagnosis
 
-The renderer and its grader read **different sources of truth**. Measured
-per-merchant layout (`columns`, `sections`, `separators`) is captured from real
-receipts, stored hash-verified in the merchant-truth bundle, and loaded into the
-profile at `scripts/render_synthetic_receipts.py:1235` — then **read by nobody in
-the renderer**. Only `full_fidelity_eval.py`, `merchant_truth_diff.py`,
-`build_variant_layout.py` and migrations consume it. The codebase says so itself
-at `tools/glyph-studio/py/glyphstudio/layout_template.py:262-266`: *"NOT yet
-consumed by the renderer (P3)."* P3 was never done.
+The renderer and its grader used to read **different sources of truth**.
+Measured `columns` are live in `_render_grid`. Measured `separators` copy
+into `config.separators` only when `vendor.json` sets
+`use_measured_separators: true` (Costco); Gelson's / The Stand / Dollar Tree
+keep heuristic rules. `full_fidelity_eval.py` can still read columns via
+`--columns-source profile`. The old `layout_template.py` "NOT yet consumed
+(P3)" comment is stale.
 
-Consequence: every merchant campaign is "invent a Python heuristic until the
-measured grader goes green," and every heuristic must land in one shared
-545-line function, `_render_grid` (`receipt_renderer.py:618-1162`). That is the
-engine that generated 5 merge conflicts across a 16-PR sprint — not bad luck in
-PR slicing. Both Costco branches independently invented a `measured_separators`
-config field to bridge this exact gap; the code was pointing at the seam.
+Consequence: campaigns still invent heuristics for vendors that have not
+opted into measured separators, and those heuristics still land in
+`_render_grid`. That shared function is what generated 5 merge conflicts
+across a 16-PR sprint — not bad luck in PR slicing.
 
 Two amplifiers made it worse: CI measured nothing relevant (fixed by #1254), and
 nothing in the repo *gates* on CI at all (still true).

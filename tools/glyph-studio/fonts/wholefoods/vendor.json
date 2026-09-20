@@ -28,5 +28,8 @@
     "WHOLE FOODS",
     "MARKET",
     "WHOLE FOODS MARKET"
-  ]
+  ],
+  "pin_pitch_ratio": true,
+  "ocr_cap_height_ratio": 0.72,
+  "bitmap_thin": 0.0
 }

@@ -1115,6 +1115,54 @@ def amount_lane_end(
     return int(round(median(cluster)))
 
 
+def measured_amount_lane_end(
+    columns: Sequence[Mapping[str, Any]] | None,
+    spec: GridSpec,
+    paper_width: float,
+) -> float | None:
+    """Grid column (float) of the template's rightmost amount/right x, if any.
+
+    Speedway ``T`` flags and Costco overflow snap to this measured edge
+    instead of the OCR-jitter ``amount_lane_end`` cluster. The column is NOT
+    rounded: :func:`_measured_lane_starts` anchors matched prices at the
+    exact ``x`` edge, so an unmatched price snapped to this lane lands on
+    the same pixel edge instead of jogging up to half a cell.
+    """
+    ends: list[float] = []
+    for column in columns or ():
+        if str(column.get("role") or "").lower() != "amount":
+            continue
+        if str(column.get("anchor") or "").lower() != "right":
+            continue
+        try:
+            x = float(column.get("x"))
+        except (TypeError, ValueError):
+            continue
+        if 0.0 <= x <= 1.0:
+            ends.append(
+                (x * float(paper_width) - spec.grid_left) / spec.cell_w
+            )
+    if not ends:
+        return None
+    return max(ends)
+
+
+def prefer_measured_amount_lane(
+    ocr_lane: float | None,
+    columns: Sequence[Mapping[str, Any]] | None,
+    spec: GridSpec,
+    paper_width: float,
+) -> float | None:
+    """``columns``' measured amount lane when it has one, else ``ocr_lane``.
+
+    Called per row with that row's section columns: a section with no
+    measured amount column falls back to the receipt-wide OCR lane rather
+    than to another section's measured x.
+    """
+    measured = measured_amount_lane_end(columns, spec, paper_width)
+    return measured if measured is not None else ocr_lane
+
+
 def _measured_lane_starts(
     line: Sequence[GridWord],
     spec: GridSpec,
@@ -1264,7 +1312,7 @@ def _measured_lane_starts(
 def plan_grid_line(
     line: Sequence[GridWord],
     spec: GridSpec,
-    amount_lane: int | None = None,
+    amount_lane: float | None = None,
     measured_columns: Sequence[Mapping[str, Any]] | None = None,
     paper_width: float | None = None,
 ) -> list[PlacedToken]:
@@ -1318,16 +1366,13 @@ def plan_grid_line(
         anchored.update(
             {index: start for index, start in measured.items() if is_p[index]}
         )
-        if anchored:
-            leftmost_price_start = min(anchored.values())
-    elif amount_lane is not None and price_idxs:
+    if amount_lane is not None and price_idxs:
         slot_right = amount_lane
         for i in reversed(price_idxs):
+            if i in anchored:
+                continue
             abs_end = round((line[i].right - spec.grid_left) / spec.cell_w)
-            if (
-                abs(abs_end - slot_right) > _AMOUNT_LANE_TOL_CELLS
-                and i not in anchored
-            ):
+            if abs(abs_end - slot_right) > _AMOUNT_LANE_TOL_CELLS:
                 # This price sits far from the lane in the source. If one is
                 # already anchored it's a further-left column -> stop the stack.
                 # If none is, this lone price is an INLINE value (e.g.
@@ -1345,8 +1390,8 @@ def plan_grid_line(
                 # right of the item lane): keep the SOURCE column
                 anchored[i] = abs_end - cell_of[i]
             slot_right = anchored[i] - 1
-        if anchored:
-            leftmost_price_start = min(anchored.values())
+    if anchored:
+        leftmost_price_start = min(anchored.values())
 
     placed: list[PlacedToken] = []
     cursor_col = None
@@ -1556,7 +1601,7 @@ def draw_grid_line(
     baseline_y: float,
     spec: GridSpec,
     font: ImageFont.FreeTypeFont,
-    amount_lane: int | None = None,
+    amount_lane: float | None = None,
     measured_columns: Sequence[Mapping[str, Any]] | None = None,
     paper_width: float | None = None,
     stroke: int = 0,

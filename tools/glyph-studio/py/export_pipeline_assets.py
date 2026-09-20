@@ -7,11 +7,14 @@ tree for one merchant from the committed tooling, so the figure on
 
 finale pair (every merchant)
   final.webp / final.labels.json  production render of the source receipt
-                                  (glyph_review recipe: truth-bundle fonts,
-                                  derived bitmap_thin, render-true boxes)
+                                  (closed gold recipe: font.json pitch +
+                                  recorded cap / bitmap_thin, render-true boxes)
   real.webp                       the real scan at the same 760xH canvas
   logo.png                        the vault logo as an RGBA alpha mask
   compose_steps.json              reveal groups (y-bands of the receipt)
+  pipeline_merchants.json         per-card provenance (source_snapshot_sha256,
+                                  font/logo hashes, final_webp_sha256,
+                                  exporter_commit, image_type)
 
 hero acts (merchants with a letterform corpus + glyph-studio font)
   char_prints/{0..29}.png         real prints of the hero character
@@ -86,10 +89,19 @@ import numpy as np  # noqa: E402
 import render_synthetic_receipts as rsr  # noqa: E402
 from glyphstudio import pipeline_assets as pa  # noqa: E402
 from glyphstudio.compile import compile_font  # noqa: E402
+from glyphstudio.provenance import (  # noqa: E402
+    card_provenance,
+    exporter_commit,
+    write_manifest_provenance,
+)
 from glyphstudio.schema import glyph_filename, load_font  # noqa: E402
 from glyphstudio.stylescan import _classify, line_has_price  # noqa: E402
+from glyphstudio.vendor_package import resolve_gold_inputs  # noqa: E402
 from PIL import Image  # noqa: E402
-from render_merchant_gold import _cached_payload  # noqa: E402
+from render_merchant_gold import (  # noqa: E402
+    _cached_payload,
+    closed_font_profile,
+)
 
 from receipt_agent.agents.label_evaluator.rendering.bitmap_font import (  # noqa: E402
     BitmapFont,
@@ -178,11 +190,13 @@ class Exporter:
         region: str,
         cache_dir: str,
         corpus_bucket: str,
+        calibrate_from_corpus: bool = False,
     ) -> None:
         self.table = table
         self.region = region
         self.cache_dir = cache_dir
         self.corpus_bucket = corpus_bucket
+        self.calibrate_from_corpus = calibrate_from_corpus
         self.client = DynamoClient(table_name=table, region=region)
         self.s3: S3Client = boto3.client("s3", region_name=region)
 
@@ -232,26 +246,29 @@ class Exporter:
         words = [
             dict(word, _box_index=i) for i, word in enumerate(doc["words"])
         ]
-        prof = rsr.cached_font_profile(
-            self.table, merchant, region=self.region, max_receipts=12
-        )
         ss = rsr.section_scale_for_merchant(merchant)
         typ = dict(rsr.merchant_typography(merchant))
         atlas = None
-        if "bitmap_font" not in typ or "bitmap_thin" not in typ:
+        need_atlas = "bitmap_font" not in typ or (
+            self.calibrate_from_corpus and "bitmap_thin" not in typ
+        )
+        if need_atlas:
             atlas = rsr.cached_glyph_atlas(
                 self.table, merchant, region=self.region, max_receipts=8
             )
-        if "bitmap_font" in typ and "bitmap_thin" not in typ:
-            typ["bitmap_thin"] = rsr.resolve_bitmap_thin(
-                self.table,
-                merchant,
-                region=self.region,
-                atlas=atlas,
-                profile=prof,
-                section_scale=ss,
-                typography=typ,
-            )
+        prof, typ = resolve_gold_inputs(
+            merchant,
+            typ,
+            table=self.table,
+            region=self.region,
+            rsr=rsr,
+            make_profile=closed_font_profile,
+            calibrate_from_corpus=self.calibrate_from_corpus,
+            atlas=atlas,
+            section_scale=ss,
+            canvas_height=height,
+            canvas_width=width,
+        )
         box_sink: list[dict[str, Any]] = []
         typ["box_sink"] = box_sink
         rsr._render_cached_hybrid(
@@ -268,14 +285,18 @@ class Exporter:
             section_scale=ss,
             **typ,
         )
-        return pa.label_file(
-            box_sink,
-            words,
-            width=width,
-            height=height,
-            merchant=merchant,
-            receipt_key=f"{image_id}#{rid}",
-        )
+        return {
+            "labels": pa.label_file(
+                box_sink,
+                words,
+                width=width,
+                height=height,
+                merchant=merchant,
+                receipt_key=f"{image_id}#{rid}",
+            ),
+            "payload": doc,
+            "bitmap_font_paths": list((typ.get("bitmap_font") or {}).values()),
+        }
 
     # -- hero-act inputs ------------------------------------------------
 
@@ -346,6 +367,8 @@ def export_merchant(
     finale_only: bool,
     corpus_path: str | None,
     logo_override: str | None,
+    manifest_path: str | None = None,
+    allow_dirty: bool = False,
 ) -> dict[str, Any]:
     merchant = spec["merchant"]
     font = spec["font"]
@@ -364,9 +387,11 @@ def export_merchant(
     # Finale pair: final.webp + labels, real.webp, logo, compose steps.
     with tempfile.TemporaryDirectory(prefix="pipeline-final-") as tmp:
         png = os.path.join(tmp, "final.png")
-        labels = exporter.render_final(
+        rendered = exporter.render_final(
             merchant, image_id, rid, width=width, height=height, out_png=png
         )
+        labels = rendered["labels"]
+        payload = rendered["payload"]
         _save_webp(Image.open(png), os.path.join(out_dir, "final.webp"))
     _write_json(os.path.join(out_dir, "final.labels.json"), labels)
     _write_json(
@@ -381,6 +406,7 @@ def export_merchant(
         os.path.join(out_dir, "real.webp"),
     )
 
+    logo_used = False
     if logo_override:
         logo = Image.open(logo_override)
     else:
@@ -392,6 +418,25 @@ def export_merchant(
     else:
         source = logo.convert("L") if logo_override else _alpha_to_gray(logo)
         pa.logo_mask(source).save(os.path.join(out_dir, "logo.png"))
+        logo_used = True
+
+    try:
+        image = exporter.client.get_image(image_id)
+        image_type = str(getattr(image.image_type, "value", image.image_type))
+    except Exception:  # noqa: BLE001 - provenance is best-effort on type
+        image_type = None
+    provenance = card_provenance(
+        payload=payload,
+        font_paths=rendered["bitmap_font_paths"],
+        logo_path=os.path.join(out_dir, "logo.png"),
+        logo_used=logo_used,
+        final_webp_path=os.path.join(out_dir, "final.webp"),
+        image_type=image_type,
+        commit=exporter_commit(_ROOT, allow_dirty=allow_dirty),
+    )
+    summary["provenance"] = provenance
+    if manifest_path:
+        write_manifest_provenance(manifest_path, slug, provenance)
 
     if finale_only:
         return summary
@@ -542,6 +587,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--cache-dir", default=os.path.join(_ROOT, ".out", "merchant_gold")
     )
+    ap.add_argument(
+        "--calibrate-from-corpus",
+        action="store_true",
+        help="authoring: rebuild cached_font_profile(n=12) and live bitmap_thin",
+    )
+    ap.add_argument(
+        "--allow-dirty",
+        action="store_true",
+        help="record {sha}-dirty in provenance instead of refusing a dirty HEAD",
+    )
     args = ap.parse_args(argv)
 
     manifest = load_manifest(args.manifest)
@@ -559,6 +614,7 @@ def main(argv: list[str] | None = None) -> int:
         region=args.region,
         cache_dir=args.cache_dir,
         corpus_bucket=os.environ.get(CORPUS_BUCKET_ENV, CORPUS_BUCKET_DEFAULT),
+        calibrate_from_corpus=args.calibrate_from_corpus,
     )
     summaries = []
     for slug in slugs:
@@ -570,6 +626,8 @@ def main(argv: list[str] | None = None) -> int:
             finale_only=args.finale_only,
             corpus_path=args.corpus,
             logo_override=args.logo,
+            manifest_path=args.manifest,
+            allow_dirty=args.allow_dirty,
         )
         summaries.append(summary)
         print(f"[export] {slug}: {json.dumps(summary, sort_keys=True)}")
