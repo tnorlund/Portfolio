@@ -1,0 +1,32 @@
+{
+ "version": 1,
+ "char": "'",
+ "codepoint": 39,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "burritts.refined.npz",
+  "samples": 3,
+  "consensusHash": "0224524ac139",
+  "date": "2026-09-19"
+ },
+ "width": 679.6,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 339.8,
+     "y": 994.4,
+     "type": "corner"
+    },
+    {
+     "x": 339.8,
+     "y": 950.0,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "source": {
+    "merchant": "burritts",
+    "receipts": 2,
+    "scan_dir": "/tmp/gridfix/burritts_studio/scans",
+    "lines_measured": 93,
+    "date": "2026-09-19",
+    "notes": "Burritt's Fresh Market (Traverse City, MI): light mixed-case thermal body; TOTAL SALE / Change print in a double-width face; footer barcode. Rules shared by stylescan and the renderer."
+  },
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "^Burritt'?s Fresh Market|West Front Street|Traverse City|^\\(\\d{3}\\) \\d{3}-\\d{4}$"
+    },
+    {
+      "section": "transaction",
+      "pattern": "^StoreNum|^Slip#|^CLERK ID|^Drwr#|^Reg#|^#\\d{16}|Salesperson|^\\d{2}/\\d{2}/\\d{2} \\d{1,2}:\\d{2} [AP]M"
+    },
+    {
+      "section": "column_header",
+      "pattern": "^Item Descriptor|^Qty$|^Ext$"
+    },
+    {
+      "section": "total_line",
+      "pattern": "^TOTAL SALE\\b|^Change\\b"
+    },
+    {
+      "section": "summary",
+      "pattern": "^SUBTOTAL|^Txbl \\d|\\d\\.\\d{4}% Tax|^Credit Cards|^AMOUNT$|^TOTAL$|^USD\\$"
+    },
+    {
+      "section": "payment",
+      "pattern": "^CREDIT CARD$|^SALE$|^VISA\\b|^\\*{4,}|ENTRY LEGEND|^DATE:|^TIME:|^INVOICE:|^REFERENCE:|^AUTH CODE|APPROVED|APPLICATION LABEL|^AID:|^ATC:|^AC:|^TVR:|^IAD:|^ARC:|Cardholder Copy"
+    },
+    {
+      "section": "separator",
+      "pattern": "^[-=]{6,}$"
+    }
+  ],
+  "sections": {
+    "column_header": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=2: cap_rel med 0.891, stroke_rel med 0.889, underline 0.00. || body."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=5: cap_rel med 1.009, stroke_rel med 1.043, underline 0.00. || body."
+    },
+    "other": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.04,
+      "notes": "n=18: cap_rel med 0.982, stroke_rel med 0.997, underline 0.00. || body."
+    },
+    "payment": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=35: cap_rel med 1.073, stroke_rel med 0.937, underline 0.06. || body."
+    },
+    "separator": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=4: cap_rel med 1.000, stroke_rel med 1.794, underline 0.00. || dash/equals rules; stroke_rel is meaningless for a rule of dashes, body."
+    },
+    "store_header": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=6: cap_rel med 0.938, stroke_rel med 0.832, underline 0.00. || body."
+    },
+    "summary": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=12: cap_rel med 1.027, stroke_rel med 1.029, underline 0.00. || body."
+    },
+    "total_line": {
+      "sizeScale": 1.0,
+      "weight": "bold",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=4: cap_rel med 1.109, stroke_rel med 1.425, underline 0.00. || TOTAL SALE $80.38 and Change 0.00 print in the double-width face (stroke_rel 1.43)."
+    },
+    "transaction": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=7: cap_rel med 1.080, stroke_rel med 0.886, underline 0.00. || body."
+    }
+  }
+}

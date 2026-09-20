@@ -1,0 +1,72 @@
+{
+ "version": 1,
+ "char": "h",
+ "codepoint": 104,
+ "provenance": "edited",
+ "width": 596.1,
+ "baselineNudgePx": 0,
+ "overrides": {
+  "weight": 0.88
+ },
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50.0,
+     "y": 28.6,
+     "type": "corner"
+    },
+    {
+     "x": 50.0,
+     "y": 985.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50.0,
+     "y": 409.1,
+     "type": "corner",
+     "hOut": {
+      "x": 50.0,
+      "y": 563.4
+     }
+    },
+    {
+     "x": 293.1,
+     "y": 645.7,
+     "type": "smooth",
+     "hIn": {
+      "x": 203.9,
+      "y": 645.7
+     },
+     "hOut": {
+      "x": 382.2,
+      "y": 645.7
+     }
+    },
+    {
+     "x": 536.1,
+     "y": 409.1,
+     "type": "corner",
+     "hIn": {
+      "x": 536.1,
+      "y": 563.4
+     }
+    },
+    {
+     "x": 536.1,
+     "y": 28.6,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "sprouts",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the sprouts face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(67..950) -> (46..954); x 600 -> 486"
+}

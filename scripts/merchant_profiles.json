@@ -1206,6 +1206,37 @@
      "max_count": 0
     }
    }
+  },
+  "Burritt's Fresh Markets": {
+   "_comment": "Minted by new_vendor.py from Burritt's Fresh Markets's dev receipts (font burritts). Edit typography knobs here; `new_vendor.py calibrate` solves ocr_cap_height_ratio.",
+   "aliases": [
+    "Burritt's Fresh Market",
+    "BURRITT'S FRESH MARKETS"
+   ],
+   "typography": {
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "burritts.glyphs.npz",
+     "heavy": "burritts-heavy.glyphs.npz"
+    },
+    "condense": 0.909,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "bitmap_thin": 0.0,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.72,
+    "stylemap": "burritts.stylemap.json",
+    "pitch_ratio": 0.777
+   },
+   "graphics": {
+    "footer_codes": true,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   },
+   "section_scale": {
+    "HEADER": 1.0
+   }
   }
  }
 }

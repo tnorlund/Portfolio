@@ -1,0 +1,96 @@
+{
+ "version": 1,
+ "char": "G",
+ "codepoint": 71,
+ "provenance": "edited",
+ "width": 582,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 440,
+     "y": 748.5,
+     "type": "corner",
+     "hOut": {
+      "x": 440,
+      "y": 846.2
+     }
+    },
+    {
+     "x": 250,
+     "y": 920.3,
+     "type": "smooth",
+     "hIn": {
+      "x": 355,
+      "y": 920.3
+     },
+     "hOut": {
+      "x": 131,
+      "y": 920.3
+     }
+    },
+    {
+     "x": 35,
+     "y": 499.6,
+     "type": "smooth",
+     "hIn": {
+      "x": 35,
+      "y": 732.1
+     },
+     "hOut": {
+      "x": 35,
+      "y": 267.2
+     }
+    },
+    {
+     "x": 250,
+     "y": 80.0,
+     "type": "smooth",
+     "hIn": {
+      "x": 131,
+      "y": 80.0
+     },
+     "hOut": {
+      "x": 369,
+      "y": 80.0
+     }
+    },
+    {
+     "x": 450,
+     "y": 239.5,
+     "type": "corner",
+     "hIn": {
+      "x": 450,
+      "y": 136.6
+     }
+    },
+    {
+     "x": 450,
+     "y": 398.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 450,
+     "y": 398.9,
+     "type": "corner"
+    },
+    {
+     "x": 300,
+     "y": 398.9,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "sprouts",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the sprouts face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(67..950) -> (46..954)"
+}
