@@ -1,60 +1,113 @@
 {
- "version": 1,
- "source": {
-  "merchant": "smiths",
-  "receipts": 10,
-  "date": "2026-07-10",
-  "method": "M6 cold-start: stylescan measurements aggregated per QA'd ReceiptSection"
- },
- "sections": {
-  "store_header": {
-   "sizeScale": 1.265,
-   "weight": "bold",
-   "underline": false,
-   "underlineRate": 0.038,
-   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.265, stroke_rel 1.358 (bold), n=26 lines / 10 receipts. ok"
+  "version": 1,
+  "source": {
+    "merchant": "smiths",
+    "receipts": 12,
+    "scan_dir": "/tmp/gridfix/smiths_studio/scans",
+    "lines_measured": 464,
+    "date": "2026-09-20",
+    "notes": "Smith's (Kroger banner): serif wordmark is a printed logo graphic (logo band, not text). Body is single-width thermal. Rules shared by stylescan and the renderer; store_header/footer keep the M6 measured faces (wordmark block bold, fuel-points trailer slightly larger)."
   },
-  "footer": {
-   "sizeScale": 1.105,
-   "weight": "normal",
-   "underline": false,
-   "underlineRate": 0.029,
-   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.105, stroke_rel 1.181 (semibold), n=35 lines / 8 receipts. ok"
-  },
-  "item": {
-   "sizeScale": 1.0,
-   "weight": "normal",
-   "underline": false,
-   "underlineRate": 0.0,
-   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.0, stroke_rel 1.0 (normal), n=136 lines / 10 receipts. ok"
-  },
-  "address": {
-   "sizeScale": 1.0,
-   "weight": "normal",
-   "underline": false,
-   "underlineRate": 0.0,
-   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.0, stroke_rel 0.992 (normal), n=18 lines / 10 receipts. ok"
-  },
-  "payment": {
-   "sizeScale": 1.027,
-   "weight": "normal",
-   "underline": false,
-   "underlineRate": 0.013,
-   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.027, stroke_rel 0.955 (normal), n=76 lines / 10 receipts. ok"
-  },
-  "summary": {
-   "sizeScale": 0.919,
-   "weight": "normal",
-   "underline": false,
-   "underlineRate": 0.0,
-   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 0.919, stroke_rel 0.935 (normal), n=5 lines / 4 receipts. ok"
-  },
-  "total_line": {
-   "sizeScale": 1.0,
-   "weight": "normal",
-   "underline": false,
-   "underlineRate": 0.0,
-   "notes": "measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.0, stroke_rel 1.037 (normal), n=6 lines / 5 receipts. ok"
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "Smith'?s|FRESH\\s+FOR\\s+EVERYONE|^(FRESH|FOR|EVERYONE)[-.,]*$"
+    },
+    {
+      "section": "address",
+      "pattern": "Tropicana|Sunset|Stephanie|Lake Mead|Maryland|Skye Canyon|Windmill|Westlake|Las Vegas|Henderson|\\d{3}-\\d{3}-\\d{4}"
+    },
+    {
+      "section": "total_line",
+      "pattern": "^\\*+\\s*BALANCE\\b|^TOTAL:\\s*"
+    },
+    {
+      "section": "summary",
+      "pattern": "^TAX\\b|FreshValues|^Total Savings|^TOTAL NUMBER OF ITEMS|^Annual Card Savings|^You Saved|^Today,?\\s*You Saved"
+    },
+    {
+      "section": "payment",
+      "pattern": "DEBIT|AMEX|MASTERCARD|VISA|CREDIT Purchase|^REF#|^AID:|^TC:|VERIFIED BY PIN|^CHANGE\\b|^CASHBACK|^PURCHASE:"
+    },
+    {
+      "section": "survey",
+      "pattern": "EARN \\d+ FUEL POINTS|GIVING US FEEDBACK|smithsfoodanddrug\\.com/feedback|^Date:|^Time:|^Tine:|^Entry ID:"
+    },
+    {
+      "section": "footer",
+      "pattern": "Fuel Points|^Your cashier was\\b|^Thank you\\b|^If you have any questions|^please call 1-8|^RECALL NOTICE|^UPC:|Join our|Fresh opportunity|www\\.smiths|Check Cart"
+    }
+  ],
+  "sections": {
+    "address": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=24: cap_rel med 0.971, stroke_rel med 0.981, underline 0.00. || measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.0, stroke_rel 0.992 (normal), n=18 lines / 10 receipts. ok"
+    },
+    "footer": {
+      "sizeScale": 1.105,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.029,
+      "notes": "n=36: cap_rel med 1.029, stroke_rel med 1.032, underline 0.00. || measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.105, stroke_rel 1.181 (semibold), n=35 lines / 8 receipts. ok"
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=73: cap_rel med 0.952, stroke_rel med 0.987, underline 0.00. || measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.0, stroke_rel 1.0 (normal), n=136 lines / 10 receipts. ok"
+    },
+    "other": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.02,
+      "notes": "n=130: cap_rel med 1.000, stroke_rel med 1.000, underline 0.01. || AUTO-DRAFT: confirm sizeScale/weight against the strips."
+    },
+    "payment": {
+      "sizeScale": 1.027,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.013,
+      "notes": "n=83: cap_rel med 0.971, stroke_rel med 0.970, underline 0.04. || measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 1.027, stroke_rel 0.955 (normal), n=76 lines / 10 receipts. ok"
+    },
+    "separator": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=12: cap_rel med 1.000, stroke_rel med 1.054, underline 0.00. || AUTO-DRAFT: confirm sizeScale/weight against the strips."
+    },
+    "store_header": {
+      "sizeScale": 1.265,
+      "weight": "bold",
+      "underline": false,
+      "underlineRate": 0.038,
+      "notes": "n=39: cap_rel med 1.143, stroke_rel med 1.244, underline 0.08. || M6 measured storefront (Smith's / FRESH FOR EVERYONE) 1.27x cap / 1.36x stroke = bold. Wordmark itself is the logo graphic."
+    },
+    "summary": {
+      "sizeScale": 0.919,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=42: cap_rel med 1.000, stroke_rel med 0.982, underline 0.00. || measured from QA'd VALID sections on 10 vetted dev scans: cap_rel 0.919, stroke_rel 0.935 (normal), n=5 lines / 4 receipts. ok"
+    },
+    "survey": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=16: cap_rel med 1.150, stroke_rel med 1.054, underline 0.00. || AUTO-DRAFT: confirm sizeScale/weight against the strips."
+    },
+    "total_line": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=9: cap_rel med 0.900, stroke_rel med 0.951, underline 0.00. || AUTO-DRAFT: confirm sizeScale/weight against the strips."
+    }
   }
- }
 }

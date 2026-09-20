@@ -1,0 +1,81 @@
+{
+ "version": 1,
+ "char": "c",
+ "codepoint": 99,
+ "provenance": "edited",
+ "width": 417,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 375,
+     "y": 562.0,
+     "type": "corner",
+     "hOut": {
+      "x": 375,
+      "y": 607.2
+     }
+    },
+    {
+     "x": 225,
+     "y": 642.8,
+     "type": "smooth",
+     "hIn": {
+      "x": 310,
+      "y": 642.8
+     },
+     "hOut": {
+      "x": 145,
+      "y": 642.8
+     }
+    },
+    {
+     "x": 60,
+     "y": 470.4,
+     "type": "corner",
+     "hIn": {
+      "x": 60,
+      "y": 551.2
+     }
+    },
+    {
+     "x": 60,
+     "y": 168.6,
+     "type": "corner",
+     "hOut": {
+      "x": 60,
+      "y": 87.7
+     }
+    },
+    {
+     "x": 225,
+     "y": -3.9,
+     "type": "smooth",
+     "hIn": {
+      "x": 145,
+      "y": -3.9
+     },
+     "hOut": {
+      "x": 310,
+      "y": -3.9
+     }
+    },
+    {
+     "x": 375,
+     "y": 76.9,
+     "type": "corner",
+     "hIn": {
+      "x": 375,
+      "y": 31.7
+     }
+    }
+   ]
+  }
+ ],
+ "donor": "vons",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the vons face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(100..935) -> (50..950)"
+}
