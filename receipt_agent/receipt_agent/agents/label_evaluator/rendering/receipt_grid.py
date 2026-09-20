@@ -1119,13 +1119,16 @@ def measured_amount_lane_end(
     columns: Sequence[Mapping[str, Any]] | None,
     spec: GridSpec,
     paper_width: float,
-) -> int | None:
-    """Grid column of the template's rightmost amount/right x, if any.
+) -> float | None:
+    """Grid column (float) of the template's rightmost amount/right x, if any.
 
     Speedway ``T`` flags and Costco overflow snap to this measured edge
-    instead of the OCR-jitter ``amount_lane_end`` cluster.
+    instead of the OCR-jitter ``amount_lane_end`` cluster. The column is NOT
+    rounded: :func:`_measured_lane_starts` anchors matched prices at the
+    exact ``x`` edge, so an unmatched price snapped to this lane lands on
+    the same pixel edge instead of jogging up to half a cell.
     """
-    ends: list[int] = []
+    ends: list[float] = []
     for column in columns or ():
         if str(column.get("role") or "").lower() != "amount":
             continue
@@ -1137,7 +1140,7 @@ def measured_amount_lane_end(
             continue
         if 0.0 <= x <= 1.0:
             ends.append(
-                round((x * float(paper_width) - spec.grid_left) / spec.cell_w)
+                (x * float(paper_width) - spec.grid_left) / spec.cell_w
             )
     if not ends:
         return None
@@ -1145,16 +1148,16 @@ def measured_amount_lane_end(
 
 
 def prefer_measured_amount_lane(
-    ocr_lane: int | None,
+    ocr_lane: float | None,
     columns: Sequence[Mapping[str, Any]] | None,
     spec: GridSpec,
     paper_width: float,
-) -> int | None:
-    """Prefer this section's measured amount x; else the OCR median.
+) -> float | None:
+    """``columns``' measured amount lane when it has one, else ``ocr_lane``.
 
-    Do not pass a receipt-wide max-over-sections lane as ``ocr_lane``:
-    unmeasured sections must keep the OCR fallback instead of stealing
-    another section's template x.
+    Called per row with that row's section columns: a section with no
+    measured amount column falls back to the receipt-wide OCR lane rather
+    than to another section's measured x.
     """
     measured = measured_amount_lane_end(columns, spec, paper_width)
     return measured if measured is not None else ocr_lane
@@ -1309,7 +1312,7 @@ def _measured_lane_starts(
 def plan_grid_line(
     line: Sequence[GridWord],
     spec: GridSpec,
-    amount_lane: int | None = None,
+    amount_lane: float | None = None,
     measured_columns: Sequence[Mapping[str, Any]] | None = None,
     paper_width: float | None = None,
 ) -> list[PlacedToken]:
@@ -1598,7 +1601,7 @@ def draw_grid_line(
     baseline_y: float,
     spec: GridSpec,
     font: ImageFont.FreeTypeFont,
-    amount_lane: int | None = None,
+    amount_lane: float | None = None,
     measured_columns: Sequence[Mapping[str, Any]] | None = None,
     paper_width: float | None = None,
     stroke: int = 0,

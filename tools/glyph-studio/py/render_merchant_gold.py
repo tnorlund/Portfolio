@@ -55,7 +55,8 @@ for _p in (
 
 import render_synthetic_receipts as rsr  # noqa: E402
 from glyphstudio.vendor_package import (  # noqa: E402
-    closed_profile_geometry,
+    GOLD_CANVAS_MARGIN,
+    closed_font_height,
     resolve_gold_inputs,
 )
 
@@ -63,14 +64,45 @@ from receipt_agent.agents.label_evaluator.rendering.font_profile import (  # noq
     MerchantFontProfile,
 )
 
+_FALLBACK_FONT_HEIGHT = 0.018
+_FALLBACK_CHAR_WIDTH = 0.0125
 
-def closed_font_profile(merchant, pins=None):
+
+def closed_font_profile(
+    merchant,
+    pins=None,
+    *,
+    canvas_height=None,
+    canvas_width=None,
+    margin=GOLD_CANVAS_MARGIN,
+):
     """Deterministic ``MerchantFontProfile`` with no Dynamo 12-receipt build.
 
-    Consumes recorded ``cap_px`` + ``canvas_height`` so ``build_grid_spec``
-    gets the measured ``font_px`` / ``cell_h`` instead of the 0.018 fallback.
+    ``font_height`` comes from the recorded cap (``pins["cap_px"]``, the
+    font.json ``preview.capPx`` on the 760-wide export canvas, scaled to
+    ``canvas_width``) and ``pins["ocr_cap_height_ratio"]`` on the
+    ``canvas_height`` the render targets, inverting what ``build_grid_spec``
+    and ``_ocr_grid_metrics`` do to the 12-receipt profile. The 0.018
+    fallback applies only when no cap is recorded or the canvas is unknown.
+    ``line_pitch`` stays ``None`` (no recorded pitch; the OCR row positions
+    carry the real spacing).
     """
-    font_height, char_width = closed_profile_geometry(pins)
+    pins = pins or {}
+    font_height = closed_font_height(
+        pins.get("cap_px"),
+        pins.get("ocr_cap_height_ratio"),
+        canvas_height,
+        canvas_width=canvas_width,
+        margin=margin,
+    )
+    if font_height is None:
+        font_height = _FALLBACK_FONT_HEIGHT
+    pitch = pins.get("pitch_ratio")
+    char_width = (
+        float(pitch) * font_height
+        if pitch is not None
+        else _FALLBACK_CHAR_WIDTH
+    )
     return MerchantFontProfile(
         merchant_name=merchant,
         receipt_count=0,
@@ -245,11 +277,14 @@ def closed_gold_inputs(
     atlas=None,
     section_scale=None,
     canvas_height=None,
+    canvas_width=None,
 ):
     """Profile + typography for gold/export: git pins, no live 12-receipt thin.
 
     ``--calibrate-from-corpus`` restores the authoring path
     (``cached_font_profile(n=12)`` + ``resolve_bitmap_thin``).
+    ``canvas_height`` / ``canvas_width`` size the closed profile's
+    ``font_height`` from the recorded cap (see :func:`closed_font_profile`).
     """
     return resolve_gold_inputs(
         merchant,
@@ -262,6 +297,7 @@ def closed_gold_inputs(
         atlas=atlas,
         section_scale=section_scale,
         canvas_height=canvas_height,
+        canvas_width=canvas_width,
     )
 
 
@@ -305,6 +341,7 @@ def render_gold(
         calibrate_from_corpus=calibrate_from_corpus,
         section_scale=ss,
         canvas_height=height,
+        canvas_width=width,
     )
     payload = {
         "words": doc["words"],

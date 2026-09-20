@@ -808,7 +808,12 @@ def _render_grid(
     min_pitch = cap_h * 1.12
 
     rows = group_words_into_grid_lines(grid_words, spec.cell_h)
-    ocr_amount_lane = amount_lane_end(rows, spec)
+    # Receipt-wide decimal lane from the OCR price cluster. Rows whose
+    # canonical section carries a measured right-anchored amount column
+    # prefer THAT edge (per row, below); every other row keeps this lane, so
+    # a section without measured columns is never snapped to another
+    # section's template x.
+    amount_lane = amount_lane_end(rows, spec)
     canonical_sections = effective_canonical_row_sections(
         rows, config.layout_template, config.height
     )
@@ -999,8 +1004,9 @@ def _render_grid(
         rows, baselines, eff_sections, canonical_sections
     ):
         row_columns = measured_columns.get(canonical_section or "") or None
+        # Measured amount x for this row's section, else the OCR-median lane.
         row_amount_lane = prefer_measured_amount_lane(
-            ocr_amount_lane, row_columns, spec, float(config.width)
+            amount_lane, row_columns, spec, float(config.width)
         )
         row_text = " ".join(w.text for w in line).upper()
         # A display heading (e.g. SELF-CHECKOUT, THANK YOU, ITEMS SOLD:) renders

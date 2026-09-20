@@ -12,11 +12,11 @@ GitHub API, and read-only DynamoDB queries. Citations are `file:line`.
 
 The renderer and its grader used to read **different sources of truth**.
 Measured `columns` are live in `_render_grid`. Measured `separators` copy
-into `config.separators` only when the resolved merchant profile opts in
-(`layout_template.use_measured_separators`, Costco); Gelson's / The Stand /
-Dollar Tree keep heuristic rules. `full_fidelity_eval.py` can still read
-columns via `--columns-source profile`. The old `layout_template.py` "NOT
-yet consumed (P3)" comment is stale.
+into `config.separators` only when `vendor.json` sets
+`use_measured_separators: true` (Costco); Gelson's / The Stand / Dollar Tree
+keep heuristic rules. `full_fidelity_eval.py` can still read columns via
+`--columns-source profile`. The old `layout_template.py` "NOT yet consumed
+(P3)" comment is stale.
 
 Consequence: campaigns still invent heuristics for vendors that have not
 opted into measured separators, and those heuristics still land in

@@ -9,8 +9,12 @@ share the SAME deterministic images:
       uniform cap height, char label in red. This is the per-letter review input.
 
   glyph_review.py receipt <merchant> <image_id> <receipt_id> <out.png>
-      A REAL-vs-SYNTH side-by-side of one receipt rendered in the current profile
-      (the on-receipt spacing/legibility test). Needs AWS + the render env.
+                          [--calibrate-from-corpus]
+      A REAL-vs-SYNTH side-by-side of one receipt rendered from the closed
+      gold pins (fonts/<slug>/font.json + vendor.json) through the SAME
+      resolver export_pipeline_assets uses, so the review is the export.
+      --calibrate-from-corpus restores the 12-receipt profile + live thin
+      authoring path. Needs AWS + the render env.
 
 Env for receipt mode: PYTHONPATH=receipt_agent:receipt_dynamo:receipt_upload,
 DYNAMODB_TABLE_NAME, AWS_REGION, BITMATRIX_DIR, FONT_LIB, PORTFOLIO_ENV=dev.
@@ -117,8 +121,67 @@ def sheet(atlas_path: str, out_png: str) -> int:
     return 0
 
 
+def _closed_resolver():
+    """``resolve_gold_inputs`` + ``closed_font_profile`` from glyph-studio.
+
+    The ONE resolver the exporter (``export_pipeline_assets.render_final``)
+    and ``render_merchant_gold`` use, so a review render and the shipped
+    export of the same receipt are the same function of the same pins.
+    """
+    studio_py = os.path.join(
+        os.path.dirname(HERE), "tools", "glyph-studio", "py"
+    )
+    if studio_py not in sys.path:
+        sys.path.append(studio_py)
+    from glyphstudio.vendor_package import resolve_gold_inputs
+    from render_merchant_gold import closed_font_profile
+
+    return resolve_gold_inputs, closed_font_profile
+
+
+def review_inputs(
+    rsr,
+    merchant: str,
+    typ: dict,
+    *,
+    table: str,
+    region: str,
+    canvas_height: int,
+    canvas_width: int | None = None,
+    atlas=None,
+    section_scale=None,
+    calibrate_from_corpus: bool = False,
+):
+    """Profile + typography for a review render, resolved like the export.
+
+    Closed git pins (``fonts/<slug>/font.json`` + ``vendor.json``) by
+    default; ``calibrate_from_corpus`` restores ``rsr.corpus_font_inputs``
+    (12-receipt profile + live thin). ``new_vendor.py calibrate`` reviews
+    through this, so the ratio it solves is the one the export renders.
+    """
+    resolve_gold_inputs, closed_font_profile = _closed_resolver()
+    return resolve_gold_inputs(
+        merchant,
+        typ,
+        table=table,
+        region=region,
+        rsr=rsr,
+        make_profile=closed_font_profile,
+        calibrate_from_corpus=calibrate_from_corpus,
+        atlas=atlas,
+        section_scale=section_scale,
+        canvas_height=canvas_height,
+        canvas_width=canvas_width,
+    )
+
+
 def receipt(
-    merchant: str, image_id: str, receipt_id: int, out_png: str
+    merchant: str,
+    image_id: str,
+    receipt_id: int,
+    out_png: str,
+    *,
+    calibrate_from_corpus: bool = False,
 ) -> int:
     from io import BytesIO
 
@@ -134,8 +197,6 @@ def receipt(
     region = os.environ.get("AWS_REGION", "us-east-1")
     c = DynamoClient(table_name=table, region=region)
     s3 = boto3.client("s3", region_name=region)
-    ss = rsr.section_scale_for_merchant(merchant)
-    typ = rsr.merchant_typography(merchant)
 
     d = None
     rec = None
@@ -191,34 +252,27 @@ def receipt(
             barcodes = []
     wt = 760
     ht = int(round(wt * rec.height / rec.width))
-    studio_py = os.path.join(
-        os.path.dirname(HERE), "tools", "glyph-studio", "py"
-    )
-    if studio_py not in sys.path:
-        sys.path.insert(0, studio_py)
-    from glyphstudio.vendor_package import resolve_gold_inputs  # noqa: E402
-    from render_merchant_gold import closed_font_profile  # noqa: E402
-
-    calibrate = os.environ.get("GOLD_CALIBRATE_FROM_CORPUS") == "1"
+    ss = rsr.section_scale_for_merchant(merchant)
+    typ = rsr.merchant_typography(merchant)
     atlas = None
-    need_atlas = "bitmap_font" not in typ or (
-        calibrate and "bitmap_thin" not in typ
+    needs_atlas = "bitmap_font" not in typ or (
+        calibrate_from_corpus and "bitmap_thin" not in typ
     )
-    if need_atlas:
+    if needs_atlas:
         atlas = rsr.cached_glyph_atlas(
             table, merchant, region=region, max_receipts=8
         )
-    prof, typ = resolve_gold_inputs(
+    prof, typ = review_inputs(
+        rsr,
         merchant,
         typ,
         table=table,
         region=region,
-        rsr=rsr,
-        make_profile=closed_font_profile,
-        calibrate_from_corpus=calibrate,
+        canvas_height=ht,
+        canvas_width=wt,
         atlas=atlas,
         section_scale=ss,
-        canvas_height=ht,
+        calibrate_from_corpus=calibrate_from_corpus,
     )
     tmp = out_png + ".syn.png"
     rsr._render_cached_hybrid(
@@ -505,8 +559,16 @@ def main() -> int:
     mode = sys.argv[1]
     if mode == "sheet" and len(sys.argv) == 4:
         return sheet(sys.argv[2], sys.argv[3])
-    if mode == "receipt" and len(sys.argv) == 6:
-        return receipt(sys.argv[2], sys.argv[3], int(sys.argv[4]), sys.argv[5])
+    if mode == "receipt":
+        args = [a for a in sys.argv[2:] if a != "--calibrate-from-corpus"]
+        if len(args) == 4:
+            return receipt(
+                args[0],
+                args[1],
+                int(args[2]),
+                args[3],
+                calibrate_from_corpus="--calibrate-from-corpus" in sys.argv,
+            )
     print(__doc__)
     return 2
 

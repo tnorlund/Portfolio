@@ -267,6 +267,7 @@ class Exporter:
             atlas=atlas,
             section_scale=ss,
             canvas_height=height,
+            canvas_width=width,
         )
         box_sink: list[dict[str, Any]] = []
         typ["box_sink"] = box_sink

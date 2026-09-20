@@ -57,9 +57,6 @@ from receipt_agent.agents.label_evaluator.rendering.price_tokens import (  # noq
 from receipt_agent.agents.label_evaluator.rendering.row_bands import (  # noqa: E402
     group_rows_quantized as _group_rows_quantized,
 )
-from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
-    MerchantTruthIntegrityError,
-)
 
 
 def _bbox_from_bounding_box(bb: dict) -> list[float] | None:
@@ -1743,6 +1740,43 @@ def cached_font_profile(
     )
 
 
+def corpus_font_inputs(
+    table,
+    merchant,
+    *,
+    region,
+    typography,
+    atlas=None,
+    section_scale=None,
+    max_receipts=12,
+):
+    """The authoring-path (profile, typography) pair from the merchant corpus.
+
+    ``cached_font_profile(n=max_receipts)`` plus, for a bitmap-font merchant
+    whose typography carries no recorded ``bitmap_thin``, the live
+    :func:`resolve_bitmap_thin` solve. This is the ONE implementation of the
+    12-receipt/thin block that ``synthesis_loop/glyph_review.py`` and the
+    gold/export ``--calibrate-from-corpus`` path share; the closed gold path
+    (``glyphstudio.vendor_package.resolve_gold_inputs``) replaces it with
+    git pins. Returns a copy of ``typography``; the input is not mutated.
+    """
+    prof = cached_font_profile(
+        table, merchant, region=region, max_receipts=max_receipts
+    )
+    typ = dict(typography)
+    if "bitmap_font" in typ and "bitmap_thin" not in typ:
+        typ["bitmap_thin"] = resolve_bitmap_thin(
+            table,
+            merchant,
+            region=region,
+            atlas=atlas,
+            profile=prof,
+            section_scale=section_scale,
+            typography=typ,
+        )
+    return prof, typ
+
+
 def resolve_bitmap_thin(
     table,
     merchant,
@@ -1923,26 +1957,77 @@ def _measured_layout_template(
     return copy.deepcopy(layout_template)
 
 
-# Canonical Costco opt-in until a reminted bundle carries
-# layout_template.use_measured_separators. Aliased OCR names
-# ("COSTCO WHOLESALE #1187") resolve here via get_merchant_profile_key.
-_MEASURED_SEPARATOR_CANONICAL = frozenset({"costco wholesale"})
+_GLYPH_STUDIO_PY = os.path.join(REPO_ROOT, "tools", "glyph-studio", "py")
+_VENDOR_PACKAGE: object | None = None
+_VENDOR_PACKAGE_TRIED = False
 
 
-def _canonical_merchant_profile(
-    merchant: str | None,
-) -> tuple[str | None, dict]:
-    """Same registry resolution as layout_template, if the registry is live.
+def _vendor_package():
+    """``glyphstudio.vendor_package`` when the dev tool is checked out.
 
-    Does not build the truth registry: unit tests and checkouts without
-    glyph-studio / AWS must not hit Dynamo from separator opt-in.
+    ``tools/glyph-studio`` is authoring tooling, not a production dependency:
+    a checkout or image without it renders with no vendor pins (heuristic
+    separators, as before the opt-in existed) instead of failing at import
+    time for every ``render_synthetic_receipts`` importer. The studio path is
+    APPENDED to ``sys.path`` (never prepended) and only here, so its
+    un-packaged ``tests/`` dir cannot shadow the repo-root ``tests``
+    namespace under pytest. Returns ``None`` when the module is unavailable.
     """
-    if _MERCHANT_TRUTH_REGISTRY is None:
-        return merchant, {}
+    global _VENDOR_PACKAGE, _VENDOR_PACKAGE_TRIED
+    if _VENDOR_PACKAGE_TRIED:
+        return _VENDOR_PACKAGE
+    _VENDOR_PACKAGE_TRIED = True
+    if os.path.isdir(_GLYPH_STUDIO_PY) and _GLYPH_STUDIO_PY not in sys.path:
+        sys.path.append(_GLYPH_STUDIO_PY)
     try:
-        return get_merchant_profile_key(merchant)
+        from glyphstudio import vendor_package
+    except ImportError:
+        return None
+    _VENDOR_PACKAGE = vendor_package
+    return vendor_package
+
+
+def vendor_record_for_merchant(merchant: str | None) -> dict:
+    """The ``fonts/<slug>/vendor.json`` record for ``merchant``, else ``{}``.
+
+    Resolves the merchant the same way :func:`get_merchant_profile` does:
+    through the ACTIVE truth registry (exact name, declared aliases, then
+    ``normalize_merchant_alias``) to the canonical merchant name, and matches
+    the vendor.json ``merchant`` / ``aliases`` on THAT name. A Dynamo variant
+    like ``"COSTCO WHOLESALE #1187"`` therefore gets the same vendor record
+    as the ``layout_template`` it already receives, instead of a bare
+    casefold compare against vendor.json aliases. The raw name is tried only
+    when no ACTIVE bundle resolves it. ``{}`` without glyph-studio.
+    """
+    package = _vendor_package()
+    name = (merchant or "").strip()
+    if package is None or not name:
+        return {}
+    from receipt_dynamo.data.shared_exceptions import (
+        MerchantTruthIntegrityError,
+    )
+
+    try:
+        canonical, _ = get_merchant_profile_key(name)
     except MerchantTruthIntegrityError:
-        return merchant, {}
+        canonical = None
+    for candidate in (canonical, name):
+        if not candidate:
+            continue
+        record = package.vendor_record_for_merchant(candidate)
+        if record:
+            return record
+    return {}
+
+
+def vendor_uses_measured_separators(merchant: str | None) -> bool:
+    """The ``use_measured_separators`` opt-in from ``fonts/<slug>/vendor.json``.
+
+    ``False`` when glyph-studio is not checked out (no vendor pins).
+    """
+    return bool(
+        vendor_record_for_merchant(merchant).get("use_measured_separators")
+    )
 
 
 def hybrid_layout_separators(
@@ -1950,35 +2035,21 @@ def hybrid_layout_separators(
     layout_template: dict | None,
     separators,
 ):
-    """Copy ``layout_template.separators`` only when the resolved profile opts in.
+    """Copy ``layout_template.separators`` only when the vendor opts in.
 
-    The flag lives on the profile the renderer already resolves (canonical
-    merchant + ``layout_template.use_measured_separators``), not an
-    exact-match of the OCR string against ``fonts/<slug>/vendor.json``
-    aliases. Costco is the current opt-in; Gelson's / The Stand / Dollar
-    Tree keep heuristic separators even though they carry a measured
-    inventory. ``None`` still means heuristics; ``()`` / ``[]`` suppresses
-    them.
+    Costco sets ``use_measured_separators`` in vendor.json. Gelson's / The
+    Stand / Dollar Tree keep heuristic separators even though they carry a
+    measured inventory. ``None`` still means heuristics; ``()`` / ``[]``
+    suppresses them. Without glyph-studio checked out no vendor opts in.
     """
-    canonical, rec = _canonical_merchant_profile(merchant)
-    layout = (
-        layout_template
-        if isinstance(layout_template, dict)
-        else rec.get("layout_template")
-    )
-    if not isinstance(layout, dict):
-        layout = None
-    if "use_measured_separators" in rec:
-        opted = bool(rec.get("use_measured_separators"))
-    elif isinstance(layout, dict) and "use_measured_separators" in layout:
-        opted = bool(layout.get("use_measured_separators"))
-    else:
-        opted = (canonical or "").casefold() in _MEASURED_SEPARATOR_CANONICAL
-    if not opted:
+    if not vendor_uses_measured_separators(merchant):
         return separators
-    if layout is None or "separators" not in layout:
+    if (
+        not isinstance(layout_template, dict)
+        or "separators" not in layout_template
+    ):
         return separators
-    return layout.get("separators")
+    return layout_template.get("separators")
 
 
 def _render_cached_hybrid(

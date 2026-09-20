@@ -6,10 +6,14 @@ from pathlib import Path
 import pytest
 from PIL import Image, ImageDraw, ImageFont
 
-from receipt_agent.agents.label_evaluator.rendering import receipt_grid
+from receipt_agent.agents.label_evaluator.rendering import (
+    receipt_grid,
+    receipt_renderer,
+)
 from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     GridSpec,
     GridWord,
+    build_grid_spec,
     draw_grid_line,
     effective_canonical_row_sections,
     plan_grid_line,
@@ -187,25 +191,12 @@ def test_measured_amount_lane_end_uses_the_rightmost_amount_x():
         {"role": "desc", "anchor": "left", "x": 0.01},
     ]
     lane = receipt_grid.measured_amount_lane_end(columns, spec, 760.0)
-    expected = round((0.9399 * 760.0 - spec.grid_left) / spec.cell_w)
-    assert lane == expected
-    assert expected > round((0.3875 * 760.0 - spec.grid_left) / spec.cell_w)
+    expected = (0.9399 * 760.0 - spec.grid_left) / spec.cell_w
+    assert lane == pytest.approx(expected)
+    assert expected > (0.3875 * 760.0 - spec.grid_left) / spec.cell_w
 
 
-def test_unmeasured_section_keeps_ocr_lane_not_other_section_x():
-    spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=16, grid_left=10.0)
-    ocr_lane = 50
-    items = [{"role": "amount", "anchor": "right", "x": 0.9399}]
-    footer = [{"role": "desc", "anchor": "left", "x": 0.02}]
-    items_lane = receipt_grid.prefer_measured_amount_lane(
-        ocr_lane, items, spec, 760.0
-    )
-    footer_lane = receipt_grid.prefer_measured_amount_lane(
-        ocr_lane, footer, spec, 760.0
-    )
-    assert items_lane != ocr_lane
-    assert footer_lane == ocr_lane
-
+def test_prefer_measured_amount_lane_falls_back_to_ocr_when_missing():
     spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=16, grid_left=10.0)
     assert (
         receipt_grid.prefer_measured_amount_lane(
@@ -273,3 +264,94 @@ def test_canonical_sections_use_labels_then_generic_payment_markers():
         "payment",
         "footer",
     ]
+
+
+def test_measured_amount_lane_end_matches_measured_lane_starts():
+    """The lane is the exact measured edge, like _measured_lane_starts."""
+    spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=16, grid_left=10.0)
+    columns = [{"role": "amount", "anchor": "right", "x": 0.9367}]
+    lane = receipt_grid.measured_amount_lane_end(columns, spec, 760.0)
+    starts = receipt_grid._measured_lane_starts(
+        [_word("116.99", 650, 710)], spec, columns, 760.0
+    )
+    assert lane == pytest.approx((0.9367 * 760.0 - spec.grid_left) / 10.0)
+    assert lane == pytest.approx(starts[0] + len("116.99"))
+    assert lane != round(lane)  # a rounded lane would jog half a cell
+
+
+def _render_words(words, template, *, width=760, height=1000):
+    sink = []
+    config = receipt_renderer.RenderConfig(
+        width=width,
+        height=height,
+        margin=10,
+        grid_mode=True,
+        layout_template=template,
+        box_sink=sink,
+    )
+    receipt_renderer.render_receipt(
+        {"words": words}, config=config, coord_max=1000.0
+    )
+    return {entry["text"]: entry for entry in sink}
+
+
+def test_rows_without_measured_amount_column_keep_the_ocr_lane():
+    """Only the section that measured an amount column snaps to its x.
+
+    Default grid: cell_w 9.25px on a 760-wide canvas, so one grid cell is
+    12.5 source units and a source right edge of ``col * 12.5`` lands on
+    column ``col``. Three item prices jitter over columns 74/75/75 (OCR
+    lane = 75); the total_line template measured its amount edge at 0.95
+    of the paper (column ~77), within snap tolerance of every price.
+    """
+
+    def word(text, x0, y_top, x1, labels=()):
+        return {
+            "text": text,
+            "line_id": int(y_top),
+            "word_id": 1,
+            "bbox": [x0, y_top, x1, y_top - 30],
+            "labels": list(labels),
+        }
+
+    words = [
+        word("ITEM", 20, 760, 120, labels=("PRODUCT_NAME",)),
+        word("12.99", 862.5, 760, 925.0, labels=("LINE_TOTAL",)),
+        word("ITEM", 20, 700, 120, labels=("PRODUCT_NAME",)),
+        word("3.49", 887.5, 700, 937.5, labels=("LINE_TOTAL",)),
+        word("ITEM", 20, 640, 120, labels=("PRODUCT_NAME",)),
+        word("7.25", 887.5, 640, 937.5, labels=("LINE_TOTAL",)),
+        word("TOTAL", 20, 560, 120),
+        word("45.00", 875.0, 560, 937.5),
+    ]
+    template = {
+        "sections": [
+            {"name": "items", "pos_frac_med": 0.30},
+            {"name": "total_line", "pos_frac_med": 0.44},
+        ],
+        "columns": {
+            "total_line": [{"role": "amount", "anchor": "right", "x": 0.95}]
+        },
+    }
+    boxes = _render_words(words, template)
+    spec = build_grid_spec(
+        None,
+        760 - 20,
+        1000 - 20,
+        receipt_renderer.RenderConfig(margin=10, width=760, height=1000),
+    )
+    assert spec.cell_w == pytest.approx(9.25)
+
+    # the measured section sits on its template edge (quarter-cell bearing)
+    assert boxes["45.00"]["px"][2] == pytest.approx(
+        0.95 * 760 - 0.25 * spec.cell_w, abs=0.5
+    )
+    # item rows have no measured column: they unify on the OCR-median lane
+    # (column 75), not on the total_line template edge
+    ocr_lane_px = spec.grid_left + 75 * spec.cell_w
+    rights = {t: boxes[t]["px"][2] for t in ("12.99", "3.49", "7.25")}
+    for text, right in rights.items():
+        # render-true boxes are integer px: allow the floor
+        assert right == pytest.approx(ocr_lane_px, abs=1.0), (text, right)
+    assert len(set(rights.values())) == 1, rights
+    assert rights["12.99"] < boxes["45.00"]["px"][2] - spec.cell_w
