@@ -117,9 +117,12 @@ def test_gateway_exposes_email_replica_as_its_own_scope():
     assert '"Read the email-receipt replica"' in source
     assert 'route_urls["email"] = self.email_url' in source
     assert 'handler="mcp.lambda_handler"' in inbox
-    assert 'f"{bucket_arn}/{REPLICA_PREFIX}*"' in inbox
-    # raw/ mail is never readable from the replica Lambda's role.
-    assert '"raw/*"' not in inbox.split("read-replica MCP Lambda")[1]
+    # The Lambda's role reads the agent-safe projection prefix only: never
+    # raw/ mail and never the full replica/.
+    assert 'f"{bucket_arn}/{PROJECTION_PREFIX}*"' in inbox
+    mcp_section = inbox.split("projection MCP Lambda")[1]
+    assert '"raw/*"' not in mcp_section
+    assert "REPLICA_PREFIX" not in mcp_section
 
 
 def test_ats_machine_auth_is_rotated_and_monitored():

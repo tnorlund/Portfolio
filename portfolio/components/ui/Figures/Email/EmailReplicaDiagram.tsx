@@ -1,10 +1,5 @@
 import React from "react";
-import {
-  ClaudeIcon,
-  LambdaIcon,
-  LaptopIcon,
-  S3Icon,
-} from "./EmailBitStream";
+import { ClaudeIcon, LambdaIcon, LaptopIcon, S3Icon } from "./EmailBitStream";
 import EmailFlowDiagram, { FlowLeg, FlowNode } from "./EmailFlowDiagram";
 
 interface EmailReplicaDiagramProps {
@@ -20,7 +15,7 @@ const NODES: FlowNode[] = [
   },
   {
     id: "s3",
-    label: "S3 replica/",
+    label: "S3 agent/",
     render: (x, y) => <S3Icon x={x} y={y} gradientId="email-s3-gradient" />,
   },
   {
@@ -30,7 +25,11 @@ const NODES: FlowNode[] = [
       <LambdaIcon x={x} y={y} gradientId="email-lambda-gradient" />
     ),
   },
-  { id: "claude", label: "Claude", render: (x, y) => <ClaudeIcon x={x} y={y} /> },
+  {
+    id: "claude",
+    label: "Claude",
+    render: (x, y) => <ClaudeIcon x={x} y={y} />,
+  },
 ];
 
 /**
@@ -55,7 +54,7 @@ const EmailReplicaDiagram: React.FC<EmailReplicaDiagramProps> = ({
     legs={LEGS}
     chars={chars}
     paused={paused}
-    ariaLabel="The Mac uploads a SQLite snapshot to S3, a Lambda downloads it, and Claude asks it questions over MCP"
+    ariaLabel="The Mac uploads a two-table SQLite export to S3, a Lambda validates and downloads it, and Claude asks it questions over MCP"
   />
 );
 

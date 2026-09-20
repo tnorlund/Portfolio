@@ -33,9 +33,14 @@ from pulumi import ComponentResource, ResourceOptions
 LAMBDA_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "lambdas"
 )
+# Full read replica of the primary (owner's machines only; the MCP Lambda
+# cannot read it).
 REPLICA_PREFIX = "replica/"
-REPLICA_DB_KEY = f"{REPLICA_PREFIX}email_receipts.db.gz"
-REPLICA_MANIFEST_KEY = f"{REPLICA_PREFIX}manifest.json"
+# Agent-safe projection: exactly the spend/txn tables, published by
+# `emlrec publish-projection`; the ONLY prefix the MCP Lambda can read.
+PROJECTION_PREFIX = "agent/"
+PROJECTION_DB_KEY = f"{PROJECTION_PREFIX}spend.db.gz"
+PROJECTION_MANIFEST_KEY = f"{PROJECTION_PREFIX}manifest.json"
 
 
 class EmailReceiptInbox(ComponentResource):
@@ -170,8 +175,17 @@ class EmailReceiptInbox(ComponentResource):
                 "status": "Enabled",
                 "filter": {"prefix": REPLICA_PREFIX},
                 "noncurrent_version_expiration": {"noncurrent_days": 7},
-            }
+            },
+            {
+                "id": "expire-projection-versions",
+                "status": "Enabled",
+                "filter": {"prefix": PROJECTION_PREFIX},
+                "noncurrent_version_expiration": {"noncurrent_days": 7},
+            },
         ]
+        # raw/ has NO expiry unless raw_retention_days is passed: S3 is the
+        # only AWS archive of the mail, and turning expiry on is a retention
+        # decision that needs a verified independent copy first.
         if raw_retention_days:
             lifecycle_rules.append(
                 {
@@ -294,7 +308,7 @@ class EmailReceiptInbox(ComponentResource):
                 ),
             )
 
-        # --- read-replica MCP Lambda (stdlib only: boto3 + sqlite3)
+        # --- projection MCP Lambda (stdlib only: boto3 + sqlite3)
         mcp_role = aws.iam.Role(
             f"{name}-mcp-role",
             assume_role_policy=pulumi.Output.json_dumps(
@@ -318,10 +332,11 @@ class EmailReceiptInbox(ComponentResource):
             policy_arn=aws.iam.ManagedPolicy.AWS_LAMBDA_BASIC_EXECUTION_ROLE,
             opts=child,
         )
-        # Read the replica prefix and nothing else: raw mail is never
-        # reachable from the MCP, even via query_sql.
+        # Read the agent/ projection prefix and nothing else: neither raw
+        # mail nor the full replica is reachable from the MCP, even via
+        # query_sql.
         mcp_policy = aws.iam.RolePolicy(
-            f"{name}-mcp-replica-read",
+            f"{name}-mcp-projection-read",
             role=mcp_role.id,
             policy=self.bucket.arn.apply(
                 lambda bucket_arn: pulumi.Output.json_dumps(
@@ -334,7 +349,7 @@ class EmailReceiptInbox(ComponentResource):
                                     "s3:GetObject",
                                     "s3:GetObjectVersion",
                                 ],
-                                "Resource": f"{bucket_arn}/{REPLICA_PREFIX}*",
+                                "Resource": f"{bucket_arn}/{PROJECTION_PREFIX}*",
                             },
                             {
                                 "Effect": "Allow",
@@ -342,7 +357,7 @@ class EmailReceiptInbox(ComponentResource):
                                 "Resource": bucket_arn,
                                 "Condition": {
                                     "StringLike": {
-                                        "s3:prefix": [f"{REPLICA_PREFIX}*"]
+                                        "s3:prefix": [f"{PROJECTION_PREFIX}*"]
                                     }
                                 },
                             },
@@ -367,16 +382,13 @@ class EmailReceiptInbox(ComponentResource):
                     "mcp.py": pulumi.FileAsset(
                         os.path.join(LAMBDA_DIR, "mcp.py")
                     ),
-                    "queries.py": pulumi.FileAsset(
-                        os.path.join(LAMBDA_DIR, "queries.py")
-                    ),
                 }
             ),
             environment={
                 "variables": {
-                    "REPLICA_BUCKET": self.bucket.bucket,
-                    "REPLICA_DB_KEY": REPLICA_DB_KEY,
-                    "REPLICA_MANIFEST_KEY": REPLICA_MANIFEST_KEY,
+                    "PROJECTION_BUCKET": self.bucket.bucket,
+                    "PROJECTION_DB_KEY": PROJECTION_DB_KEY,
+                    "PROJECTION_MANIFEST_KEY": PROJECTION_MANIFEST_KEY,
                     "ALLOWED_ORIGINS": allowed_origins,
                 }
             },
@@ -385,8 +397,8 @@ class EmailReceiptInbox(ComponentResource):
                 parent=self, depends_on=[mcp_policy, mcp_logs]
             ),
         )
-        self.replica_db_key = REPLICA_DB_KEY
-        self.replica_manifest_key = REPLICA_MANIFEST_KEY
+        self.projection_db_key = PROJECTION_DB_KEY
+        self.projection_manifest_key = PROJECTION_MANIFEST_KEY
 
         self.register_outputs(
             {
@@ -394,7 +406,7 @@ class EmailReceiptInbox(ComponentResource):
                 "domain": self.domain,
                 "rule_set_name": self.rule_set.rule_set_name,
                 "bucket": self.bucket.bucket,
-                "replica_db_key": REPLICA_DB_KEY,
+                "projection_db_key": PROJECTION_DB_KEY,
                 "mcp_lambda_arn": self.mcp_lambda.arn,
             }
         )

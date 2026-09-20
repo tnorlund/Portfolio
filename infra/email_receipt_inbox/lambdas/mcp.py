@@ -1,13 +1,18 @@
-"""Read-replica MCP server for email receipts.
+"""MCP server over the agent-safe spend projection.
 
 The SQLite file on the Mac (``~/receipts-email/email_receipts.db``) is the
-primary. ``emlrec replicate`` uploads a ``VACUUM INTO`` snapshot, gzipped,
-plus a manifest to ``s3://<mail bucket>/replica/``. This Lambda downloads
-the snapshot on cold start, re-checks the object ETag at most once a minute,
-opens it read-only, and answers the same read tools the local stdio server
-(``receipts-email/server.py``) answers. Writes (confirm/reject a match, tag a
-transaction, ingest) are not exposed: they happen on the primary and arrive
-here with the next replica.
+primary and is never served from here. ``emlrec publish-projection`` exports
+exactly two tables, ``spend`` and ``txn``, into a fresh database, validates
+them against an explicit column allowlist, and uploads the gzipped file plus
+a manifest to ``s3://<mail bucket>/agent/``. This Lambda's role can read
+that prefix and nothing else. On every download the file is validated again
+against the same contract (exact tables, exact columns, no views or
+triggers, matching schema version); a file that fails is never served and
+there is no fallback to any other database.
+
+Two tools: ``query_sql`` (read-only SELECT/WITH over ``spend`` and ``txn``
+under a SQLite authorizer, with a statement time budget, a row cap, and a
+response-size cap) and ``replica_status`` (freshness and the schema).
 
 Transport: stateless MCP Streamable HTTP behind the shared Cognito gateway
 (``/email/mcp``). No dependencies beyond the Lambda runtime (boto3, sqlite3).
@@ -19,47 +24,31 @@ import base64
 import gzip
 import json
 import os
+import re
 import shutil
 import sqlite3
 import time
+from datetime import datetime, timezone
 
 import boto3
-import queries
 from botocore.exceptions import ClientError
 
-BUCKET = os.environ["REPLICA_BUCKET"]
-DB_KEY = os.environ.get("REPLICA_DB_KEY", "replica/email_receipts.db.gz")
-MANIFEST_KEY = os.environ.get("REPLICA_MANIFEST_KEY", "replica/manifest.json")
-CACHE_DIR = os.environ.get("REPLICA_CACHE_DIR", "/tmp/email-replica")
-# How long a warm container trusts its cached ETag before HEADing S3 again.
-ETAG_CHECK_SECONDS = int(os.environ.get("REPLICA_ETAG_CHECK_SECONDS", "60"))
+BUCKET = os.environ["PROJECTION_BUCKET"]
+DB_KEY = os.environ.get("PROJECTION_DB_KEY", "agent/spend.db.gz")
+MANIFEST_KEY = os.environ.get("PROJECTION_MANIFEST_KEY", "agent/manifest.json")
+CACHE_DIR = os.environ.get("PROJECTION_CACHE_DIR", "/tmp/email-projection")
+# How long a warm container trusts its cached ETags before HEADing S3 again.
+ETAG_CHECK_SECONDS = int(os.environ.get("PROJECTION_ETAG_CHECK_SECONDS", "60"))
 # Budget for a single query_sql statement; the gateway integration window is
 # 29s and the function timeout is 25s, so abort well before either.
-SQL_BUDGET_SECONDS = float(os.environ.get("REPLICA_SQL_BUDGET_SECONDS", "10"))
-# Hard ceiling on any per-call row limit; the fixed tools' schema defaults
-# stay well below it. Negative or non-integer limits are rejected outright.
-MAX_LIMIT = int(os.environ.get("REPLICA_MAX_LIMIT", "1000"))
-# query_sql may only read these tables. `messages` (the 13-year mailbox
-# index: every sender, subject, and mbox offset) is deliberately absent: the
-# replica's boundary is receipt-scoped data, and the fixed tools already
-# expose the one message row that belongs to a receipt.
-SQL_ALLOWED_TABLES = frozenset(
-    {
-        "email_receipts",
-        "receipt_items",
-        "paper_receipts",
-        "paper_receipt_items",
-        "chase_transactions",
-        "matches",
-        "match_overrides",
-        "txn_tags",
-        "merchant_canonical",
-        "parse_failures",
-        "meta",
-        # Schema discovery for the allowed tables.
-        "sqlite_master",
-        "sqlite_schema",
-    }
+SQL_BUDGET_SECONDS = float(
+    os.environ.get("PROJECTION_SQL_BUDGET_SECONDS", "10")
+)
+# Row cap (default and hard ceiling) and response-size cap for query_sql.
+DEFAULT_LIMIT = 500
+MAX_LIMIT = int(os.environ.get("PROJECTION_MAX_LIMIT", "1000"))
+MAX_RESPONSE_BYTES = int(
+    os.environ.get("PROJECTION_MAX_RESPONSE_BYTES", "262144")
 )
 ALLOWED_ORIGINS = {
     value.strip()
@@ -69,7 +58,68 @@ ALLOWED_ORIGINS = {
 
 PROTOCOL_VERSION = "2025-06-18"
 SUPPORTED_PROTOCOL_VERSIONS = {PROTOCOL_VERSION, "2024-11-05", "2025-03-26"}
-SERVER_INFO = {"name": "portfolio-email-receipts", "version": "1.0.0"}
+SERVER_INFO = {"name": "portfolio-email-receipts", "version": "2.0.0"}
+
+# ---------------------------------------------------------------------------
+# The consumer side of the projection contract. The producer is
+# receipts-email/emlrec/projection.py (SCHEMA_VERSION, COLUMNS,
+# FORBIDDEN_COLUMNS); the two must agree exactly, and
+# infra/tests/test_email_receipt_mcp.py runs the real exporter against this
+# module when that checkout is available.
+# ---------------------------------------------------------------------------
+SCHEMA_VERSION = 2
+COLUMNS = {
+    "spend": (
+        "source",
+        "date",
+        "merchant_name",
+        "merchant_category",
+        "item_description",
+        "quantity",
+        "unit_price_cents",
+        "total_cents",
+        "receipt_total_cents",
+        "receipt_ref",
+        "currency",
+    ),
+    "txn": (
+        "txn_date",
+        "posting_date",
+        "merchant_canonical",
+        "category",
+        "amount_cents",
+        "txn_class",
+        "is_card_purchase",
+        "currency",
+    ),
+}
+FORBIDDEN_COLUMNS = frozenset(
+    {
+        "message_id",
+        "from_addr",
+        "from_domain",
+        "subject",
+        "card_last4",
+        "last4_kind",
+        "account",
+        "description",
+        "order_id",
+        "mbox_file",
+        "byte_offset",
+        "byte_length",
+        "dedupe_key",
+        "extra",
+        "content_hash",
+    }
+)
+GRAIN_NOTE = (
+    "spend is one row per receipt ITEM: receipt_total_cents repeats on every "
+    "item of a receipt (sum total_cents, or SELECT DISTINCT receipt_ref, "
+    "receipt_total_cents for receipt totals); email and paper sources are "
+    "not deduplicated against each other; money is integer cents and every "
+    "row carries its currency (NULL = unknown, never assume USD), so "
+    "aggregate per currency."
+)
 
 s3 = boto3.client("s3")
 
@@ -83,10 +133,17 @@ _state: dict = {
 }
 
 
-class ReplicaMissing(Exception):
-    """The snapshot has never been published (or was deleted)."""
+class ProjectionMissing(Exception):
+    """The projection has never been published (or was deleted)."""
 
 
+class ProjectionInvalid(Exception):
+    """The downloaded file does not satisfy the projection contract."""
+
+
+# ---------------------------------------------------------------------------
+# Snapshot lifecycle
+# ---------------------------------------------------------------------------
 def _head(key: str) -> dict | None:
     """HEAD an object; None when it does not exist.
 
@@ -109,9 +166,6 @@ def _head(key: str) -> dict | None:
         raise
 
 
-# ---------------------------------------------------------------------------
-# Replica lifecycle
-# ---------------------------------------------------------------------------
 def _read_manifest() -> dict | None:
     try:
         body = s3.get_object(Bucket=BUCKET, Key=MANIFEST_KEY)["Body"].read()
@@ -127,9 +181,9 @@ def _read_manifest() -> dict | None:
 def _refresh_manifest() -> None:
     """Track the manifest by its own ETag.
 
-    ``emlrec replicate`` uploads the database and the manifest as two PUTs,
-    so a request between them must not pin a stale manifest to the new
-    database for the rest of the replication interval.
+    The publisher uploads the database and the manifest as two PUTs, so a
+    request between them must not pin a stale manifest to the new database
+    for the rest of the check interval.
     """
     head = _head(MANIFEST_KEY)
     if head is None:
@@ -161,8 +215,69 @@ def _download(etag: str) -> str:
     return path
 
 
+def validate_projection(conn: sqlite3.Connection) -> None:
+    """Enforce the producer contract on a downloaded file, or refuse it.
+
+    Exactly the ``spend`` and ``txn`` tables, no views or triggers, exactly
+    the allow-listed columns in order (``table_xinfo`` includes hidden and
+    generated columns), none of the forbidden column names, and the
+    supported ``user_version``. Raises :class:`ProjectionInvalid`.
+    """
+    objects = conn.execute(
+        "SELECT name, type FROM sqlite_schema "
+        "WHERE type IN ('table', 'view', 'trigger') "
+        "AND name NOT LIKE 'sqlite_%'"
+    ).fetchall()
+    tables = {name for name, kind in objects if kind == "table"}
+    if tables != set(COLUMNS):
+        raise ProjectionInvalid(
+            "projection must contain exactly the spend and txn tables; "
+            f"found {sorted(tables)}"
+        )
+    extras = sorted(
+        f"{kind} {name}" for name, kind in objects if kind != "table"
+    )
+    if extras:
+        raise ProjectionInvalid(
+            f"projection must not contain views or triggers: {extras}"
+        )
+    for table, expected in COLUMNS.items():
+        columns = tuple(
+            row[1] for row in conn.execute(f"PRAGMA table_xinfo({table})")
+        )
+        forbidden = FORBIDDEN_COLUMNS.intersection(c.lower() for c in columns)
+        if forbidden:
+            raise ProjectionInvalid(
+                f"forbidden column in {table}: {', '.join(sorted(forbidden))}"
+            )
+        if columns != expected:
+            raise ProjectionInvalid(
+                f"unexpected columns in {table}: {list(columns)}"
+            )
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version != SCHEMA_VERSION:
+        raise ProjectionInvalid(
+            f"projection schema version {version} is not the supported "
+            f"version {SCHEMA_VERSION}"
+        )
+
+
+def _open(path: str) -> sqlite3.Connection:
+    conn = sqlite3.connect(
+        f"file:{path}?mode=ro&immutable=1", uri=True, check_same_thread=False
+    )
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA query_only = 1")
+    try:
+        validate_projection(conn)
+    except ProjectionInvalid:
+        conn.close()
+        raise
+    return conn
+
+
 def _connection() -> sqlite3.Connection:
-    """Return a read-only connection to the freshest replica."""
+    """Return a read-only connection to the freshest validated projection."""
     now = time.monotonic()
     if (
         _state["conn"] is not None
@@ -171,18 +286,27 @@ def _connection() -> sqlite3.Connection:
         return _state["conn"]
     head = _head(DB_KEY)
     if head is None:
-        raise ReplicaMissing(DB_KEY)
+        raise ProjectionMissing(DB_KEY)
     etag = head["ETag"].strip('"')
     _state["checked_at"] = now
     _refresh_manifest()
     if etag == _state["etag"] and _state["conn"] is not None:
         return _state["conn"]
     path = _download(etag)
-    conn = sqlite3.connect(
-        f"file:{path}?mode=ro&immutable=1", uri=True, check_same_thread=False
-    )
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA query_only = 1")
+    try:
+        conn = _open(path)
+    except ProjectionInvalid:
+        # Never serve an invalid file, and never keep serving a previous one
+        # as if it were current: drop it so every call reports the failure.
+        previous = _state["conn"]
+        _state.update(etag=None, conn=None, loaded_at=None)
+        if previous is not None:
+            previous.close()
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+        raise
     previous = _state["conn"]
     _state.update(etag=etag, conn=conn, loaded_at=time.time())
     if previous is not None:
@@ -196,8 +320,6 @@ def _replica_status(conn: sqlite3.Connection) -> dict:
     age_seconds = None
     if isinstance(published_at, str):
         try:
-            from datetime import datetime, timezone
-
             published = datetime.fromisoformat(
                 published_at.replace("Z", "+00:00")
             )
@@ -208,63 +330,98 @@ def _replica_status(conn: sqlite3.Connection) -> dict:
             )
         except ValueError:
             age_seconds = None
-    counts = {}
-    for table in (
-        "messages",
-        "email_receipts",
-        "receipt_items",
-        "paper_receipts",
-        "chase_transactions",
-        "matches",
-    ):
-        try:
-            counts[table] = conn.execute(
-                f"SELECT COUNT(*) FROM {table}"
-            ).fetchone()[0]
-        except sqlite3.Error:
-            counts[table] = None
+    counts = {
+        table: conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+        for table in COLUMNS
+    }
+    currencies = {
+        table: {
+            (row[0] or "unknown"): row[1]
+            for row in conn.execute(
+                f"SELECT currency, COUNT(*) FROM {table} GROUP BY 1 ORDER BY 1"
+            )
+        }
+        for table in COLUMNS
+    }
     return {
-        "role": "read-replica",
-        "primary": "~/receipts-email/email_receipts.db on the Mac",
+        "role": "agent-safe projection (read-only)",
+        "primary": "~/receipts-email/email_receipts.db on the Mac; only the "
+        "spend/txn projection is published here",
         "bucket": BUCKET,
         "key": DB_KEY,
         "etag": _state["etag"],
         "loaded_at": _state["loaded_at"],
         "manifest": manifest,
         "replica_age_seconds": age_seconds,
+        "schema_version": SCHEMA_VERSION,
+        "tables": {table: list(cols) for table, cols in COLUMNS.items()},
         "row_counts": counts,
-        "writes": "not available here — confirm/reject/mark/ingest run on the "
-        "primary and land with the next replicate",
+        "currencies": currencies,
+        "grain": GRAIN_NOTE,
+        "writes": "not available here; ingest, reconciliation, and match "
+        "decisions run on the primary and land with the next publish",
     }
 
 
-class _QueryBudgetExceeded(Exception):
-    pass
-
-
+# ---------------------------------------------------------------------------
+# query_sql: SELECT/WITH over spend and txn only
+# ---------------------------------------------------------------------------
 _SQL_READ_ACTIONS = {
     sqlite3.SQLITE_SELECT,
     sqlite3.SQLITE_FUNCTION,
     sqlite3.SQLITE_RECURSIVE,
 }
+# String literals, quoted identifiers, and comments: a denied verb inside
+# `LIKE '%update%'` or `-- drop this` is data, not a statement.
+_SQL_LITERALS = re.compile(
+    r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|`[^`]*`|\[[^\]]*\]|--[^\n]*|/\*.*?\*/",
+    re.S,
+)
+_SQL_DENY = re.compile(
+    r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|vacuum|"
+    r"replace|reindex|analyze|begin|commit|rollback|savepoint|release)\b",
+    re.I,
+)
 
 
 def _sql_authorizer(action, table, _column, _db, _trigger):
-    """SQLite authorizer for query_sql: reads of allow-listed tables only.
+    """Reads of ``spend`` and ``txn`` only; everything else is denied.
 
-    Every other action (writes, PRAGMA, ATTACH, transactions, reads of
-    ``messages`` or any future table) fails at prepare time with
-    "not authorized", independent of the keyword denylist in
-    :func:`queries.query_sql`.
+    Writes, PRAGMA, ATTACH, transactions, and reads of any other object
+    (including ``sqlite_master``) fail at prepare time with "not
+    authorized", independent of the keyword denylist.
     """
     if action in _SQL_READ_ACTIONS:
         return sqlite3.SQLITE_OK
-    if action == sqlite3.SQLITE_READ and table in SQL_ALLOWED_TABLES:
+    if action == sqlite3.SQLITE_READ and table in COLUMNS:
         return sqlite3.SQLITE_OK
     return sqlite3.SQLITE_DENY
 
 
-def _guarded_query_sql(conn: sqlite3.Connection, sql: str, limit: int) -> dict:
+def _json_safe(value):
+    """Coerce SQLite values into JSON: BLOBs become base64 strings.
+
+    The projection has no BLOB columns, but a literal such as ``x'00'`` can
+    still produce ``bytes``; ``structuredContent`` is serialized by the
+    response-level ``json.dumps`` which has no ``default=`` hook.
+    """
+    if isinstance(value, dict):
+        return {str(k): _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return base64.b64encode(bytes(value)).decode("ascii")
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
+def query_sql(conn: sqlite3.Connection, sql: str, limit: int) -> dict:
+    bare = _SQL_LITERALS.sub(" ", sql)
+    if _SQL_DENY.search(bare) or not re.match(
+        r"\s*(select|with)\b", bare, re.I
+    ):
+        return {"error": "read-only: only SELECT/WITH queries are allowed"}
     deadline = time.monotonic() + SQL_BUDGET_SECONDS
 
     def _check():
@@ -275,7 +432,9 @@ def _guarded_query_sql(conn: sqlite3.Connection, sql: str, limit: int) -> dict:
     conn.set_progress_handler(_check, 10_000)
     conn.set_authorizer(_sql_authorizer)
     try:
-        return queries.query_sql(conn, sql, limit=limit)
+        cur = conn.execute(sql)
+        cols = [c[0] for c in cur.description]
+        rows = cur.fetchmany(limit)
     except sqlite3.DatabaseError as exc:
         text = str(exc)
         lowered = text.lower()
@@ -286,14 +445,36 @@ def _guarded_query_sql(conn: sqlite3.Connection, sql: str, limit: int) -> dict:
         if "not authorized" in lowered or "prohibited" in lowered:
             return {
                 "error": (
-                    f"{text}. query_sql is read-only over receipt-scoped "
-                    "tables: " + ", ".join(sorted(SQL_ALLOWED_TABLES))
+                    f"{text}. query_sql is read-only over the projection "
+                    "tables spend and txn; nothing else is readable here"
                 )
             }
         return {"error": f"sqlite error: {text}"}
     finally:
         conn.set_authorizer(None)
         conn.set_progress_handler(None, 0)
+    out_rows = [_json_safe(list(r)) for r in rows]
+    # Response-size cap: shed rows from the end until the payload fits.
+    truncated = len(rows) == limit
+    while out_rows and len(json.dumps(out_rows)) > MAX_RESPONSE_BYTES:
+        out_rows = out_rows[: max(1, len(out_rows) // 2)]
+        truncated = True
+        if (
+            len(out_rows) == 1
+            and len(json.dumps(out_rows)) > MAX_RESPONSE_BYTES
+        ):
+            return {
+                "error": (
+                    f"a single row exceeds the {MAX_RESPONSE_BYTES}-byte "
+                    "response cap; select fewer or narrower columns"
+                )
+            }
+    return {
+        "columns": cols,
+        "row_count": len(out_rows),
+        "rows": out_rows,
+        "truncated": truncated,
+    }
 
 
 def _bounded(a: dict, key: str, default: int, *, minimum: int = 1) -> int:
@@ -301,7 +482,7 @@ def _bounded(a: dict, key: str, default: int, *, minimum: int = 1) -> int:
 
     SQLite reads ``LIMIT -1`` as "no limit", so negatives are rejected
     rather than clamped; oversize values are clamped so a single call can
-    never serialize the whole replica.
+    never serialize the whole projection.
     """
     raw = a.get(key, default)
     if isinstance(raw, bool) or not isinstance(raw, (int, float, str)):
@@ -316,198 +497,23 @@ def _bounded(a: dict, key: str, default: int, *, minimum: int = 1) -> int:
 
 
 # ---------------------------------------------------------------------------
-# Tool surface (names and shapes mirror receipts-email/server.py)
+# Tool surface
 # ---------------------------------------------------------------------------
-_DATE_RANGE = {
-    "start_date": {"type": "string", "description": "ISO date, inclusive"},
-    "end_date": {"type": "string", "description": "ISO date, inclusive"},
-}
-
 TOOLS = [
-    {
-        "name": "get_email_receipt_summaries",
-        "description": (
-            "Pre-computed email-receipt summaries with totals/tax/tip, "
-            "filterable by merchant (partial match), group (apple|doordash|"
-            "amazon|venmo|paypal|pos-restaurants|uber|travel-housing|retail|"
-            "services|equinox|sce|restaurant-platforms|costco-warehouse|"
-            "github), and ISO date range. Returns aggregates AND individual "
-            "receipts, mirroring the paper receipt-tools "
-            "get_receipt_summaries shape."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "merchant_filter": {"type": "string"},
-                "group": {"type": "string"},
-                **_DATE_RANGE,
-                "min_total": {"type": "number"},
-                "max_total": {"type": "number"},
-                "include_superseded": {"type": "boolean", "default": False},
-                "include_inflows": {"type": "boolean", "default": False},
-                "currency": {
-                    "type": "string",
-                    "default": "USD",
-                    "description": (
-                        "Currency the top-level totals cover; every "
-                        "matching currency is broken out in by_currency."
-                    ),
-                },
-                "limit": {
-                    "type": "integer",
-                    "default": 200,
-                    "minimum": 1,
-                    "maximum": MAX_LIMIT,
-                },
-                "offset": {"type": "integer", "default": 0, "minimum": 0},
-            },
-        },
-    },
-    {
-        "name": "get_email_receipt",
-        "description": (
-            "Full detail for one email receipt: line items, payment, source "
-            "email ref, and any Chase matches. Accepts full or partial "
-            "message_id."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {"message_id": {"type": "string"}},
-            "required": ["message_id"],
-        },
-    },
-    {
-        "name": "search_email_receipts",
-        "description": (
-            "Search email AND paper receipts by merchant, order id, item "
-            "description, or memo text."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "limit": {
-                    "type": "integer",
-                    "default": 25,
-                    "minimum": 1,
-                    "maximum": MAX_LIMIT,
-                },
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "list_email_merchants",
-        "description": (
-            "Merchants with receipt counts. source='email'|'paper'|'both' "
-            "unions the paper-receipt snapshot for cross-source comparison."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "group": {"type": "string"},
-                "min_count": {"type": "integer", "default": 1},
-                "source": {"type": "string", "default": "email"},
-            },
-        },
-    },
-    {
-        "name": "get_spend_summary",
-        "description": (
-            "Unified spend by month (or year) across three sources: email "
-            "receipts, paper receipts, and Chase card transactions. THE tool "
-            "for 'how much did I spend' questions spanning sources. Totals "
-            "are USD; non-USD email receipts are listed per period under "
-            "email_other_currencies."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                **_DATE_RANGE,
-                "period": {
-                    "type": "string",
-                    "enum": list(queries.PERIODS),
-                    "default": "month",
-                },
-            },
-        },
-    },
-    {
-        "name": "get_coverage",
-        "description": (
-            "Headline metric: % of Chase card spend covered by a matched "
-            "receipt (email or paper), by period and account. "
-            "receiptable_only=true limits to in-person store/restaurant "
-            "purchases. Excludes txns tagged dad/ignored/cash."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "period": {
-                    "type": "string",
-                    "enum": list(queries.PERIODS),
-                    "default": "month",
-                },
-                "account": {"type": "string"},
-                "receiptable_only": {"type": "boolean", "default": False},
-                **_DATE_RANGE,
-            },
-        },
-    },
-    {
-        "name": "get_unmatched",
-        "description": (
-            "Worklist: kind='txns' = card purchases with no matched receipt; "
-            "kind='email_receipts' = email receipts with no matched Chase "
-            "txn. Read-only here; confirm/reject on the primary."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "kind": {
-                    "type": "string",
-                    "enum": list(queries.UNMATCHED_KINDS),
-                    "default": "txns",
-                },
-                "account": {"type": "string"},
-                **_DATE_RANGE,
-                "limit": {
-                    "type": "integer",
-                    "default": 50,
-                    "minimum": 1,
-                    "maximum": MAX_LIMIT,
-                },
-            },
-        },
-    },
-    {
-        "name": "ingest_status",
-        "description": (
-            "Counts by group/classification, receipts per group with date "
-            "ranges, table sizes, snapshot age — as of the replica."
-        ),
-        "inputSchema": {"type": "object", "properties": {}},
-    },
-    {
-        "name": "replica_status",
-        "description": (
-            "How fresh this read replica is: manifest (published_at, sha256, "
-            "row counts), S3 ETag, age in seconds, and which operations are "
-            "only available on the primary."
-        ),
-        "inputSchema": {"type": "object", "properties": {}},
-    },
     {
         "name": "query_sql",
         "description": (
-            "Read-only SQL (SELECT/WITH only, 500-row cap, 10s budget) over "
-            "the receipt-scoped tables of the replica: email_receipts "
-            "(money in *_cents, currency column), receipt_items, "
-            "paper_receipts, paper_receipt_items, chase_transactions, "
-            "matches, match_overrides, txn_tags, merchant_canonical, "
-            "parse_failures, meta. The mailbox index (messages) is not "
-            "readable here; get_email_receipt returns the source email of a "
-            "receipt. Escape hatch for anything the fixed tools don't cover."
+            "Read-only SQL (SELECT/WITH only, "
+            f"{DEFAULT_LIMIT}-row default cap, {SQL_BUDGET_SECONDS:.0f}s "
+            "budget) over the agent-safe spend projection. Exactly two "
+            "tables. spend(" + ", ".join(COLUMNS["spend"]) + "): one row "
+            "per email or paper receipt item. txn("
+            + ", ".join(COLUMNS["txn"])
+            + "): every card transaction, signed integer cents (negative = "
+            "charge), merchant/category NULL when unmapped. "
+            + GRAIN_NOTE
+            + " No other table exists here: no message index, no receipt "
+            "identifiers, no card numbers, no raw descriptors."
         ),
         "inputSchema": {
             "type": "object",
@@ -515,7 +521,7 @@ TOOLS = [
                 "sql": {"type": "string"},
                 "limit": {
                     "type": "integer",
-                    "default": 500,
+                    "default": DEFAULT_LIMIT,
                     "minimum": 1,
                     "maximum": MAX_LIMIT,
                 },
@@ -523,73 +529,28 @@ TOOLS = [
             "required": ["sql"],
         },
     },
+    {
+        "name": "replica_status",
+        "description": (
+            "How fresh the projection is: manifest (published_at, sha256, "
+            "row counts, currencies), S3 ETag, age in seconds, the schema "
+            "the two tables carry, and which operations are only available "
+            "on the primary."
+        ),
+        "inputSchema": {"type": "object", "properties": {}},
+    },
 ]
 TOOL_NAMES = {tool["name"] for tool in TOOLS}
 
 
 def _call_tool(name: str, a: dict) -> dict:
     conn = _connection()
-    if name == "get_email_receipt_summaries":
-        return queries.email_receipt_summaries(
-            conn,
-            merchant=a.get("merchant_filter"),
-            grp=a.get("group"),
-            start_date=a.get("start_date"),
-            end_date=a.get("end_date"),
-            min_total=a.get("min_total"),
-            max_total=a.get("max_total"),
-            include_superseded=bool(a.get("include_superseded", False)),
-            include_inflows=bool(a.get("include_inflows", False)),
-            limit=_bounded(a, "limit", 200),
-            offset=_bounded(a, "offset", 0, minimum=0),
-            currency=str(a.get("currency", "USD")),
+    if name == "query_sql":
+        return query_sql(
+            conn, str(a["sql"]), _bounded(a, "limit", DEFAULT_LIMIT)
         )
-    if name == "get_email_receipt":
-        return queries.email_receipt(conn, str(a["message_id"]))
-    if name == "search_email_receipts":
-        return queries.search_receipts(
-            conn, str(a["query"]), _bounded(a, "limit", 25)
-        )
-    if name == "list_email_merchants":
-        return queries.list_merchants(
-            conn,
-            grp=a.get("group"),
-            min_count=int(a.get("min_count", 1)),
-            source=a.get("source", "email"),
-        )
-    if name == "get_spend_summary":
-        return queries.spend_summary(
-            conn,
-            a.get("start_date"),
-            a.get("end_date"),
-            a.get("period", "month"),
-        )
-    if name == "get_coverage":
-        return queries.coverage(
-            conn,
-            period=a.get("period", "month"),
-            account=a.get("account"),
-            receiptable_only=bool(a.get("receiptable_only", False)),
-            start_date=a.get("start_date"),
-            end_date=a.get("end_date"),
-        )
-    if name == "get_unmatched":
-        return queries.unmatched(
-            conn,
-            kind=a.get("kind", "txns"),
-            account=a.get("account"),
-            start_date=a.get("start_date"),
-            end_date=a.get("end_date"),
-            limit=_bounded(a, "limit", 50),
-        )
-    if name == "ingest_status":
-        return queries.ingest_status(conn)
     if name == "replica_status":
         return _replica_status(conn)
-    if name == "query_sql":
-        return _guarded_query_sql(
-            conn, str(a["sql"]), _bounded(a, "limit", 500)
-        )
     raise KeyError(name)
 
 
@@ -629,24 +590,6 @@ def _error(request_id, code: int, message: str, *, status: int = 200):
             "error": {"code": code, "message": message},
         },
     )
-
-
-def _json_safe(value):
-    """Coerce SQLite values into JSON: BLOBs become base64 strings.
-
-    ``structuredContent`` is serialized by the response-level ``json.dumps``
-    which has no ``default=`` hook, so a ``SELECT x'00'`` must not leave raw
-    ``bytes`` in the payload.
-    """
-    if isinstance(value, dict):
-        return {str(k): _json_safe(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(v) for v in value]
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        return base64.b64encode(bytes(value)).decode("ascii")
-    if value is None or isinstance(value, (str, int, float, bool)):
-        return value
-    return str(value)
 
 
 def _tool_result(payload, *, is_error: bool = False) -> dict:
@@ -725,10 +668,12 @@ def lambda_handler(event, _context):
                 "capabilities": {"tools": {"listChanged": False}},
                 "serverInfo": SERVER_INFO,
                 "instructions": (
-                    "Read replica of the email-receipt SQLite primary. Money "
-                    "is integer cents in raw columns and dollars in tool "
-                    "output. Call replica_status to learn how stale the "
-                    "data is. Writes are not available here."
+                    "Read-only agent-safe projection of the email-receipt "
+                    "primary: two tables, spend (receipt items) and txn "
+                    "(card transactions), integer cents with a currency on "
+                    "every row. Call replica_status for freshness and the "
+                    "schema; use query_sql for everything else. Writes are "
+                    "not available here."
                 ),
             },
             protocol_version=version,
@@ -766,11 +711,21 @@ def lambda_handler(event, _context):
         except sqlite3.Error as exc:
             payload = {"error": f"sqlite error: {exc}"}
             return _result(request_id, _tool_result(payload, is_error=True))
-        except (ReplicaMissing, s3.exceptions.NoSuchKey):
+        except (ProjectionMissing, s3.exceptions.NoSuchKey):
             payload = {
                 "error": (
-                    f"replica not published yet: s3://{BUCKET}/{DB_KEY} is "
-                    "missing. Run `emlrec replicate` on the primary."
+                    f"projection not published yet: s3://{BUCKET}/{DB_KEY} "
+                    "is missing. Run `emlrec publish-projection` on the "
+                    "primary."
+                )
+            }
+            return _result(request_id, _tool_result(payload, is_error=True))
+        except ProjectionInvalid as exc:
+            payload = {
+                "error": (
+                    f"published projection rejected: {exc}. Nothing is "
+                    "served until `emlrec publish-projection` uploads a "
+                    "file that satisfies the contract."
                 )
             }
             return _result(request_id, _tool_result(payload, is_error=True))

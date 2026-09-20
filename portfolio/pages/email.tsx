@@ -329,9 +329,12 @@ export default function EmailPage() {
         new raw mail down from S3, parses it with the one and only set of
         parsers, and reconciles it against the bank. Then it takes a consistent
         copy of the file and uploads it back to S3 next to a manifest: a
-        checksum, row counts, and when it was published. That job is a launchd
-        agent at seven in the morning, and it has already run without me: 21 new
-        messages, 3 receipts, a fresh copy in S3.
+        checksum, row counts, and when it was published. Then it exports a
+        second, much smaller database with exactly two tables, receipt line
+        items and card transactions, checks it against a schema contract, and
+        uploads that under its own prefix. That job is a launchd agent at seven
+        in the morning, and it has already run without me: 21 new messages, 3
+        receipts, a fresh copy in S3.
       </p>
 
       <FigureBoundary
@@ -346,19 +349,23 @@ export default function EmailPage() {
 
       <p>
         On the other side is a tiny AWS Lambda. Python standard library only. No
-        container, no dependencies. It downloads the copy on cold start, checks
-        whether the file changed on every call, opens it read-only, and speaks
-        MCP over HTTPS behind the same OAuth gateway the job bot uses, with its
-        own scope.
+        container, no dependencies. Its role can read the small two-table export
+        and nothing else: not the full copy, not the raw mail. It downloads that
+        file on cold start, validates it against the same contract the exporter
+        enforced, exact tables, exact columns, no views, no triggers, and
+        refuses to serve anything if the check fails. Then it opens it read-only
+        and speaks MCP over HTTPS behind the same OAuth gateway the job bot
+        uses, with its own scope.
       </p>
 
       <p>
         Now Claude on my phone, a scheduled agent, or Claude Code on any machine
-        can ask the same ten read-only questions the local server answers.
-        Summaries, one receipt, search, merchants, spend by month, coverage, the
-        unmatched worklist, status, and raw SQL when none of those fit. Writes
-        stay on the Mac. Confirming a match or tagging a transaction happens
-        where the primary lives. The replica lags by a day, and the manifest
+        can ask spend questions in SQL over those two tables: what did I spend
+        at grocery stores this quarter, per currency, and which card charges
+        have no matching item. No message index, no order numbers, no card
+        digits, no bank descriptors exist in that file, so there is nothing to
+        leak through a clever query. Writes, and the richer tools the local
+        server has, stay on the Mac. The export lags by a day, and the manifest
         tells the agent exactly how stale it is.
       </p>
 
@@ -379,10 +386,13 @@ export default function EmailPage() {
       </p>
 
       <p>
-        The one piece of code AWS still shares with the Mac is the query module
-        the replica Lambda answers with. It is a byte-for-byte copy, and a test
-        fails the build if the two ever differ. That is how the second-parser
-        problem does not come back.
+        The one thing AWS still shares with the Mac is the schema contract of
+        that two-table export: the version number, the table names, the column
+        list, and the list of column names that must never appear. The exporter
+        enforces it when it writes and the Lambda enforces it when it reads, and
+        a test runs the real exporter against a synthetic primary and proves the
+        Lambda accepts exactly that file and nothing else. That is how the
+        second-parser problem does not come back.
       </p>
 
       <h1>What Else Should Agents See?</h1>
@@ -462,7 +472,7 @@ export default function EmailPage() {
 
       <p>
         Every path has a switch I own. Delete a rule and that sender stops
-        reaching any agent, in minutes. Delete the replica file and the receipt
+        reaching any agent, in minutes. Delete the exported file and the receipt
         reader answers with nothing. Revoke the OAuth token and the endpoint
         stops answering at all. The bot never held a credential of mine, so
         there is nothing of mine to rotate.
@@ -484,8 +494,9 @@ export default function EmailPage() {
         SES allows one active receipt rule set per account and region, so both
         inboxes share it: one rule per recipient address. The bucket policy only
         lets that exact receipt rule write under the raw prefix. Nothing else in
-        the account can. The replica Lambda&apos;s role can read the replica
-        prefix and nothing else, so even raw SQL cannot reach a raw email.
+        the account can. The Lambda&apos;s role can read the two-table export
+        and nothing else, so even raw SQL cannot reach a raw email or the full
+        copy of the database.
       </p>
 
       <p>
@@ -500,15 +511,16 @@ export default function EmailPage() {
         Money is integer cents everywhere. Ingest is idempotent on the
         Message-ID and on a hash of the content, so re-running over an
         overlapping export adds nothing. The raw SQL tool only accepts SELECT
-        and WITH, caps results at 500 rows, and can read only the receipt
-        tables: the mailbox index of every sender and subject is not reachable
-        through it.
+        and WITH, caps rows and response size, times out a slow statement, and
+        can read only the two exported tables. Every money column carries its
+        currency, so a query has to add up per currency; line items repeat the
+        receipt total, so a receipt total is a DISTINCT, not a SUM.
       </p>
 
       <p>
         The API Gateway integration window is 29 seconds, so the Lambda times
-        out at 25. The database is about 20 MB, 7 MB gzipped, and is downloaded
-        once per cold start.
+        out at 25. The exported database is well under a megabyte gzipped and is
+        downloaded once per cold start.
       </p>
 
       <FigureBoundary name="pulumi-logo" intrinsicSize="150px">

@@ -554,20 +554,16 @@ if ats_inbox_enabled and not email_inbox_enabled:
 if email_inbox_enabled:
     from email_receipt_inbox import EmailReceiptInbox
 
-    # raw/ mail is kept forever unless
-    # `portfolio:email_receipt_inbox_raw_retention_days` is set. The Mac holds
-    # a copy under ~/receipts-email/mail/ses/ after each nightly pull, so a
-    # 30-day window is enough once the owner has verified that copy is
-    # complete; switching it on is a deliberate step, not the default.
-    raw_retention_days = portfolio_config.get_int(
-        "email_receipt_inbox_raw_retention_days"
-    )
-    email_inbox = EmailReceiptInbox(
-        "email-receipt-inbox", raw_retention_days=raw_retention_days
-    )
+    # raw/ mail is never expired: S3 is the only AWS archive of it. Any
+    # future expiry needs an explicit retention decision backed by an
+    # inventory reconciliation against the Mac copy and a tested restore,
+    # then `raw_retention_days=` here.
+    email_inbox = EmailReceiptInbox("email-receipt-inbox")
     pulumi.export("email_receipt_inbox_address", email_inbox.address)
     pulumi.export("email_receipt_inbox_bucket", email_inbox.bucket.bucket)
-    pulumi.export("email_receipt_replica_db_key", email_inbox.replica_db_key)
+    pulumi.export(
+        "email_receipt_projection_db_key", email_inbox.projection_db_key
+    )
 
 if ats_inbox_enabled and email_inbox is not None:
     from ats_verification_inbox import AtsVerificationInbox
