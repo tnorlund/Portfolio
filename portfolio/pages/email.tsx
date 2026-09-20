@@ -13,7 +13,12 @@ import {
   EmailReplicaDiagram,
   EmailSenderCensus,
 } from "../components/ui/Figures";
-import { AWSLogo, ClaudeAppLogo, GrokBotLogo, PulumiLogo } from "../components/ui/Logos";
+import {
+  AWSLogo,
+  ClaudeAppLogo,
+  GrokBotLogo,
+  PulumiLogo,
+} from "../components/ui/Logos";
 import styles from "../styles/Receipt.module.css";
 
 interface FigureBoundaryProps {
@@ -77,7 +82,11 @@ const CELL: React.CSSProperties = {
   textAlign: "left",
   verticalAlign: "top",
 };
-const NUM: React.CSSProperties = { ...CELL, textAlign: "right", whiteSpace: "nowrap" };
+const NUM: React.CSSProperties = {
+  ...CELL,
+  textAlign: "right",
+  whiteSpace: "nowrap",
+};
 
 export default function EmailPage() {
   return (
@@ -95,21 +104,21 @@ export default function EmailPage() {
 
       <p>
         Agents do more of my work every day. The most recent one runs my job
-        search. It finds roles, fills in the application, and stops before
-        the submit button so I can read it. Then Greenhouse emails me a
-        verification code, and the bot needs that code to finish.
+        search. It finds roles, fills in the application, and stops before the
+        submit button so I can read it. Then Greenhouse emails me a verification
+        code, and the bot needs that code to finish.
       </p>
 
       <p>
         So the bot needs my email. I was not going to hand a bot my inbox.
-        Thirteen years of receipts, statements, and everyone I have ever
-        talked to, so it can copy eight characters out of one message? No.
+        Thirteen years of receipts, statements, and everyone I have ever talked
+        to, so it can copy eight characters out of one message? No.
       </p>
 
       <p>
-        This page is about the middle ground: giving each agent exactly the
-        mail it needs, proving that is all it got, and being able to turn it
-        off in one click.
+        This page is about the middle ground: giving each agent exactly the mail
+        it needs, proving that is all it got, and being able to turn it off in
+        one click.
       </p>
 
       <h1>The Job Bot Gets One Code</h1>
@@ -121,17 +130,17 @@ export default function EmailPage() {
       </FigureBoundary>
 
       <p>
-        Grok Bot lives in my Dock like any other app. It fills out forms,
-        stops before Submit, and waits for me. The one thing it cannot do
-        on its own is read the code Greenhouse emails me.
+        Grok Bot lives in my Dock like any other app. It fills out forms, stops
+        before Submit, and waits for me. The one thing it cannot do on its own
+        is read the code Greenhouse emails me.
       </p>
 
       <p>
         iCloud has a rules screen. Each rule forwards mail from one sender to
-        one address on an isolated subdomain that Amazon SES receives for.
-        The five Greenhouse senders that carry verification codes go to one
-        address. Those five rules are the bot&apos;s entire view of my mail,
-        and I can read them on one screen.
+        one address on an isolated subdomain that Amazon SES receives for. The
+        five Greenhouse senders that carry verification codes go to one address.
+        Those five rules are the bot&apos;s entire view of my mail, and I can
+        read them on one screen.
       </p>
 
       <FigureBoundary
@@ -148,10 +157,10 @@ export default function EmailPage() {
         On the AWS side the mail stops being an email almost immediately. SES
         checks that the message really came from Greenhouse, drops it in a
         bucket that empties after a day, and a small Lambda pulls out the
-        eight-character code. The code goes into a table with a one-hour
-        expiry. The bot asks a tiny read-only endpoint for the latest code.
-        That is all it can ask for. It never sees a subject line, never sees
-        a body, and never has my iCloud password.
+        eight-character code. The code goes into a table with a one-hour expiry.
+        The bot asks a tiny read-only endpoint for the latest code. That is all
+        it can ask for. It never sees a subject line, never sees a body, and
+        never has my iCloud password.
       </p>
 
       <FigureBoundary
@@ -165,9 +174,9 @@ export default function EmailPage() {
       </FigureBoundary>
 
       <p>
-        Everything about this path is small on purpose. One sender group.
-        One field. One hour. If the bot turns out to be a bad actor, the
-        worst it can do is read a code that has already expired.
+        Everything about this path is small on purpose. One sender group. One
+        field. One hour. If the bot turns out to be a bad actor, the worst it
+        can do is read a code that has already expired.
       </p>
 
       <h1>The Receipt Reader Gets Parsed Rows</h1>
@@ -180,25 +189,25 @@ export default function EmailPage() {
 
       <p>
         The other agent is Claude, and it reads through MCP. The{" "}
-        <Link href="/receipt">receipt page</Link> answers one question: how
-        much did I spend on milk? It only knows about paper. Half of what I
-        buy never prints a receipt. DoorDash, Apple, Amazon, Venmo, PayPal,
-        Uber. Those live in my inbox too, and Claude wants them.
+        <Link href="/receipt">receipt page</Link> answers one question: how much
+        did I spend on milk? It only knows about paper. Half of what I buy never
+        prints a receipt. DoorDash, Apple, Amazon, Venmo, PayPal, Uber. Those
+        live in my inbox too, and Claude wants them.
       </p>
 
       <p>
-        So the same pattern applies, with a wider aperture. Claude never
-        opens the mailbox. It calls a small MCP server that answers
-        questions about receipts as rows: merchant, date, cents, line
-        items. One copy of that server runs on my Mac. The other lives in
-        AWS, and the rest of this section is about how the rows get there.
+        So the same pattern applies, with a wider aperture. Claude never opens
+        the mailbox. It calls a small MCP server that answers questions about
+        receipts as rows: merchant, date, cents, line items. One copy of that
+        server runs on my Mac. The other lives in AWS, and the rest of this
+        section is about how the rows get there.
       </p>
 
       <h2>Thirteen Years of Email</h2>
 
       <p>
-        I exported everything. 162,333 messages going back to 2013. Most of
-        it is noise. About 30,000 came from senders that have ever sent me a
+        I exported everything. 162,333 messages going back to 2013. Most of it
+        is noise. About 30,000 came from senders that have ever sent me a
         receipt, and a little over 4,000 of those actually were receipts.
       </p>
 
@@ -221,10 +230,10 @@ export default function EmailPage() {
       </p>
 
       <p>
-        DoorDash puts the restaurant in the subject. Apple hides the total in
-        a table that is split across three cells. Venmo forgets the year.
-        Each sender group gets its own small parser. Regular expressions, no
-        AI. They pull merchant, date, and total 97 to 100 percent of the time.
+        DoorDash puts the restaurant in the subject. Apple hides the total in a
+        table that is split across three cells. Venmo forgets the year. Each
+        sender group gets its own small parser. Regular expressions, no AI. They
+        pull merchant, date, and total 97 to 100 percent of the time.
       </p>
 
       <FigureBoundary
@@ -238,8 +247,8 @@ export default function EmailPage() {
       </FigureBoundary>
 
       <p>
-        Some hard truths came out of this. The last four digits of the card
-        are almost never in the email, so matching to the bank has to lean on
+        Some hard truths came out of this. The last four digits of the card are
+        almost never in the email, so matching to the bank has to lean on
         amount, date, and merchant. DoorDash totals since 2023 are estimates
         because the tip lands later, so I match against a band instead of a
         number. Amazon stopped listing items in its emails from 2020 to
@@ -274,10 +283,10 @@ export default function EmailPage() {
       <h2>Getting the Mail to AWS</h2>
 
       <p>
-        Exporting my mailbox by hand every few months is not a system. I
-        wanted new receipts to show up on their own, so the receipt senders
-        got rules too. Twenty-one of them, each forwarding one domain to the
-        receipts address.
+        Exporting my mailbox by hand every few months is not a system. I wanted
+        new receipts to show up on their own, so the receipt senders got rules
+        too. Twenty-one of them, each forwarding one domain to the receipts
+        address.
       </p>
 
       <FigureBoundary name="aws-logo" intrinsicSize="150px">
@@ -289,10 +298,11 @@ export default function EmailPage() {
       </FigureBoundary>
 
       <p>
-        SES requires TLS, runs the spam and virus scans, stamps the DMARC
-        result on the message, and drops the raw email in a private S3
-        bucket. Raw mail expires after 30 days. My Mac pulls it down every
-        night, long before then. That is it. S3 is just the archive.
+        SES requires TLS, runs the spam and virus scans, stamps the DMARC result
+        on the message, and drops the raw email in a private S3 bucket. My Mac
+        pulls it down every night. Raw mail can be set to expire after a number
+        of days, but that switch stays off until the Mac&apos;s copy is verified
+        complete. That is it. S3 is just the archive.
       </p>
 
       <FigureBoundary
@@ -306,11 +316,10 @@ export default function EmailPage() {
       </FigureBoundary>
 
       <p>
-        Since it went live in July: 1,189 messages forwarded, 59 were
-        receipts, and 14 failed the trust gate. Seven of those were Equinox
-        marketing sent through a third party that failed DMARC alignment,
-        six were flagged as spam by SES, and one was Amazon&apos;s own setup
-        notice. The gate holds.
+        Since it went live in July: 1,189 messages forwarded, 59 were receipts,
+        and 14 failed the trust gate. Seven of those were Equinox marketing sent
+        through a third party that failed DMARC alignment, six were flagged as
+        spam by SES, and one was Amazon&apos;s own setup notice. The gate holds.
       </p>
 
       <h2>The Read Replica</h2>
@@ -318,11 +327,11 @@ export default function EmailPage() {
       <p>
         The SQLite file on my Mac is the primary. Every night a job pulls the
         new raw mail down from S3, parses it with the one and only set of
-        parsers, and reconciles it against the bank. Then it takes a
-        consistent copy of the file and uploads it back to S3 next to a
-        manifest: a checksum, row counts, and when it was published. That
-        job is a launchd agent at seven in the morning, and it has already
-        run without me: 21 new messages, 3 receipts, a fresh copy in S3.
+        parsers, and reconciles it against the bank. Then it takes a consistent
+        copy of the file and uploads it back to S3 next to a manifest: a
+        checksum, row counts, and when it was published. That job is a launchd
+        agent at seven in the morning, and it has already run without me: 21 new
+        messages, 3 receipts, a fresh copy in S3.
       </p>
 
       <FigureBoundary
@@ -336,55 +345,54 @@ export default function EmailPage() {
       </FigureBoundary>
 
       <p>
-        On the other side is a tiny AWS Lambda. Python standard library only.
-        No container, no dependencies. It downloads the copy on cold start,
-        checks whether the file changed on every call, opens it read-only,
-        and speaks MCP over HTTPS behind the same OAuth gateway the job bot
-        uses, with its own scope.
+        On the other side is a tiny AWS Lambda. Python standard library only. No
+        container, no dependencies. It downloads the copy on cold start, checks
+        whether the file changed on every call, opens it read-only, and speaks
+        MCP over HTTPS behind the same OAuth gateway the job bot uses, with its
+        own scope.
       </p>
 
       <p>
-        Now Claude on my phone, a scheduled agent, or Claude Code on any
-        machine can ask the same ten read-only questions the local server
-        answers. Summaries, one receipt, search, merchants, spend by month,
-        coverage, the unmatched worklist, status, and raw SQL when none of
-        those fit. Writes stay on the Mac. Confirming a match or tagging a
-        transaction happens where the primary lives. The replica lags by a
-        day, and the manifest tells the agent exactly how stale it is.
+        Now Claude on my phone, a scheduled agent, or Claude Code on any machine
+        can ask the same ten read-only questions the local server answers.
+        Summaries, one receipt, search, merchants, spend by month, coverage, the
+        unmatched worklist, status, and raw SQL when none of those fit. Writes
+        stay on the Mac. Confirming a match or tagging a transaction happens
+        where the primary lives. The replica lags by a day, and the manifest
+        tells the agent exactly how stale it is.
       </p>
 
       <h2>What I Deleted</h2>
 
       <p>
         The first version was fancier. A Lambda woke up on every object that
-        landed in S3, ran a second copy of every parser, and wrote a JSON
-        file that nothing ever read. Two copies of 5,000 lines of regular
-        expressions drifting apart. 92 percent of what it parsed was not a
-        receipt.
+        landed in S3, ran a second copy of every parser, and wrote a JSON file
+        that nothing ever read. Two copies of 5,000 lines of regular expressions
+        drifting apart. 92 percent of what it parsed was not a receipt.
       </p>
 
       <p>
         I deleted the Lambda, its dead-letter queue, the alarm, the retry
-        config, and the S3 trigger. Nine resources. SES to S3 is now just
-        mail in a bucket. Fewer moving parts, same data, and one parser to
-        fix when Apple changes its template again.
+        config, and the S3 trigger. Nine resources. SES to S3 is now just mail
+        in a bucket. Fewer moving parts, same data, and one parser to fix when
+        Apple changes its template again.
       </p>
 
       <p>
-        The one piece of code AWS still shares with the Mac is the query
-        module the replica Lambda answers with. It is a byte-for-byte copy,
-        and a test fails the build if the two ever differ. That is how the
-        second-parser problem does not come back.
+        The one piece of code AWS still shares with the Mac is the query module
+        the replica Lambda answers with. It is a byte-for-byte copy, and a test
+        fails the build if the two ever differ. That is how the second-parser
+        problem does not come back.
       </p>
 
       <h1>What Else Should Agents See?</h1>
 
       <p>
-        A rules list is only a permission model if someone audits it. I have
-        13 years of mail indexed, so the audit is a query, not a scroll
-        through the inbox: which senders have ever produced a receipt, and
-        does each one have a rule? And the other direction: which rules
-        forward mail that nothing ever parses?
+        A rules list is only a permission model if someone audits it. I have 13
+        years of mail indexed, so the audit is a query, not a scroll through the
+        inbox: which senders have ever produced a receipt, and does each one
+        have a rule? And the other direction: which rules forward mail that
+        nothing ever parses?
       </p>
 
       <table style={AUDIT_TABLE_STYLE}>
@@ -399,25 +407,35 @@ export default function EmailPage() {
         <tbody>
           <tr>
             <td style={CELL}>starbucks.com</td>
-            <td style={CELL}>Add. 53 receipts, 15 in the last two years, none forwarded.</td>
+            <td style={CELL}>
+              Add. 53 receipts, 15 in the last two years, none forwarded.
+            </td>
             <td style={NUM}>0</td>
             <td style={NUM}>0</td>
           </tr>
           <tr>
             <td style={CELL}>github.com</td>
-            <td style={CELL}>Delete. Ten receipts in seven years, same address as every notification.</td>
+            <td style={CELL}>
+              Delete. Ten receipts in seven years, same address as every
+              notification.
+            </td>
             <td style={NUM}>756</td>
             <td style={NUM}>0</td>
           </tr>
           <tr>
             <td style={CELL}>costco.com</td>
-            <td style={CELL}>Delete. Costco email is image-only; the warehouse receipts come from an export.</td>
+            <td style={CELL}>
+              Delete. Costco email is image-only; the warehouse receipts come
+              from an export.
+            </td>
             <td style={NUM}>67</td>
             <td style={NUM}>0</td>
           </tr>
           <tr>
             <td style={CELL}>chase.com</td>
-            <td style={CELL}>Delete. Balance alerts, and nothing reads them.</td>
+            <td style={CELL}>
+              Delete. Balance alerts, and nothing reads them.
+            </td>
             <td style={NUM}>36</td>
             <td style={NUM}>0</td>
           </tr>
@@ -433,65 +451,64 @@ export default function EmailPage() {
       </p>
 
       <p>
-        The audit is a command, not a memory. iCloud has no API, so a text
-        file in the repo mirrors the rules screen, and one command compares
-        it against every sender that has ever produced a receipt. I run it
-        after I touch the rules. It tells me what to add, what forwards mail
-        nothing reads, and which parsers have no rule.
+        The audit is a command, not a memory. iCloud has no API, so a text file
+        in the repo mirrors the rules screen, and one command compares it
+        against every sender that has ever produced a receipt. I run it after I
+        touch the rules. It tells me what to add, what forwards mail nothing
+        reads, and which parsers have no rule.
       </p>
 
       <h1>Turning It Off</h1>
 
       <p>
         Every path has a switch I own. Delete a rule and that sender stops
-        reaching any agent, in minutes. Delete the replica file and the
-        receipt reader answers with nothing. Revoke the OAuth token and the
-        endpoint stops answering at all. The bot never held a credential of
-        mine, so there is nothing of mine to rotate.
+        reaching any agent, in minutes. Delete the replica file and the receipt
+        reader answers with nothing. Revoke the OAuth token and the endpoint
+        stops answering at all. The bot never held a credential of mine, so
+        there is nothing of mine to rotate.
       </p>
 
       <p>
-        The milk question now has an answer for the half of my life that
-        never touches paper, and the job bot gets its code. Neither of them
-        can read my email. I might have a DoorDash problem.
+        The milk question now has an answer for the half of my life that never
+        touches paper, and the job bot gets its code. Neither of them can read
+        my email. I might have a DoorDash problem.
       </p>
 
       <hr />
 
       <h1>The Boring Details</h1>
 
-      <p>
-        If you are still here, here is what is actually under the hood.
-      </p>
+      <p>If you are still here, here is what is actually under the hood.</p>
 
       <p>
-        SES allows one active receipt rule set per account and region, so
-        both inboxes share it: one rule per recipient address. The bucket
-        policy only lets that exact receipt rule write under the raw prefix.
-        Nothing else in the account can. The replica Lambda&apos;s role can
-        read the replica prefix and nothing else, so even raw SQL cannot
-        reach a raw email.
+        SES allows one active receipt rule set per account and region, so both
+        inboxes share it: one rule per recipient address. The bucket policy only
+        lets that exact receipt rule write under the raw prefix. Nothing else in
+        the account can. The replica Lambda&apos;s role can read the replica
+        prefix and nothing else, so even raw SQL cannot reach a raw email.
       </p>
 
       <p>
         Each server has its own Cognito scope. A token minted for the receipt
         replica cannot call the code reader, and the bot&apos;s token cannot
-        call the replica. The code reader&apos;s bucket keeps mail for one
-        day and its table rows expire after one hour; the receipt archive
-        keeps raw mail for 30 days.
+        call the replica. The code reader&apos;s bucket keeps mail for one day
+        and its table rows expire after one hour; the receipt archive keeps raw
+        mail until its retention switch is turned on.
       </p>
 
       <p>
         Money is integer cents everywhere. Ingest is idempotent on the
         Message-ID and on a hash of the content, so re-running over an
-        overlapping export adds nothing. The raw SQL tool only accepts
-        SELECT and WITH and caps results at 500 rows.
+        overlapping export adds nothing. The raw SQL tool only accepts SELECT
+        and WITH, caps results at 500 rows, and can read only the receipt
+        tables: the mailbox index of every sender and subject is not reachable
+        through it.
       </p>
 
       <p>
-        The API Gateway integration window is 29 seconds, so the Lambda
-        times out at 25. The database is about 20 MB, 7 MB gzipped, and is
-        downloaded once per cold start.
+        The API Gateway integration window is 29 seconds, so the Lambda times
+        out at 25. The database is about 20 MB, 7 MB gzipped, and is downloaded
+        once per cold start.
       </p>
 
       <FigureBoundary name="pulumi-logo" intrinsicSize="150px">
@@ -503,15 +520,15 @@ export default function EmailPage() {
       </FigureBoundary>
 
       <p>
-        Pulumi in Python defines all of it: the SES identity and DKIM
-        records, both buckets and their policies, both Lambdas, and the
-        gateway routes with their own OAuth scopes.
+        Pulumi in Python defines all of it: the SES identity and DKIM records,
+        both buckets and their policies, both Lambdas, and the gateway routes
+        with their own OAuth scopes.
       </p>
 
       <p>
         The code is on{" "}
-        <a href="https://github.com/tnorlund/Portfolio">GitHub</a> if you
-        want to see how the sausage gets made.
+        <a href="https://github.com/tnorlund/Portfolio">GitHub</a> if you want
+        to see how the sausage gets made.
       </p>
     </div>
   );
