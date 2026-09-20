@@ -4,17 +4,19 @@ Receipt, Glyph Studio, and the optional ATS verification reader share one
 authentication service while retaining route-specific scopes:
 
 1. API Gateway exposes `/receipt/mcp`, `/glyph/mcp`, and, when enabled,
-   `/ats/mcp`.
+   `/ats/mcp` and `/email/mcp` (the email-receipt read replica, see
+   [EMAIL_RECEIPT_INBOX.md](EMAIL_RECEIPT_INBOX.md)).
 2. A Cognito user pool issues OAuth access tokens.
 3. API Gateway requires the `portfolio-mcp/receipt` or
    `portfolio-mcp/glyph` custom scope before invoking the corresponding
-   Lambda. The ATS route separately requires `portfolio-mcp/ats`.
+   Lambda. The ATS and email routes separately require `portfolio-mcp/ats`
+   and `portfolio-mcp/email`.
 4. Each MCP route publishes RFC 9728 protected-resource metadata under
    `/.well-known/oauth-protected-resource/<server>/mcp`.
 
 The receipt and glyph Lambda Function URLs are retained for internal and
-recovery access, but they use `AWS_IAM`. The ATS Lambda has no Function URL;
-its only ingress is the scoped API Gateway route. There is no anonymous origin
+recovery access, but they use `AWS_IAM`. The ATS and email Lambdas have no
+Function URL; their only ingress is the scoped API Gateway route. There is no anonymous origin
 that bypasses the Cognito authorizer.
 
 The ATS mail trust gates, iCloud forwarding setup, retention, and acceptance

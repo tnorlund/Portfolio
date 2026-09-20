@@ -554,9 +554,16 @@ if ats_inbox_enabled and not email_inbox_enabled:
 if email_inbox_enabled:
     from email_receipt_inbox import EmailReceiptInbox
 
+    # raw/ mail is never expired: S3 is the only AWS archive of it. Any
+    # future expiry needs an explicit retention decision backed by an
+    # inventory reconciliation against the Mac copy and a tested restore,
+    # then `raw_retention_days=` here.
     email_inbox = EmailReceiptInbox("email-receipt-inbox")
     pulumi.export("email_receipt_inbox_address", email_inbox.address)
     pulumi.export("email_receipt_inbox_bucket", email_inbox.bucket.bucket)
+    pulumi.export(
+        "email_receipt_projection_db_key", email_inbox.projection_db_key
+    )
 
 if ats_inbox_enabled and email_inbox is not None:
     from ats_verification_inbox import AtsVerificationInbox
@@ -597,11 +604,14 @@ mcp_auth_gateway = McpAuthGateway(
     receipt_lambda=mcp_server.lambda_function,
     glyph_lambda=glyph_mcp_server.lambda_function,
     ats_lambda=ats_inbox.mcp_lambda if ats_inbox is not None else None,
+    email_lambda=email_inbox.mcp_lambda if email_inbox is not None else None,
 )
 pulumi.export("mcp_server_url", mcp_auth_gateway.receipt_url)
 pulumi.export("glyph_mcp_server_url", mcp_auth_gateway.glyph_url)
 if mcp_auth_gateway.ats_url is not None:
     pulumi.export("ats_mcp_server_url", mcp_auth_gateway.ats_url)
+if mcp_auth_gateway.email_url is not None:
+    pulumi.export("email_mcp_server_url", mcp_auth_gateway.email_url)
 pulumi.export("mcp_oauth_issuer_url", mcp_auth_gateway.issuer_url)
 pulumi.export("mcp_oauth_user_pool_id", mcp_auth_gateway.user_pool.id)
 pulumi.export(
