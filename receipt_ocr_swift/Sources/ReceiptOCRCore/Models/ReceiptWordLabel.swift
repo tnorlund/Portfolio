@@ -178,14 +178,28 @@ public struct ReceiptWordLabel: Equatable {
         return label
     }
 
-    /// Create ReceiptWordLabel array from LayoutLM predictions
+    /// Create ReceiptWordLabel array from LayoutLM predictions.
+    ///
+    /// `modelLabels` is the entity set the *loaded model* can emit, read
+    /// from its own `config.json`. It is unioned with `coreLabels`, never
+    /// substituted for it, so it can only widen what is kept.
+    ///
+    /// This matters because `coreLabels` is the 22-way *unmerged* vocabulary.
+    /// The active model (v31) trains on merged heads -- `AMOUNT` for every
+    /// money field and `ADDRESS` for address+phone -- and neither name is in
+    /// that list. Filtering on `coreLabels` alone therefore discarded every
+    /// AMOUNT and ADDRESS prediction at write time, silently, from the day
+    /// v31 shipped. On a Terrible Herbst receipt the model emitted 38 labels
+    /// and 19 survived: all 6 amounts and all 13 address words were dropped.
     public static func fromLinePredictions(
         predictions: [LinePrediction],
         imageId: String,
-        receiptId: Int
+        receiptId: Int,
+        modelLabels: Set<String> = []
     ) -> [ReceiptWordLabel] {
         var labels: [ReceiptWordLabel] = []
         let timestamp = Date()
+        let allowedLabels = coreLabels.union(modelLabels)
 
         for (lineIndex, linePred) in predictions.enumerated() {
             let lineId = lineIndex + 1  // 1-indexed to match Python
@@ -202,7 +216,7 @@ public struct ReceiptWordLabel: Equatable {
                 let strippedLabel = stripBIOPrefix(rawLabel).uppercased()
 
                 // Skip "O" labels (Other/None) - they don't provide meaningful labeling
-                if strippedLabel == "O" || !coreLabels.contains(strippedLabel) {
+                if strippedLabel == "O" || !allowedLabels.contains(strippedLabel) {
                     continue
                 }
 

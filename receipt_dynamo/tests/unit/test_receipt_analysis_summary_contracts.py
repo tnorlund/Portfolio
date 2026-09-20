@@ -1,10 +1,10 @@
-"""Contracts for receipt analysis aggregates and persisted summaries."""
+"""Contracts for receipt summaries and persisted summary records."""
 
 from datetime import datetime
+from types import SimpleNamespace
 
 import pytest
 
-from receipt_dynamo.entities.receipt_analysis import ReceiptAnalysis
 from receipt_dynamo.entities.receipt_summary import (
     MonetaryTotals,
     ReceiptSummary,
@@ -20,46 +20,6 @@ pytestmark = pytest.mark.unit
 
 IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
 TIMESTAMP = "2023-05-15T10:30:00+00:00"
-
-
-def test_receipt_analysis_defaults_are_independent():
-    first = ReceiptAnalysis(image_id=IMAGE_ID, receipt_id=1)
-    second = ReceiptAnalysis(image_id=IMAGE_ID, receipt_id=1)
-
-    first.validation_categories.append("mutated")
-
-    assert second.validation_categories == []
-    assert second.validation_results == []
-    assert second.chatgpt_validations == []
-    assert "available=no analyses" in repr(second)
-
-
-@pytest.mark.parametrize(
-    ("kwargs", "message"),
-    [
-        ({"receipt_id": True}, "receipt_id must be an integer"),
-        ({"receipt_id": 0}, "receipt_id must be positive"),
-        ({"image_id": "invalid"}, "uuid must be a valid UUID"),
-        (
-            {"validation_categories": ["invalid"]},
-            "validation_categories must contain",
-        ),
-        (
-            {"validation_results": ["invalid"]},
-            "validation_results must contain",
-        ),
-        (
-            {"chatgpt_validations": ["invalid"]},
-            "chatgpt_validations must contain",
-        ),
-    ],
-)
-def test_receipt_analysis_rejects_invalid_contracts(
-    kwargs: dict, message: str
-):
-    params = {"image_id": IMAGE_ID, "receipt_id": 1, **kwargs}
-    with pytest.raises(ValueError, match=message):
-        ReceiptAnalysis(**params)
 
 
 @pytest.mark.parametrize(
@@ -103,10 +63,90 @@ def test_extract_amount(text: str, expected: float | None):
         ("JUL 25 2026 10:15 AM", datetime(2026, 7, 25)),
         ("MAYO 5.99", None),
         ("FEB 30 2026", None),
+        # DATE-labelled texts observed on dev receipts, verbatim
+        ("01-Mar-2025", datetime(2025, 3, 1)),
+        ("16-Nov-2025", datetime(2025, 11, 16)),
+        ("15-Apr-2025", datetime(2025, 4, 15)),
+        ("01.Mar.2025", datetime(2025, 3, 1)),
+        ("01-Mar-25", datetime(2025, 3, 1)),
+        ("May 6. 2025", datetime(2025, 5, 6)),
+        ("August 15, 2026", datetime(2026, 8, 15)),
+        ("Mar 10,2026", datetime(2026, 3, 10)),
+        ("April 1: 2024", datetime(2024, 4, 1)),
+        ("10/14/2026.", datetime(2026, 10, 14)),
+        ("01/Mar/2025", datetime(2025, 3, 1)),
+        ("25. Jul 2026", datetime(2026, 7, 25)),
+        ("Jul 25 2026:10:15", datetime(2026, 7, 25)),
+        ("25 July '26:10:15", datetime(2026, 7, 25)),
+        # Never guessed: promo ranges, weekday suffixes, missing years,
+        # OCR junk, prices and bare digit runs all stay None
+        ("June 18-Tuesday,", None),
+        ("June 16 - 22", None),
+        ("June 16-22", None),
+        ("June 16 - June 22", None),
+        ("June 16- June 22", None),
+        ("June 16-June 22", None),
+        ("June 18,2026-Tuesday,", None),
+        ("June 18,2026- Tuesday,", None),
+        ("Jan 21,", None),
+        ("Jan 21", None),
+        ("1/14,23", None),
+        ("6728/25", None),
+        ("3.22", None),
+        ("MAR 1234", None),
+        ("Jan 21, 32.99", None),
+        ("May 6.2025", None),
     ],
 )
 def test_parse_date(text: str, expected: datetime | None):
     assert parse_date(text) == expected
+
+
+def _date_words(*texts: str) -> tuple[list, list]:
+    """DATE-labelled OCR words on one line, one word per text."""
+    words = [
+        SimpleNamespace(line_id=4, word_id=i + 1, text=text)
+        for i, text in enumerate(texts)
+    ]
+    labels = [
+        SimpleNamespace(
+            line_id=4,
+            word_id=w.word_id,
+            label="DATE",
+            validation_status="VALID",
+        )
+        for w in words
+    ]
+    return labels, words
+
+
+@pytest.mark.parametrize(
+    ("texts", "expected"),
+    [
+        (("May", "6.", "2025"), datetime(2025, 5, 6)),
+        (("August", "15,", "2026"), datetime(2026, 8, 15)),
+        (("Mar", "10,2026"), datetime(2026, 3, 10)),
+        (("April", "1:", "2024"), datetime(2024, 4, 1)),
+        (("01-Mar-2025",), datetime(2025, 3, 1)),
+        (("10/14/2026.",), datetime(2026, 10, 14)),
+        (("June", "18-Tuesday,"), None),
+        (("June", "16", "-", "22"), None),
+        (("Jan", "21,"), None),
+        (("1/14,23",), None),
+        (("6728/25",), None),
+        (("3.22",), None),
+    ],
+)
+def test_split_date_words_join_per_line(texts, expected):
+    labels, words = _date_words(*texts)
+    summary = ReceiptSummary.from_word_labels_and_words(
+        image_id="3f52804b-2fad-4e00-92c8-b593da3a8ed3",
+        receipt_id=1,
+        merchant_name=None,
+        word_labels=labels,
+        words=words,
+    )
+    assert summary.date == expected
 
 
 @pytest.mark.parametrize(
@@ -146,6 +186,9 @@ def test_receipt_summary_validates_and_serializes():
         "ledger": None,
         "bank_amount": None,
         "bank_match_confidence": None,
+        "bank_date": None,
+        "effective_date": "2023-05-15T00:00:00",
+        "date_source": "label",
         "grand_total": 12.0,
         "subtotal": 10.0,
         "tax": 2.0,

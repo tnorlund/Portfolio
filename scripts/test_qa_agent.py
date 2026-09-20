@@ -37,22 +37,19 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
-sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
-from receipt_chroma import ChromaClient
-from receipt_dynamo.data._pulumi import load_env, load_secrets
 
 from receipt_agent.agents.question_answering import (
     answer_question_sync,
     create_qa_graph,
 )
 from receipt_agent.clients.factory import (
-    create_chroma_client,
     create_dynamo_client,
     create_embed_fn,
 )
+from receipt_dynamo.data._pulumi import load_env, load_secrets
 
 
 class CostTrackingCallback(BaseCallbackHandler):
@@ -260,54 +257,6 @@ def main():
         table_name=config["dynamodb_table_name"]
     )
 
-    # Check for Chroma Cloud config first
-    chroma_cloud_api_key = config.get("chroma_cloud_api_key")
-    chroma_cloud_tenant = config.get("chroma_cloud_tenant")
-    chroma_cloud_database = config.get("chroma_cloud_database")
-    chroma_cloud_enabled = (
-        config.get("chroma_cloud_enabled", "false").lower() == "true"
-    )
-
-    if chroma_cloud_enabled and chroma_cloud_api_key:
-        logger.info(
-            "Using Chroma Cloud: tenant=%s, database=%s",
-            chroma_cloud_tenant,
-            chroma_cloud_database,
-        )
-        try:
-            chroma_client = ChromaClient(
-                cloud_api_key=chroma_cloud_api_key,
-                cloud_tenant=chroma_cloud_tenant,
-                cloud_database=chroma_cloud_database,
-                mode="read",
-            )
-        except Exception as e:
-            logger.error("Failed to create Chroma Cloud client: %s", e)
-            sys.exit(1)
-    else:
-        # Fall back to local ChromaDB paths
-        os.environ["RECEIPT_AGENT_CHROMA_LINES_DIRECTORY"] = config.get(
-            "chroma_lines_directory", "/tmp/chroma_lines"
-        )
-        os.environ["RECEIPT_AGENT_CHROMA_WORDS_DIRECTORY"] = config.get(
-            "chroma_words_directory", "/tmp/chroma_words"
-        )
-
-        try:
-            chroma_client = create_chroma_client(mode="read")
-        except Exception as e:
-            logger.error(
-                "Failed to create ChromaDB client. Make sure you have downloaded "
-                "the ChromaDB snapshots. Error: %s",
-                e,
-            )
-            logger.info(
-                "Tip: Download snapshots with: "
-                "aws s3 sync s3://<bucket>/lines/snapshot/ /tmp/chroma_lines/ && "
-                "aws s3 sync s3://<bucket>/words/snapshot/ /tmp/chroma_words/"
-            )
-            sys.exit(1)
-
     embed_fn = create_embed_fn()
 
     # Create cost tracking callback
@@ -317,7 +266,6 @@ def main():
     logger.info("Creating QA graph (ReAct + synthesize)...")
     graph, state_holder = create_qa_graph(
         dynamo_client=dynamo_client,
-        chroma_client=chroma_client,
         embed_fn=embed_fn,
     )
 

@@ -8,7 +8,6 @@ This removes, per receipt ID:
 - ReceiptLines
 - ReceiptLetters (best effort)
 - ReceiptMetadata (intentional legacy cleanup, best effort, to avoid orphans)
-- CompactionRuns (best effort)
 - The Receipt itself (last)
 
 Usage example:
@@ -105,16 +104,6 @@ def delete_receipt_and_children(
         if md:
             client.delete_receipt_metadata(image_id, receipt_id)
             print("   ✅ Deleted metadata")
-    except Exception:
-        pass
-
-    # Delete compaction runs (best effort)
-    try:
-        runs, _ = client.list_compaction_runs_for_receipt(image_id, receipt_id)
-        for r in runs:
-            client.delete_compaction_run(r)
-        if runs:
-            print(f"   ✅ Deleted {len(runs)} compaction runs")
     except Exception:
         pass
 

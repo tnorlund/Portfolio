@@ -1,0 +1,112 @@
+{
+ "version": 1,
+ "char": "g",
+ "codepoint": 103,
+ "provenance": "edited",
+ "width": 513,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": true,
+   "nodes": [
+    {
+     "x": 250,
+     "y": 664.37125748503,
+     "type": "smooth",
+     "hIn": {
+      "x": 145,
+      "y": 664.37125748503
+     },
+     "hOut": {
+      "x": 355,
+      "y": 664.37125748503
+     }
+    },
+    {
+     "x": 440,
+     "y": 475.748502994012,
+     "type": "smooth",
+     "hIn": {
+      "x": 440,
+      "y": 580.2994011976048
+     },
+     "hOut": {
+      "x": 440,
+      "y": 371.1976047904192
+     }
+    },
+    {
+     "x": 250,
+     "y": 287.12574850299404,
+     "type": "smooth",
+     "hIn": {
+      "x": 355,
+      "y": 287.12574850299404
+     },
+     "hOut": {
+      "x": 145,
+      "y": 287.12574850299404
+     }
+    },
+    {
+     "x": 60,
+     "y": 475.748502994012,
+     "type": "smooth",
+     "hIn": {
+      "x": 60,
+      "y": 371.1976047904192
+     },
+     "hOut": {
+      "x": 60,
+      "y": 580.2994011976048
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 440,
+     "y": 642.814371257485,
+     "type": "corner"
+    },
+    {
+     "x": 440,
+     "y": 103.89221556886227,
+     "type": "corner",
+     "hOut": {
+      "x": 440,
+      "y": 19.820359281437124
+     }
+    },
+    {
+     "x": 285,
+     "y": -25.44910179640719,
+     "type": "smooth",
+     "hIn": {
+      "x": 365,
+      "y": -25.44910179640719
+     },
+     "hOut": {
+      "x": 205,
+      "y": -25.44910179640719
+     }
+    },
+    {
+     "x": 85,
+     "y": 1.4970059880239504,
+     "type": "corner",
+     "hIn": {
+      "x": 125,
+      "y": -16.82634730538922
+     }
+    }
+   ]
+  }
+ ],
+ "note": "Speedway corpus too thin/polluted for this char (6 receipts); skeleton adopted from the vons face (same C1-heavy thermal ROM, overlay-verified against the Speedway consensus).",
+ "normalized": "y: vons(100..935) -> speedway(50..950)",
+ "donor": "vons"
+}

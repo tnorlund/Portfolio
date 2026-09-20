@@ -1,0 +1,111 @@
+{
+ "version": 1,
+ "char": "m",
+ "codepoint": 109,
+ "provenance": "edited",
+ "width": 600.8,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 60,
+     "y": 642.814371257485,
+     "type": "corner"
+    },
+    {
+     "x": 60,
+     "y": -3.8922155688622766,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 60,
+     "y": 545.8083832335329,
+     "type": "corner",
+     "hOut": {
+      "x": 60,
+      "y": 599.7005988023952
+     }
+    },
+    {
+     "x": 165,
+     "y": 642.814371257485,
+     "type": "smooth",
+     "hIn": {
+      "x": 107,
+      "y": 642.814371257485
+     },
+     "hOut": {
+      "x": 223,
+      "y": 642.814371257485
+     }
+    },
+    {
+     "x": 270,
+     "y": 545.8083832335329,
+     "type": "corner",
+     "hIn": {
+      "x": 270,
+      "y": 599.7005988023952
+     }
+    },
+    {
+     "x": 270,
+     "y": -3.8922155688622766,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 270,
+     "y": 545.8083832335329,
+     "type": "corner",
+     "hOut": {
+      "x": 270,
+      "y": 599.7005988023952
+     }
+    },
+    {
+     "x": 375,
+     "y": 642.814371257485,
+     "type": "smooth",
+     "hIn": {
+      "x": 317,
+      "y": 642.814371257485
+     },
+     "hOut": {
+      "x": 433,
+      "y": 642.814371257485
+     }
+    },
+    {
+     "x": 480,
+     "y": 545.8083832335329,
+     "type": "corner",
+     "hIn": {
+      "x": 480,
+      "y": 599.7005988023952
+     }
+    },
+    {
+     "x": 480,
+     "y": -3.8922155688622766,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "note": "Speedway corpus too thin/polluted for this char (6 receipts); skeleton adopted from the vons face (same C1-heavy thermal ROM, overlay-verified against the Speedway consensus).",
+ "normalized": "y: vons(100..935) -> speedway(50..950)",
+ "donor": "vons"
+}

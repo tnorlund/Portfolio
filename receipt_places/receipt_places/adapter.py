@@ -28,9 +28,7 @@ from receipt_places.types_v1 import (
     Location,
 )
 from receipt_places.types_v1 import OpeningHours as V1OpeningHours
-from receipt_places.types_v1 import (
-    PlaceV1,
-)
+from receipt_places.types_v1 import PlaceV1
 from receipt_places.types_v1 import PlusCode as V1PlusCode
 from receipt_places.types_v1 import Viewport as V1Viewport
 

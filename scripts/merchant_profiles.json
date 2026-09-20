@@ -1139,6 +1139,73 @@
     "bitmap_thin": 0.0,
     "bitmap_glyph_vscale": 1.015
    }
+  },
+  "Speedway": {
+   "_comment": "Studio-minted from 6 pooled receipts (2 Traverse City MI photos + 4 CA slips; thin corpus, so polluted/absent glyphs were adopted from the vons face, same C1-heavy thermal ROM). All-caps body; the Michigan POS prints its tender line in a double-width bold face (stylemap tender_line). The SPEEDWAY wordmark is plain body text on the print, so no logo band is rendered.",
+   "aliases": [
+    "SPEEDWAY",
+    "Speedway Express",
+    "SPEEDWAY EXPRESS",
+    "Speedway #6373"
+   ],
+   "typography": {
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "speedway.glyphs.npz",
+     "heavy": "speedway-heavy.glyphs.npz"
+    },
+    "condense": 0.906,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "bitmap_thin": 0.0,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.88,
+    "stylemap": "speedway.stylemap.json",
+    "pitch_ratio": 0.49
+   },
+   "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
+  },
+  "Whole Foods Market": {
+   "_comment": "Minted by new_vendor.py from Whole Foods Market's dev receipts (font wholefoods). Edit typography knobs here; `new_vendor.py calibrate` solves ocr_cap_height_ratio.",
+   "aliases": [
+    "WHOLE FOODS MARKET"
+   ],
+   "typography": {
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "wholefoods.glyphs.npz",
+     "heavy": "wholefoods-heavy.glyphs.npz"
+    },
+    "condense": 1.007,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "bitmap_thin": 0.0,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.72,
+    "stylemap": "wholefoods.stylemap.json",
+    "pitch_ratio": 0.579
+   },
+   "logo": "wholefoods_logo.png",
+   "logo_anchor": {
+    "phrases": [
+     "WHOLE FOODS",
+     "MARKET",
+     "WHOLE FOODS MARKET"
+    ],
+    "extend_left": false,
+    "center": true
+   },
+   "graphics": {
+    "footer_codes": true,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
   }
  }
 }

@@ -4,22 +4,21 @@ import json
 import logging
 import os
 import random
-import shutil
-import tempfile
 from datetime import datetime, timezone
 
 import boto3
-from receipt_chroma import ChromaClient
-from receipt_chroma.s3 import download_snapshot_atomic
 from receipt_dynamo import DynamoClient
+from receipt_embeddings.keys import (
+    dynamo_key_from_canonical,
+    line_canonical_key,
+)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Environment variables
 DYNAMODB_TABLE_NAME = os.environ["DYNAMODB_TABLE_NAME"]
-CHROMADB_BUCKET = os.environ["CHROMADB_BUCKET"]
-S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET", CHROMADB_BUCKET)
+S3_CACHE_BUCKET = os.environ.get("S3_CACHE_BUCKET", "")
 CACHE_KEY = "address-similarity-cache/latest.json"
 
 # Initialize clients
@@ -57,7 +56,8 @@ def is_url_line(line):
         if pattern in text:
             return True
 
-    # Check if it's mostly a domain-like string (contains dots and no spaces, or very few)
+    # Check if it's mostly a domain-like string (contains dots and no
+    # spaces, or very few)
     if "." in text and text.count(" ") <= 1:
         # Likely a domain
         return True
@@ -91,7 +91,8 @@ def calculate_bounding_box_for_lines(lines):
     """Calculate a bounding box that contains all the given lines.
 
     Finds the min/max x and y coordinates from all line corners and creates
-    a single bounding box with corners (tl, tr, bl, br) that encompasses all lines.
+    a single bounding box with corners (tl, tr, bl, br) that spans all
+    lines.
 
     Excludes URL/website lines from the bounding box calculation.
 
@@ -105,14 +106,16 @@ def calculate_bounding_box_for_lines(lines):
     if not lines:
         return None
 
-    # Filter out URL lines and empty/whitespace lines - they shouldn't be part of the address bounding box
+    # Filter out URL lines and empty/whitespace lines - they shouldn't
+    # be part of the address bounding box
     address_lines = [
         line
         for line in lines
         if not is_url_line(line) and not is_empty_or_whitespace_line(line)
     ]
 
-    # If all lines were filtered out, fall back to using all non-empty lines (edge case)
+    # If all lines were filtered out, fall back to using all non-empty
+    # lines (edge case)
     if not address_lines:
         address_lines = [
             line for line in lines if not is_empty_or_whitespace_line(line)
@@ -121,7 +124,8 @@ def calculate_bounding_box_for_lines(lines):
             # Last resort: use all lines
             address_lines = lines
         logger.warning(
-            "All lines were filtered out (URLs/empty), using %d lines for bounding box calculation",
+            "All lines were filtered out (URLs/empty), using %d lines "
+            "for bounding box calculation",
             len(address_lines),
         )
 
@@ -166,6 +170,88 @@ def calculate_bounding_box_for_lines(lines):
     }
 
 
+class _DynamoLinesClient:
+    """Line-embedding reads against the receipt table.
+
+    ``get`` returns the stored ``line_vector`` for an exact id;
+    ``query`` runs SearchVectors on the line-embeddings index.
+    Distances are reported on the historical squared-L2 scale
+    (2 x cosine distance for unit-norm vectors) so cached
+    ``similarity_distance`` values keep their meaning — frontend data
+    continuity depends on that scale (polish-brief Invariants).
+
+    Deliberately raw-boto3 rather than ``DynamoVectorSearchClient``:
+    this handler predates the seam, its callers speak the legacy
+    get/query result shape, and the historical distance scale differs
+    from the seam's cosine contract — wrapping the seam would need a
+    second conversion layer for zero behavior gain (polish-brief
+    item 6: document why it exists rather than rewrite it).
+    """
+
+    def __init__(self, table_name: str):
+        self._table = table_name
+        self._client = boto3.client("dynamodb")
+
+    def close(self):
+        pass
+
+    def list_collections(self):
+        return ["lines"]
+
+    def get(self, collection_name, ids, include=None):
+        del collection_name, include
+        out = {"ids": [], "embeddings": [], "metadatas": [], "documents": []}
+        for key in ids:
+            item = self._client.get_item(
+                TableName=self._table,
+                Key=dynamo_key_from_canonical(key),
+                ProjectionExpression="line_vector",
+            ).get("Item")
+            if not item:
+                continue
+            out["ids"].append(key)
+            out["embeddings"].append(
+                [float(value["N"]) for value in item["line_vector"]["L"]]
+            )
+            out["metadatas"].append({})
+            out["documents"].append(None)
+        return out
+
+    def query(
+        self, collection_name, query_embeddings, n_results, include=None
+    ):
+        del collection_name, include
+        response = self._client.search_vectors(
+            TableName=self._table,
+            IndexName="line-embeddings",
+            SearchVector=[{"N": str(value)} for value in query_embeddings[0]],
+            TopK=n_results,
+        )
+        metadatas, distances, documents, result_ids = [], [], [], []
+        for result in response.get("SearchResults", []):
+            item = result.get("Item") or {}
+            score = result.get("Score")
+            pk = item.get("PK", {}).get("S", "")
+            sk = item.get("SK", {}).get("S", "")
+            parts = sk.split("#")
+            if score is None or not pk or len(parts) < 4:
+                continue
+            image_id = pk.split("#", 1)[1]
+            receipt_id = int(parts[1])
+            metadatas.append({"image_id": image_id, "receipt_id": receipt_id})
+            # Historical metric is squared-L2; for unit-norm
+            # embeddings that equals 2 x cosine distance.
+            distances.append(2.0 * float(score))
+            documents.append(None)
+            result_ids.append(f"{pk}#{sk}")
+        return {
+            "ids": [result_ids],
+            "metadatas": [metadatas],
+            "distances": [distances],
+            "documents": [documents],
+        }
+
+
 def handler(_event, _context):
     """Handle EventBridge scheduled event to generate address similarity cache.
 
@@ -178,70 +264,10 @@ def handler(_event, _context):
     """
     logger.info("Starting address similarity cache generation")
 
-    # Create temporary directory for ChromaDB snapshot
-    temp_dir = tempfile.mkdtemp()
-    chroma_client = None
-
     try:
         # Initialize clients
         dynamo_client = DynamoClient(DYNAMODB_TABLE_NAME)
-
-        # Download ChromaDB snapshot from S3
-        logger.info(
-            "Downloading ChromaDB snapshot from S3: %s/lines", CHROMADB_BUCKET
-        )
-        download_result = download_snapshot_atomic(
-            bucket=CHROMADB_BUCKET,
-            collection="lines",
-            local_path=temp_dir,
-            verify_integrity=True,
-        )
-
-        if download_result.get("status") != "downloaded":
-            logger.error("Failed to download snapshot: %s", download_result)
-            return {
-                "statusCode": 500,
-                "body": json.dumps(
-                    {"error": "Failed to download ChromaDB snapshot"}
-                ),
-            }
-
-        logger.info(
-            "ChromaDB snapshot downloaded: version_id=%s, local_path=%s",
-            download_result.get("version_id"),
-            temp_dir,
-        )
-
-        # Initialize ChromaDB client in read mode from downloaded snapshot
-        chroma_client = ChromaClient(
-            persist_directory=temp_dir,
-            mode="read",
-        )
-
-        # Verify that the "lines" collection exists in the downloaded snapshot
-        logger.info("Checking if 'lines' collection exists in snapshot")
-        available_collections = chroma_client.list_collections()
-        if "lines" not in available_collections:
-            logger.error(
-                "Collection 'lines' not found in snapshot. "
-                "Available collections: %s",
-                available_collections,
-            )
-            return {
-                "statusCode": 500,
-                "body": json.dumps(
-                    {
-                        "error": (
-                            "Collection 'lines' not found in ChromaDB snapshot. "
-                            f"Available collections: {available_collections}"
-                        )
-                    }
-                ),
-            }
-        logger.info(
-            "Collection 'lines' found. Total collections: %d",
-            len(available_collections),
-        )
+        lines_client = _DynamoLinesClient(DYNAMODB_TABLE_NAME)
 
         # Step 1: Get random word with address label
         # Note: The label is "ADDRESS_LINE" per
@@ -297,7 +323,8 @@ def handler(_event, _context):
         # Group address labels by line_id
         address_line_ids = {label.line_id for label in original_receipt_labels}
 
-        # Find consecutive groups of address lines (addresses are usually consecutive)
+        # Find consecutive groups of address lines (addresses are
+        # usually consecutive)
         # Sort line_ids to find consecutive ranges
         sorted_line_ids = sorted(address_line_ids)
 
@@ -306,7 +333,8 @@ def handler(_event, _context):
         if sorted_line_ids:
             current_group = [sorted_line_ids[0]]
             for i in range(1, len(sorted_line_ids)):
-                # If this line_id is consecutive with the previous one, add to current group
+                # If this line_id is consecutive with the previous one,
+                # add to the current group
                 if sorted_line_ids[i] == sorted_line_ids[i - 1] + 1:
                     current_group.append(sorted_line_ids[i])
                 else:
@@ -326,7 +354,8 @@ def handler(_event, _context):
         if not selected_group and address_groups:
             selected_group = address_groups[0]
             logger.warning(
-                "Selected label line_id %d not in any address group, using first group: %s",
+                "Selected label line_id %d not in any address group, "
+                "using first group: %s",
                 selected_label.line_id,
                 selected_group,
             )
@@ -340,7 +369,8 @@ def handler(_event, _context):
             )
 
         # Get lines and words for the selected address group
-        # Filter out URL lines and empty/whitespace lines - they shouldn't be part of the address
+        # Filter out URL lines and empty/whitespace lines - they
+        # shouldn't be part of the address
         address_context_lines = [
             line
             for line in original_lines
@@ -367,26 +397,27 @@ def handler(_event, _context):
         ]
 
         logger.info(
-            "Selected address group: line_ids=%s, line_count=%d, word_count=%d, label_count=%d",
+            "Selected address group: line_ids=%s, line_count=%d, "
+            "word_count=%d, label_count=%d",
             selected_group,
             len(address_context_lines),
             len(address_context_words),
             len(original_receipt_labels),
         )
 
-        # Step 3: Construct line ID and get embedding from ChromaDB
+        # Step 3: Construct line ID and get its stored embedding
         # Line ID format:
         # IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}
-        line_id = (
-            f"IMAGE#{selected_label.image_id}#"
-            f"RECEIPT#{selected_label.receipt_id:05d}#"
-            f"LINE#{selected_label.line_id:05d}"
+        line_id = line_canonical_key(
+            selected_label.image_id,
+            selected_label.receipt_id,
+            selected_label.line_id,
         )
 
         logger.info("Fetching embedding for line ID: %s", line_id)
 
-        # Get the line's embedding from ChromaDB
-        line_data = chroma_client.get(
+        # Get the line's embedding from the receipt table
+        line_data = lines_client.get(
             collection_name="lines",
             ids=[line_id],
             include=["embeddings", "metadatas", "documents"],
@@ -394,7 +425,7 @@ def handler(_event, _context):
 
         # Log what we got back for debugging
         logger.info(
-            "ChromaDB get returned: ids=%s, embeddings_type=%s",
+            "Embedding get returned: ids=%s, embeddings_type=%s",
             line_data.get("ids", []),
             type(line_data.get("embeddings")),
         )
@@ -403,14 +434,16 @@ def handler(_event, _context):
         ids = line_data.get("ids", [])
         if not ids or line_id not in ids:
             logger.error(
-                "Line ID not found in ChromaDB: %s. Available IDs: %s",
+                "Line ID not found in embedding index: %s. Available IDs: %s",
                 line_id,
                 ids[:10] if ids else "none",
             )
             return {
                 "statusCode": 500,
                 "body": json.dumps(
-                    {"error": f"Line ID not found in ChromaDB: {line_id}"}
+                    {
+                        "error": f"Line ID not found in embedding index: {line_id}"
+                    }
                 ),
             }
 
@@ -418,7 +451,7 @@ def handler(_event, _context):
         # NumPy arrays don't support direct truthiness checks
         embeddings_raw = line_data.get("embeddings", [])
         # Convert to list if it's a NumPy array or other array-like object
-        # ChromaDB may return embeddings as NumPy arrays or lists
+        # Embeddings may arrive as NumPy arrays or lists
         if embeddings_raw is None:
             embeddings = []
         elif hasattr(embeddings_raw, "__len__") and not isinstance(
@@ -437,7 +470,10 @@ def handler(_event, _context):
                 else:
                     # Multi-dimensional array or list-like, convert to list
                     embeddings = list(embeddings_raw)
-            except Exception:
+            except (TypeError, ValueError, AttributeError):
+                # In-memory numpy/list coercion only — these are the
+                # failure modes it has; anything else is a bug worth
+                # surfacing.
                 embeddings = []
         else:
             embeddings = (
@@ -449,26 +485,21 @@ def handler(_event, _context):
             or embeddings[0] is None
             or (hasattr(embeddings[0], "size") and embeddings[0].size == 0)
         ):
-            logger.error(
-                "Line embedding not found in ChromaDB for ID: %s", line_id
-            )
+            logger.error("Line embedding not found for ID: %s", line_id)
             return {
                 "statusCode": 500,
-                "body": json.dumps(
-                    {"error": "Line embedding not found in ChromaDB"}
-                ),
+                "body": json.dumps({"error": "Line embedding not found"}),
             }
 
         query_embedding = embeddings[0]
         logger.info(
-            "Retrieved embedding from ChromaDB (dimension: %d)",
+            "Retrieved line embedding (dimension: %d)",
             len(query_embedding),
         )
 
-        # Step 4: Query ChromaDB for similar lines using the
-        # retrieved embedding
-        logger.info("Querying ChromaDB for similar lines")
-        similar_results = chroma_client.query(
+        # Step 4: Query the line-embeddings index for similar lines
+        logger.info("Querying line-embeddings index for similar lines")
+        similar_results = lines_client.query(
             collection_name="lines",
             query_embeddings=[query_embedding],
             n_results=8,
@@ -555,14 +586,16 @@ def handler(_event, _context):
                     similar_address_groups.append(current_group)
 
                 # Select the first (or largest) address group
-                # This handles cases where an address appears twice on a receipt
+                # This handles cases where an address appears twice on
+                # a receipt
                 if similar_address_groups:
                     # Use the largest group, or first if all same size
                     selected_similar_group = max(
                         similar_address_groups, key=len
                     )
                     logger.debug(
-                        "Selected address group for similar receipt: line_ids=%s (from %d groups)",
+                        "Selected address group for similar receipt: "
+                        "line_ids=%s (from %d groups)",
                         selected_similar_group,
                         len(similar_address_groups),
                     )
@@ -570,7 +603,8 @@ def handler(_event, _context):
                     # Fallback: use all address line_ids
                     selected_similar_group = list(similar_address_line_ids)
                     logger.warning(
-                        "No consecutive groups found, using all address line_ids: %s",
+                        "No consecutive groups found, using all "
+                        "address line_ids: %s",
                         selected_similar_group,
                     )
 
@@ -624,6 +658,8 @@ def handler(_event, _context):
                 )
 
             except Exception as e:  # pylint: disable=broad-exception-caught
+                # CONTRACTUAL isolate-and-continue: one bad neighbor must
+                # not abort the rest of the cache build.
                 logger.warning(
                     (
                         "Failed to process similar receipt: "
@@ -681,27 +717,10 @@ def handler(_event, _context):
         }
 
     except Exception as e:  # pylint: disable=broad-exception-caught
+        # CONTRACTUAL Lambda error contract: a structured 500 (the
+        # previous cache stays live), never an unhandled exception.
         logger.error("Error generating cache: %s", e, exc_info=True)
         return {
             "statusCode": 500,
             "body": json.dumps({"error": str(e)}),
         }
-    finally:
-        # Close ChromaDB client if initialized
-        if chroma_client is not None:
-            try:
-                chroma_client.close()
-                logger.info("Closed ChromaDB client")
-            except Exception:  # pylint: disable=broad-exception-caught
-                logger.warning("Failed to close ChromaDB client")
-
-        # Cleanup temporary directory
-        try:
-            shutil.rmtree(temp_dir)
-            logger.info("Cleaned up temporary directory: %s", temp_dir)
-        except (
-            Exception
-        ) as cleanup_error:  # pylint: disable=broad-exception-caught
-            logger.warning(
-                "Failed to cleanup temp directory: %s", cleanup_error
-            )

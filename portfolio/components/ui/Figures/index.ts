@@ -161,20 +161,6 @@ export const BetweenReceiptVisualization = dynamic(
     loading: () => loadingShell("between"),
   }
 );
-export const SynthesisPrintReveal = dynamic(
-  () => import("./SynthesisPrintReveal"),
-  {
-    ssr: false,
-    loading: () => loadingShell("within"),
-  }
-);
-export const AugmentationShowcase = dynamic(
-  () => import("./AugmentationShowcase"),
-  {
-    ssr: false,
-    loading: () => loadingShell("within"),
-  }
-);
 export const SynthesisPipeline = dynamic(
   () => import("./SynthesisPipeline"),
   {
@@ -210,4 +196,11 @@ export const EmailSenderCensus = dynamic(
 export const EmailCoverageChart = dynamic(
   () => import("./Email/EmailCoverageChart"),
   { ssr: false }
+);
+export const LineItemDecoderVisualization = dynamic(
+  () => import("./LineItemDecoderVisualization"),
+  {
+    ssr: false,
+    loading: () => loadingShell("layoutlm"),
+  }
 );

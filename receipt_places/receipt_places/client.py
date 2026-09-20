@@ -21,9 +21,7 @@ from tenacity import (
 from receipt_places.cache import CacheManager
 from receipt_places.config import PlacesConfig, get_config
 from receipt_places.exceptions import PlacesAPIError as PlacesAPIError
-from receipt_places.exceptions import (
-    PlacesConfigurationError,
-)
+from receipt_places.exceptions import PlacesConfigurationError
 from receipt_places.parsers import (
     APIError,
     ParseError,

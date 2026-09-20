@@ -1,4 +1,4 @@
-"""Vector-backend switch and graceful degradation for merchant retrieval."""
+"""DynamoDB vector backend and graceful degradation for merchant retrieval."""
 
 from __future__ import annotations
 
@@ -75,19 +75,17 @@ def test_dynamo_backend_uses_protocol_and_preserves_resolution_math() -> None:
     resolver = MerchantResolver(
         dynamo_client=dynamo,
         vector_client=vector_client,
-        vector_backend="dynamodb",
     )
     resolver._line_embeddings = {1: [0.01] * 1536}
     resolver._receipt_lines = [_line()]
 
     result = resolver._similarity_search_impl(
-        lines_client=MagicMock(),
         query_line=_line(),
         current_image_id="current-image",
         current_receipt_id=1,
         expected_phone="5551234567",
         expected_address=None,
-        resolution_tier="chroma_phone",
+        resolution_tier="similarity_phone",
     )
 
     assert vector_client.calls == [("line-embeddings", 20)]
@@ -143,7 +141,6 @@ def test_real_resolver_boosts_on_fetch_joined_phone_metadata() -> None:
     resolver = MerchantResolver(
         dynamo_client=dynamo,
         vector_client=vector_client,
-        vector_backend="dynamodb",
     )
     resolver._line_embeddings = {1: [0.01] * EMBEDDING_DIMENSIONS}
     resolver._receipt_lines = [_line()]
@@ -160,13 +157,12 @@ def test_real_resolver_boosts_on_fetch_joined_phone_metadata() -> None:
             {"Responses": {"ReceiptsTable-dc5be22": [base_item]}},
         )
         result = resolver._similarity_search_impl(
-            lines_client=MagicMock(),
             query_line=_line(),
             current_image_id="current-image",
             current_receipt_id=1,
             expected_phone="5551234567",
             expected_address=None,
-            resolution_tier="chroma_phone",
+            resolution_tier="similarity_phone",
         )
 
     assert result.place_id == "place-1"
@@ -180,41 +176,37 @@ def test_dynamo_throttle_degrades_to_empty_result() -> None:
     resolver = MerchantResolver(
         dynamo_client=MagicMock(),
         vector_client=StubVectorClient(error=RuntimeError("throttled")),
-        vector_backend="dynamodb",
     )
     resolver._line_embeddings = {1: [0.01] * 1536}
     resolver._receipt_lines = [_line()]
 
     result = resolver._similarity_search_impl(
-        lines_client=MagicMock(),
         query_line=_line(),
         current_image_id="current-image",
         current_receipt_id=1,
         expected_phone=None,
         expected_address=None,
-        resolution_tier="chroma_text",
+        resolution_tier="similarity_text",
     )
 
     assert result.place_id is None
 
 
 @pytest.mark.unit
-def test_invalid_vector_backend_is_rejected() -> None:
-    with pytest.raises(ValueError, match="VECTOR_BACKEND"):
-        MerchantResolver(MagicMock(), vector_backend="production")
-
-
-@pytest.mark.unit
-def test_vector_backend_reads_environment(
+def test_default_backend_is_built_lazily_from_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("VECTOR_BACKEND", "dynamodb")
-
-    resolver = MerchantResolver(
-        dynamo_client=MagicMock(), vector_client=StubVectorClient()
+    built = StubVectorClient()
+    monkeypatch.setattr(
+        DynamoVectorSearchClient,
+        "from_env",
+        classmethod(lambda _cls: built),
     )
+    resolver = MerchantResolver(dynamo_client=MagicMock())
 
-    assert resolver._vector_backend == "dynamodb"
+    assert resolver._vector_client is None
+    assert resolver._get_vector_client() is built
+    assert resolver._get_vector_client() is built
 
 
 class SimplePlace:

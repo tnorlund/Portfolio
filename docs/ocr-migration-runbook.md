@@ -40,10 +40,12 @@ Per wave, IN ORDER:
    REMOVEs and will re-upsert EMPTY summaries for OLD receipt ids (and INSERTs
    never create new-id summaries). Sweep orphaned summaries, then
    `scripts/backfill_receipt_summaries.py --env dev`.
-7. **Chroma**: VERIFY FIRST (open question below) whether stream deletion
-   covers word/line vectors; delete old-id vectors explicitly if not. Kick
-   embedding SFs (`start_ingestion_dev.sh both` — they have NO schedule),
-   confirm NONE→SUCCESS drains, spot-check old ids gone / new present.
+7. **Vectors**: VERIFY FIRST (open question below) whether stream deletion
+   covers word/line vectors; delete old-id vectors explicitly if not.
+   (Historical: this step kicked `start_ingestion_dev.sh both`. Those embedding
+   step functions and that script no longer exist — vectors now live in the
+   table as `RECEIPT_{LINE,WORD}_EMBEDDING` items and are copied, not
+   re-derived. Spot-check old ids gone / new present.)
    Wave 1 doubles as the embedding-pipeline canary (words leg has the #990
    stuck-PENDING history).
 8. **Derived caches**: label-evaluator viz SF (manual, old-id-keyed);
@@ -63,8 +65,9 @@ Sign-off before wave 2.
 ## Prod (after dev soak, 2–7 days)
 
 Existing mirror: `reconcile_dev_to_prod.py` — fingerprints flip on every
-migrated image → REPLACE (delete-then-recopy; correct for re-keying), Chroma
-leg intra-env, embedding_status reset → `start_ingestion_prod.sh both`.
+migrated image → REPLACE (delete-then-recopy; correct for re-keying). Vector
+items ride along with the copy; there is no embedding step to kick (the
+`start_ingestion_*.sh` scripts and their step functions are gone).
 - **Dry-run first**: `guard_replaces` SILENTLY SKIPS prod partitions holding
   non-`RESTORABLE_TYPES` (sections/analyses) — inspect skips, extend the set
   in a reviewed change if needed.

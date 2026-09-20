@@ -8,12 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Removed
+- **BREAKING**: Removed the unused `receipt_agent.subagents.financial_validation`
+  package, including its basic, enhanced, and LLM-driven graphs and the
+  `FinancialValidationState` model. No repository callers use these exports.
 - **BREAKING**: Removed the retired bulk metadata harmonizer surface:
   - `receipt_agent.agents.harmonizer`
   - `receipt_agent.subagents.cove_text_consistency`
   - `infra/metadata_harmonizer_step_functions/`
 
 ### Migration Notes
+- Financial checks now live in `receipt_agent.agents.label_evaluator`:
+  `financial_structured` provides the deterministic validation entry points and
+  `financial_subagent` provides the evaluator's financial math checks. These
+  APIs accept receipt words and labels; they are not signature-compatible
+  replacements for the retired graph factories or state model.
 - Use the fix-place workflow, receipt MCP tools, and label evaluator outputs for
   current receipt cleanup and validation work.
 
@@ -72,7 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `receipt_agent.agents.validation` (was `graph.workflow`)
   - `receipt_agent.subagents.place_finder` (was `graph.receipt_metadata_finder_workflow`)
   - `receipt_agent.subagents.cove_text_consistency` (was `graph.cove_text_consistency_workflow`; later retired)
-  - `receipt_agent.subagents.financial_validation` (was `graph.financial_validation_workflow`)
+  - `receipt_agent.subagents.financial_validation` (was `graph.financial_validation_workflow`; later retired)
 
 ## [0.1.0] - Initial Release
 

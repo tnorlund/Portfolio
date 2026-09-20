@@ -99,7 +99,6 @@ def create_label_evaluator_graph(
     dynamo_client: Any,
     llm_model: str | None = None,
     llm: Any = None,
-    chroma_client: Any = None,
     max_pair_patterns: int = 4,
     max_relationship_dimension: int = 2,
 ) -> Any:
@@ -111,9 +110,6 @@ def create_label_evaluator_graph(
         llm_model: Model to use for LLM review (uses OPENROUTER_MODEL env var by default)
         llm: Optional pre-configured LLM instance. If provided, ignores other
             LLM settings.
-        chroma_client: Optional ChromaDB client for similar word lookup.
-            Words' existing embeddings are retrieved by ID, so no embed_fn is
-            needed.
         max_pair_patterns: Maximum label pairs/tuples to compute geometry for
             (default: 4). Higher = more comprehensive analysis but slower.
         max_relationship_dimension: Analyze n-label relationships (default: 2).
@@ -124,17 +120,8 @@ def create_label_evaluator_graph(
     """
     # Store clients and configuration in closure for node access
     _dynamo_client = dynamo_client
-    _chroma_client = chroma_client
     _max_pair_patterns = max_pair_patterns
     _max_relationship_dimension = max_relationship_dimension
-
-    # Log ChromaDB availability
-    if _chroma_client:
-        logger.info("ChromaDB client provided for similar word lookup")
-    else:
-        logger.info(
-            "ChromaDB not configured - similar word lookup will be skipped"
-        )
 
     # Initialize LLM for review (uses OpenRouter)
     if llm is not None:
@@ -452,7 +439,6 @@ def create_label_evaluator_graph(
                 merchant_name=merchant_name,
                 words=state.words,
                 labels=state.labels,
-                chroma_client=_chroma_client,
                 line_item_patterns=line_item_patterns,
             )
 
@@ -607,7 +593,6 @@ def create_label_evaluator_graph(
                 merchant_name=merchant_name,
                 merchant_receipt_count=merchant_receipt_count,
                 llm=_llm,
-                chroma_client=_chroma_client,
                 dynamo_client=_dynamo_client,
                 line_item_patterns=line_item_patterns,
                 max_issues_per_call=10,

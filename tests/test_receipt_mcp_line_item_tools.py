@@ -1,7 +1,7 @@
 """Tests for the line-item reconciliation tools on both MCP servers.
 
 The two servers (stdio ``scripts/receipt_mcp_server.py`` and the Lambda
-``infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py``) must
+the package staged by the Lambda Dockerfile) must
 expose the same tool surface. These tests import each module with a
 minimal fake ``mcp`` package (the real dependency is not installed in
 CI), assert the three line-item tools are registered with valid input
@@ -12,27 +12,13 @@ strictly shrink |delta| AND improve the reconciliation status.
 """
 
 import asyncio
-import importlib.util
 import sys
 import types
 from datetime import datetime, timezone
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-SERVER_FILES = {
-    "stdio": REPO_ROOT / "scripts" / "receipt_mcp_server.py",
-    "lambda": (
-        REPO_ROOT
-        / "infra"
-        / "mcp_server_lambda"
-        / "lambdas"
-        / "receipt_mcp_server_server.py"
-    ),
-}
+from receipt_mcp_test_support import SERVER_FILES, load_server_module
 
 EXPECTED_LINE_ITEM_TOOLS = {
     "get_receipt_line_items",
@@ -99,13 +85,7 @@ def _install_mcp_stubs():
 
 def _load_module(label, path):
     _install_mcp_stubs()
-    spec = importlib.util.spec_from_file_location(
-        f"receipt_mcp_server_{label}", path
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+    return load_server_module(f"receipt_mcp_server_{label}", path)
 
 
 # ---------------------------------------------------------------------------

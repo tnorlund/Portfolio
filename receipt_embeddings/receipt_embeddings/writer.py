@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from receipt_dynamo.entities import (
     ReceiptEmbedding,
@@ -20,6 +20,9 @@ from receipt_embeddings.service_limits import (
     MAX_BATCH_WRITE_ITEMS,
     WORD_INDEX,
 )
+
+if TYPE_CHECKING:  # circular at runtime: protocols types this seam
+    from receipt_embeddings.protocols import DynamoBatchClient
 
 EmbeddingKind = Literal["line", "word"]
 Embedder = Callable[..., list[list[float]]]
@@ -46,7 +49,7 @@ class EmbeddingWriteRequest:
     vector: Sequence[float] | None = None
 
     @property
-    def key(self) -> dict[str, Any]:
+    def key(self) -> dict[str, dict[str, str]]:
         sk = f"RECEIPT#{self.receipt_id:05d}#LINE#{self.line_id:05d}"
         if self.kind == "word":
             if self.word_id is None:
@@ -120,7 +123,7 @@ class EmbeddingWriteReport:
     def skipped(self) -> int:
         return len(self.skipped_existing_keys) + len(self.failures)
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self) -> dict[str, object]:
         return {
             "written": self.written,
             "skipped": self.skipped,
@@ -140,10 +143,10 @@ class EmbeddingWriter:
 
     def __init__(
         self,
-        dynamodb_client: Any,
+        dynamodb_client: "DynamoBatchClient",
         table_name: str,
         *,
-        openai_client: Any = None,
+        openai_client: object = None,
         embedder: Embedder = embed_texts,
         model: str = "text-embedding-3-small",
         max_retries: int = 3,
@@ -160,7 +163,7 @@ class EmbeddingWriter:
         self._sleep = sleep
 
     @staticmethod
-    def _key_id(key: dict[str, Any]) -> str:
+    def _key_id(key: Mapping[str, Mapping[str, str]]) -> str:
         return f"{key['PK']['S']}#{key['SK']['S']}"
 
     def _existing_keys(
@@ -206,9 +209,13 @@ class EmbeddingWriter:
                         EmbeddingWriteFailure(
                             key=key_id,
                             stage="read",
-                            error="BatchGetItem remained unprocessed after retries",
+                            error=(
+                                "BatchGetItem remained unprocessed "
+                                "after retries"
+                            ),
                         )
                     )
+            # pylint: disable-next=broad-exception-caught
             except Exception as exc:  # noqa: BLE001 - isolate and report
                 for request in chunk:
                     key_id = self._key_id(request.key)
@@ -285,9 +292,11 @@ class EmbeddingWriter:
                             )
                         else:
                             report.written_keys.append(key)
-            except Exception:
-                # A batch exception does not identify the failing item. Retry
-                # singly so healthy items still land and failures are attributable.
+            # pylint: disable-next=broad-exception-caught
+            except Exception:  # noqa: BLE001 - isolate and retry singly
+                # CONTRACTUAL isolate-and-report: a batch exception does not
+                # identify the failing item. Retry singly so healthy items
+                # still land and failures are attributable.
                 for key, item in chunk:
                     try:
                         response = self._client.batch_write_item(
@@ -302,9 +311,13 @@ class EmbeddingWriter:
                             self.table_name, []
                         )
                         if unprocessed:
+                            # pylint: disable-next=raise-missing-from
                             raise RuntimeError("item remained unprocessed")
                         report.written_keys.append(key)
+                    # pylint: disable-next=broad-exception-caught
                     except Exception as item_exc:  # noqa: BLE001
+                        # CONTRACTUAL isolate-and-report: one poisoned item
+                        # must not abort the rest of the chunk.
                         report.failures.append(
                             EmbeddingWriteFailure(
                                 key=key, stage="write", error=str(item_exc)
@@ -351,6 +364,7 @@ class EmbeddingWriter:
                 item = entity.to_item()
                 self._assert_safe_item(item)
                 to_write.append((request.canonical_key, item))
+            # pylint: disable-next=broad-exception-caught
             except Exception as exc:  # noqa: BLE001 - isolate and report
                 report.failures.append(
                     EmbeddingWriteFailure(
@@ -361,9 +375,26 @@ class EmbeddingWriter:
         return report
 
 
+def report_incomplete(report: Mapping[str, object] | None) -> bool:
+    """True when a native-write report dict signals an incomplete write.
+
+    The write paths hand back small dicts (see
+    ``write_precomputed_embeddings`` / ``write_native_embeddings``);
+    a truthy ``error`` or a nonzero ``failed`` means at least one
+    embedding item is missing. Callers keep their own fatality
+    semantics — this only centralizes the check (polish-brief item 5).
+    Accepts ``None`` (treated as incomplete-nothing → False).
+    """
+
+    if not report:
+        return False
+    return bool(report.get("error") or report.get("failed"))
+
+
 __all__ = [
     "EmbeddingWriteFailure",
     "EmbeddingWriteReport",
     "EmbeddingWriteRequest",
     "EmbeddingWriter",
+    "report_incomplete",
 ]

@@ -12,7 +12,8 @@ Covers the regression that left receipts persisted with null CDN keys
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 _container_ocr_dir = str(Path(__file__).resolve().parents[2])
 if _container_ocr_dir not in sys.path:
@@ -168,3 +169,55 @@ def test_obtain_crop_does_not_swallow_unexpected_errors() -> None:
                 image_width=400,
                 image_height=600,
             )
+
+
+def test_swift_crops_use_results_bucket_and_original_uses_upload_bucket():
+    proc = _processor()
+    proc.dynamo = Mock()
+    receipt = _make_receipt()
+    job = SimpleNamespace(
+        image_id=receipt.image_id,
+        s3_bucket="upload-bucket",
+        s3_key="raw-receipts/original.jpeg",
+    )
+    routing = SimpleNamespace(s3_bucket="worker-results-bucket")
+    data = {
+        "classification": {
+            "image_type": "PHOTO",
+            "image_width": 400,
+            "image_height": 600,
+        },
+        "receipts": [
+            {
+                "cluster_id": 1,
+                "s3_key": "crop.png",
+                "warped_width": 64,
+                "warped_height": 128,
+                "bounds": {
+                    corner: getattr(receipt, corner)
+                    for corner in (
+                        "top_left",
+                        "top_right",
+                        "bottom_left",
+                        "bottom_right",
+                    )
+                },
+            }
+        ],
+    }
+    with (
+        patch.object(
+            proc, "_download_original_image", return_value=None
+        ) as original,
+        patch.object(proc, "_obtain_receipt_crop", return_value=None) as crop,
+        patch.object(proc, "_emit_cdn_failure"),
+    ):
+        result = proc._process_swift_single_pass(data, job, routing)
+    assert result["success"] is True
+    original.assert_called_once_with("upload-bucket", job.s3_key, job.image_id)
+    assert crop.call_args.kwargs["source_bucket"] == "worker-results-bucket"
+    stored = proc.dynamo.add_receipt.call_args.args[0]
+    assert stored.raw_s3_bucket == "worker-results-bucket"
+    assert stored.raw_s3_key == f"receipts/{job.image_id}/crop.png"
+    image = proc.dynamo.add_image.call_args.args[0]
+    assert image.raw_s3_bucket == "upload-bucket"

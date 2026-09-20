@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "receipt-embeddings"
 version = "0.1.0"
 description = "Backend-neutral vector search interfaces for receipt embeddings"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.13"
 dependencies = [
   "boto3>=1.43.64,<1.44.0",
   "numpy>=1.26.0,<3.0.0",
@@ -24,7 +24,7 @@ test = [
 ]
 lint = [
   "black==26.5.1",
-  "isort==8.0.1",
+  "isort==9.0.1",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -38,6 +38,7 @@ addopts = "-v"
 markers = [
   "unit: fully offline unit test",
   "vector_integration: live vector backend integration test",
+  "performance: opt-in moto benchmarks (RECEIPT_EMBEDDINGS_PERF=1 or -m performance)",
 ]
 
 [tool.black]
@@ -47,3 +48,30 @@ target-version = ["py313"]
 [tool.isort]
 profile = "black"
 line_length = 79
+
+[tool.pylint.format]
+max-line-length = 79
+
+[tool.pylint.messages_control]
+disable = [
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-locals",
+    "too-many-instance-attributes",
+    "too-many-branches",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "duplicate-code",
+]
+
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "ex", "Run", "_", "id", "pk", "sk"]
+
+[tool.pylint.design]
+max-args = 10
+max-locals = 20
+
+[tool.pylint.imports]
+allow-any-import-level = ["boto3"]

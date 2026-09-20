@@ -1,0 +1,121 @@
+{
+ "version": 1,
+ "char": "B",
+ "codepoint": 66,
+ "provenance": "edited",
+ "width": 414.4,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 60,
+     "y": 39.221556886227546,
+     "type": "corner"
+    },
+    {
+     "x": 60,
+     "y": 950.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 60,
+     "y": 950.0,
+     "type": "corner"
+    },
+    {
+     "x": 220,
+     "y": 950.0,
+     "type": "corner",
+     "hOut": {
+      "x": 264,
+      "y": 950.0
+     }
+    },
+    {
+     "x": 300,
+     "y": 723.6526946107784,
+     "type": "smooth",
+     "hIn": {
+      "x": 300,
+      "y": 848.682634730539
+     },
+     "hOut": {
+      "x": 300,
+      "y": 598.622754491018
+     }
+    },
+    {
+     "x": 220,
+     "y": 498.3832335329341,
+     "type": "corner",
+     "hIn": {
+      "x": 264,
+      "y": 498.3832335329341
+     }
+    },
+    {
+     "x": 60,
+     "y": 498.3832335329341,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 60,
+     "y": 498.3832335329341,
+     "type": "corner"
+    },
+    {
+     "x": 230,
+     "y": 498.3832335329341,
+     "type": "corner",
+     "hOut": {
+      "x": 285,
+      "y": 498.3832335329341
+     }
+    },
+    {
+     "x": 330,
+     "y": 268.8023952095808,
+     "type": "smooth",
+     "hIn": {
+      "x": 330,
+      "y": 395.98802395209583
+     },
+     "hOut": {
+      "x": 330,
+      "y": 141.61676646706587
+     }
+    },
+    {
+     "x": 230,
+     "y": 39.221556886227546,
+     "type": "corner",
+     "hIn": {
+      "x": 285,
+      "y": 39.221556886227546
+     }
+    },
+    {
+     "x": 60,
+     "y": 39.221556886227546,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "note": "Speedway corpus too thin/polluted for this char (6 receipts); skeleton adopted from the vons face (same C1-heavy thermal ROM, overlay-verified against the Speedway consensus).",
+ "normalized": "y: vons(100..935) -> speedway(50..950)",
+ "donor": "vons"
+}

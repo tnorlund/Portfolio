@@ -9,12 +9,12 @@ from pathlib import Path
 
 from generate_section_parity import reconstruct
 
-from receipt_chroma.embedding.formatting import build_receipt_rows
 from receipt_dynamo.amounts import (
     looks_like_receipt_amount,
     parse_receipt_amount,
 )
 from receipt_dynamo.entities.receipt_summary import find_printed_grand_total
+from receipt_embeddings.formatting import build_receipt_rows
 from receipt_upload.line_items.blocks import should_reocr_items_zone
 from receipt_upload.line_items.geometry import (
     extract_items,

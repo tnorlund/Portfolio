@@ -15,10 +15,10 @@ from statistics import fmean
 from typing import Any, Protocol
 
 import numpy as np
-from receipt_chroma import propagate_knn
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
 from receipt_embeddings import VectorSearchClient
+from receipt_embeddings.section_propagation import propagate_knn
 from receipt_embeddings.service_limits import LINE_INDEX
 
 from receipt_upload.section_assignment import VERIFIABLE_MODEL_SOURCES
@@ -98,7 +98,6 @@ def _candidate_label(
 
 
 def verify_receipt_sections(
-    chroma: Any,
     dynamo: VerificationStore,
     rows: Sequence[ReceiptRow],
     row_embeddings: Sequence[Sequence[float]],
@@ -117,7 +116,7 @@ def verify_receipt_sections(
     if len(rows) != len(row_embeddings):
         raise ValueError("rows and row_embeddings must have equal length")
     try:
-        client = _vector_client(chroma, vector_client=vector_client)
+        client = _vector_client(vector_client=vector_client)
     except Exception:  # noqa: BLE001 - unavailable backend means abstain
         _record_verification(dynamo, rows, [])
         return []

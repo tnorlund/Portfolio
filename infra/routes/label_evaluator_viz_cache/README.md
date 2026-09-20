@@ -78,7 +78,6 @@ This component generates cached visualization data for the portfolio website's L
 - **Timeout**: 300 seconds (5 minutes)
 - **Layers**:
   - `receipt-dynamo` - DynamoDB client and entities
-  - `receipt-langsmith` - Parquet reader utilities
 
 ## Output Format
 

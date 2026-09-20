@@ -1,7 +1,7 @@
 """Inline vector-attribute freshening for embedding items (SPEC §3.4a).
 
-Replaces the Chroma metadata appliers: when a receipt's place, a word's
-label, or a section changes, refresh the denormalized attributes stored
+When a receipt's place, a word's label, or a section changes, refresh
+the denormalized attributes stored
 on the receipt's embedding items with targeted, idempotent UpdateItems —
 no new queues or Lambdas.
 
@@ -37,15 +37,15 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping, Optional
+from typing import Any, Iterable, Mapping, Optional, Protocol
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_section import ReceiptSection
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
+from receipt_dynamo.word_label_status import aggregate_word_label_status
 from receipt_dynamo_stream.models import ParsedStreamRecord
 from receipt_dynamo_stream.parsing import parse_stream_record
 from receipt_dynamo_stream.stream_types import (
@@ -96,11 +96,23 @@ class FresheningStats:
         }
 
 
+class _FresheningDynamoClient(Protocol):
+    """Low-level DynamoDB surface this leg uses (query + conditional
+    update). Local so the stream-processor bundle — which does not carry
+    ``receipt_embeddings`` — stays importable."""
+
+    def query(self, **kwargs: Any) -> Mapping[str, Any]:
+        """Page embedding/label keys under a receipt prefix."""
+
+    def update_item(self, **kwargs: Any) -> Mapping[str, Any]:
+        """Idempotent conditional attribute refresh."""
+
+
 @dataclass
 class _Context:
     """Shared state for one freshening pass."""
 
-    client: Any
+    client: _FresheningDynamoClient
     table_name: str
     stats: FresheningStats
     metrics: Optional[MetricsRecorder] = None
@@ -111,6 +123,7 @@ class _Context:
         value: int = 1,
         dimensions: Optional[Mapping[str, str]] = None,
     ) -> None:
+        """Increment a named metric when a recorder is configured."""
         if self.metrics:
             self.metrics.count(name, value, dimensions)
 
@@ -119,7 +132,7 @@ def apply_vector_freshening(
     records: Iterable[DynamoDBStreamRecord],
     metrics: Optional[MetricsRecorder] = None,
     *,
-    dynamo_client: Any = None,
+    dynamo_client: Optional[_FresheningDynamoClient] = None,
     table_name: Optional[str] = None,
 ) -> FresheningStats:
     """Freshen embedding-item attributes for a batch of stream records.
@@ -147,10 +160,12 @@ def apply_vector_freshening(
     )
 
     for record in records:
-        # pylint: disable-next=broad-exception-caught
         try:
             _freshen_record(record, ctx)
+        # pylint: disable-next=broad-exception-caught
         except Exception:  # graceful degradation: never crash the handler
+            # CONTRACTUAL never-raise: one bad stream record must not
+            # abort the rest of the batch or the SQS publish legs.
             logger.exception(
                 "Vector freshening failed for stream record",
                 extra={"event_id": record.get("eventID")},
@@ -415,21 +430,15 @@ def _compute_word_label_status(
             break
         kwargs["ExclusiveStartKey"] = last_key
 
-    if (
-        ValidationStatus.VALID.value in statuses
-        or ValidationStatus.INVALID.value in statuses
-    ):
-        return "validated"
-    if ValidationStatus.PENDING.value in statuses:
-        return "pending"
-    return "none"
+    return aggregate_word_label_status(statuses)
 
 
+# pylint: disable-next=too-many-arguments,too-many-positional-arguments
 def _update_embedding_item(
     pk: str,
     sk: str,
     update_expression: str,
-    values: dict[str, Any],
+    values: Mapping[str, Mapping[str, str]],
     entity_type: str,
     ctx: _Context,
 ) -> None:

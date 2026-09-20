@@ -203,7 +203,7 @@ def test_migration_emits_exact_nine_items_for_all_sixteen_merchants() -> None:
         generated_at=NOW,
     )
 
-    assert len(payloads) == 16
+    assert len(payloads) == len(MERCHANTS)
     assert all(len(payload.items) == 9 for payload in payloads)
     assert {
         payload.slug
@@ -264,10 +264,10 @@ def test_dry_run_writer_outputs_payload_crosswalk_and_summary(
         git_sha=GIT_SHA,
     )
 
-    assert len(list(tmp_path.glob("*.json"))) == 18
+    assert len(list(tmp_path.glob("*.json"))) == len(MERCHANTS) + 2
     summary = json.loads((tmp_path / "_summary.json").read_text())
     assert summary["dry_run"] is True
-    assert summary["merchant_count"] == 16
+    assert summary["merchant_count"] == len(MERCHANTS)
     assert (
         set(summary["missing_merchant_font_slugs"])
         == EXPECTED_MISSING_FONT_SLUGS
@@ -337,3 +337,97 @@ def test_source_adapter_is_dev_read_only_and_has_no_write_surface() -> None:
             GetOnlyS3(),  # type: ignore[arg-type]
             "ReceiptsTable-d7ff76a",
         )
+
+
+def _payloads_with_extra_vendor() -> list[Any]:
+    """Profiles = the legacy sixteen plus one unpublished newcomer."""
+    document = profile_document()
+    document["profiles"]["Newcomer Mart"] = {
+        "_comment": "new vendor, font not published yet",
+        "aliases": ["NEWCOMER"],
+        "typography": {
+            "bitmap_font": {
+                "regular": "newcomer.glyphs.npz",
+                "heavy": "newcomer-heavy.glyphs.npz",
+            },
+            "condense": 0.9,
+        },
+    }
+    payloads, _ = build_v1_payloads(
+        document,
+        FakeSource(),  # type: ignore[arg-type]
+        profiles_source_path="scripts/merchant_profiles.json",
+        git_sha=GIT_SHA,
+        generated_at=NOW,
+    )
+    return payloads
+
+
+def test_new_profiles_need_no_pin_bump_and_are_asset_blocked() -> None:
+    payloads = _payloads_with_extra_vendor()
+    assert len(payloads) == len(MERCHANTS) + 1
+    newcomer = next(p for p in payloads if p.slug == "newcomer_mart")
+    assert any("missing MerchantFont" in b for b in newcomer.blockers)
+    # The legacy coverage expectation is untouched by the newcomer.
+    legacy_missing = {
+        p.slug
+        for p in payloads
+        if p.slug != "newcomer_mart"
+        and any("missing MerchantFont" in b for b in p.blockers)
+    }
+    assert legacy_missing == EXPECTED_MISSING_FONT_SLUGS
+
+
+def test_missing_legacy_profile_is_refused() -> None:
+    document = profile_document()
+    del document["profiles"]["Vons"]
+    with pytest.raises(ValueError, match="missing legacy profiles"):
+        build_crosswalk(document)
+
+
+def test_local_fixture_points_assets_at_local_bytes(tmp_path: Path) -> None:
+    from receipt_dynamo.migrations.merchant_truth_v1 import (
+        local_fixture_items,
+    )
+
+    payloads = _payloads_with_extra_vendor()
+    newcomer = next(p for p in payloads if p.slug == "newcomer_mart")
+    (tmp_path / "newcomer.glyphs.npz").write_bytes(b"regular-bytes")
+    (tmp_path / "newcomer-heavy.glyphs.npz").write_bytes(b"heavy-bytes")
+
+    items = local_fixture_items(newcomer, tmp_path, sealed_at=NOW)
+    manifest = items[0]
+    assert manifest["status"] == {"S": "SEALED"}
+    assert manifest["gate_status"] == {"S": "PASS"}
+    assert len(items) == 8  # manifest + seven components, no audit
+    assets = next(
+        json.loads(item["payload"]["S"])
+        for item in items[1:]
+        if item["SK"]["S"].endswith("#C#assets")
+    )
+    assert assets["missing_merchant_font"] is False
+    assert (
+        assets["fonts"]["regular"]["content_hash"]
+        == hashlib.sha256(b"regular-bytes").hexdigest()
+    )
+    assert (
+        assets["fonts"]["heavy"]["cache_filename"]
+        == "newcomer-heavy.glyphs.npz"
+    )
+    # Component hashes in the manifest match the rebuilt components.
+    hashes = {k: v["S"] for k, v in manifest["component_hashes"]["M"].items()}
+    for item in items[1:]:
+        name = item["SK"]["S"].split("#C#", 1)[1]
+        assert item["content_hash"]["S"] == hashes[name]
+
+
+def test_local_fixture_requires_compiled_faces(tmp_path: Path) -> None:
+    from receipt_dynamo.migrations.merchant_truth_v1 import (
+        local_fixture_items,
+    )
+
+    newcomer = next(
+        p for p in _payloads_with_extra_vendor() if p.slug == "newcomer_mart"
+    )
+    with pytest.raises(FileNotFoundError, match="compile it before"):
+        local_fixture_items(newcomer, tmp_path, sealed_at=NOW)

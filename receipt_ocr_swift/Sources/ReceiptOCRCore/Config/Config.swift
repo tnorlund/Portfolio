@@ -16,7 +16,11 @@ public struct Config {
     // LayoutLM model configuration
     public let layoutLMModelS3Bucket: String?
     public let layoutLMModelS3Key: String?
+    public let layoutLMPointerKey: String
+    public let environment: String
     public let layoutLMLocalCachePath: String
+    /// Execution backend: `coreml` (default) or `coreai` (opt-in).
+    public let layoutLMBackend: LayoutLMBackendKind
 
     public init(
         ocrJobQueueURL: String,
@@ -28,7 +32,10 @@ public struct Config {
         rawBucketName: String,
         layoutLMModelS3Bucket: String? = nil,
         layoutLMModelS3Key: String? = nil,
-        layoutLMLocalCachePath: String = ".models/layoutlm"
+        layoutLMLocalCachePath: String = ".models/layoutlm/local",
+        layoutLMPointerKey: String = "coreml/active.json",
+        layoutLMBackend: LayoutLMBackendKind = .coreml,
+        environment: String = "local"
     ) {
         self.ocrJobQueueURL = ocrJobQueueURL
         self.ocrResultsQueueURL = ocrResultsQueueURL
@@ -40,6 +47,9 @@ public struct Config {
         self.layoutLMModelS3Bucket = layoutLMModelS3Bucket
         self.layoutLMModelS3Key = layoutLMModelS3Key
         self.layoutLMLocalCachePath = layoutLMLocalCachePath
+        self.layoutLMPointerKey = layoutLMPointerKey
+        self.layoutLMBackend = layoutLMBackend
+        self.environment = environment
     }
 }
 
@@ -99,6 +109,8 @@ public extension Config {
         layoutLMModelS3Bucket: String? = nil,
         layoutLMModelS3Key: String? = nil,
         layoutLMLocalCachePath: String? = nil,
+        layoutLMPointerKey: String? = nil,
+        layoutLMBackend: String? = nil,
         pulumi: PulumiLoading = PulumiLoader()
     ) throws -> Config {
         var logger = Logger(label: "receipt.ocr.config")
@@ -139,15 +151,19 @@ public extension Config {
         // LayoutLM config - optional, can also come from Pulumi outputs
         let modelBucket = value("layoutlm_model_s3_bucket", explicit: layoutLMModelS3Bucket, from: outputs)
         let modelKey = value("layoutlm_model_s3_key", explicit: layoutLMModelS3Key, from: outputs)
-        let cachePath = layoutLMLocalCachePath ?? ".models/layoutlm"
+        let cachePath = layoutLMLocalCachePath ?? ".models/layoutlm/\(env ?? "local")"
+        let pointerKey = value("layoutlm_model_pointer_key", explicit: layoutLMPointerKey, from: outputs) ?? "coreml/active.json"
+        let backendKind = try LayoutLMBackendKind.resolve(
+            explicit: layoutLMBackend ?? value("layoutlm_backend", explicit: nil, from: outputs)
+        )
 
         // Log LayoutLM configuration status
         if let bucket = modelBucket, let key = modelKey {
-            logger.info("config_layoutlm_enabled bucket=\(bucket) key=\(key)")
+            logger.info("config_layoutlm_enabled bucket=\(bucket) key=\(key) backend=\(backendKind.rawValue)")
         } else {
             let bucketSource = layoutLMModelS3Bucket != nil ? "cli" : (outputs["layoutlm_model_s3_bucket"] != nil ? "pulumi" : "missing")
             let keySource = layoutLMModelS3Key != nil ? "cli" : (outputs["layoutlm_model_s3_key"] != nil ? "pulumi" : "missing")
-            logger.info("config_layoutlm_disabled bucket_source=\(bucketSource) key_source=\(keySource)")
+            logger.info("config_layoutlm_disabled bucket_source=\(bucketSource) key_source=\(keySource) backend=\(backendKind.rawValue)")
         }
 
         return Config(
@@ -160,7 +176,10 @@ public extension Config {
             rawBucketName: rawBucketName,
             layoutLMModelS3Bucket: modelBucket,
             layoutLMModelS3Key: modelKey,
-            layoutLMLocalCachePath: cachePath
+            layoutLMLocalCachePath: cachePath,
+            layoutLMPointerKey: pointerKey,
+            layoutLMBackend: backendKind,
+            environment: env ?? "local"
         )
     }
 }

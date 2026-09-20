@@ -1,0 +1,4 @@
+interface:
+  display_name: "Receipt Photos"
+  short_description: "Audit receipt coverage and verify imports and backups"
+  default_prompt: "Use $receipt-photos to audit my Photos library against the receipt project and report missing or unfinished imports."

@@ -74,7 +74,11 @@ class CoreMLExportError(ReceiptLayoutLMError):
     """Base class for Core ML export failures."""
 
 
-class MissingDependencyError(CoreMLExportError):
+class CoreAIExportError(ReceiptLayoutLMError):
+    """Base class for Core AI export failures."""
+
+
+class MissingDependencyError(CoreMLExportError, CoreAIExportError):
     """Raised when dependencies required for export are unavailable."""
 
 
@@ -91,4 +95,16 @@ class NaNWeightsError(CoreMLExportError):
         super().__init__(
             f"Exported CoreML model contains {bad_count} NaN/Inf values "
             f"in weight.bin ({weight_path})."
+        )
+
+
+class NonFiniteLogitsError(CoreAIExportError):
+    """Raised when Core AI validation observes NaN/Inf logits."""
+
+    def __init__(self, backend: str, bad_count: int):
+        self.backend = backend
+        self.bad_count = bad_count
+        super().__init__(
+            f"{backend} produced {bad_count} NaN/Inf logit values; "
+            "aborting parity validation."
         )

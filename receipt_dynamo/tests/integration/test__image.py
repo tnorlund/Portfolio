@@ -4,7 +4,7 @@ This file contains refactored tests using pytest.mark.parametrize to reduce
 code duplication, following the pattern of test__receipt.py.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, List, Literal, Type
 from uuid import uuid4
 
@@ -30,6 +30,13 @@ from receipt_dynamo.entities import (
     ReceiptPlace,
     ReceiptWordLabel,
 )
+from receipt_dynamo.entities.receipt_embedding import (
+    ReceiptLineEmbedding,
+    ReceiptWordEmbedding,
+)
+from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
+from receipt_dynamo.entities.receipt_row import ReceiptRow
+from receipt_dynamo.entities.receipt_section import ReceiptSection
 
 # -------------------------------------------------------------------
 #                        FIXTURES
@@ -876,3 +883,151 @@ def test_update_image_success(
     # Verify update
     retrieved = client.get_image(sample_image.image_id)
     assert retrieved.raw_s3_key == "updated/key"
+
+
+@pytest.mark.integration
+def test_get_image_details_includes_promoted_derived_entities(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_image: Image,
+) -> None:
+    """Derived rows and vectors must surface in ImageDetails.
+
+    get_image_details feeds export_image, which feeds the dev->prod copy.
+    A type missing here is silently dropped from every promotion, and the
+    destination partition then holds an entity the copy cannot restore,
+    which makes reconcile's guard refuse to REPLACE that image forever.
+    """
+    client = DynamoClient(dynamodb_table)
+    image_id = sample_image.image_id
+    created = datetime.now(timezone.utc).isoformat()
+
+    client.add_image(sample_image)
+    client.add_receipt_rows(
+        [
+            ReceiptRow(
+                receipt_id=1,
+                image_id=image_id,
+                row_id=1,
+                line_ids=[1, 2],
+                grouping_version="v1",
+                y_min=0.1,
+                y_max=0.2,
+                x_min=0.0,
+                x_max=1.0,
+                created_at=created,
+            )
+        ]
+    )
+    client.add_receipt_sections(
+        [
+            ReceiptSection(
+                receipt_id=1,
+                image_id=image_id,
+                section_type="ITEMS",
+                line_ids=[1, 2],
+                created_at=created,
+            )
+        ]
+    )
+    client.add_receipt_line_items(
+        [
+            ReceiptLineItem(
+                receipt_id=1,
+                image_id=image_id,
+                item_index=0,
+                name="BYO SANDWICH",
+                price="11.99",
+                line_ids=[1],
+                extractor_version="v1",
+                extracted_at=created,
+            )
+        ]
+    )
+    client.add_receipt_embeddings(
+        [
+            ReceiptLineEmbedding(
+                image_id=image_id,
+                receipt_id=1,
+                line_id=1,
+                text="WHOLE FOODS",
+                merchant_name="Whole Foods Market",
+                place_id="place-1",
+                row_line_ids=[1],
+                section_type="HEADER",
+                line_vector=[0.01] * 1536,
+            ),
+            ReceiptWordEmbedding(
+                image_id=image_id,
+                receipt_id=1,
+                line_id=1,
+                word_id=1,
+                text="WHOLE",
+                merchant_name="Whole Foods Market",
+                label_status="validated",
+                word_vector=[0.02] * 1536,
+            ),
+        ]
+    )
+
+    details = client.get_image_details(image_id)
+
+    assert len(details.receipt_rows) == 1
+    assert details.receipt_rows[0].row_id == 1
+    assert len(details.receipt_sections) == 1
+    assert str(details.receipt_sections[0].section_type).endswith("ITEMS")
+    assert len(details.receipt_line_items) == 1
+    assert details.receipt_line_items[0].name == "BYO SANDWICH"
+    assert len(details.receipt_embeddings) == 2
+
+
+@pytest.mark.integration
+def test_receipt_prefix_sweep_is_delimited_consistent_and_legacy_aware(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_image: Image,
+) -> None:
+    """delete_receipt_items must not touch a neighbouring receipt.
+
+    With 5-digit padding, receipt 10000 is ``RECEIPT#10000`` and receipt
+    100000 is ``RECEIPT#100000`` -- an undelimited ``begins_with`` on the
+    former selects the latter's parent and every child. The sweep now
+    matches the parent exactly and children by delimited prefix, and it
+    also sweeps the legacy unpadded ``RECEIPT#N#`` form the way
+    purge_receipt_children does. get_receipt_item_type_counts walks the
+    identical key set so a dry-run preview matches the delete.
+    """
+    client = DynamoClient(dynamodb_table)
+    pk = {"S": f"IMAGE#{sample_image.image_id}"}
+    client.add_image(sample_image)
+
+    def put(sk: str, typ: str) -> None:
+        client._client.put_item(
+            TableName=dynamodb_table,
+            Item={"PK": pk, "SK": {"S": sk}, "TYPE": {"S": typ}},
+        )
+
+    target, neighbour = 10000, 100000
+    put(f"RECEIPT#{target:05d}", "RECEIPT")  # parent
+    put(f"RECEIPT#{target:05d}#ROW#00001", "RECEIPT_ROW")  # padded child
+    put(f"RECEIPT#{target:05d}#ROW#00002", "RECEIPT_ROW")
+    put(f"RECEIPT#{target}#ROW#00099", "RECEIPT_ROW")  # legacy child
+    put(f"RECEIPT#{neighbour:05d}", "RECEIPT")  # neighbour parent
+    put(f"RECEIPT#{neighbour:05d}#ROW#00001", "RECEIPT_ROW")
+
+    counts = client.get_receipt_item_type_counts(sample_image.image_id, target)
+    assert counts == {"RECEIPT": 1, "RECEIPT_ROW": 3}
+
+    deleted = client.delete_receipt_items(
+        sample_image.image_id, target, include_parent=True
+    )
+    assert deleted == 4
+
+    left = client._client.query(
+        TableName=dynamodb_table,
+        KeyConditionExpression="PK = :pk AND begins_with(SK, :p)",
+        ExpressionAttributeValues={":pk": pk, ":p": {"S": "RECEIPT#"}},
+        ProjectionExpression="SK",
+    )["Items"]
+    assert sorted(i["SK"]["S"] for i in left) == [
+        f"RECEIPT#{neighbour:05d}",
+        f"RECEIPT#{neighbour:05d}#ROW#00001",
+    ]

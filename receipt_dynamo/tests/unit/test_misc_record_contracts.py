@@ -1,27 +1,22 @@
 """Focused boundary contracts for miscellaneous Dynamo record entities."""
 
+import json
+from dataclasses import fields as dataclass_fields
 from datetime import datetime
+from decimal import Decimal
 from time import time
 
 import pytest
 
 from receipt_dynamo.constants import (
-    BatchStatus,
-    EmbeddingStatus,
-    LabelStatus,
     OCRJobType,
     OCRStatus,
 )
-from receipt_dynamo.entities.completion_batch_result import (
-    CompletionBatchResult,
-)
-from receipt_dynamo.entities.embedding_batch_result import (
-    EmbeddingBatchResult,
+from receipt_dynamo.data.export_image import (
+    datetime_handler as export_datetime_handler,
 )
 from receipt_dynamo.entities.image_details import ImageDetails
 from receipt_dynamo.entities.label_count_cache import LabelCountCache
-from receipt_dynamo.entities.label_hygiene_result import LabelHygieneResult
-from receipt_dynamo.entities.label_metadata import LabelMetadata
 from receipt_dynamo.entities.merchant_font import MerchantFont
 from receipt_dynamo.entities.ocr_job import OCRJob
 from receipt_dynamo.entities.ocr_routing_decision import OCRRoutingDecision
@@ -31,42 +26,7 @@ pytestmark = pytest.mark.unit
 
 IMAGE_ID = "3f52804b-2fad-4e00-92c8-b593da3a8ed3"
 JOB_ID = "4f52804b-2fad-4e00-92c8-b593da3a8ed4"
-BATCH_ID = "42bffa3b-1a9e-4d2c-bb6a-08f0b2b5c123"
 NOW = datetime(2024, 1, 1, 12)
-
-
-def make_completion(**overrides):
-    values = {
-        "batch_id": BATCH_ID,
-        "image_id": IMAGE_ID,
-        "receipt_id": 1,
-        "line_id": 0,
-        "word_id": 0,
-        "original_label": "TOTAL",
-        "gpt_suggested_label": None,
-        "status": BatchStatus.PENDING,
-        "validated_at": NOW,
-    }
-    values.update(overrides)
-    return CompletionBatchResult(**values)
-
-
-def make_embedding(**overrides):
-    values = {
-        "batch_id": BATCH_ID,
-        "image_id": IMAGE_ID,
-        "receipt_id": 1,
-        "line_id": 2,
-        "word_id": 3,
-        "pinecone_id": (
-            f"IMAGE#{IMAGE_ID}#RECEIPT#00001#LINE#00002#WORD#00003"
-        ),
-        "status": EmbeddingStatus.SUCCESS,
-        "text": "text",
-        "error_message": None,
-    }
-    values.update(overrides)
-    return EmbeddingBatchResult(**values)
 
 
 def make_label_cache(**overrides):
@@ -81,36 +41,6 @@ def make_label_cache(**overrides):
     }
     values.update(overrides)
     return LabelCountCache(**values)
-
-
-def make_hygiene(**overrides):
-    values = {
-        "hygiene_id": BATCH_ID,
-        "alias": "SUB_TOTAL",
-        "canonical_label": "SUBTOTAL",
-        "reasoning": "equivalent",
-        "gpt_agreed": True,
-        "source_batch_id": None,
-        "example_ids": [],
-        "timestamp": NOW,
-        "image_id": IMAGE_ID,
-        "receipt_id": 1,
-    }
-    values.update(overrides)
-    return LabelHygieneResult(**values)
-
-
-def make_metadata(**overrides):
-    values = {
-        "label": "TOTAL",
-        "status": LabelStatus.ACTIVE,
-        "aliases": [],
-        "description": "Total",
-        "schema_version": 1,
-        "last_updated": NOW,
-    }
-    values.update(overrides)
-    return LabelMetadata(**values)
 
 
 def make_font(**overrides):
@@ -180,20 +110,12 @@ def make_places(**overrides):
 @pytest.mark.parametrize(
     ("factory", "field"),
     [
-        (make_completion, "receipt_id"),
-        (make_completion, "line_id"),
-        (make_completion, "word_id"),
-        (make_embedding, "receipt_id"),
-        (make_embedding, "line_id"),
-        (make_embedding, "word_id"),
         (make_label_cache, "valid_count"),
         (make_label_cache, "invalid_count"),
         (make_label_cache, "pending_count"),
         (make_label_cache, "needs_review_count"),
         (make_label_cache, "none_count"),
         (make_label_cache, "time_to_live"),
-        (make_hygiene, "receipt_id"),
-        (make_metadata, "schema_version"),
         (make_routing, "receipt_count"),
         (make_places, "query_count"),
         (make_places, "time_to_live"),
@@ -202,35 +124,6 @@ def make_places(**overrides):
 def test_integer_fields_reject_bool(factory, field):
     with pytest.raises(ValueError):
         factory(**{field: True})
-
-
-def test_completion_preserves_empty_optional_label_and_exact_gsis():
-    result = make_completion(gpt_suggested_label="")
-    item = result.to_item()
-
-    assert item["gpt_suggested_label"] == {"S": ""}
-    assert item["GSI2SK"] == {"S": "STATUS#PENDING"}
-    assert item["GSI3PK"] == {"S": f"IMAGE#{IMAGE_ID}#RECEIPT#00001"}
-    assert CompletionBatchResult.from_item(item) == result
-
-
-def test_embedding_rejects_pinecone_id_for_a_different_image():
-    wrong_id = "5f52804b-2fad-4e00-92c8-b593da3a8ed5"
-    with pytest.raises(ValueError, match="pinecone_id must be in the format"):
-        make_embedding(
-            pinecone_id=(
-                f"IMAGE#{wrong_id}#RECEIPT#00001#LINE#00002#WORD#00003"
-            )
-        )
-
-
-def test_embedding_preserves_empty_error_and_uses_accessor_padding():
-    result = make_embedding(error_message="")
-    item = result.to_item()
-
-    assert item["error_message"] == {"S": ""}
-    assert item["SK"]["S"].endswith("#RECEIPT#00001#LINE#002#WORD#003")
-    assert EmbeddingBatchResult.from_item(item) == result
 
 
 def test_label_cache_preserves_expired_ttl_and_revalidates_mutation():
@@ -270,62 +163,6 @@ def test_label_cache_rejects_malformed_items(field, value, message):
 
     with pytest.raises(ValueError, match=message):
         LabelCountCache.from_item(item)
-
-
-def test_hygiene_empty_collections_and_none_roundtrip_losslessly():
-    result = make_hygiene()
-    item = result.to_item()
-
-    assert item["source_batch_id"] == {"NULL": True}
-    assert item["example_ids"] == {"L": []}
-    assert item["receipt_id"] == {"N": "1"}
-    assert LabelHygieneResult.from_item(item) == result
-
-
-def test_hygiene_detaches_example_ids_and_revalidates_mutation():
-    examples = ["example"]
-    result = make_hygiene(example_ids=examples)
-    examples.append("caller mutation")
-    assert result.example_ids == ["example"]
-
-    result.receipt_id = True
-    with pytest.raises(ValueError, match="receipt_id"):
-        result.to_item()
-
-
-def test_string_set_fields_reject_duplicates_before_dynamo_loses_them():
-    with pytest.raises(ValueError, match="duplicates"):
-        make_hygiene(example_ids=["same", "same"])
-    with pytest.raises(ValueError, match="duplicates"):
-        make_metadata(aliases=["same", "same"])
-
-
-def test_label_metadata_defaults_are_independent_and_dynamo_safe():
-    first = make_metadata()
-    second = make_metadata(label="SUBTOTAL")
-    first.aliases.append("GRAND_TOTAL")
-    first.receipt_refs.append((IMAGE_ID, 1))
-
-    assert second.aliases == []
-    assert second.receipt_refs == []
-    item = second.to_item()
-    assert item["aliases"] == {"L": []}
-    assert item["receipt_refs"] == {"L": []}
-    assert LabelMetadata.from_item(item) == second
-
-
-def test_label_metadata_emits_conditional_gsi2_and_copies_inputs():
-    aliases = ["SUM"]
-    refs = [(IMAGE_ID, 1)]
-    metadata = make_metadata(
-        aliases=aliases, receipt_refs=refs, label_target="value"
-    )
-    aliases.append("caller")
-    refs.append((IMAGE_ID, 2))
-
-    assert metadata.aliases == ["SUM"]
-    assert metadata.receipt_refs == [(IMAGE_ID, 1)]
-    assert metadata.to_item()["GSI2PK"] == {"S": "LABEL_TARGET#value"}
 
 
 @pytest.mark.parametrize("field", ["cap_h", "advance_ratio"])
@@ -592,9 +429,51 @@ def test_image_details_defaults_and_input_containers_are_independent():
     assert not other.images
     details.lines.append(object())
     assert not other.lines
-    assert len(list(details)) == 13
+    # __iter__ must yield every declared collection. Asserting against the
+    # field count rather than a literal keeps this honest when a new entity
+    # type is added: a field that is never yielded would silently drop out of
+    # export/copy, which is how rows, sections, line items and summaries went
+    # missing from the dev->prod promotion path.
+    assert len(list(details)) == len(dataclass_fields(ImageDetails))
 
 
 def test_image_details_rejects_non_list_collections():
     with pytest.raises(ValueError, match="images must be a list"):
         ImageDetails(images=())
+
+
+def test_export_encoder_handles_dynamo_decimals():
+    """The export encoder must handle every type DynamoDB hands back.
+
+    DynamoDB returns numerics as Decimal. The encoder previously handled
+    only datetime, so one un-cast Decimal anywhere in an image aborted the
+    entire dev->prod export mid-run (after ~40 of 749 images).
+    """
+    assert export_datetime_handler(Decimal("3")) == 3
+    assert isinstance(export_datetime_handler(Decimal("3")), int)
+    assert export_datetime_handler(Decimal("2.26")) == pytest.approx(2.26)
+    assert isinstance(export_datetime_handler(Decimal("2.26")), float)
+    assert export_datetime_handler(Decimal("-0.5")) == pytest.approx(-0.5)
+    assert export_datetime_handler({3, 1, 2}) == [1, 2, 3]
+    assert export_datetime_handler(datetime(2026, 9, 11, 10, 19)).startswith(
+        "2026-09-11T10:19"
+    )
+
+    with pytest.raises(TypeError):
+        export_datetime_handler(object())
+
+
+def test_export_encoder_serializes_a_decimal_bearing_payload():
+    """json.dumps must survive Decimals nested anywhere in the payload."""
+    payload = {
+        "receipt_summaries": [
+            {"receipt_id": Decimal("1"), "bank_amount": Decimal("12.99")}
+        ],
+        "receipt_rows": [{"line_ids": [Decimal("1"), Decimal("2")]}],
+    }
+    loaded = json.loads(json.dumps(payload, default=export_datetime_handler))
+    assert loaded["receipt_summaries"][0]["receipt_id"] == 1
+    assert loaded["receipt_summaries"][0]["bank_amount"] == pytest.approx(
+        12.99
+    )
+    assert loaded["receipt_rows"][0]["line_ids"] == [1, 2]

@@ -473,50 +473,6 @@ class CDNFieldsMixin:
 
 
 # =============================================================================
-# Batch Result GSI Keys
-# =============================================================================
-
-
-class BatchResultGSIMixin:
-    """
-    Mixin providing shared GSI key methods for batch result entities.
-
-    CompletionBatchResult and EmbeddingBatchResult share identical GSI2 and
-    GSI3 access patterns for querying by batch/status and image/receipt.
-
-    Required attributes on the implementing class:
-        batch_id: str - The batch identifier
-        image_id: str - The image identifier
-        receipt_id: int - The receipt identifier (zero-padded to 5 digits)
-        status: str - The batch status
-    """
-
-    # These attributes must be defined by the implementing class
-    batch_id: str
-    image_id: str
-    receipt_id: int
-    status: str
-
-    @property
-    def gsi2_key(self) -> dict[str, Any]:
-        """GSI2 key for querying batch results by batch_id and status."""
-        return {
-            "GSI2PK": {"S": f"BATCH#{self.batch_id}"},
-            "GSI2SK": {"S": f"STATUS#{self.status}"},
-        }
-
-    @property
-    def gsi3_key(self) -> dict[str, Any]:
-        """GSI3 key for querying batch results by image/receipt."""
-        return {
-            "GSI3PK": {
-                "S": f"IMAGE#{self.image_id}#RECEIPT#{self.receipt_id:05d}"
-            },
-            "GSI3SK": {"S": f"BATCH#{self.batch_id}#STATUS#{self.status}"},
-        }
-
-
-# =============================================================================
 # Exports
 # =============================================================================
 
@@ -526,5 +482,4 @@ __all__ = [
     # Core mixins
     "SerializationMixin",
     "CDNFieldsMixin",
-    "BatchResultGSIMixin",
 ]

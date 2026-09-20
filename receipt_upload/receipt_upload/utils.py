@@ -313,6 +313,11 @@ def upload_avif_to_s3(
     Upload an AVIF image to S3.
     Note: Requires pillow-avif-plugin to be installed.
     """
+    # AOM encoding a 24 MP iPhone export can exhaust a 3 GB Lambda.
+    # Keep full-resolution JPEG/WebP and the smaller responsive AVIFs.
+    if image.width * image.height > 4_000_000:
+        raise AVIFError("AVIF encoding is limited to 4 megapixels")
+
     s3_client = client("s3")
 
     try:
@@ -360,6 +365,7 @@ def upload_avif_to_s3(
                     chroma_subsampling="4:2:0",  # Standard (420 subset)
                     range="limited",  # Better compatibility
                     codec="aom",  # Use AOM codec for compatibility
+                    max_threads=1,  # Bound encoder memory in Lambda
                     # Force 8-bit depth for Safari compatibility
                     bit_depth=8,  # Explicitly force 8-bit (Safari req)
                     # Avoid advanced features that may not be supported
@@ -391,6 +397,7 @@ def upload_avif_to_s3(
                         format="AVIF",
                         quality=quality,
                         speed=6,  # Keep speed for reasonable encoding time
+                        max_threads=1,
                     )
                     buffer.seek(0)
                     avif_data = buffer.getvalue()

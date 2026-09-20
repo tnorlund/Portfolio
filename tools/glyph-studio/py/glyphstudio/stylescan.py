@@ -538,6 +538,7 @@ _GELSONS_RULES = [
         ),
     ),
 ]
+
 _MERCHANT_RULES = {
     "sprouts": _RULES,
     "gelsons": _GELSONS_RULES,
@@ -552,6 +553,21 @@ _MERCHANT_RULES = {
 }
 
 
+def rules_for_merchant(merchant: str) -> list[tuple[str, re.Pattern]]:
+    """Classifier rules for a font-dir slug.
+
+    ``fonts/<merchant>/stylemap.json`` ``rules`` win (one source shared with
+    the renderer, see glyphstudio.stylerules); merchants without them fall
+    back to the legacy in-code lists, then to the Sprouts rules.
+    """
+    from .stylerules import rules_for_font
+
+    declared = rules_for_font(merchant)
+    if declared:
+        return declared
+    return _MERCHANT_RULES.get(merchant, _RULES)
+
+
 def _classify(text: str, has_price: bool, merchant: str = "sprouts") -> str:
     compact = text.strip()
     if _BARCODE_RE.match(compact.replace(" ", "")):
@@ -559,7 +575,7 @@ def _classify(text: str, has_price: bool, merchant: str = "sprouts") -> str:
     up = compact.upper().strip(":")
     if merchant == "sprouts" and up in SECTION_TOKENS:
         return "section_header"
-    for name, rx in _MERCHANT_RULES.get(merchant, _RULES):
+    for name, rx in rules_for_merchant(merchant):
         if rx.search(compact):
             return name
     if has_price:

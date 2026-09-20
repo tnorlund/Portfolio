@@ -71,6 +71,138 @@ public final class ModelDownloader {
         return cacheDir
     }
 
+    private struct ActiveModel: Decodable {
+        let schema_version: Int
+        let export_id: String
+        let training_job_id: String
+        let training_job_name: String
+        let bundle_key: String
+        let bundle_etag: String
+        let bundle_size_bytes: Int
+        let promoted_at: String
+        let promoted_by: String
+    }
+
+    private struct ModelIdentity: Decodable {
+        let export_id: String?
+        let training_job_id: String?
+    }
+
+    /// Resolve the environment's active model on every drain, then reuse only
+    /// that version's validated directory. The legacy overload remains available.
+    public func ensureModelDownloaded(
+        bucket: String,
+        key: String,
+        localCachePath: String,
+        pointerKey: String,
+        env: String
+    ) async throws -> URL {
+        let fm = FileManager.default
+        let root = URL(fileURLWithPath: localCachePath)
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        for item in try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)
+            where item.lastPathComponent.hasPrefix(".tmp-") {
+            try fm.removeItem(at: item)
+        }
+
+        let pointer: ActiveModel?
+        let version: String
+        let bundleKey: String
+        if let data = try await s3.getObjectIfExists(bucket: bucket, key: pointerKey) {
+            let active: ActiveModel
+            do {
+                active = try JSONDecoder().decode(ActiveModel.self, from: data)
+            } catch {
+                throw ModelDownloaderError.invalidPointer("Cannot decode active model: \(error)")
+            }
+            guard active.schema_version == 1, !active.bundle_key.isEmpty,
+                  !active.bundle_etag.isEmpty, active.bundle_size_bytes > 0 else {
+                throw ModelDownloaderError.invalidPointer("Unsupported schema or incomplete bundle metadata")
+            }
+            pointer = active
+            version = active.export_id
+            bundleKey = active.bundle_key
+        } else {
+            guard let head = try await s3.headObject(bucket: bucket, key: key) else {
+                throw ModelDownloaderError.noActiveModel(env)
+            }
+            pointer = nil
+            version = head.eTag.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+            bundleKey = key
+        }
+        // Versions are single path components, never paths supplied by S3.
+        let allowed = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+        guard !version.isEmpty, version.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
+            throw ModelDownloaderError.invalidPointer("Invalid model version: \(version)")
+        }
+        let destination = root.appendingPathComponent(version, isDirectory: true)
+        var identity = try validatedIdentity(at: destination, expected: pointer?.export_id)
+        let cached = identity != nil
+        if identity == nil {
+            let temporary = root.appendingPathComponent(".tmp-\(version)-\(UUID().uuidString)")
+            try fm.createDirectory(at: temporary, withIntermediateDirectories: false)
+            defer { try? fm.removeItem(at: temporary) }
+            let data = try await s3.getObject(bucket: bucket, key: bundleKey)
+            if let pointer = pointer, data.count != pointer.bundle_size_bytes {
+                throw ModelDownloaderError.extractionFailed("Bundle size differs from active pointer")
+            }
+            if bundleKey.hasSuffix(".tar.gz") || bundleKey.hasSuffix(".tgz") {
+                try extractTarGz(data: data, to: temporary)
+            } else {
+                try extractZip(data: data, to: temporary)
+            }
+            guard let downloaded = try validatedIdentity(at: temporary, expected: pointer?.export_id) else {
+                throw ModelDownloaderError.extractionFailed("Model files or model_identity.json missing after extraction")
+            }
+            // Compiled output belongs to this machine and this version. Never
+            // trust a precompiled artifact carried in an archive.
+            for item in try fm.contentsOfDirectory(at: temporary, includingPropertiesForKeys: nil)
+                where item.pathExtension == "mlmodelc" {
+                try fm.removeItem(at: item)
+            }
+            if fm.fileExists(atPath: destination.path) {
+                try fm.removeItem(at: destination)
+            }
+            // Same-filesystem move publishes the entire validated bundle atomically.
+            try fm.moveItem(at: temporary, to: destination)
+            identity = downloaded
+        }
+        try fm.setAttributes([.modificationDate: Date()], ofItemAtPath: destination.path)
+        try pruneVersions(in: root, keeping: destination)
+        let source = pointer == nil ? "alias" : "pointer"
+        let trainingJob = pointer?.training_job_name ?? identity?.training_job_id ?? "none"
+        logger.info("layoutlm_model_active env=\(env) version=\(version) export_id=\(identity?.export_id ?? "none") training_job=\(trainingJob) source=\(source) cached=\(cached) path=\(destination.path)")
+        return destination
+    }
+
+    private func validatedIdentity(at path: URL, expected: String?) throws -> ModelIdentity? {
+        guard isModelCached(at: path),
+              let data = try? Data(contentsOf: path.appendingPathComponent("model_identity.json")),
+              let identity = try? JSONDecoder().decode(ModelIdentity.self, from: data) else {
+            return nil
+        }
+        if let expected = expected, identity.export_id != expected {
+            throw ModelDownloaderError.identityMismatch(expected: expected, found: identity.export_id)
+        }
+        return identity
+    }
+
+    private func pruneVersions(in root: URL, keeping current: URL) throws {
+        let fm = FileManager.default
+        let others = try fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.contentModificationDateKey, .isDirectoryKey])
+            .filter {
+                $0.standardizedFileURL.path != current.standardizedFileURL.path && !$0.lastPathComponent.hasPrefix(".")
+                    && $0.pathExtension != "mlpackage" && $0.pathExtension != "mlmodelc"
+                    && (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+            }
+            .sorted {
+                let left = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let right = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                return left == right ? $0.lastPathComponent < $1.lastPathComponent : left > right
+            }
+        for old in others.dropFirst() { try fm.removeItem(at: old) }
+    }
+
     /// Check if the model bundle is already cached with required files.
     private func isModelCached(at path: URL) -> Bool {
         let fileManager = FileManager.default
@@ -186,11 +318,20 @@ public final class ModelDownloader {
 public enum ModelDownloaderError: Error, LocalizedError {
     case extractionFailed(String)
     case modelNotFound
+    case noActiveModel(String)
+    case identityMismatch(expected: String, found: String?)
+    case invalidPointer(String)
 
     public var errorDescription: String? {
         switch self {
         case .extractionFailed(let message):
             return "Model extraction failed: \(message)"
+        case .noActiveModel(let env):
+            return "No active LayoutLM model for \(env)"
+        case .identityMismatch(let expected, let found):
+            return "Model identity mismatch: expected \(expected), found \(found ?? "none")"
+        case .invalidPointer(let message):
+            return "Invalid active model pointer: \(message)"
         case .modelNotFound:
             return "Model bundle not found in S3"
         }

@@ -1,8 +1,7 @@
 """The handler must not report success for an incomplete embedding.
 
-``process_embeddings`` returns ``success=False`` when no CompactionRun was
-written: its deltas are orphaned in S3, nothing will merge them, and it
-published nothing to Chroma Cloud. Because the handler drives the
+``process_embeddings`` returns ``success=False`` when the embedding write
+did not complete. Because the handler drives the
 ``UploadLambdaEmbeddingSuccess`` / ``UploadLambdaEmbeddingFailed`` metrics,
 swallowing that flag makes the failure invisible.
 """
@@ -16,7 +15,6 @@ from handler import handler as handler_module
 def _embedding_result(success: bool) -> dict:
     return {
         "success": success,
-        "compaction_run_created": success,
         "merchant_found": True,
         "merchant_name": "Costco",
         "merchant_place_id": "place-1",

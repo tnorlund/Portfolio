@@ -174,6 +174,7 @@ def test_receipt_item_has_exact_schema_and_nested_maps(example_receipt):
             "cdn_small_webp_s3_key": "small.webp",
             "cdn_medium_avif_s3_key": "medium.avif",
         },
+        {"merge_operation": "MERGE#00001#00002"},
     ],
 )
 def test_receipt_round_trip_preserves_all_fields(overrides):
@@ -201,10 +202,18 @@ def test_receipt_round_trip_preserves_all_fields(overrides):
         ("bottom_right", {"x": 201, "y": 100}),
         ("sha256", "other"),
         ("cdn_s3_key", "other"),
+        ("merge_operation", "MERGE#00001#00002"),
     ],
 )
 def test_receipt_equality_includes_every_persisted_field(field, value):
     assert make_receipt() != make_receipt(**{field: value})
+
+
+def test_receipt_without_merge_marker_omits_the_attribute():
+    """Non-merge producers keep writing the exact item they always did."""
+    item = make_receipt().to_item()
+    assert "merge_operation" not in item
+    assert item_to_receipt(item).merge_operation is None
 
 
 def test_equal_receipts_have_equal_hashes_regardless_of_point_order():
@@ -247,6 +256,8 @@ def test_receipt_from_item_rejects_missing_and_malformed_fields(
         ("top_right", {"x": 1, "y": 2, "z": 3}, "exactly"),
         ("raw_s3_bucket", None, "raw_s3_bucket must be a string"),
         ("sha256", False, "sha256 must be a string"),
+        ("merge_operation", "", "merge_operation must be a nonempty"),
+        ("merge_operation", 7, "merge_operation must be a nonempty"),
     ],
 )
 def test_receipt_serialization_revalidates_mutable_state(

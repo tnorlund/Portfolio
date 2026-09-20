@@ -180,6 +180,12 @@ def stamp_model_identity_on_job(
                 "coreml_canonical_bundle_etag": result.get(
                     "canonical_bundle_etag"
                 ),
+                "coreml_versioned_bundle_s3_uri": result.get(
+                    "versioned_bundle_s3_uri"
+                ),
+                "coreml_versioned_bundle_etag": result.get(
+                    "versioned_bundle_etag"
+                ),
                 "coreml_model_size_bytes": result.get("model_size_bytes"),
                 "coreml_exported_at": datetime.now(timezone.utc).isoformat(),
             }
@@ -258,14 +264,57 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
             bundle_s3_uri = upload_to_s3(bundle_path, output_s3_prefix)
             mlpackage_s3_uri = f"{bundle_s3_uri}LayoutLM.mlpackage"
 
-            # Zip and upload to canonical path for the Swift worker
+            # Publish the immutable version before refreshing the legacy alias.
             parsed = urlparse(output_s3_prefix)
             bucket = parsed.netloc
+            versioned_key = (
+                f"coreml/versions/{export_id}/layoutlm-coreml-bundle.zip"
+            )
+            zip_base = os.path.join(tmpdir, "layoutlm-coreml-bundle")
+            zip_path = shutil.make_archive(zip_base, "zip", bundle_path)
+            s3 = boto3.client("s3")
+            # Conditional creation also protects against retries or concurrent
+            # delivery of the same export ID. Never replace an existing version.
+            #
+            # SQS is at-least-once: if a crash lands after this upload but
+            # before the message is deleted, the redelivered job hits the
+            # existing object and S3 answers 412 PreconditionFailed. That is
+            # not a failed export -- the immutable version is already there --
+            # so verify it is the same artifact and reuse it rather than
+            # recording FAILED and dropping the message.
+            try:
+                with open(zip_path, "rb") as bundle_zip:
+                    versioned = s3.put_object(
+                        Bucket=bucket,
+                        Key=versioned_key,
+                        Body=bundle_zip,
+                        ContentType="application/zip",
+                        IfNoneMatch="*",
+                    )
+                versioned_etag = versioned["ETag"]
+            except ClientError as e:
+                code = e.response.get("Error", {}).get("Code", "")
+                status = e.response.get("ResponseMetadata", {}).get(
+                    "HTTPStatusCode"
+                )
+                if code != "PreconditionFailed" and status != 412:
+                    raise
+                existing = s3.head_object(Bucket=bucket, Key=versioned_key)
+                local_size = os.path.getsize(zip_path)
+                if int(existing.get("ContentLength", -1)) != local_size:
+                    raise RuntimeError(
+                        f"immutable version s3://{bucket}/{versioned_key} "
+                        f"already exists with size {existing.get('ContentLength')}, "
+                        f"but this export produced {local_size} bytes; refusing "
+                        "to overwrite or reuse a different artifact"
+                    ) from e
+                versioned_etag = existing["ETag"]
+                print(
+                    f"Immutable version already present at "
+                    f"s3://{bucket}/{versioned_key} (redelivery); reusing it"
+                )
             canonical_etag = None
             try:
-                zip_base = os.path.join(tmpdir, "layoutlm-coreml-bundle")
-                zip_path = shutil.make_archive(zip_base, "zip", bundle_path)
-                s3 = boto3.client("s3")
                 s3.upload_file(zip_path, bucket, CANONICAL_BUNDLE_KEY)
                 print(
                     f"Uploaded canonical bundle to "
@@ -288,6 +337,8 @@ def process_export_job(message: Dict[str, Any]) -> Dict[str, Any]:
                 "bundle_s3_uri": bundle_s3_uri,
                 "canonical_bundle_s3_uri": f"s3://{bucket}/{CANONICAL_BUNDLE_KEY}",
                 "canonical_bundle_etag": canonical_etag,
+                "versioned_bundle_s3_uri": f"s3://{bucket}/{versioned_key}",
+                "versioned_bundle_etag": versioned_etag,
                 "model_size_bytes": model_size,
                 "export_duration_seconds": duration,
             }

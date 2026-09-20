@@ -1,4 +1,4 @@
-"""Cross-entity contracts for job, queue, and compaction records."""
+"""Cross-entity contracts for job and batch records."""
 
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -7,15 +7,9 @@ import pytest
 
 from receipt_dynamo import (
     BatchSummary,
-    CompactionRun,
     CoreMLExportJob,
-    Instance,
-    InstanceJob,
     Job,
-    Queue,
-    QueueJob,
     item_to_coreml_export_job,
-    item_to_instance_job,
     item_to_job,
 )
 from receipt_dynamo.constants import BatchStatus, BatchType
@@ -36,54 +30,6 @@ def make_job(**overrides):
         "job_config": {},
     }
     return Job(**(values | overrides))
-
-
-def make_instance(**overrides):
-    """Build a valid Instance, overriding only the field under test."""
-    values = {
-        "instance_id": "i-contract",
-        "instance_type": "g5.xlarge",
-        "gpu_count": 1,
-        "status": "running",
-        "launched_at": NOW,
-        "ip_address": "127.0.0.1",
-        "availability_zone": "us-east-1a",
-        "is_spot": False,
-        "health_status": "healthy",
-    }
-    return Instance(**(values | overrides))
-
-
-def make_queue(**overrides):
-    """Build a valid Queue, overriding only the field under test."""
-    values = {
-        "queue_name": "training",
-        "description": "contract test",
-        "created_at": NOW,
-    }
-    return Queue(**(values | overrides))
-
-
-def make_queue_job(**overrides):
-    """Build a valid QueueJob, overriding only the field under test."""
-    values = {
-        "queue_name": "training",
-        "job_id": str(uuid4()),
-        "enqueued_at": NOW,
-    }
-    return QueueJob(**(values | overrides))
-
-
-def make_compaction_run(**overrides):
-    """Build a valid CompactionRun, overriding only the field under test."""
-    values = {
-        "run_id": str(uuid4()),
-        "image_id": str(uuid4()),
-        "receipt_id": 1,
-        "lines_delta_prefix": "lines/",
-        "words_delta_prefix": "words/",
-    }
-    return CompactionRun(**(values | overrides))
 
 
 def make_batch_summary(**overrides):
@@ -115,21 +61,6 @@ def make_export_job(**overrides):
     ("factory", "overrides", "match"),
     [
         (make_job, {"estimated_duration": True}, "positive integer"),
-        (make_instance, {"gpu_count": False}, "non-negative integer"),
-        (make_queue, {"max_concurrent_jobs": True}, "positive integer"),
-        (make_queue, {"job_count": False}, "non-negative integer"),
-        (make_queue_job, {"position": True}, "non-negative integer"),
-        (make_compaction_run, {"receipt_id": True}, "must be an integer"),
-        (
-            make_compaction_run,
-            {"lines_merged_vectors": False},
-            "must be an integer",
-        ),
-        (
-            make_compaction_run,
-            {"words_merged_vectors": True},
-            "must be an integer",
-        ),
         (
             make_batch_summary,
             {"receipt_refs": [(str(uuid4()), True)]},
@@ -268,23 +199,6 @@ def test_nested_job_maps_round_trip_without_type_loss():
 
 
 @pytest.mark.unit
-def test_nested_instance_utilization_round_trip_without_type_loss():
-    utilization = {
-        "cpu": {"percent": 12.5, "cores": [0, 1]},
-        "gpu": {"active": True, "memory_mb": None},
-    }
-    assignment = InstanceJob(
-        instance_id="i-contract",
-        job_id=str(uuid4()),
-        assigned_at=NOW,
-        status="running",
-        resource_utilization=utilization,
-    )
-
-    assert item_to_instance_job(assignment.to_item()) == assignment
-
-
-@pytest.mark.unit
 @pytest.mark.parametrize(
     "payload",
     [
@@ -295,20 +209,6 @@ def test_nested_instance_utilization_round_trip_without_type_loss():
 def test_job_nested_maps_reject_non_finite_numbers(payload):
     with pytest.raises(ValueError, match="numbers must be finite"):
         make_job(**payload).to_item()
-
-
-@pytest.mark.unit
-def test_instance_utilization_rejects_non_finite_numbers():
-    assignment = InstanceJob(
-        instance_id="i-contract",
-        job_id=str(uuid4()),
-        assigned_at=NOW,
-        status="running",
-        resource_utilization={"gpu": {"temperature": float("nan")}},
-    )
-
-    with pytest.raises(ValueError, match="numbers must be finite"):
-        assignment.to_item()
 
 
 @pytest.mark.unit
@@ -338,13 +238,8 @@ def test_default_collections_are_not_shared_between_entities():
     second_job = make_job()
     first_job.tags["environment"] = "test"
 
-    first_assignment = InstanceJob("i-one", str(uuid4()), NOW, "assigned")
-    second_assignment = InstanceJob("i-two", str(uuid4()), NOW, "assigned")
-    first_assignment.resource_utilization["cpu"] = 1
-
     assert not second_batch.receipt_refs
     assert second_job.tags == {}
-    assert second_assignment.resource_utilization == {}
 
 
 @pytest.mark.unit
@@ -354,10 +249,3 @@ def test_job_tags_require_string_keys_and_values():
             ValueError, match="keys and values must be strings"
         ):
             make_job(tags=tags)
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("field_name", ["lines_error", "words_error"])
-def test_compaction_errors_require_strings(field_name):
-    with pytest.raises(ValueError, match=f"{field_name} must be a string"):
-        make_compaction_run(**{field_name: 1})

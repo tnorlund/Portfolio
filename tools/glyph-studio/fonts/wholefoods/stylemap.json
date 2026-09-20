@@ -1,0 +1,131 @@
+{
+  "version": 1,
+  "source": {
+    "merchant": "wholefoods",
+    "receipts": 8,
+    "scan_dir": "/tmp/gridfix/wholefoods_studio/scans",
+    "lines_measured": 273,
+    "date": "2026-09-19",
+    "notes": "Whole Foods Market (D1-style thermal): body is single-width; the WHOLE FOODS MARKET wordmark is a printed logo graphic (rendered by the logo band, never as text). Rules shared by stylescan and the renderer."
+  },
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "^WHOLE FOODS( MARKET)?$|^MARKET$|^(Tenaya|Henderson|Las Vegas) [A-Z]{3}\\b|\\d{3}-\\d{3}-\\d{4}|Lake Mead|Green Valley|Las Vegas Blvd|,\\s*NV\\s+\\d{5}|^\\d{5}( \\d{4})?$"
+    },
+    {
+      "section": "total_line",
+      "pattern": "^Total\\s*:?\\s*\\$?[\\d.]*$"
+    },
+    {
+      "section": "summary",
+      "pattern": "^Subtotal|^Net Sales|^Tax:?|^Sold Items|^Paid:?|^\\d{1,2}\\.\\d{2}%$"
+    },
+    {
+      "section": "payment",
+      "pattern": "^VISA\\b|^MASTERCARD|^AMEX|^DEBIT|^\\*\\d{4}$|^Change"
+    },
+    {
+      "section": "policy",
+      "pattern": "^RETURNS:|of purchase|purchased after|original form of payment|additional information|wfm\\.com/returns"
+    },
+    {
+      "section": "promo",
+      "pattern": "Earn \\d+% back|Prime (Visa|membership)|amazon\\.\\s?com|eligible Prime"
+    },
+    {
+      "section": "survey",
+      "pattern": "SHOPPING EXPERIENCE|wfm\\.com/feedback|CHANCE TO WIN|GIFT CARD|^Go to:"
+    },
+    {
+      "section": "transaction",
+      "pattern": "^\\d{3} \\d{5} \\d{2}/\\d{2}/\\d{4}"
+    }
+  ],
+  "sections": {
+    "barcode_caption": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=8: cap_rel med 1.063, stroke_rel med 1.086, underline 0.00."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=31: cap_rel med 0.944, stroke_rel med 1.003, underline 0.00."
+    },
+    "other": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=36: cap_rel med 1.000, stroke_rel med 1.042, underline 0.00."
+    },
+    "payment": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=8: cap_rel med 0.875, stroke_rel med 1.076, underline 0.00."
+    },
+    "policy": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=41: cap_rel med 0.944, stroke_rel med 1.012, underline 0.00."
+    },
+    "promo": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=29: cap_rel med 1.034, stroke_rel med 1.200, underline 0.00. || Prime/amazon promo block is body on the print; the 1.2 stroke is low-res photo blur."
+    },
+    "separator": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=8: cap_rel med 1.000, stroke_rel med 1.192, underline 0.00."
+    },
+    "store_header": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=36: cap_rel med 1.125, stroke_rel med 1.288, underline 0.00. || stroke_rel is inflated by the WHOLE FOODS MARKET wordmark lines, which are the logo graphic (logo band), not bold text; address/phone lines are body."
+    },
+    "summary": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=38: cap_rel med 0.909, stroke_rel med 1.115, underline 0.00."
+    },
+    "survey": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=23: cap_rel med 1.050, stroke_rel med 0.954, underline 0.00."
+    },
+    "total_line": {
+      "sizeScale": 1.0,
+      "weight": "bold",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=8: cap_rel med 1.000, stroke_rel med 1.316, underline 0.00. || \"Total :\" row prints bold (stroke_rel 1.32)."
+    },
+    "transaction": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=7: cap_rel med 1.000, stroke_rel med 1.000, underline 0.00."
+    }
+  }
+}

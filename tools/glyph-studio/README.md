@@ -52,6 +52,56 @@ symlinks + our npz copied over `sprouts.glyphs.npz`) so nothing global
 changes. To publish for real, back up and copy the npz into `$BITMATRIX_DIR`
 (default `/tmp/bitmatrix`) under the profile's filename.
 
+## Portfolio figure assets (SynthesisPipeline)
+
+`py/export_pipeline_assets.py` rebuilds one merchant's tree under
+`portfolio/public/synthetic-receipts/pipeline/<slug>/` (the static files the
+`/receipt` figure plays back) from committed tooling: the production render
+path for `final.webp` + render-true `final.labels.json`, the CDN scan for
+`real.webp`, the vault logo, and for hero merchants the letterform corpus
+(`char_prints/`, `char_cloud.png`), the glyph JSON (`char_skeleton.json`,
+`dot_params.json`), the renderer's own `BitmapFont` masks (`font_grid/`,
+`font_metrics.json`), the stylemap (`style_annotated.json`, `style_crops/`)
+and act-1 `real_thumbs/`. Source receipts per slug live in
+`fixtures/pipeline_merchants.json`.
+
+```bash
+# dev AWS reads: DynamoDB (words, labels, ReceiptPlace, dims), S3 (scan,
+# fonts/logo via the ACTIVE truth bundle, merchant_fonts/<font>/corpus.npz)
+export DYNAMODB_TABLE_NAME=ReceiptsTable-dc5be22 AWS_REGION=us-east-1
+export RECEIPT_PAPER_STRENGTH=0.3 BITMATRIX_DIR=/tmp/bitmatrix
+$PY py/export_pipeline_assets.py sprouts costco --out-dir /tmp/pipeline
+$PY py/export_pipeline_assets.py --all --finale-only --out-dir /tmp/pipeline
+```
+
+Review `/tmp/pipeline/<slug>/` and copy it over `portfolio/public/...`.
+The figure's merchant tables (`Merchant`, `MERCHANTS`, `MERCHANT_LABELS`,
+`RECEIPT_DIMS`, `BOLD_WEIGHT_CALLOUT`) are **generated** from
+`fixtures/pipeline_merchants.json` into
+`portfolio/components/ui/Figures/SynthesisPipeline/merchants.generated.ts`
+by `python -m glyphstudio.portfolio_wiring` (`--check` in tests); write the
+printed dims into the manifest's `dims` and regenerate rather than editing
+`pipelineData.ts`. `py/new_vendor.py export <slug>` does all of that in one
+step. Offline logic is in `glyphstudio/pipeline_assets.py` (tests:
+`tests/test_pipeline_assets.py`). Merchants without a vault corpus or a
+bundle logo get finale files plus `font_grid/` only; `--corpus` / `--logo`
+supply local inputs.
+
+## New vendor in one command per stage (`py/new_vendor.py`)
+
+`new_vendor.py` chains the mint loop for a vendor described by
+`fonts/<slug>/vendor.json` (`ADD_MERCHANT.md` "The short way"):
+`census` / `init` / `corpus` / `font` (`glyphstudio.mint`: trace, simplify,
+handcraft, `--donor` fill, normalize, compile, specimen + strips) / `pitch` /
+`style` (stylescan + styleagg into a `stylemap.json` whose `rules` list is
+shared by the renderer) / `profile` / `fixture`
+(`migrate_merchant_truth_v1.py --fixture-out`, so an unminted vendor renders
+in `MERCHANT_TRUTH_MODE=fixture`) / `calibrate` (solves
+`ocr_cap_height_ratio` from the first scorecard) / `export` / `wire`. Dev
+reads only; publish, mint and flip stay owner-only. Glyphs adopted from a
+sibling face carry `"donor": "<font>"`; `publish_merchant_font.py` refuses a
+font with more than a quarter of them unless `--allow-donor-glyphs`.
+
 ## Conventions
 
 - Cap units: y-up, baseline y=0, cap ink line y=1000; 1 px @ REF_CAP 60 =

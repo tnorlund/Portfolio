@@ -1,5 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const ciPort = Number(process.env.PLAYWRIGHT_PORT || '3001');
+if (!Number.isInteger(ciPort) || ciPort < 1 || ciPort > 65535) {
+  throw new Error('PLAYWRIGHT_PORT must be an integer between 1 and 65535');
+}
+const serverURL = process.env.CI
+  ? `http://127.0.0.1:${ciPort}`
+  : 'http://localhost:3000';
+
 /**
  * Read environment variables from file.
  * https://github.com/motdotla/dotenv
@@ -28,8 +36,8 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    // Use port 3001 in CI to avoid conflicts with local dev server on self-hosted runners
-    baseURL: process.env.PLAYWRIGHT_BASE_URL || (process.env.CI ? 'http://localhost:3001' : 'http://localhost:3000'),
+    // CI supplies an available port for each browser job on a shared host.
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || serverURL,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -114,9 +122,8 @@ export default defineConfig({
 
   /* Run your local dev server before starting the tests */
   webServer: {
-    // Use port 3001 in CI to avoid conflicts with local dev server on self-hosted runners
-    command: process.env.CI ? 'npx serve out -l 3001' : 'npm run dev',
-    url: process.env.CI ? 'http://localhost:3001' : 'http://localhost:3000',
+    command: process.env.CI ? `npx serve out -l tcp://127.0.0.1:${ciPort}` : 'npm run dev',
+    url: serverURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
   },

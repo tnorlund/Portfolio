@@ -12,7 +12,7 @@ cross-check against the two legacy merchant enumerations:
   * ``tools/glyph-studio/server/env.mjs`` FONT_MERCHANTS values
 
 Merchants present in the legacy stores but with NO ACTIVE truth row are
-listed as missing. Pre-mint, "0 ACTIVE / 16 missing" is the truthful
+listed as missing. Pre-mint, "0 ACTIVE / N missing" is the truthful
 steady state, not an error.
 
 Usage:

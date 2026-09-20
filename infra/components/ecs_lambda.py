@@ -78,7 +78,7 @@ class EcsLambda(ComponentResource):
         *,
         package_dir: str,
         handler: str,
-        python_version: str = "3.13",
+        python_version: str = "3.14",
         description: Optional[str] = None,
         role_arn: Optional[Output[str] | str] = None,
         timeout: int = 30,

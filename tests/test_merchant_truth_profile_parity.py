@@ -5,7 +5,7 @@ merchant's ACTIVE truth bundle back into the legacy in-memory profile shape
 (``rsr._profile_from_truth``). This test drives the REAL registry file
 through the v1 migration payload builder (the exact code that minted the live
 bundles) and asserts the reconstruction reproduces every legacy profile —
-byte-for-byte at the JSON level, for all 16 merchants — including the
+byte-for-byte at the JSON level, for every merchant — including the
 explicit-empty vs absent ``section_scale`` distinction the v1 payload
 collapsed (the ``_V1_EXPLICIT_EMPTY_SECTION_SCALE`` shim).
 """
@@ -130,7 +130,7 @@ def test_every_legacy_profile_reconstructs_byte_identically(
     registry_document, minted
 ) -> None:
     profiles = registry_document["profiles"]
-    assert len(minted) == len(profiles) == 16
+    assert len(minted) == len(profiles)
     for payload in minted:
         artifact = _artifact(payload.to_document(), payload.slug)
         name, reconstructed = rsr._profile_from_truth(artifact)

@@ -23,22 +23,37 @@ from datetime import datetime
 from typing import Any, Callable, Optional
 
 from langchain_core.tools import tool
-from receipt_chroma.section_labels import (
-    NON_ITEM_SECTION_LABELS,
-    non_item_section_filter,
-)
-
 from receipt_embeddings.backend import vector_search_client
-from receipt_embeddings.dynamo_client import DynamoVectorSearchClient
+from receipt_embeddings.section_labels import NON_ITEM_SECTION_LABELS
 from receipt_embeddings.service_limits import LINE_INDEX, MAX_SEARCH_RESULTS
 from receipt_embeddings.vector_client import VectorSearchClient
 
 logger = logging.getLogger(__name__)
 
+
+def _mode_unavailable(search_type: str, query: str) -> dict:
+    """Structured result for retired metadata-scan search modes.
+
+    The label / label_lines / text modes were served by the retired
+    vector store's metadata filters and have no DynamoDB implementation,
+    so they answer with a clear signal instead of raising.
+    """
+    return {
+        "search_type": search_type,
+        "query": query,
+        "error": (
+            f"search_type '{search_type}' is unavailable on the "
+            "dynamodb backend; use 'semantic' or the "
+            "DynamoDB-backed tools instead"
+        ),
+        "total_matches": 0,
+        "unique_receipts": 0,
+        "results": [],
+    }
+
+
 # Every semantic n_results is trimmed to the 100-result SearchVectors cap
-# (MAX_SEARCH_RESULTS). This deliberately cuts the old Chroma depth of up
-# to 300 (spec §3.5 "Top-100 cap check"); Chroma accepts the smaller ask
-# unchanged, so both backends stay within one call.
+# (MAX_SEARCH_RESULTS); spec §3.5 "Top-100 cap check".
 
 
 # ==============================================================================
@@ -138,7 +153,6 @@ def summarize_ocr_outliers(outliers: list[dict]) -> list[dict]:
 
 def create_qa_tools(
     dynamo_client: Any,
-    chroma_client: Any,
     embed_fn: Callable[[list[str]], list[list[float]]],
     *,
     vector_client: Optional[VectorSearchClient] = None,
@@ -147,32 +161,29 @@ def create_qa_tools(
 
     Args:
         dynamo_client: DynamoDB client for receipt data
-        chroma_client: ChromaDB client for similarity search
         embed_fn: Function to generate embeddings for semantic search
         vector_client: Optional injected similarity backend; defaults to
-            the ``VECTOR_BACKEND`` selection (chroma unless set)
+            the DynamoDB vector indexes on the session's table
 
     Returns:
         (tools, state_holder) - List of tools and state dict for tracking
     """
     _embed_fn = embed_fn
 
-    # Semantic retrieval goes through the shared VectorSearchClient seam
-    # (VECTOR_BACKEND=chroma|dynamodb, default chroma). Resolution is lazy
-    # and cached so the default path builds no AWS client, and any failure
-    # degrades every semantic mode to empty results instead of hard-failing
-    # the QA agent — search is its only discovery surface.
+    # Semantic retrieval goes through the shared VectorSearchClient seam.
+    # Resolution is lazy and cached so tool creation builds no AWS client,
+    # and any failure degrades every semantic mode to empty results instead
+    # of hard-failing the QA agent — search is its only discovery surface.
     _vector_client_cache: dict[str, Optional[VectorSearchClient]] = {}
 
     def _resolve_vector_client() -> Optional[VectorSearchClient]:
         if "client" not in _vector_client_cache:
             try:
                 # Thread the session's configured Dynamo table (and its
-                # low-level boto3 client) through, so a dynamodb backend
-                # targets the SAME table as every other tool instead of
+                # low-level boto3 client) through, so the search targets
+                # the SAME table as every other tool instead of
                 # backend.py's environment fallback (E3 review P1-3).
                 _vector_client_cache["client"] = vector_search_client(
-                    chroma_client,
                     vector_client=vector_client,
                     dynamodb_client=getattr(dynamo_client, "_client", None),
                     table_name=getattr(dynamo_client, "table_name", None),
@@ -464,65 +475,11 @@ def create_qa_tools(
         unique_receipts = {}
 
         try:
-            if search_type == "label":
-                words_collection = chroma_client.get_collection("words")
-                results = words_collection.get(
-                    where={"label": query.upper()},
-                    include=["metadatas"],
-                )
+            if search_type in ("label", "label_lines"):
+                _track_search(query, search_type, 0)
+                return _mode_unavailable(search_type, query)
 
-                for id_, meta in zip(results["ids"], results["metadatas"]):
-                    receipt_key = (
-                        meta.get("image_id"),
-                        meta.get("receipt_id"),
-                    )
-                    if receipt_key not in unique_receipts:
-                        unique_receipts[receipt_key] = {
-                            "image_id": meta.get("image_id"),
-                            "receipt_id": meta.get("receipt_id"),
-                            "matched_text": meta.get("text"),
-                            "matched_label": query.upper(),
-                        }
-
-                search_result = {
-                    "search_type": "label",
-                    "query": query,
-                    "total_matches": len(results["ids"]),
-                    "unique_receipts": len(unique_receipts),
-                    "results": list(unique_receipts.values())[:limit],
-                }
-
-            elif search_type == "label_lines":
-                lines_collection = chroma_client.get_collection("lines")
-                label_key = f"label_{query.upper()}"
-
-                results = lines_collection.get(
-                    where={label_key: True},
-                    include=["metadatas"],
-                )
-
-                for id_, meta in zip(results["ids"], results["metadatas"]):
-                    receipt_key = (
-                        meta.get("image_id"),
-                        meta.get("receipt_id"),
-                    )
-                    if receipt_key not in unique_receipts:
-                        unique_receipts[receipt_key] = {
-                            "image_id": meta.get("image_id"),
-                            "receipt_id": meta.get("receipt_id"),
-                            "matched_row": meta.get("text", "")[:100],
-                            "matched_label": query.upper(),
-                        }
-
-                search_result = {
-                    "search_type": "label_lines",
-                    "query": query,
-                    "total_matches": len(results["ids"]),
-                    "unique_receipts": len(unique_receipts),
-                    "results": list(unique_receipts.values())[:limit],
-                }
-
-            elif search_type == "semantic":
+            if search_type == "semantic":
                 query_embeddings = _embed_fn([query])
                 if not query_embeddings or not query_embeddings[0]:
                     return {
@@ -570,32 +527,10 @@ def create_qa_tools(
                 }
 
             else:
-                # Default: text search
-                lines_collection = chroma_client.get_collection("lines")
-                results = lines_collection.get(
-                    where_document={"$contains": query.upper()},
-                    include=["metadatas"],
-                )
-
-                for id_, meta in zip(results["ids"], results["metadatas"]):
-                    receipt_key = (
-                        meta.get("image_id"),
-                        meta.get("receipt_id"),
-                    )
-                    if receipt_key not in unique_receipts:
-                        unique_receipts[receipt_key] = {
-                            "image_id": meta.get("image_id"),
-                            "receipt_id": meta.get("receipt_id"),
-                            "matched_line": meta.get("text", "")[:100],
-                        }
-
-                search_result = {
-                    "search_type": "text",
-                    "query": query,
-                    "total_matches": len(results["ids"]),
-                    "unique_receipts": len(unique_receipts),
-                    "results": list(unique_receipts.values())[:limit],
-                }
+                # Default: text search (substring scan; no DynamoDB
+                # implementation)
+                _track_search(query, "text", 0)
+                return _mode_unavailable("text", query)
 
             # Track this search
             _track_search(query, search_type, len(unique_receipts))
@@ -1058,17 +993,9 @@ def create_qa_tools(
 
                 items = []
                 seen = set()
-                # label_LINE_TOTAL is Chroma line metadata; Dynamo line
-                # items never carry it, so under the Dynamo backend the
-                # flag is honestly "unknown" rather than a false False
-                # (E3 review P2-5).
-                label_flags_available = not isinstance(
-                    _resolve_vector_client(), DynamoVectorSearchClient
-                )
-                # Chroma pre-filtered non-item sections inside the ANN
-                # query ($nin); the seam takes equality filters only, so
-                # the same exclusion is applied after retrieval. Rows with
-                # no section label stay, like non_item_section_filter().
+                # The seam takes equality filters only, so non-item
+                # sections are excluded after retrieval. Rows with no
+                # section label stay.
                 non_item_sections = set(NON_ITEM_SECTION_LABELS)
 
                 for neighbor in neighbors:
@@ -1097,11 +1024,10 @@ def create_qa_tools(
                             "text": text,
                             "price": extract_price(text),
                             "similarity": round(similarity, 3),
-                            "has_price_label": (
-                                meta.get("label_LINE_TOTAL", False)
-                                if label_flags_available
-                                else "unknown"
-                            ),
+                            # Line embedding metadata carries no label
+                            # flags; reporting False would be false
+                            # evidence (E3 review P2-5).
+                            "has_price_label": "unknown",
                             "merchant": meta.get("merchant_name", "Unknown"),
                             "image_id": image_id,
                             "receipt_id": receipt_id,
@@ -1160,86 +1086,10 @@ def create_qa_tools(
                 return result
 
             else:
-                # Text search (unchanged: direct Chroma substring scan;
-                # its DynamoDB rewrite is out of this card's scope)
-                lines_collection = chroma_client.get_collection("lines")
-                results = lines_collection.get(
-                    where_document={"$contains": query.upper()},
-                    where=non_item_section_filter(),
-                    include=["metadatas"],
-                )
-
-                if not results["ids"]:
-                    _track_search(query, "text", 0)
-                    return {
-                        "query": query,
-                        "search_type": "text",
-                        "total_matches": 0,
-                        "items": [],
-                    }
-
-                items = []
-                seen = set()
-
-                for id_, meta in zip(results["ids"], results["metadatas"]):
-                    text = meta.get("text", "")
-                    image_id = meta.get("image_id")
-                    receipt_id = meta.get("receipt_id")
-
-                    item_key = (image_id, receipt_id, text)
-                    if item_key in seen:
-                        continue
-                    seen.add(item_key)
-
-                    items.append(
-                        {
-                            "text": text,
-                            "price": extract_price(text),
-                            "has_price_label": meta.get(
-                                "label_LINE_TOTAL", False
-                            ),
-                            "merchant": meta.get("merchant_name", "Unknown"),
-                            "image_id": image_id,
-                            "receipt_id": receipt_id,
-                        }
-                    )
-
-                items.sort(
-                    key=lambda x: (x["price"] is None, -(x["price"] or 0))
-                )
-                items = items[:limit]
-
-                total = sum(
-                    item["price"]
-                    for item in items
-                    if item["price"] is not None
-                )
-
-                # Auto-fetch unique receipts
-                unique_receipt_keys = set()
-                for item in items[:10]:
-                    item_key = (item.get("image_id"), item.get("receipt_id"))
-                    if item_key[0] and item_key[1] is not None:
-                        unique_receipt_keys.add(item_key)
-
-                fetched_count = 0
-                for img_id, rcpt_id in list(unique_receipt_keys)[:5]:
-                    details = _fetch_receipt_details(img_id, rcpt_id)
-                    if details:
-                        fetched_count += 1
-
-                _track_search(query, "text", len(items))
-
-                return {
-                    "query": query,
-                    "search_type": "text",
-                    "total_matches": len(results["ids"]),
-                    "unique_items": len(items),
-                    "items": items,
-                    "raw_total": round(total, 2),
-                    "auto_fetched": fetched_count,
-                    "note": "Exclude false positives before reporting total.",
-                }
+                # Text search (substring scan) has no DynamoDB
+                # implementation.
+                _track_search(query, "text", 0)
+                return _mode_unavailable("text", query)
 
         except Exception as e:
             logger.error("Error searching product lines: %s", e)
@@ -1363,16 +1213,23 @@ def create_qa_tools(
                 # receipts was the largest wrong-number source in the
                 # 2026-07-29 scorecard. They are counted and reported
                 # separately instead of silently included.
-                if (start_dt or end_dt) and not record.date:
+                # The printed date wins; a receipt whose printed date is
+                # missing or illegible falls back to its matched bank
+                # transaction date (ReceiptSummary.effective_date).
+                # Compare calendar days, like the MCP summaries tool:
+                # stored dates are naive midnights while a filter parsed
+                # from "...Z" is offset-aware, and datetime ordering
+                # across that boundary raises.
+                receipt_date = record.effective_date
+                if (start_dt or end_dt) and not receipt_date:
                     undated_excluded += 1
                     undated_spending += record.grand_total or 0
                     continue
-                if start_dt and record.date:
-                    if record.date < start_dt:
-                        continue
-                if end_dt and record.date:
-                    if record.date > end_dt:
-                        continue
+                receipt_day = receipt_date.date() if receipt_date else None
+                if start_dt and receipt_day and receipt_day < start_dt.date():
+                    continue
+                if end_dt and receipt_day and receipt_day > end_dt.date():
+                    continue
 
                 summary_dict = record.to_dict()
                 summary_dict["merchant_category"] = merchant_category

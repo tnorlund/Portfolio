@@ -14,6 +14,7 @@ authors = [
 classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "License :: OSI Approved :: MIT License",
   "Operating System :: OS Independent",
 ]
@@ -24,9 +25,9 @@ dependencies = [
   # Pin to the stricter 2.6 floor so anything below silently breaks the
   # resume-from-checkpoint path. Keep transformers <6.0 to avoid blind
   # dependabot bumps across the next major.
-  # coremltools 9.0 validates PyTorch through 2.7.0. Keep the shared runtime
-  # inside that tested range so training checkpoints remain exportable.
-  "torch>=2.6.0,<=2.7.0",
+  # Do NOT cap torch at 2.7 here: coremltools 9.0's tested range lives in
+  # the [coreml] extra, and Core AI needs torch>=2.8 in [coreai].
+  "torch>=2.6.0,<3.0.0",
   "transformers>=4.46.0,<6.0.0",
   "datasets>=2.19.0,<6.0.0",
   "numpy>=1.26.0,<3.0.0",
@@ -34,7 +35,7 @@ dependencies = [
   "boto3>=1.43.32,<1.44.0",
   "pydantic>=2.10.6,<3.0.0",
   "tqdm>=4.66.0,<5.0.0",
-  "filelock>=3.13.0,<4.0.0",
+  "filelock>=3.13.0,<5.0.0",
   "Pillow>=10.0.0,<13.0.0",
   "sentencepiece>=0.1.99,<1.0.0",
   "accelerate>=0.21.0,<2.0.0",
@@ -49,13 +50,24 @@ training = [
   "scikit-learn>=1.6.0,<2.0.0",
 ]
 coreml = [
+  # Isolated Python 3.13 export worker. coremltools 9.0 validates PyTorch
+  # through 2.7.0; keep this ceiling here so the main package can use
+  # modern torch on Python 3.14.
+  "torch>=2.6.0,<=2.7.0",
   "coremltools==9.0",
+]
+coreai = [
+  # Isolated Python 3.13 exporter. coreai-core currently requires
+  # Python <3.14; torch>=2.8 is required by coreai-torch. Pin the upper
+  # bound to the range coreai-torch documents as validated.
+  "torch>=2.8.0,<=2.13.0",
+  "coreai-torch",
 ]
 dev = [
   "pytest>=7.0.0",
   "pytest-cov>=4.0.0",
   "black==26.5.1",
-  "isort==8.0.1",
+  "isort==9.0.1",
   "mypy>=1.19.0",
   "flake8>=7.0.0",
   "seqeval>=1.2.2,<2.0.0",

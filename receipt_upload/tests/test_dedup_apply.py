@@ -50,12 +50,10 @@ class FakeClient:
 
     table_name = "ReceiptsTable-test"
 
-    def __init__(self, subtree=None, existing_labels=None, field_items=None):
+    def __init__(self, subtree=None, existing_labels=None):
         self.subtree = subtree or {}
         # existing_labels: {(pk, sk): raw_item} returned by get_item
         self.existing_labels = existing_labels or {}
-        # field_items: {(image_id, rid): [items]} returned by the GSI1 query
-        self.field_items = field_items or {}
         self.calls = []
         self.deleted_keys, self.put_items = [], []
         self.added_labels = []
@@ -80,12 +78,6 @@ class FakeClient:
         self.calls.append("query")
         vals = kw["ExpressionAttributeValues"]
         image_id = vals[":pk"]["S"].split("#", 1)[1]
-        if kw.get("IndexName") == "GSI1":  # ReceiptField lookup
-            rid = int(vals[":sk"]["S"].split("#")[1])
-            return {
-                "Items": self.field_items.get((image_id, rid), []),
-                "LastEvaluatedKey": None,
-            }
         # main table: broad RECEIPT# prefix -> all items for this image (all rids)
         items = [
             it
@@ -123,11 +115,7 @@ def _full_subtree(image_id, rid):
         ),
         _it(image_id, f"{p}#PLACE", "RECEIPT_PLACE"),
         _it(image_id, f"{p}#SUMMARY", "RECEIPT_SUMMARY"),
-        _it(
-            image_id,
-            f"{p}#VALIDATION_CATEGORY#x",
-            "RECEIPT_VALIDATION_CATEGORY",
-        ),
+        _it(image_id, f"{p}#SECTION#HEADER", "RECEIPT_SECTION"),
     ]
 
 
@@ -191,7 +179,7 @@ def test_apply_deletes_full_subtree_and_adds_label(tmp_path):
     deleted_sks = {k["SK"]["S"] for k in cli.deleted_keys}
     assert any("PLACE" in s for s in deleted_sks)
     assert any("SUMMARY" in s for s in deleted_sks)
-    assert any("VALIDATION_CATEGORY" in s for s in deleted_sks)
+    assert any("SECTION" in s for s in deleted_sks)
 
 
 def test_apply_requires_backup_path():
@@ -254,23 +242,13 @@ def test_leftover_only_subtree_no_receipt_entity(tmp_path):
     assert len(cli.deleted_keys) == 2
 
 
-def test_unpadded_sk_and_field_partition_are_swept(tmp_path):
-    # ChatGPTValidation uses an UNPADDED rid SK; ReceiptField lives in the FIELD#
-    # partition (found via GSI1). Both must be backed up + deleted.
+def test_unpadded_legacy_sk_is_swept(tmp_path):
+    # Legacy rows used an UNPADDED rid SK (RECEIPT#1#... not RECEIPT#00001);
+    # they must still be backed up + deleted with the receipt.
     subtree = _full_subtree(IMG_D, 1) + [
-        # unpadded validation record under IMAGE# (RECEIPT#1#... not RECEIPT#00001)
-        _it(
-            IMG_D,
-            "RECEIPT#1#ANALYSIS#VALIDATION#CHATGPT#t",
-            "RECEIPT_CHATGPT_VALIDATION",
-        ),
+        _it(IMG_D, "RECEIPT#1#LEGACY#t", "LEGACY_RECEIPT_CHILD"),
     ]
-    field = {
-        "PK": {"S": "FIELD#MERCHANT_NAME"},
-        "SK": {"S": "RECEIPT#00001#FIELD#MERCHANT_NAME"},
-        "TYPE": {"S": "RECEIPT_FIELD"},
-    }
-    cli = FakeClient({(IMG_D, 1): subtree}, field_items={(IMG_D, 1): [field]})
+    cli = FakeClient({(IMG_D, 1): subtree})
     execute(
         plan_operations([_resolution()]),
         cli,
@@ -278,12 +256,8 @@ def test_unpadded_sk_and_field_partition_are_swept(tmp_path):
         backup_path=str(tmp_path / "b.json"),
     )
     deleted_sks = {k["SK"]["S"] for k in cli.deleted_keys}
-    assert (
-        "RECEIPT#1#ANALYSIS#VALIDATION#CHATGPT#t" in deleted_sks
-    )  # unpadded caught
-    assert "RECEIPT#00001#FIELD#MERCHANT_NAME" in deleted_sks  # FIELD# caught
-    deleted_pks = {k["PK"]["S"] for k in cli.deleted_keys}
-    assert "FIELD#MERCHANT_NAME" in deleted_pks  # other partition
+    assert "RECEIPT#1#LEGACY#t" in deleted_sks  # unpadded caught
+    assert len(cli.deleted_keys) == 9
 
 
 def test_gapfill_failure_skips_its_matching_drop(tmp_path):

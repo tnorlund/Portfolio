@@ -335,6 +335,7 @@ final class OCRResultContractTests: XCTestCase {
     }
 
     private final class S3Mock: S3ClientProtocol {
+        func headObject(bucket: String, key: String) async throws -> S3ObjectHead? { nil }
         var objects: [String: Data] = [:]
         var uploads: [(bucket: String, key: String)] = []
         func getObject(bucket: String, key: String) async throws -> Data {

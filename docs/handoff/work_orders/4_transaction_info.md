@@ -1,5 +1,10 @@
 # Work Order: Add `TRANSACTION_INFO` section type
 
+> MCP layout note (2026-09-10): Fork references below preserve the historical
+> snapshot. Current tools live in `scripts/receipt_mcp_server.py`;
+> `infra/mcp_server_lambda/lambdas/Dockerfile` packages that source as
+> `receipt_mcp_server/server.py`.
+
 **Target base:** `codex/d2-measured-rework` @ `5ab0ef75e` (worktree `/Users/tnorlund/.codex/worktrees/9d3c/Portfolio`)
 **Patch:** `enum_work/transaction_info.patch` (applies cleanly; `git apply --check` = exit 0)
 **Status:** DRAFT ONLY — not applied, not committed. No priors rebuilt, no DynamoDB writes.

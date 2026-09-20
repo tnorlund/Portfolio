@@ -44,7 +44,23 @@ from .thin import prune_spurs, zhang_suen
 UPSAMPLE = 3
 
 
-def trace_char(stack: np.ndarray, codepoint: int) -> tuple[dict | None, float]:
+def corpus_label(samples_path: str | None = None) -> str:
+    """Name recorded in each traced glyph's ``trace.corpus`` field.
+
+    ``$GLYPH_CORPUS_NAME`` wins; otherwise the samples file's basename, so a
+    font traced from ``speedway.refined.npz`` is not labelled as Sprouts.
+    """
+    env = os.environ.get("GLYPH_CORPUS_NAME")
+    if env:
+        return env
+    if samples_path:
+        return os.path.basename(samples_path)
+    return "sprouts.samples.npz"
+
+
+def trace_char(
+    stack: np.ndarray, codepoint: int, corpus: str | None = None
+) -> tuple[dict | None, float]:
     """Trace one char's sample stack -> (glyph JSON, stroke_width_units)."""
     sample_ref_cap, baseline_row = canvas_geometry(stack.shape[1])
     mask = consensus(stack)
@@ -136,9 +152,7 @@ def trace_char(stack: np.ndarray, codepoint: int) -> tuple[dict | None, float]:
         "codepoint": codepoint,
         "provenance": "traced",
         "trace": {
-            "corpus": os.environ.get(
-                "GLYPH_CORPUS_NAME", "sprouts.samples.npz"
-            ),
+            "corpus": corpus or corpus_label(),
             "samples": int(len(stack)),
             "consensusHash": hashlib.sha1(mask.tobytes()).hexdigest()[:12],
             "date": datetime.date.today().isoformat(),
@@ -174,12 +188,13 @@ def main(argv: list[str] | None = None) -> int:
 
     written, diverted, failed = [], [], []
     dot_sizes = []
+    corpus = corpus_label(args.samples)
     for cp in codepoints:
         stack = load_stack(args.samples, cp)
         if stack is None or len(stack) == 0:
             failed.append(chr(cp))
             continue
-        glyph, width_units = trace_char(stack, cp)
+        glyph, width_units = trace_char(stack, cp, corpus=corpus)
         if glyph is None:
             failed.append(chr(cp))
             continue

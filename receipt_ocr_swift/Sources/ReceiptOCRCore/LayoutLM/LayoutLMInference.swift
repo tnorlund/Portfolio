@@ -1,7 +1,8 @@
 import Foundation
 
 #if os(macOS)
-import CoreML
+import CoreGraphics
+import ImageIO
 
 /// Result of LayoutLM inference for a single line.
 public struct LinePrediction: Codable {
@@ -25,14 +26,18 @@ public struct LinePrediction: Codable {
     }
 }
 
-/// LayoutLM inference engine using CoreML.
+/// LayoutLM inference engine.
 ///
-/// This class loads a CoreML model bundle and runs token classification
-/// inference on receipt OCR output.
+/// Tokenization, bbox alignment, windowing, first-subtoken aggregation, and
+/// label mapping are shared. Model execution is delegated to a
+/// ``LayoutLMBackend`` (Core ML by default; Core AI opt-in).
 public class LayoutLMInference {
 
-    /// The CoreML model
-    private let model: MLModel
+    /// Forward-only model backend (Core ML or Core AI).
+    private let backend: LayoutLMBackend
+
+    /// Selected backend kind (for diagnostics / tests).
+    public let backendKind: LayoutLMBackendKind
 
     /// Tokenizer function — wraps either BertTokenizer (v1) or BPETokenizer (v3)
     private let tokenizer: (_ words: [String], _ padding: Bool, _ truncation: Bool) -> BertTokenizer.TokenizationResult
@@ -63,49 +68,23 @@ public class LayoutLMInference {
 
     /// Initialize from a model bundle directory.
     ///
-    /// The bundle should contain:
-    /// - *.mlpackage/ (CoreML model - any name)
-    /// - vocab.txt (tokenizer vocabulary)
-    /// - config.json (model configuration with labels)
+    /// The bundle should contain shared sidecars (`vocab.txt` / `tokenizer.json`,
+    /// `config.json`) plus either:
+    /// - `*.mlpackage/` for the default Core ML backend, or
+    /// - `*.aimodel/` for the opt-in Core AI backend.
     ///
-    /// On first init the .mlpackage is compiled and the resulting .mlmodelc
-    /// is persisted next to the .mlpackage so subsequent launches skip the
-    /// expensive compilation step.
-    ///
-    /// - Parameter bundlePath: URL to the model bundle directory
-    public init(bundlePath: URL) throws {
+    /// - Parameters:
+    ///   - bundlePath: URL to the model bundle directory
+    ///   - backend: Explicit backend; defaults to ``LAYOUTLM_BACKEND`` / coreml
+    public convenience init(bundlePath: URL, backend: LayoutLMBackendKind? = nil) throws {
+        let kind = try backend ?? LayoutLMBackendKind.resolve()
+        try self.init(bundlePath: bundlePath, backendKind: kind)
+    }
+
+    public init(bundlePath: URL, backendKind: LayoutLMBackendKind) throws {
         let fileManager = FileManager.default
-
-        // Find CoreML model by scanning for .mlpackage in bundle
-        let contents = try fileManager.contentsOfDirectory(
-            at: bundlePath,
-            includingPropertiesForKeys: nil
-        )
-        guard let modelURL = contents.first(where: { $0.pathExtension == "mlpackage" }) else {
-            throw LayoutLMError.modelNotFound(path: bundlePath.path)
-        }
-
-        // Persistent path for the compiled model (.mlmodelc) next to the .mlpackage
-        let compiledName = modelURL.deletingPathExtension().lastPathComponent + ".mlmodelc"
-        let persistentCompiledURL = bundlePath.appendingPathComponent(compiledName)
-
-        if fileManager.fileExists(atPath: persistentCompiledURL.path) {
-            // Reuse previously compiled model — instant load
-            self.model = try MLModel(contentsOf: persistentCompiledURL)
-        } else {
-            // First run: compile .mlpackage → temp .mlmodelc, then persist it
-            let tempCompiledURL = try MLModel.compileModel(at: modelURL)
-            do {
-                try fileManager.moveItem(at: tempCompiledURL, to: persistentCompiledURL)
-            } catch {
-                // Move failed — another process may have won the race, or
-                // move isn't supported (cross-volume).  Best-effort copy;
-                // if the destination already exists we just use it.
-                try? fileManager.copyItem(at: tempCompiledURL, to: persistentCompiledURL)
-                try? fileManager.removeItem(at: tempCompiledURL)
-            }
-            self.model = try MLModel(contentsOf: persistentCompiledURL)
-        }
+        self.backendKind = backendKind
+        self.backend = try backendKind.makeBackend(bundlePath: bundlePath)
 
         // Load config
         let configURL = bundlePath.appendingPathComponent("config.json")
@@ -114,7 +93,7 @@ public class LayoutLMInference {
         }
         self.config = try LayoutLMConfig.load(from: configURL)
         self.maxSeqLength = config.maxPositionEmbeddings ?? 512
-        self.requiresImageInput = model.modelDescription.inputDescriptionsByName.keys.contains("pixel_values")
+        self.requiresImageInput = self.backend.requiresImageInput
 
         let env = ProcessInfo.processInfo.environment
         // Defaults MUST match the Python trainer/data_loader defaults (200/150),
@@ -146,9 +125,9 @@ public class LayoutLMInference {
 
     // MARK: - Prediction
 
-    /// Create pixel_values MLMultiArray from a receipt image (v3 only).
+    /// Create pixel_values CHW float32 buffer from a receipt image (v3 only).
     /// Resizes to 224x224 and normalizes with mean/std = 0.5.
-    private func createPixelValues(from imageData: Data) throws -> MLMultiArray? {
+    private func createPixelValues(from imageData: Data) throws -> [Float]? {
         guard requiresImageInput else { return nil }
         guard let imageSource = CGImageSourceCreateWithData(imageData as CFData, nil),
               let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else {
@@ -171,31 +150,31 @@ public class LayoutLMInference {
         context.interpolationQuality = .high
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: size, height: size))
 
-        let array = try MLMultiArray(shape: [1, 3, NSNumber(value: size), NSNumber(value: size)], dataType: .float32)
+        var chw = [Float](repeating: 0, count: 3 * size * size)
         for y in 0..<size {
             for x in 0..<size {
                 let offset = (y * size + x) * bytesPerPixel
                 let r = Float(pixelData[offset]) / 255.0
                 let g = Float(pixelData[offset + 1]) / 255.0
                 let b = Float(pixelData[offset + 2]) / 255.0
+                let idx = y * size + x
                 // Normalize: (pixel / 255 - 0.5) / 0.5 = pixel / 127.5 - 1.0
-                array[[0, 0, y, x] as [NSNumber]] = NSNumber(value: (r - 0.5) / 0.5)
-                array[[0, 1, y, x] as [NSNumber]] = NSNumber(value: (g - 0.5) / 0.5)
-                array[[0, 2, y, x] as [NSNumber]] = NSNumber(value: (b - 0.5) / 0.5)
+                chw[0 * size * size + idx] = (r - 0.5) / 0.5
+                chw[1 * size * size + idx] = (g - 0.5) / 0.5
+                chw[2 * size * size + idx] = (b - 0.5) / 0.5
             }
         }
-        return array
+        return chw
     }
 
-    private func createGrayPixelValues() -> MLMultiArray? {
-        guard let array = try? MLMultiArray(shape: [1, 3, 224, 224], dataType: .float32) else { return nil }
-        for i in 0..<array.count { array[i] = 0 }
-        return array
+    private func createGrayPixelValues() -> [Float]? {
+        guard requiresImageInput else { return nil }
+        return [Float](repeating: 0, count: 3 * 224 * 224)
     }
 
     /// Predict labels for words in OCR lines using batched inference.
     ///
-    /// This optimized version packs multiple lines into single CoreML calls
+    /// This optimized version packs multiple lines into single backend calls
     /// to reduce inference overhead. Lines are greedily packed into sequences
     /// that fit within the 512 token limit.
     ///
@@ -276,7 +255,7 @@ public class LayoutLMInference {
         var results: [LinePrediction?] = Array(repeating: nil, count: lines.count)
 
         // Prepare pixel_values once for all batches (v3 only, same image for all lines in a receipt)
-        let pixelValues: MLMultiArray? = try {
+        let pixelValues: [Float]? = try {
             guard let imageData = receiptImageData else { return createGrayPixelValues() }
             return try createPixelValues(from: imageData)
         }()
@@ -306,7 +285,7 @@ public class LayoutLMInference {
     /// (data_loader._build_receipt_window_examples; note Apple Vision boxes are
     /// bottom-left origin, so this is intentionally not human top-to-bottom) —
     /// cuts `windowSize`-word windows stepped by `windowStride`, runs each
-    /// window through CoreML, averages per-label probabilities for words that
+    /// window through the active backend, averages per-label probabilities for words that
     /// fall in overlapping windows, and regroups the result back into per-line
     /// `LinePrediction`s so the worker is unchanged.
     private func predictWindowed(lines: [Line], receiptImageData: Data?) throws -> [LinePrediction] {
@@ -352,7 +331,7 @@ public class LayoutLMInference {
             }
         }
 
-        let pixelValues: MLMultiArray? = try {
+        let pixelValues: [Float]? = try {
             guard requiresImageInput else { return nil }
             guard let imageData = receiptImageData else { return createGrayPixelValues() }
             return try createPixelValues(from: imageData)
@@ -412,14 +391,14 @@ public class LayoutLMInference {
         }
     }
 
-    /// Run one window of words through CoreML and return per-word softmax
+    /// Run one window of words through the active backend and return per-word softmax
     /// probability dicts (using the first subtoken per word, matching the
     /// trainer's first-subtoken supervision). Empty dict = word dropped by the
     /// tokenizer.
     private func runWindowProbs(
         words: [String],
         bboxes: [[Int32]],
-        pixelValues: MLMultiArray?
+        pixelValues: [Float]?
     ) throws -> [[String: Float]] {
         guard !words.isEmpty else { return [] }
 
@@ -433,23 +412,16 @@ public class LayoutLMInference {
             }
         }
 
-        let seqLength = tokenResult.inputIds.count
-        let inputIds = try createMultiArray(from: tokenResult.inputIds, shape: [1, seqLength])
-        let attentionMask = try createMultiArray(from: tokenResult.attentionMask, shape: [1, seqLength])
-        let tokenTypeIds = try createMultiArray(from: tokenResult.tokenTypeIds, shape: [1, seqLength])
-        let bbox = try createBboxMultiArray(from: bboxTensor, shape: [1, seqLength, 4])
-        let inputFeatures = LayoutLMInput(
-            input_ids: inputIds,
-            attention_mask: attentionMask,
-            bbox: bbox,
-            token_type_ids: tokenTypeIds,
-            pixel_values: pixelValues
+        let logits = try backend.predictLogits(
+            LayoutLMForwardInputs(
+                inputIds: tokenResult.inputIds.map { Int32($0) },
+                attentionMask: tokenResult.attentionMask.map { Int32($0) },
+                tokenTypeIds: tokenResult.tokenTypeIds.map { Int32($0) },
+                bbox: bboxTensor,
+                pixelValuesCHW: pixelValues
+            )
         )
-        let output = try model.prediction(from: inputFeatures)
-        guard let logits = output.featureValue(for: "logits")?.multiArrayValue else {
-            throw LayoutLMError.outputNotFound
-        }
-        let numLabels = logits.shape[2].intValue
+        let numLabels = logits.numLabels
 
         var wordToFirstToken: [Int: Int] = [:]
         for (tokenIdx, wordId) in tokenResult.wordIds.enumerated() {
@@ -466,7 +438,7 @@ public class LayoutLMInference {
             }
             var wordLogits = [Float](repeating: 0, count: numLabels)
             for labelIdx in 0..<numLabels {
-                wordLogits[labelIdx] = logits[tokenIdx * numLabels + labelIdx].floatValue
+                wordLogits[labelIdx] = logits.logit(token: tokenIdx, label: labelIdx)
             }
             let probs = softmax(wordLogits)
             var dict: [String: Float] = [:]
@@ -494,7 +466,7 @@ public class LayoutLMInference {
     /// Predict labels for a batch of lines packed into a single sequence.
     private func predictBatch(
         _ batch: [(lineIndex: Int, words: [String], bboxes: [[Int32]])],
-        pixelValues: MLMultiArray? = nil
+        pixelValues: [Float]? = nil
     ) throws -> [LinePrediction] {
         // Concatenate all words and bboxes, tracking line boundaries
         var allWords: [String] = []
@@ -521,26 +493,15 @@ public class LayoutLMInference {
             }
         }
 
-        // Create MLMultiArray inputs
-        let seqLength = tokenResult.inputIds.count
-        let inputIds = try createMultiArray(from: tokenResult.inputIds, shape: [1, seqLength])
-        let attentionMask = try createMultiArray(from: tokenResult.attentionMask, shape: [1, seqLength])
-        let tokenTypeIds = try createMultiArray(from: tokenResult.tokenTypeIds, shape: [1, seqLength])
-        let bbox = try createBboxMultiArray(from: bboxTensor, shape: [1, seqLength, 4])
-
-        // Create feature provider and run prediction
-        let inputFeatures = LayoutLMInput(
-            input_ids: inputIds,
-            attention_mask: attentionMask,
-            bbox: bbox,
-            token_type_ids: tokenTypeIds,
-            pixel_values: pixelValues
+        let logits = try backend.predictLogits(
+            LayoutLMForwardInputs(
+                inputIds: tokenResult.inputIds.map { Int32($0) },
+                attentionMask: tokenResult.attentionMask.map { Int32($0) },
+                tokenTypeIds: tokenResult.tokenTypeIds.map { Int32($0) },
+                bbox: bboxTensor,
+                pixelValuesCHW: pixelValues
+            )
         )
-        let output = try model.prediction(from: inputFeatures)
-
-        guard let logitsArray = output.featureValue(for: "logits")?.multiArrayValue else {
-            throw LayoutLMError.outputNotFound
-        }
 
         // Split predictions by line
         var predictions: [LinePrediction] = []
@@ -554,7 +515,7 @@ public class LayoutLMInference {
             let lineWordIds = (range.start..<(range.start + range.count))
 
             let prediction = aggregatePredictionsForLine(
-                logits: logitsArray,
+                logits: logits,
                 wordIds: tokenResult.wordIds,
                 targetWordIds: Set(lineWordIds),
                 words: Array(allWords[range.start..<(range.start + range.count)]),
@@ -576,13 +537,13 @@ public class LayoutLMInference {
     /// preceding `B-` because the averaged distribution drifted off the
     /// first-subtoken decision boundary.
     private func aggregatePredictionsForLine(
-        logits: MLMultiArray,
+        logits: LayoutLMLogits,
         wordIds: [Int?],
         targetWordIds: Set<Int>,
         words: [String],
         wordIdOffset: Int
     ) -> LinePrediction {
-        let numLabels = logits.shape[2].intValue
+        let numLabels = logits.numLabels
         let numWords = words.count
 
         // First subtoken index per word (only for words in this line).
@@ -610,8 +571,7 @@ public class LayoutLMInference {
 
             var wordLogits = [Float](repeating: 0, count: numLabels)
             for labelIdx in 0..<numLabels {
-                let index = tokenIdx * numLabels + labelIdx
-                wordLogits[labelIdx] = logits[index].floatValue
+                wordLogits[labelIdx] = logits.logit(token: tokenIdx, label: labelIdx)
             }
 
             let probs = softmax(wordLogits)
@@ -677,32 +637,19 @@ public class LayoutLMInference {
             }
         }
 
-        // Create MLMultiArray inputs
-        let seqLength = tokenResult.inputIds.count
-        let inputIds = try createMultiArray(from: tokenResult.inputIds, shape: [1, seqLength])
-        let attentionMask = try createMultiArray(from: tokenResult.attentionMask, shape: [1, seqLength])
-        let tokenTypeIds = try createMultiArray(from: tokenResult.tokenTypeIds, shape: [1, seqLength])
-        let bbox = try createBboxMultiArray(from: bboxTensor, shape: [1, seqLength, 4])
-
-        // Create feature provider
-        let inputFeatures = LayoutLMInput(
-            input_ids: inputIds,
-            attention_mask: attentionMask,
-            bbox: bbox,
-            token_type_ids: tokenTypeIds
+        let logits = try backend.predictLogits(
+            LayoutLMForwardInputs(
+                inputIds: tokenResult.inputIds.map { Int32($0) },
+                attentionMask: tokenResult.attentionMask.map { Int32($0) },
+                tokenTypeIds: tokenResult.tokenTypeIds.map { Int32($0) },
+                bbox: bboxTensor,
+                pixelValuesCHW: nil
+            )
         )
-
-        // Run prediction
-        let output = try model.prediction(from: inputFeatures)
-
-        // Get logits output
-        guard let logitsArray = output.featureValue(for: "logits")?.multiArrayValue else {
-            throw LayoutLMError.outputNotFound
-        }
 
         // Aggregate logits by word ID and compute predictions
         return aggregatePredictions(
-            logits: logitsArray,
+            logits: logits,
             wordIds: tokenResult.wordIds,
             words: texts,
             numWords: texts.count
@@ -711,12 +658,12 @@ public class LayoutLMInference {
 
     /// Aggregate subtoken logits by word and compute final predictions.
     private func aggregatePredictions(
-        logits: MLMultiArray,
+        logits: LayoutLMLogits,
         wordIds: [Int?],
         words: [String],
         numWords: Int
     ) -> LinePrediction {
-        let numLabels = logits.shape[2].intValue
+        let numLabels = logits.numLabels
 
         // First subtoken index per word (matches training-time supervision —
         // trainer.py labels first subtoken only, sets the rest to -100).
@@ -742,8 +689,7 @@ public class LayoutLMInference {
 
             var wordLogits = [Float](repeating: 0, count: numLabels)
             for labelIdx in 0..<numLabels {
-                let index = tokenIdx * numLabels + labelIdx
-                wordLogits[labelIdx] = logits[index].floatValue
+                wordLogits[labelIdx] = logits.logit(token: tokenIdx, label: labelIdx)
             }
 
             let probs = softmax(wordLogits)
@@ -796,86 +742,6 @@ public class LayoutLMInference {
         return expLogits.map { $0 / sumExp }
     }
 
-    // MARK: - Helper Methods
-
-    /// Create MLMultiArray from Int array.
-    private func createMultiArray(from array: [Int], shape: [Int]) throws -> MLMultiArray {
-        let expectedCount = shape.reduce(1, *)
-        guard expectedCount == array.count else {
-            throw LayoutLMError.predictionFailed(
-                "Shape \(shape) expects \(expectedCount) elements, got \(array.count)"
-            )
-        }
-        let mlArray = try MLMultiArray(shape: shape.map { NSNumber(value: $0) }, dataType: .int32)
-        for (idx, value) in array.enumerated() {
-            mlArray[idx] = NSNumber(value: Int32(value))
-        }
-        return mlArray
-    }
-
-    /// Create MLMultiArray for bbox tensor.
-    private func createBboxMultiArray(from bboxes: [[Int32]], shape: [Int]) throws -> MLMultiArray {
-        guard shape.count == 3, shape[0] == 1, shape[1] == bboxes.count, shape[2] == 4 else {
-            throw LayoutLMError.predictionFailed(
-                "Invalid bbox shape: \(shape) for \(bboxes.count) bboxes"
-            )
-        }
-        let mlArray = try MLMultiArray(shape: shape.map { NSNumber(value: $0) }, dataType: .int32)
-        for (seqIdx, bbox) in bboxes.enumerated() {
-            guard bbox.count == 4 else {
-                throw LayoutLMError.predictionFailed(
-                    "Bbox must have 4 coordinates, got \(bbox.count)"
-                )
-            }
-            for (coordIdx, value) in bbox.enumerated() {
-                let index = seqIdx * 4 + coordIdx
-                mlArray[index] = NSNumber(value: value)
-            }
-        }
-        return mlArray
-    }
-}
-
-// MARK: - CoreML Input Provider
-
-/// Feature provider for LayoutLM model inputs (v1 and v3).
-private class LayoutLMInput: MLFeatureProvider {
-    let input_ids: MLMultiArray
-    let attention_mask: MLMultiArray
-    let bbox: MLMultiArray
-    let token_type_ids: MLMultiArray
-    let pixel_values: MLMultiArray?
-
-    init(input_ids: MLMultiArray, attention_mask: MLMultiArray, bbox: MLMultiArray, token_type_ids: MLMultiArray, pixel_values: MLMultiArray? = nil) {
-        self.input_ids = input_ids
-        self.attention_mask = attention_mask
-        self.bbox = bbox
-        self.token_type_ids = token_type_ids
-        self.pixel_values = pixel_values
-    }
-
-    var featureNames: Set<String> {
-        var names: Set<String> = ["input_ids", "attention_mask", "bbox", "token_type_ids"]
-        if pixel_values != nil { names.insert("pixel_values") }
-        return names
-    }
-
-    func featureValue(for featureName: String) -> MLFeatureValue? {
-        switch featureName {
-        case "input_ids":
-            return MLFeatureValue(multiArray: input_ids)
-        case "attention_mask":
-            return MLFeatureValue(multiArray: attention_mask)
-        case "bbox":
-            return MLFeatureValue(multiArray: bbox)
-        case "token_type_ids":
-            return MLFeatureValue(multiArray: token_type_ids)
-        case "pixel_values":
-            return pixel_values.map { MLFeatureValue(multiArray: $0) }
-        default:
-            return nil
-        }
-    }
 }
 
 // MARK: - Errors
@@ -886,11 +752,13 @@ public enum LayoutLMError: Error, LocalizedError {
     case configNotFound(path: String)
     case outputNotFound
     case predictionFailed(String)
+    case invalidBackend(String)
+    case backendUnavailable(String)
 
     public var errorDescription: String? {
         switch self {
         case .modelNotFound(let path):
-            return "CoreML model not found at: \(path)"
+            return "LayoutLM model artifact not found at: \(path)"
         case .vocabNotFound(let path):
             return "Vocabulary file not found at: \(path)"
         case .configNotFound(let path):
@@ -899,6 +767,10 @@ public enum LayoutLMError: Error, LocalizedError {
             return "Model output 'logits' not found"
         case .predictionFailed(let message):
             return "Prediction failed: \(message)"
+        case .invalidBackend(let value):
+            return "Invalid LAYOUTLM_BACKEND '\(value)' (expected coreml|coreai)"
+        case .backendUnavailable(let message):
+            return "LayoutLM backend unavailable: \(message)"
         }
     }
 }

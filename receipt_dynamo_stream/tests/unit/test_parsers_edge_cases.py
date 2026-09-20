@@ -43,17 +43,6 @@ def test_detect_entity_type_word_label_variations() -> None:
         assert detect_entity_type(sk) == "RECEIPT_WORD_LABEL"
 
 
-def test_detect_entity_type_compaction_run_variations() -> None:
-    """Test various compaction run SK formats."""
-    test_cases = [
-        "RECEIPT#00001#COMPACTION_RUN#run-abc",
-        "RECEIPT#99999#COMPACTION_RUN#2024-01-01",
-        "ANYTHING#COMPACTION_RUN#test",
-    ]
-    for sk in test_cases:
-        assert detect_entity_type(sk) == "COMPACTION_RUN"
-
-
 def test_detect_entity_type_unknown_patterns() -> None:
     """Test SK patterns that don't match any entity type."""
     test_cases = [

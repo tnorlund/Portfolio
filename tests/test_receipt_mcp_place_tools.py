@@ -2,7 +2,7 @@
 
 Both the local stdio server (``scripts/receipt_mcp_server.py``) and the
 deployed Lambda server
-(``infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py``) must
+(the package staged by the Lambda Dockerfile) must
 expose the same place tooling: find_places, set_receipt_place, and the
 locally-executed fix_place. This guards the dual-server contract the
 same way the line-item tool tests do.

@@ -2,7 +2,7 @@
 # Wraps the receipt MCP server for API Gateway and Lambda Function URL access
 
 # Stage 1: Build and install dependencies (cached layer)
-FROM public.ecr.aws/lambda/python:3.13 AS dependencies
+FROM public.ecr.aws/lambda/python:3.14 AS dependencies
 
 # Set environment variable to avoid compilation issues with hnswlib
 ENV HNSWLIB_NO_NATIVE=1
@@ -10,25 +10,22 @@ ENV HNSWLIB_NO_NATIVE=1
 # Copy only the dependency packages (triggers rebuild only when these change)
 COPY receipt_dynamo/ /tmp/receipt_dynamo/
 COPY receipt_embeddings/ /tmp/receipt_embeddings/
-COPY receipt_chroma/ /tmp/receipt_chroma/
 COPY receipt_upload/ /tmp/receipt_upload/
 COPY receipt_places/ /tmp/receipt_places/
 COPY receipt_agent/ /tmp/receipt_agent/
 
 # Install dependencies from pyproject.toml files in dependency order
 # receipt_embeddings depends on receipt_dynamo
-# receipt_chroma depends on receipt_dynamo and receipt_embeddings
 # receipt_places depends on receipt_dynamo
-# receipt_upload depends on receipt_dynamo, receipt_chroma, and receipt_places
-# receipt_agent depends on receipt_dynamo, receipt_chroma, receipt_upload, and receipt_places
+# receipt_upload depends on receipt_dynamo, receipt_embeddings, receipt_places
+# receipt_agent depends on receipt_dynamo, receipt_upload, and receipt_places
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && \
     pip install --no-cache-dir --no-deps /tmp/receipt_embeddings && \
-    pip install --no-cache-dir /tmp/receipt_chroma && \
     pip install --no-cache-dir /tmp/receipt_places && \
     pip install --no-cache-dir /tmp/receipt_upload && \
     pip install --no-cache-dir /tmp/receipt_agent && \
     pip install --no-cache-dir "mcp>=1.26.0,<2" run-mcp-servers-with-aws-lambda==0.5.21 && \
-    rm -rf /tmp/receipt_dynamo /tmp/receipt_embeddings /tmp/receipt_chroma /tmp/receipt_upload /tmp/receipt_places /tmp/receipt_agent
+    rm -rf /tmp/receipt_dynamo /tmp/receipt_embeddings /tmp/receipt_upload /tmp/receipt_places /tmp/receipt_agent
 
 # Stage 2: Copy Lambda-specific code (changes frequently, but doesn't invalidate deps cache)
 FROM dependencies
@@ -36,8 +33,8 @@ FROM dependencies
 # Create receipt_mcp_server package directory
 RUN mkdir -p ${LAMBDA_TASK_ROOT}/receipt_mcp_server
 
-# Copy the receipt MCP server as the package's server module
-COPY infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py ${LAMBDA_TASK_ROOT}/receipt_mcp_server/server.py
+# Ship the same server used by the local stdio entry point.
+COPY scripts/receipt_mcp_server.py ${LAMBDA_TASK_ROOT}/receipt_mcp_server/server.py
 
 # Copy the Lambda-aware __init__ and __main__ for the package
 COPY infra/mcp_server_lambda/lambdas/receipt_mcp_server_init.py ${LAMBDA_TASK_ROOT}/receipt_mcp_server/__init__.py

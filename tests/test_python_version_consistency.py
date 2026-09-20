@@ -9,7 +9,7 @@ import scripts.check_python_version_consistency as checker
 
 
 def test_python_version_declarations_are_consistent() -> None:
-    """Every active package and deployment target should use Python 3.13."""
+    """Package tooling sits on the 3.14 baseline; LayoutLM files may name 3.13."""
     assert checker.check_repository() == []
 
 
@@ -20,7 +20,8 @@ def test_python_version_declarations_are_consistent() -> None:
         "python-version: '3." + "12'",
         "Python 3." + "11 is required.",
         "Create the environment with python3." + "10.",
-        "Python 3." + "14 is required.",
+        "Python 3." + "13 is required.",
+        "Python 3." + "15 is required.",
         "Python 2." + "7 is unsupported.",
     ],
 )
@@ -47,21 +48,38 @@ def test_maintained_documentation_is_scanned(
 
 
 @pytest.mark.parametrize("suffix", sorted(checker.DOCUMENT_SUFFIXES))
-def test_python_313_documentation_is_accepted(
+def test_supported_runtime_documentation_is_accepted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     suffix: str,
 ) -> None:
-    """The active Python 3.13 baseline is valid in every documentation form."""
+    """General setup documentation uses the repository baseline."""
     monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
     guide = tmp_path / "docs" / "development" / f"setup{suffix}"
     guide.parent.mkdir(parents=True)
     guide.write_text(
-        "Python 3.13+ is required; use python3.13 to create the venv.\n",
+        "Python 3.14 is required; use python3.14 for this target.\n",
         encoding="utf-8",
     )
 
     assert checker._check_runtime_files() == []
+
+
+def test_layoutlm_runtime_exception_is_limited_to_reviewed_guide(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
+    guide = tmp_path / "AGENTS.md"
+    floor = "Python 3." + "13"
+    guide.write_text(f"Baseline Python 3.14; LayoutLM stays on {floor}.\n")
+    assert checker._check_runtime_files() == []
+    guide.write_text("Baseline Python 3.14; LayoutLM stays on Python 3.12.\n")
+    assert len(checker._check_runtime_files()) == 1
+    guide.write_text("Baseline Python 3.14.\n")
+    other = tmp_path / "docs" / "guide.md"
+    other.parent.mkdir()
+    other.write_text(f"Use {floor} here.\n")
+    assert len(checker._check_runtime_files()) == 1
 
 
 @pytest.mark.parametrize("historical_root", checker.HISTORICAL_DOCUMENT_ROOTS)
@@ -140,6 +158,63 @@ def test_maintained_pyprojects_are_still_validated(
     assert any("requires-python" in error for error in errors)
     assert any("Python classifiers" in error for error in errors)
     assert any("Black target-version" in error for error in errors)
+
+
+def _write_pyproject(path: Path, name: str, classifiers: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["[project]", f'name = "{name}"', 'requires-python = ">=3.13"']
+    lines.append("classifiers = [")
+    lines.extend(
+        f'  "Programming Language :: Python :: {version}",'
+        for version in classifiers
+    )
+    lines.append("]")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_floor_pyproject_may_advertise_both_runtimes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The LayoutLM package deploys on 3.13 but its base deps run on 3.14."""
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
+    floor_only = Path("receipt_layoutlm/pyproject.toml")
+    monkeypatch.setattr(checker, "SECONDARY_RUNTIME_PYPROJECTS", {floor_only})
+    pyproject = tmp_path / floor_only
+
+    _write_pyproject(pyproject, "receipt_layoutlm", ["3.13"])
+    assert checker._check_pyprojects() == []
+
+    _write_pyproject(pyproject, "receipt_layoutlm", ["3.13", "3.14"])
+    assert checker._check_pyprojects() == []
+
+    _write_pyproject(pyproject, "receipt_layoutlm", ["3.14"])
+    errors = checker._check_pyprojects()
+    assert len(errors) == 1
+    assert "expected 3.13 (optionally with 3.14)" in errors[0]
+
+    _write_pyproject(pyproject, "receipt_layoutlm", ["3.13", "3." + "15"])
+    assert len(checker._check_pyprojects()) == 1
+
+
+def test_baseline_pyproject_may_advertise_floor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Shared packages must name 3.14 and may add 3.13, nothing else."""
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", tmp_path)
+    pyproject = tmp_path / "receipt_dynamo" / "pyproject.toml"
+
+    _write_pyproject(pyproject, "receipt_dynamo", ["3.14"])
+    assert checker._check_pyprojects() == []
+
+    _write_pyproject(pyproject, "receipt_dynamo", ["3.13", "3.14"])
+    assert checker._check_pyprojects() == []
+
+    _write_pyproject(pyproject, "receipt_dynamo", ["3.13"])
+    errors = checker._check_pyprojects()
+    assert len(errors) == 1
+    assert "expected 3.14 (optionally with 3.13)" in errors[0]
 
 
 def test_malformed_maintained_pyproject_is_not_silently_ignored(

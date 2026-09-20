@@ -650,7 +650,6 @@ def test_handler_runs_embedding_after_ocr_persistence(monkeypatch):
         "SITE_BUCKET": "site-bucket",
         "OCR_JOB_QUEUE_URL": "https://sqs.test/jobs",
         "OCR_RESULTS_QUEUE_URL": "https://sqs.test/results",
-        "CHROMADB_BUCKET": "chroma-bucket",
     }.items():
         monkeypatch.setenv(key, value)
 
@@ -787,6 +786,48 @@ def test_section_observability_flags_reconstructed_rows(monkeypatch):
     assert metrics["UploadLambdaReceiptRows"] == 5.0
     # Absent stats (e.g. no sections proposed key) are omitted, not zeroed.
     assert "UploadLambdaSectionsProposed" not in metrics
+
+
+def test_section_verification_error_is_alarmable_without_other_stats(
+    monkeypatch, capsys
+):
+    from handler import handler as handler_module
+    from handler.metrics import EmbeddedMetricsFormatter
+
+    monkeypatch.setenv("ENABLE_METRICS", "true")
+    monkeypatch.setenv("DYNAMODB_TABLE_NAME", "receipts-test")
+    monkeypatch.setattr(
+        handler_module, "emf_metrics", EmbeddedMetricsFormatter()
+    )
+    handler_module._emit_section_observability(
+        IMAGE_ID, 1, {"verification_error": "vector service unavailable"}
+    )
+
+    emitted = json.loads(capsys.readouterr().out)
+    metric = emitted["_aws"]["CloudWatchMetrics"][0]
+    assert metric["Namespace"] == "EmbeddingWorkflow"
+    assert metric["Dimensions"] == [["TableName"]]
+    assert metric["Metrics"] == [
+        {"Name": "UploadLambdaSectionVerificationError", "Unit": "Count"}
+    ]
+    assert emitted["TableName"] == "receipts-test"
+    assert emitted["UploadLambdaSectionVerificationError"] == 1.0
+    assert emitted["verification_error"] == "vector service unavailable"
+
+
+def test_section_error_keeps_existing_metrics_undimensioned(monkeypatch):
+    from handler import handler as handler_module
+
+    recorder = _MetricsRecorder()
+    monkeypatch.setenv("DYNAMODB_TABLE_NAME", "receipts-test")
+    monkeypatch.setattr(handler_module, "emf_metrics", recorder)
+    handler_module._emit_section_observability(
+        IMAGE_ID, 1, {"row_count": 3, "verification_error": "unavailable"}
+    )
+    assert len(recorder.calls) == 2
+    assert recorder.calls[0]["dimensions"] == {"TableName": "receipts-test"}
+    assert recorder.calls[1]["dimensions"] is None
+    assert recorder.calls[1]["metrics"] == {"UploadLambdaReceiptRows": 3.0}
 
 
 def test_section_observability_is_silent_without_stats(monkeypatch):

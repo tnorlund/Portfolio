@@ -1,9 +1,21 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import fs from "fs";
 import path from "path";
 import SynthesisPipeline, { advanceAutoplay } from ".";
 import { knockOutReceiptPaper } from "./Acts";
-import { ACT_COUNT, ACTS } from "./pipelineData";
+import {
+  ACT_COUNT,
+  ACTS,
+  MERCHANTS,
+  MERCHANT_LABELS,
+  RECEIPT_DIMS,
+} from "./pipelineData";
 import { LABEL_COLORS } from "../labelStyles";
 import { LabelLegend } from "../labelBoxOverlay";
 
@@ -17,7 +29,7 @@ const PIPELINE_DIR = path.join(
 );
 
 // Serve real committed JSON (skeleton, dot_params) through fetch; JSON assets
-// that have not been generated yet (style/compose/final) resolve to !ok so the
+// that have not been generated yet (compose/final) resolve to !ok so the
 // missing-asset fallbacks are exercised exactly as production would hit them.
 const mockFetch = () =>
   jest.fn((input: RequestInfo | URL) => {
@@ -76,27 +88,41 @@ const flushAssets = async () => {
 
 test("receipt-paper knockout converts luminance to transparent ink alpha", () => {
   const pixels = new Uint8ClampedArray([
-    255, 255, 255, 255, // white paper -> transparent
-    0, 0, 0, 255, // black ink -> opaque
-    127, 127, 127, 255, // gray antialiasing -> partial alpha
-    230, 230, 230, 255, // near-paper scan shading -> transparent
-    0, 0, 0, 0, // transparent source remains transparent
+    255,
+    255,
+    255,
+    255, // white paper -> transparent
+    0,
+    0,
+    0,
+    255, // black ink -> opaque
+    127,
+    127,
+    127,
+    255, // gray antialiasing -> partial alpha
+    230,
+    230,
+    230,
+    255, // near-paper scan shading -> transparent
+    0,
+    0,
+    0,
+    0, // transparent source remains transparent
   ]);
 
   knockOutReceiptPaper(pixels);
 
   expect(Array.from(pixels)).toEqual([
-    0, 0, 0, 0,
-    0, 0, 0, 255,
-    0, 0, 0, 124,
-    0, 0, 0, 0,
-    0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 124, 0, 0, 0, 0, 0, 0, 0, 0,
   ]);
 });
 
 test("font metrics cover every glyph and match the committed PNG dimensions", () => {
   const metrics = JSON.parse(
-    fs.readFileSync(path.join(PIPELINE_DIR, "sprouts/font_metrics.json"), "utf-8"),
+    fs.readFileSync(
+      path.join(PIPELINE_DIR, "sprouts/font_metrics.json"),
+      "utf-8",
+    ),
   ) as {
     capHeight: number;
     glyphs: Record<string, { width: number; height: number; offset: number }>;
@@ -164,8 +190,9 @@ describe("SynthesisPipeline (autoplay mode)", () => {
         (path) => path.getAttribute("fill") === "currentColor",
       ),
     ).toBe(true);
-    expect(screen.getAllByRole("img", { name: /real sprouts receipt scan/i }))
-      .toHaveLength(3);
+    expect(
+      screen.getAllByRole("img", { name: /real sprouts receipt scan/i }),
+    ).toHaveLength(3);
   });
 
   test("chrome is gone: no visible caption/eyebrow, act label is sr-only", async () => {
@@ -214,39 +241,32 @@ describe("SynthesisPipeline (autoplay mode)", () => {
 });
 
 describe("SynthesisPipeline finale act", () => {
-  test("renders one receipt card per merchant (all six, in order)", async () => {
+  test("renders one receipt card per manifest merchant, in card order", async () => {
     render(<SynthesisPipeline />);
     await flushAssets();
 
     fireEvent.click(screen.getByTestId(`act-dot-${ACT_COUNT - 1}`));
     await flushAssets();
 
+    // The generated MERCHANTS table (from pipeline_merchants.json) is the
+    // card list; sprouts stays the hero and opens the fan.
+    expect(MERCHANTS.length).toBeGreaterThanOrEqual(8);
+    expect(MERCHANTS[0]).toBe("sprouts");
     const cards = screen.getAllByTestId("finale-card");
-    expect(cards).toHaveLength(8);
-    expect(cards.map((c) => c.getAttribute("data-merchant"))).toEqual([
-      "sprouts",
-      "costco",
-      "vons",
-      "traderjoes",
-      "cvs",
-      "target",
-      "innout",
-      "wildfork",
-    ]);
+    expect(cards).toHaveLength(MERCHANTS.length);
+    expect(cards.map((c) => c.getAttribute("data-merchant"))).toEqual(
+      MERCHANTS,
+    );
     // Each merchant is identified by its logo mark (currentColor mask), not a
     // text caption.
-    [
-      "Sprouts",
-      "Costco",
-      "Vons",
-      "Trader Joe's",
-      "CVS",
-      "Target",
-      "In-N-Out",
-      "Wild Fork",
-    ].forEach((name) =>
+    MERCHANTS.forEach((merchant) =>
       expect(
-        screen.getByRole("img", { name: new RegExp(`${name} logo`, "i") }),
+        screen.getByRole("img", {
+          name: new RegExp(
+            `${MERCHANT_LABELS[merchant].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} logo`,
+            "i",
+          ),
+        }),
       ).toBeInTheDocument(),
     );
   });
@@ -259,8 +279,10 @@ describe("SynthesisPipeline finale act", () => {
     await flushAssets();
 
     // Every card overlays the real scan on the synthesized render.
-    expect(screen.getAllByTestId("finale-image")).toHaveLength(8);
-    expect(screen.getAllByTestId("finale-real")).toHaveLength(8);
+    expect(screen.getAllByTestId("finale-image")).toHaveLength(
+      MERCHANTS.length,
+    );
+    expect(screen.getAllByTestId("finale-real")).toHaveLength(MERCHANTS.length);
     const sprouts = screen.getByRole("img", {
       name: /synthetic sprouts receipt/i,
     });
@@ -285,27 +307,20 @@ describe("SynthesisPipeline finale act", () => {
         .getAllByTestId("finale-card")
         .find((c) => c.getAttribute("data-merchant") === merchant)!
         .querySelector<HTMLElement>('[data-testid="finale-frame"]')!;
-    const sprouts = frameFor("sprouts").style.aspectRatio;
-    const costco = frameFor("costco").style.aspectRatio;
-    const vons = frameFor("vons").style.aspectRatio;
-    const traderjoes = frameFor("traderjoes").style.aspectRatio;
-    const cvs = frameFor("cvs").style.aspectRatio;
-    const target = frameFor("target").style.aspectRatio;
-    const innout = frameFor("innout").style.aspectRatio;
-    const wildfork = frameFor("wildfork").style.aspectRatio;
-    expect(sprouts).toBe("760 / 2471");
-    expect(costco).toBe("760 / 2999");
-    expect(vons).toBe("760 / 2732");
-    expect(traderjoes).toBe("760 / 2023");
-    expect(cvs).toBe("760 / 2771");
-    expect(target).toBe("760 / 1878");
-    expect(innout).toBe("760 / 1958");
-    expect(wildfork).toBe("760 / 2678");
-    // Distinct proportions -> visibly different heights at a common width.
-    expect(
-      new Set([sprouts, costco, vons, traderjoes, cvs, target, innout, wildfork])
-        .size,
-    ).toBe(8);
+    const ratios = MERCHANTS.map((merchant) => {
+      const { w, h } = RECEIPT_DIMS[merchant];
+      const ratio = frameFor(merchant).style.aspectRatio;
+      expect(ratio).toBe(`${w} / ${h}`);
+      expect(w).toBe(760);
+      expect(h).toBeGreaterThan(1000);
+      return ratio;
+    });
+    // Costco (tallest) and Target (shortest of the originals) must differ, and
+    // the fan must show several distinct heights at a common width.
+    expect(RECEIPT_DIMS.costco.h).toBeGreaterThan(RECEIPT_DIMS.target.h);
+    expect(new Set(ratios).size).toBeGreaterThanOrEqual(
+      Math.min(MERCHANTS.length, 6),
+    );
   });
 
   test("a receipt image that fails to load degrades to a named fallback", async () => {
@@ -358,8 +373,8 @@ describe("SynthesisPipeline (reduced motion)", () => {
     expect(screen.getByTestId("static-act-finale")).toBeInTheDocument();
     // The merged character act still draws the pen path over the cloud.
     expect(screen.getByTestId("act-character")).toBeInTheDocument();
-    // The finale fans out to six merchant cards.
-    expect(screen.getAllByTestId("finale-card")).toHaveLength(8);
+    // The finale fans out to one card per manifest merchant.
+    expect(screen.getAllByTestId("finale-card")).toHaveLength(MERCHANTS.length);
   });
 
   test("the font atlas marks exactly one hero cell (the FLIP target)", async () => {
@@ -380,8 +395,7 @@ describe("SynthesisPipeline (reduced motion)", () => {
     // The glyph div paints currentColor through an alpha mask of the glyph png.
     // (jsdom drops -webkit- props from the serialized style; the -webkit-mask
     // + rendered currentColor are asserted in the Playwright gate instead.)
-    const glyph = screen
-      .getAllByTestId("font-cell")[0]
+    const glyph = screen.getAllByTestId("font-cell")[0]
       .firstElementChild as HTMLElement;
     const style = glyph.getAttribute("style") || "";
     expect(style).toMatch(/mask-image:\s*url\([^)]*font_grid[^)]*\.png/);
@@ -389,14 +403,11 @@ describe("SynthesisPipeline (reduced motion)", () => {
   });
 
   test("atlas fallback keeps glyph masks proportional while metrics load", () => {
-    global.fetch = jest.fn(
-      () => new Promise<Response>(() => {}),
-    ) as jest.Mock;
+    global.fetch = jest.fn(() => new Promise<Response>(() => {})) as jest.Mock;
 
     render(<SynthesisPipeline />);
 
-    const glyph = screen
-      .getAllByTestId("font-cell")[0]
+    const glyph = screen.getAllByTestId("font-cell")[0]
       .firstElementChild as HTMLElement;
     const style = glyph.getAttribute("style") || "";
     expect(style).toMatch(/mask-size:\s*contain/);
@@ -409,7 +420,9 @@ describe("SynthesisPipeline (reduced motion)", () => {
     const cellFor = (codepoint: number) =>
       screen
         .getAllByTestId("font-cell")
-        .find((cell) => cell.getAttribute("data-codepoint") === String(codepoint));
+        .find(
+          (cell) => cell.getAttribute("data-codepoint") === String(codepoint),
+        );
     const uppercase = cellFor(65)?.firstElementChild as HTMLElement;
     const lowercase = cellFor(97)?.firstElementChild as HTMLElement;
 
@@ -442,7 +455,9 @@ describe("SynthesisPipeline (reduced motion)", () => {
     fireEvent.change(slider, { target: { value: "1.33" } });
     expect(screen.getByText("1.33")).toBeInTheDocument();
     // Reaching the bold weight surfaces the merchant's measured-weight callout.
-    expect(screen.getByText(/measured BALANCE DUE weight/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/measured BALANCE DUE weight/i),
+    ).toBeInTheDocument();
   });
 
   test("the assemble act types the receipt then draws LayoutLM boxes", async () => {

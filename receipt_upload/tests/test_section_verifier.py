@@ -15,24 +15,23 @@ _UPLOAD = "00000000-0000-4000-8000-000000000001"
 _NEIGHBOR = "00000000-0000-4000-8000-000000000002"
 
 
-class FakeChroma:
-    def query(self, **_kwargs):
-        return {
-            "ids": [[f"IMAGE#{_NEIGHBOR}#RECEIPT#00002#LINE#00020"]],
-            "metadatas": [
-                [
-                    {
-                        "image_id": _NEIGHBOR,
-                        "receipt_id": 2,
-                        "row_line_ids": "[20]",
-                    }
-                ]
-            ],
-            "distances": [[0.0]],
-        }
+class FakeVector:
+    def search(self, vector, index, top_k, filters=None):
+        del vector, index, top_k, filters
+        return [
+            ScoredItem(
+                key=f"IMAGE#{_NEIGHBOR}#RECEIPT#00002#LINE#00020",
+                distance=0.0,
+                metadata={
+                    "image_id": _NEIGHBOR,
+                    "receipt_id": 2,
+                    "row_line_ids": "[20]",
+                },
+            )
+        ]
 
-    def get(self, **_kwargs):
-        return {"embeddings": [[1.0, 0.0]]}
+    def get_vector(self, _key):
+        return [1.0, 0.0]
 
 
 class FailingVector:
@@ -126,7 +125,10 @@ def test_disagreement_is_recorded_without_overriding_sync_assignment(
     dynamo = FakeDynamo(proposed, valid_neighbor)
 
     verified = verify_receipt_sections(
-        FakeChroma(), dynamo, [row], [[1.0, 0.0]]
+        dynamo,
+        [row],
+        [[1.0, 0.0]],
+        vector_client=FakeVector(),
     )
 
     assert verified[0].section_type == "TOTAL_LINE"
@@ -176,7 +178,6 @@ def test_vector_failure_abstains_without_crashing(failure_stage: str) -> None:
     dynamo = FakeDynamo(proposed, valid_neighbor)
 
     verified = verify_receipt_sections(
-        FakeChroma(),
         dynamo,
         [row],
         [[1.0, 0.0]],

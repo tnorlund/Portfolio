@@ -16,17 +16,10 @@ Environment:
     Requires Pulumi config for DynamoDB credentials.
     Set PORTFOLIO_ENV=dev or PORTFOLIO_ENV=prod
 
-    Chroma Cloud credentials are OPTIONAL: without them the server still
-    starts and serves every Dynamo-backed tool; only the vector-search
-    tools (search_receipts, list_all_receipts, search_product_lines,
-    validate_word_similarity) return a structured error at call time.
-    CHROMA_CLOUD_ENABLED / CHROMA_CLOUD_API_KEY / CHROMA_CLOUD_TENANT /
-    CHROMA_CLOUD_DATABASE environment variables override Pulumi config
-    (e.g. CHROMA_CLOUD_ENABLED=false runs Dynamo-only).
-
-    VECTOR_BACKEND=dynamodb serves the SEMANTIC search modes and
-    similar_labeled_words from the DynamoDB vector indexes instead of
-    Chroma; text/substring modes still require Chroma.
+    The semantic search tools (search_receipts, search_product_lines)
+    embed the query with OpenAI and retrieve through the receipt table's
+    DynamoDB vector indexes; every other tool is served from DynamoDB /
+    Lambda / Athena directly.
 """
 
 import asyncio
@@ -38,7 +31,9 @@ import re
 import sys
 import urllib.request
 from collections import defaultdict
-from typing import Any, Optional
+from collections.abc import Awaitable, Callable
+from functools import partial
+from typing import TYPE_CHECKING, Any, Optional
 
 # Add paths for local packages
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -47,7 +42,6 @@ sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_agent"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_upload"))
-sys.path.insert(0, os.path.join(parent_dir, "receipt_chroma"))
 sys.path.insert(0, os.path.join(parent_dir, "receipt_embeddings"))
 
 from mcp.server import Server
@@ -65,79 +59,70 @@ from receipt_dynamo.constants import (  # noqa: E402
     normalize_label_alias,
 )
 
+if TYPE_CHECKING:
+    from receipt_dynamo import DynamoClient
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Global clients (initialized lazily on first use)
 _dynamo_client = None
-_chroma_client = None
 _embed_fn = None
-_config = None
+_config: dict[str, Any] | None = None
+ModelActivator = Callable[["DynamoClient", str], Awaitable[dict[str, Any]]]
 
-# Tools that require Chroma Cloud (vector/embedding search). Every other
-# tool is served from DynamoDB / Lambda / Athena and must keep working
-# when Chroma Cloud is not configured.
-CHROMA_TOOLS = frozenset(
-    {
-        "search_receipts",
-        "list_all_receipts",
-        "search_product_lines",
-        "validate_word_similarity",
+# Tools that embed the query (OpenAI) before searching the DynamoDB vector
+# indexes. Every other tool is served from DynamoDB / Lambda / Athena.
+VECTOR_TOOLS = frozenset({"search_receipts", "search_product_lines"})
+
+
+def _mode_unavailable(search_type: str, query: str) -> dict:
+    """Structured result for retired substring/label search modes."""
+    return {
+        "search_type": search_type,
+        "query": query,
+        "error": (
+            f"search_type '{search_type}' is not supported by the "
+            "DynamoDB vector indexes; use 'semantic' or the "
+            "DynamoDB-backed tools instead"
+        ),
+        "total_matches": 0,
+        "results": [],
     }
-)
-
-CHROMA_NOT_CONFIGURED_MESSAGE = (
-    "Chroma Cloud not configured: set CHROMA_CLOUD_ENABLED=true and "
-    "CHROMA_CLOUD_API_KEY (plus CHROMA_CLOUD_TENANT / "
-    "CHROMA_CLOUD_DATABASE) in Pulumi config or the environment to "
-    "enable semantic search."
-)
-
-
-class ChromaNotConfiguredError(RuntimeError):
-    """Raised when a Chroma-backed tool is called without Chroma Cloud creds."""
 
 
 _vector_search_client = None
 
 
-def _vector_backend() -> str:
-    return os.environ.get("VECTOR_BACKEND", "chroma").strip().lower()
-
-
-def get_vector_search_client(chroma_client=None):
+def get_vector_search_client():
     """Resolve the similarity backend for SEMANTIC retrieval.
 
-    Default (VECTOR_BACKEND unset or "chroma"): wrap the provided — or
-    lazily created — Chroma client, preserving today's behavior.
-    VECTOR_BACKEND=dynamodb: SearchVectors on the receipt table's vector
-    indexes; Chroma credentials are then unnecessary for semantic modes.
+    SearchVectors on the receipt table's vector indexes. The session's
+    configured table (and its low-level boto3 client) is threaded
+    through, so semantic search targets the SAME table as every other
+    tool instead of backend.py's environment fallback (E3 review P1-3).
     """
     global _vector_search_client
 
     from receipt_embeddings.backend import vector_search_client
 
-    if _vector_backend() == "dynamodb":
-        if _vector_search_client is None:
-            # Thread this session's configured table (and its low-level
-            # boto3 client) through, so semantic search targets the SAME
-            # table as every other tool instead of backend.py's
-            # environment fallback (E3 review P1-3).
-            dynamo_client = get_dynamo_client()
-            _vector_search_client = vector_search_client(
-                None,
-                dynamodb_client=getattr(dynamo_client, "_client", None),
-                table_name=getattr(dynamo_client, "table_name", None),
-            )
-        return _vector_search_client
-    if chroma_client is None:
-        chroma_client, _ = get_chroma_clients()
-    return vector_search_client(chroma_client)
+    if _vector_search_client is None:
+        dynamo_client = get_dynamo_client()
+        _vector_search_client = vector_search_client(
+            dynamodb_client=getattr(dynamo_client, "_client", None),
+            table_name=getattr(dynamo_client, "table_name", None),
+        )
+    return _vector_search_client
 
 
-def _load_config():
-    """Load and cache Pulumi config + secrets (env vars override Chroma keys)."""
+def _load_config(
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Cache supplied Lambda configuration or load local Pulumi settings."""
     global _config
+
+    if config is not None:
+        _config = config
 
     if _config is None:
         from receipt_dynamo.data._pulumi import load_env, load_secrets
@@ -155,39 +140,16 @@ def _load_config():
             )
             config[normalized_key] = value
 
-        # Environment variables override Pulumi config for the Chroma keys,
-        # so the server can run Dynamo-only (CHROMA_CLOUD_ENABLED=false) or
-        # be pointed at Chroma without Pulumi.
-        for env_key in (
-            "CHROMA_CLOUD_ENABLED",
-            "CHROMA_CLOUD_API_KEY",
-            "CHROMA_CLOUD_TENANT",
-            "CHROMA_CLOUD_DATABASE",
-        ):
-            if os.environ.get(env_key) is not None:
-                config[env_key.lower()] = os.environ[env_key]
-
-        # Set up API keys
-        if config.get("openai_api_key"):
-            os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = config[
-                "openai_api_key"
-            ]
-
         _config = config
+
+    if _config.get("openai_api_key"):
+        os.environ["RECEIPT_AGENT_OPENAI_API_KEY"] = _config["openai_api_key"]
 
     return _config
 
 
-def chroma_is_configured(config) -> bool:
-    """True when Chroma Cloud is enabled and an API key is present."""
-    enabled = (
-        str(config.get("chroma_cloud_enabled", "false")).lower() == "true"
-    )
-    return enabled and bool(config.get("chroma_cloud_api_key"))
-
-
 def get_dynamo_client():
-    """Get or initialize the DynamoDB client (no Chroma required)."""
+    """Get or initialize the DynamoDB client."""
     global _dynamo_client
 
     if _dynamo_client is None:
@@ -202,44 +164,22 @@ def get_dynamo_client():
     return _dynamo_client
 
 
-def get_chroma_clients():
-    """Get or initialize the Chroma Cloud client and embedding function.
+def get_embed_fn():
+    """Get or initialize the OpenAI embedding function.
 
-    Raises ChromaNotConfiguredError when Chroma Cloud credentials are
-    absent, so Chroma-backed tools fail cleanly at call time instead of
-    the server crashing at startup.
+    Only the VECTOR_TOOLS need it; it is built lazily so every other tool
+    works without an OpenAI key.
     """
-    global _chroma_client, _embed_fn
+    global _embed_fn
 
-    if _chroma_client is None:
+    if _embed_fn is None:
         from receipt_agent.clients.factory import create_embed_fn
-        from receipt_chroma import ChromaClient
 
-        config = _load_config()
-        if not chroma_is_configured(config):
-            raise ChromaNotConfiguredError(CHROMA_NOT_CONFIGURED_MESSAGE)
-
-        _chroma_client = ChromaClient(
-            cloud_api_key=config.get("chroma_cloud_api_key"),
-            cloud_tenant=config.get("chroma_cloud_tenant"),
-            cloud_database=config.get("chroma_cloud_database"),
-            mode="read",
-        )
+        _load_config()
         _embed_fn = create_embed_fn()
-        logger.info("Chroma clients initialized")
+        logger.info("Embedding function initialized")
 
-    return _chroma_client, _embed_fn
-
-
-def get_clients():
-    """Get or initialize all database clients (requires Chroma Cloud).
-
-    Backwards-compatible wrapper; prefer get_dynamo_client() /
-    get_chroma_clients() so Dynamo-only tools work without Chroma creds.
-    """
-    dynamo_client = get_dynamo_client()
-    chroma_client, embed_fn = get_chroma_clients()
-    return dynamo_client, chroma_client, embed_fn
+    return _embed_fn
 
 
 # Create MCP server
@@ -411,30 +351,26 @@ async def list_tools() -> list[Tool]:
     return [
         Tool(
             name="search_receipts",
-            description="""Search for receipts by text content, label type, or semantic similarity.
-
-Use search_type:
-- "text": Exact text match (e.g., query="COFFEE", "MILK", "COSTCO")
-- "label": Search by label type (e.g., query="TAX", "GRAND_TOTAL", "MERCHANT_NAME")
-- "semantic": Meaning-based similarity (e.g., query="coffee purchases", "dairy products")
+            description="""Search for receipts by semantic similarity over their line text.
 
 Examples:
-- search_receipts("COFFEE", "text") - find receipts mentioning coffee
-- search_receipts("COSTCO", "text") - find Costco receipts
-- search_receipts("GRAND_TOTAL", "label") - find receipts with totals
-- search_receipts("breakfast items", "semantic") - semantic search""",
+- search_receipts("coffee purchases") - receipts with coffee-like lines
+- search_receipts("breakfast items") - semantic search
+
+For exact merchant lookups use list_merchants / get_receipts_by_merchant;
+for label-driven questions use list_words_by_label.""",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "Search term - product name, label type, or natural language",
+                        "description": "Natural-language description of the receipts to find",
                     },
                     "search_type": {
                         "type": "string",
-                        "enum": ["text", "label", "semantic"],
-                        "default": "text",
-                        "description": "Search method",
+                        "enum": ["semantic"],
+                        "default": "semantic",
+                        "description": "Search method (semantic only)",
                     },
                     "limit": {
                         "type": "integer",
@@ -483,22 +419,6 @@ Labels mean:
             },
         ),
         Tool(
-            name="list_all_receipts",
-            description="""List all receipts in the database with their merchant names and totals.
-
-Use this to get an overview of what receipts are available.""",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "limit": {
-                        "type": "integer",
-                        "default": 50,
-                        "description": "Maximum receipts to return",
-                    }
-                },
-            },
-        ),
-        Tool(
             name="list_merchants",
             description="""List all merchants with receipt counts.
 
@@ -539,23 +459,21 @@ Returns compact format: {"merchant": "...", "count": 191, "receipts": [[image_id
             name="search_product_lines",
             description="""Search for product lines and return prices for spending analysis.
 
-Use search_type:
-- "text": Exact text match (e.g., query="MILK", "COFFEE") - fast but requires exact words
-- "semantic": Meaning-based similarity (e.g., query="snack foods", "cleaning supplies") - finds conceptually similar items
+Meaning-based similarity (e.g., query="snack foods", "cleaning supplies")
+finds conceptually similar items.
 
 Use this to answer spending questions like "how much did I spend on X?"
 
 Returns lines with:
 - text: The full line text (e.g., "RAW WHOLE MILK 17.99")
 - price: The price if found (regex extracted)
-- similarity: Match score (semantic only)
+- similarity: Match score
 - merchant: Store name
 - image_id/receipt_id: For drilling into specific receipts
 
 Examples:
-  search_product_lines("MILK", "text") -> exact matches for MILK
-  search_product_lines("dairy products", "semantic") -> milk, cheese, yogurt, etc.
-  search_product_lines("cleaning supplies", "semantic") -> soap, detergent, wipes, etc.
+  search_product_lines("dairy products") -> milk, cheese, yogurt, etc.
+  search_product_lines("cleaning supplies") -> soap, detergent, wipes, etc.
 
 The LLM should filter false positives before summing prices.""",
             inputSchema={
@@ -567,9 +485,9 @@ The LLM should filter false positives before summing prices.""",
                     },
                     "search_type": {
                         "type": "string",
-                        "enum": ["text", "semantic"],
-                        "default": "text",
-                        "description": "Search method: 'text' for exact match, 'semantic' for meaning-based",
+                        "enum": ["semantic"],
+                        "default": "semantic",
+                        "description": "Search method (semantic only)",
                     },
                     "limit": {
                         "type": "integer",
@@ -610,6 +528,8 @@ Returns aggregates AND individual receipt summaries:
 - summaries: List of individual receipts with merchant_name, merchant_category, date, grand_total, tax, tip, item_count
 
 Filter by merchant name, category (from Google Places), and/or date range.
+Date bounds are inclusive calendar dates as printed on the receipt.
+Receipts with unknown dates are excluded when a date bound is supplied.
 
 Common categories: grocery_store, supermarket, restaurant, gas_station, pharmacy, convenience_store, coffee_shop""",
             inputSchema={
@@ -637,6 +557,60 @@ Common categories: grocery_store, supermarket, restaurant, gas_station, pharmacy
                         "description": "Maximum receipts to return",
                     },
                 },
+            },
+        ),
+        Tool(
+            name="list_receipts_missing_fields",
+            description="""List receipts whose summary lacks a date or merchant, or whose line items lack a merchant.
+
+A read-only worklist over the receipt summaries. Each page examines
+`limit` summaries (in DynamoDB order) and reports only those missing at
+least one of the requested fields:
+- "date": the summary has no effective date (no printed/owner date and
+  no eligible bank date)
+- "merchant_name": the summary has no merchant
+- "line_merchant": one or more RECEIPT_LINE_ITEM rows carry no
+  merchant_name (so they are absent from the MERCHANT#<slug> index);
+  the report says how many
+
+Pagination is by the summary listing's own cursor, so a page may report
+zero receipts. Keep calling with cursor = the previous next_cursor until
+it is null. `scanned` is how many summaries the page examined.
+
+Per receipt: image_id, receipt_id, merchant_name, date (the effective
+date), date_source, grand_total, item_count, missing_fields, and (when
+"line_merchant" is requested) line_count and lines_missing_merchant.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "fields": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["date", "merchant_name", "line_merchant"],
+                        },
+                        "minItems": 1,
+                        "description": "Which gaps to report",
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 1000,
+                        "description": (
+                            "Summaries examined per page (not receipts "
+                            "reported)"
+                        ),
+                    },
+                    "cursor": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "next_cursor from the previous page; omit or "
+                            "null to start from the beginning"
+                        ),
+                    },
+                },
+                "required": ["fields"],
             },
         ),
         Tool(
@@ -827,7 +801,7 @@ NONE, PENDING, VALID, INVALID, NEEDS_REVIEW.
 The label_proposed_by field is set to "mcp-claude-review" for audit trail.
 
 Use this AFTER reviewing a word with get_receipt (for context) and
-validate_word_similarity (for Chroma evidence). Only update when you are
+similar_labeled_words (for similarity evidence). Only update when you are
 confident in the decision.
 
 WARNING: This WRITES to DynamoDB. Double-check the word context before calling.""",
@@ -880,7 +854,6 @@ WARNING: This WRITES to DynamoDB. Double-check the word context before calling."
                 ],
             },
         ),
-        # NOTE: keep in sync with infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py
         Tool(
             name="batch_update_word_labels",
             description="""Batch-update existing ReceiptWordLabel validation statuses.
@@ -1596,13 +1569,15 @@ Choosing the right tool:
 - merge_receipts: combine TWO fragments that are halves of the SAME receipt.
 - delete_image: remove the whole image and every receipt on it.
 
-How it works: deletes the Receipt entity from DynamoDB. The enhanced compactor
-then automatically removes the ChromaDB embeddings and all child records
-(ReceiptLine, ReceiptWord, ReceiptLetter, ReceiptWordLabel, ReceiptPlace) via
-DynamoDB streams.
+How it works: sweeps the whole RECEIPT#{receipt_id} sort-key prefix, so the
+Receipt and every child row go together — ReceiptLine, ReceiptWord,
+ReceiptLetter, ReceiptWordLabel, ReceiptPlace, ReceiptRow, ReceiptSection,
+ReceiptLineItem, ReceiptSummary and the embedding items. The child rows are
+deleted individually on purpose so stream consumers get the removal events.
 
-Returns the receipt's merchant and a breakdown of child-record counts. By
-default runs in dry-run mode — set dry_run=false to actually delete.
+Returns the receipt's merchant, a per-type breakdown counted off the key
+prefix, and total_rows. By default runs in dry-run mode — set dry_run=false
+to actually delete.
 
 WARNING: This is IRREVERSIBLE. Verify the receipt is truly unwanted first
 using get_receipt or get_receipt_image_url.""",
@@ -2165,6 +2140,215 @@ extend_items_section to repair the boundary.""",
             },
         ),
         Tool(
+            name="confirm_product_alias",
+            description="""Record the owner's decision that a merchant alias maps to one product revision.
+
+Writes PRODUCT_ALIAS#{merchant_slug} / {kind}#{text} as status "matched",
+method "user", confirmed_by_user true, no expiry, pinned to
+FOOD_PRODUCT#{product_id} / REV#{product_revision}. That product revision
+must already exist: the tool checks first and refuses (writing nothing)
+when it does not.
+
+The write is a compare-and-swap on the alias revision. Pass the revision
+you read as expected_alias_revision (null when the alias does not exist
+yet). A stale revision returns {"conflict": true, "current_revision": N}
+with the current row; re-read, decide again, and call again with N. The
+tool never retries on its own. Automatic resolvers can never overwrite a
+user decision afterwards.
+
+`text` is the exact alias key text: for TEXT the normalized line text as
+stored on the pending alias, for ITEM the merchant's item identifier.
+
+WARNING: this WRITES to DynamoDB (the configured table).""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "merchant_slug": {
+                        "type": "string",
+                        "description": "Merchant slug the alias is scoped to (e.g. costco-wholesale)",
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["TEXT", "ITEM"],
+                        "description": "Alias key kind: TEXT (normalized line text) or ITEM (merchant item identifier)",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Exact alias key text",
+                    },
+                    "product_id": {
+                        "type": "string",
+                        "description": "Product identity to pin (e.g. tj:084621, fdc:171287)",
+                    },
+                    "product_revision": {
+                        "type": "string",
+                        "description": "Content-hash revision (64 hex chars) of the product; must already exist",
+                    },
+                    "expected_alias_revision": {
+                        "type": ["integer", "null"],
+                        "description": "Alias revision you read before deciding; null when the alias must not exist yet",
+                    },
+                },
+                "required": [
+                    "merchant_slug",
+                    "kind",
+                    "text",
+                    "product_id",
+                    "product_revision",
+                    "expected_alias_revision",
+                ],
+            },
+        ),
+        Tool(
+            name="reject_product_alias",
+            description="""Record the owner's decision that a merchant alias must NOT resolve to a product.
+
+Writes PRODUCT_ALIAS#{merchant_slug} / {kind}#{text} as status "rejected"
+(or "not_food" for lines that are not food at all), method "user",
+confirmed_by_user true, no expiry, and no product pin (only matched
+aliases carry product_id / product_revision).
+
+Same compare-and-swap as confirm_product_alias: expected_alias_revision
+must equal the revision you read (null when the alias does not exist
+yet); a stale revision returns {"conflict": true, "current_revision": N}
+and nothing is written. Automatic resolvers can never overwrite a user
+decision afterwards.
+
+WARNING: this WRITES to DynamoDB (the configured table).""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "merchant_slug": {
+                        "type": "string",
+                        "description": "Merchant slug the alias is scoped to (e.g. costco-wholesale)",
+                    },
+                    "kind": {
+                        "type": "string",
+                        "enum": ["TEXT", "ITEM"],
+                        "description": "Alias key kind: TEXT (normalized line text) or ITEM (merchant item identifier)",
+                    },
+                    "text": {
+                        "type": "string",
+                        "description": "Exact alias key text",
+                    },
+                    "expected_alias_revision": {
+                        "type": ["integer", "null"],
+                        "description": "Alias revision you read before deciding; null when the alias must not exist yet",
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": ["rejected", "not_food"],
+                        "description": "rejected (default): the proposed product is wrong; not_food: the line is not a food item",
+                    },
+                },
+                "required": [
+                    "merchant_slug",
+                    "kind",
+                    "text",
+                    "expected_alias_revision",
+                ],
+            },
+        ),
+        Tool(
+            name="set_receipt_fact",
+            description="""State an owner-known receipt fact the image cannot supply.
+
+Some receipts have no date (or merchant line) on the photographed part.
+The summary is recomputed from word labels whenever a label changes, so
+a hand-edited summary field is lost. This tool instead writes a
+RECEIPT_FACT_OVERRIDE row (one per receipt). Every stated fact carries
+its own reference (how you know it), the row carries source=owner,
+changed_at and a revision; every summary recompute (the Lambda updater
+and scripts/backfill_receipt_summaries.py) applies the stated facts on
+top of the extracted summary and records them in overrides_applied.
+
+Compare-and-swap: pass expected_revision=null to create the receipt's
+first override, or the revision returned by get_receipt_fact_override
+to change it. A stale revision is refused; re-read and retry. Passing
+value=null retracts that fact; the row (and its revision) is kept even
+when no fact remains, so a stale revision never becomes valid again.
+Setting one fact leaves the other fact and its reference untouched.
+
+Writes go to the server's configured table only; tables whose name
+marks them as protected are refused before any read or write. The
+summary is not recomputed by this call: trigger a recompute (any label
+change on the receipt, or the backfill script) to see the fact land on
+the summary.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                    "field": {
+                        "type": "string",
+                        "enum": ["date", "merchant_name"],
+                        "description": "Which summary fact to state",
+                    },
+                    "value": {
+                        "type": ["string", "null"],
+                        "description": (
+                            "The fact: an ISO date (YYYY-MM-DD) for "
+                            "field=date, or the merchant name. null "
+                            "retracts the fact."
+                        ),
+                    },
+                    "reference": {
+                        "type": "string",
+                        "description": (
+                            "Why the owner knows this fact (e.g. 'Chase "
+                            "statement 2026-09-01 $47.18'); stored with "
+                            "the fact. Ignored when retracting."
+                        ),
+                    },
+                    "expected_revision": {
+                        "type": ["integer", "null"],
+                        "description": (
+                            "null to create; otherwise the current "
+                            "revision from get_receipt_fact_override"
+                        ),
+                    },
+                },
+                "required": [
+                    "image_id",
+                    "receipt_id",
+                    "field",
+                    "value",
+                    "reference",
+                    "expected_revision",
+                ],
+            },
+        ),
+        Tool(
+            name="get_receipt_fact_override",
+            description="""Read the owner-stated fact override for a receipt.
+
+Returns the RECEIPT_FACT_OVERRIDE row (date, date_reference,
+merchant_name, merchant_name_reference, source, changed_at, revision)
+or override=null when the owner has never stated a fact. A row whose
+facts are all null is a retracted override. Use the returned revision
+as expected_revision when calling set_receipt_fact.""",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "image_id": {
+                        "type": "string",
+                        "description": "Image ID of the receipt",
+                    },
+                    "receipt_id": {
+                        "type": "integer",
+                        "description": "Receipt ID",
+                    },
+                },
+                "required": ["image_id", "receipt_id"],
+            },
+        ),
+        Tool(
             name="extend_items_section",
             description="""Arithmetic-VERIFIED extension of the ITEMS section.
 
@@ -2291,37 +2475,21 @@ def _fetch_mcp_preview(url: str) -> bytes:
 
 @server.call_tool()
 async def call_tool(
-    name: str, arguments: dict
+    name: str,
+    arguments: dict,
+    *,
+    model_activator: ModelActivator | None = None,
 ) -> list[TextContent | ImageContent]:
     """Handle tool calls."""
     try:
         dynamo_client = get_dynamo_client()
-        if name in CHROMA_TOOLS:
-            try:
-                chroma_client, embed_fn = get_chroma_clients()
-            except ChromaNotConfiguredError:
-                # VECTOR_BACKEND=dynamodb serves the semantic modes from
-                # the DynamoDB vector indexes; only those may proceed
-                # without Chroma credentials.
-                if (
-                    _vector_backend() == "dynamodb"
-                    and name in ("search_receipts", "search_product_lines")
-                    and arguments.get("search_type") == "semantic"
-                ):
-                    from receipt_agent.clients.factory import create_embed_fn
-
-                    chroma_client, embed_fn = None, create_embed_fn()
-                else:
-                    raise
-        else:
-            chroma_client = embed_fn = None
+        embed_fn = get_embed_fn() if name in VECTOR_TOOLS else None
 
         if name == "search_receipts":
             result = await search_receipts_impl(
-                chroma_client,
                 embed_fn,
                 query=arguments["query"],
-                search_type=arguments.get("search_type", "text"),
+                search_type=arguments.get("search_type", "semantic"),
                 limit=arguments.get("limit", 20),
             )
         elif name == "get_receipt":
@@ -2329,11 +2497,6 @@ async def call_tool(
                 dynamo_client,
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
-            )
-        elif name == "list_all_receipts":
-            result = await list_all_receipts_impl(
-                chroma_client,
-                limit=arguments.get("limit", 50),
             )
         elif name == "list_merchants":
             result = await list_merchants_impl(dynamo_client)
@@ -2344,10 +2507,9 @@ async def call_tool(
             )
         elif name == "search_product_lines":
             result = await search_product_lines_impl(
-                chroma_client,
                 embed_fn,
                 query=arguments["query"],
-                search_type=arguments.get("search_type", "text"),
+                search_type=arguments.get("search_type", "semantic"),
                 limit=arguments.get("limit", 100),
             )
         elif name == "get_receipt_summaries":
@@ -2358,6 +2520,13 @@ async def call_tool(
                 start_date=arguments.get("start_date"),
                 end_date=arguments.get("end_date"),
                 limit=arguments.get("limit", 1000),
+            )
+        elif name == "list_receipts_missing_fields":
+            result = await list_receipts_missing_fields_impl(
+                dynamo_client,
+                fields=arguments.get("fields"),
+                limit=arguments.get("limit", 50),
+                cursor=arguments.get("cursor"),
             )
         elif name == "list_categories":
             result = await list_categories_impl(dynamo_client)
@@ -2372,7 +2541,6 @@ async def call_tool(
             )
         elif name == "validate_word_similarity":
             result = await validate_word_similarity_impl(
-                chroma_client,
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
                 line_id=arguments["line_id"],
@@ -2558,6 +2726,45 @@ async def call_tool(
                 image_id=arguments["image_id"],
                 receipt_id=arguments["receipt_id"],
             )
+        elif name == "confirm_product_alias":
+            result = await confirm_product_alias_impl(
+                dynamo_client,
+                merchant_slug=arguments["merchant_slug"],
+                kind=arguments["kind"],
+                text=arguments["text"],
+                product_id=arguments["product_id"],
+                product_revision=arguments["product_revision"],
+                expected_alias_revision=arguments.get(
+                    "expected_alias_revision"
+                ),
+            )
+        elif name == "reject_product_alias":
+            result = await reject_product_alias_impl(
+                dynamo_client,
+                merchant_slug=arguments["merchant_slug"],
+                kind=arguments["kind"],
+                text=arguments["text"],
+                expected_alias_revision=arguments.get(
+                    "expected_alias_revision"
+                ),
+                status=arguments.get("status", "rejected"),
+            )
+        elif name == "set_receipt_fact":
+            result = await set_receipt_fact_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+                field=arguments["field"],
+                value=arguments["value"],
+                reference=arguments["reference"],
+                expected_revision=arguments["expected_revision"],
+            )
+        elif name == "get_receipt_fact_override":
+            result = await get_receipt_fact_override_impl(
+                dynamo_client,
+                image_id=arguments["image_id"],
+                receipt_id=arguments["receipt_id"],
+            )
         elif name == "extend_items_section":
             result = await extend_items_section_impl(
                 dynamo_client,
@@ -2587,10 +2794,8 @@ async def call_tool(
         elif name == "get_active_model":
             result = await get_active_model_impl(dynamo_client)
         elif name == "set_active_model":
-            result = await set_active_model_impl(
-                dynamo_client,
-                job_name=arguments["job_name"],
-            )
+            activate_model = model_activator or set_active_model_impl
+            result = await activate_model(dynamo_client, arguments["job_name"])
         elif name == "get_label_distribution":
             result = await get_label_distribution_impl(dynamo_client)
         elif name == "analytics_traffic":
@@ -2673,27 +2878,12 @@ async def call_tool(
                     )
         return content
 
-    except ChromaNotConfiguredError as e:
-        logger.warning("Chroma tool %r unavailable: %s", name, e)
-        return [
-            TextContent(
-                type="text",
-                text=json.dumps(
-                    {
-                        "error": str(e),
-                        "error_type": "chroma_not_configured",
-                        "tool": name,
-                    }
-                ),
-            )
-        ]
     except Exception as e:
         logger.exception("Tool error")
         return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
 
 
 async def search_receipts_impl(
-    chroma_client,
     embed_fn,
     query: str,
     search_type: str,
@@ -2703,44 +2893,18 @@ async def search_receipts_impl(
     """Search for receipts.
 
     The semantic mode retrieves through the VectorSearchClient seam
-    (``vector_client`` is a test-injection override); label and text
-    modes keep their direct Chroma behavior.
+    (``vector_client`` is a test-injection override). The retired
+    substring/label modes answer with a structured "unavailable" result.
     """
     try:
-        if search_type == "label":
-            words_collection = chroma_client.get_collection("words")
-            results = words_collection.get(
-                where={"label": query.upper()},
-                include=["metadatas"],
-            )
-
-            unique_receipts = {}
-            for meta in results["metadatas"]:
-                key = (meta.get("image_id"), meta.get("receipt_id"))
-                if key not in unique_receipts:
-                    unique_receipts[key] = {
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "matched_text": meta.get("text"),
-                        "matched_label": query.upper(),
-                    }
-
-            return {
-                "search_type": "label",
-                "query": query,
-                "total_matches": len(results["ids"]),
-                "unique_receipts": len(unique_receipts),
-                "results": list(unique_receipts.values())[:limit],
-            }
-
-        elif search_type == "semantic":
+        if search_type == "semantic":
             query_embeddings = embed_fn([query])
 
             if not query_embeddings or not query_embeddings[0]:
                 return {"error": "Failed to generate embedding"}
 
             # Imported lazily: the server must stay importable without
-            # the embeddings stack (mirrors the receipt_chroma imports).
+            # the embeddings stack.
             from receipt_embeddings.service_limits import (
                 LINE_INDEX,
                 MAX_SEARCH_RESULTS,
@@ -2749,10 +2913,10 @@ async def search_receipts_impl(
             client = (
                 vector_client
                 if vector_client is not None
-                else get_vector_search_client(chroma_client)
+                else get_vector_search_client()
             )
             # limit*2 is trimmed to the 100-result SearchVectors cap
-            # (spec section 3.5b); Chroma accepts the smaller ask too.
+            # (spec section 3.5b).
             neighbors = client.search(
                 query_embeddings[0],
                 index=LINE_INDEX,
@@ -2786,30 +2950,7 @@ async def search_receipts_impl(
                 "results": sorted_results,
             }
 
-        else:  # text search
-            lines_collection = chroma_client.get_collection("lines")
-            results = lines_collection.get(
-                where_document={"$contains": query.upper()},
-                include=["metadatas"],
-            )
-
-            unique_receipts = {}
-            for meta in results["metadatas"]:
-                key = (meta.get("image_id"), meta.get("receipt_id"))
-                if key not in unique_receipts:
-                    unique_receipts[key] = {
-                        "image_id": meta.get("image_id"),
-                        "receipt_id": meta.get("receipt_id"),
-                        "matched_line": meta.get("text", "")[:100],
-                    }
-
-            return {
-                "search_type": "text",
-                "query": query,
-                "total_matches": len(results["ids"]),
-                "unique_receipts": len(unique_receipts),
-                "results": list(unique_receipts.values())[:limit],
-            }
+        return _mode_unavailable(search_type, query)
 
     except Exception as e:
         return {"error": str(e)}
@@ -2962,35 +3103,6 @@ async def get_receipt_impl(
         return {"error": str(e)}
 
 
-async def list_all_receipts_impl(chroma_client, limit: int) -> dict:
-    """List all receipts."""
-    try:
-        lines_collection = chroma_client.get_collection("lines")
-
-        # Get all receipts by querying metadata (no label filtering)
-        results = lines_collection.get(
-            include=["metadatas"],
-        )
-
-        unique_receipts = {}
-        for meta in results["metadatas"]:
-            key = (meta.get("image_id"), meta.get("receipt_id"))
-            if key not in unique_receipts:
-                unique_receipts[key] = {
-                    "image_id": meta.get("image_id"),
-                    "receipt_id": meta.get("receipt_id"),
-                    "sample_text": meta.get("text", "")[:50],
-                }
-
-        return {
-            "total_receipts": len(unique_receipts),
-            "receipts": list(unique_receipts.values())[:limit],
-        }
-
-    except Exception as e:
-        return {"error": str(e)}
-
-
 async def list_merchants_impl(dynamo_client) -> dict:
     """List all merchants with receipt counts."""
     try:
@@ -3066,7 +3178,6 @@ async def get_receipts_by_merchant_impl(
 
 
 async def search_product_lines_impl(
-    chroma_client,
     embed_fn,
     query: str,
     search_type: str,
@@ -3075,20 +3186,15 @@ async def search_product_lines_impl(
 ) -> dict:
     """Search for product lines and extract prices for spending analysis.
 
-    Supports both text (exact match) and semantic (embedding-based) search.
-    Results exclude sections that never hold products (totals, payment,
-    footer, ...); rows with no section_label are kept, because on
-    under-sectioned receipts those are the product lines.
+    Semantic (embedding-based) search only; the retired substring mode
+    answers with a structured "unavailable" result. Results exclude
+    sections that never hold products (totals, payment, footer, ...);
+    rows with no section_label are kept, because on under-sectioned
+    receipts those are the product lines.
     """
     import re
 
-    # Imported here, not at module scope: receipt_chroma.__init__ pulls in
-    # chromadb, and this server must stay importable without it
-    # (tests/test_receipt_mcp_lazy_chroma.py).
-    from receipt_chroma.section_labels import (
-        NON_ITEM_SECTION_LABELS,
-        non_item_section_filter,
-    )
+    from receipt_embeddings.section_labels import NON_ITEM_SECTION_LABELS
 
     try:
         # Extract price from text (e.g., "RAW WHOLE MILK 17.99" -> 17.99)
@@ -3106,7 +3212,7 @@ async def search_product_lines_impl(
                 return {"error": "Failed to generate embedding"}
 
             # Imported lazily: the server must stay importable without
-            # the embeddings stack (mirrors the receipt_chroma imports).
+            # the embeddings stack.
             from receipt_embeddings.service_limits import (
                 LINE_INDEX,
                 MAX_SEARCH_RESULTS,
@@ -3115,10 +3221,10 @@ async def search_product_lines_impl(
             client = (
                 vector_client
                 if vector_client is not None
-                else get_vector_search_client(chroma_client)
+                else get_vector_search_client()
             )
             # limit*3 is trimmed to the 100-result SearchVectors cap
-            # (spec section 3.5b); Chroma accepts the smaller ask too.
+            # (spec section 3.5b).
             neighbors = client.search(
                 query_embeddings[0],
                 index=LINE_INDEX,
@@ -3133,25 +3239,12 @@ async def search_product_lines_impl(
                     "items": [],
                 }
 
-            # label_LINE_TOTAL is Chroma line metadata; Dynamo line
-            # items never carry it, so under the Dynamo backend the
-            # flag is honestly "unknown" rather than a false False
-            # (E3 review P2-5).
-            from receipt_embeddings.dynamo_client import (
-                DynamoVectorSearchClient,
-            )
-
-            label_flags_available = not isinstance(
-                client, DynamoVectorSearchClient
-            )
-
             # Process semantic results with similarity scores
             items = []
             seen = set()
-            # Chroma pre-filtered non-item sections inside the ANN query
-            # ($nin); the seam takes equality filters only, so the same
-            # exclusion is applied after retrieval. Rows with no section
-            # label stay, matching non_item_section_filter().
+            # The seam takes equality filters only, so non-item sections
+            # are excluded after retrieval. Rows with no section label
+            # stay (under-sectioned receipts).
             non_item_sections = set(NON_ITEM_SECTION_LABELS)
 
             for neighbor in neighbors:
@@ -3175,11 +3268,11 @@ async def search_product_lines_impl(
                 if similarity < 0.25:
                     continue
 
-                has_line_total = (
-                    meta.get("label_LINE_TOTAL", False)
-                    if label_flags_available
-                    else "unknown"
-                )
+                # DynamoDB line-embedding items never carry a
+                # label_LINE_TOTAL flag, so the field is honestly
+                # "unknown" when the metadata lacks it rather than a
+                # false False (E3 review P2-5).
+                has_line_total = meta.get("label_LINE_TOTAL", "unknown")
                 price = extract_price(text)
 
                 items.append(
@@ -3213,74 +3306,7 @@ async def search_product_lines_impl(
                 "note": "Semantic search finds conceptually similar items. Review relevance before summing prices.",
             }
 
-        else:
-            # Text search (exact match; unchanged Chroma substring scan)
-            lines_collection = chroma_client.get_collection("lines")
-            results = lines_collection.get(
-                where_document={"$contains": query.upper()},
-                where=non_item_section_filter(),
-                include=["metadatas"],
-            )
-
-            if not results["ids"]:
-                return {
-                    "query": query,
-                    "search_type": "text",
-                    "total_matches": 0,
-                    "items": [],
-                }
-
-            # Process results
-            items = []
-            seen = set()  # Dedupe by image_id + receipt_id + text
-
-            for meta in results["metadatas"]:
-                text = meta.get("text", "")
-                image_id = meta.get("image_id")
-                receipt_id = meta.get("receipt_id")
-
-                # Dedupe
-                key = (image_id, receipt_id, text)
-                if key in seen:
-                    continue
-                seen.add(key)
-
-                # Check if this line has a LINE_TOTAL label (from ML model)
-                has_line_total = meta.get("label_LINE_TOTAL", False)
-
-                price = extract_price(text)
-
-                items.append(
-                    {
-                        "text": text,
-                        "price": price,
-                        "has_price_label": has_line_total,
-                        "merchant": meta.get("merchant_name", "Unknown"),
-                        "image_id": image_id,
-                        "receipt_id": receipt_id,
-                    }
-                )
-
-            # Sort by price descending (items with prices first)
-            items.sort(key=lambda x: (x["price"] is None, -(x["price"] or 0)))
-
-            # Limit results
-            items = items[:limit]
-
-            # Calculate total for items that have prices
-            total = sum(
-                item["price"] for item in items if item["price"] is not None
-            )
-
-            return {
-                "query": query,
-                "search_type": "text",
-                "total_matches": len(results["ids"]),
-                "unique_items": len(items),
-                "items": items,
-                "raw_total": round(total, 2),
-                "note": "Review items and exclude false positives (e.g., 'MILK CHOCOLATE' when searching for milk) before reporting final total.",
-            }
+        return _mode_unavailable(search_type, query)
 
     except Exception as e:
         logger.exception("Error searching product lines")
@@ -3310,7 +3336,7 @@ async def get_receipt_summaries_impl(
             try:
                 start_dt = datetime.fromisoformat(
                     start_date.replace("Z", "+00:00")
-                )
+                ).date()
             except ValueError:
                 return {
                     "error": f"Invalid start_date format: '{start_date}'. Use ISO format (e.g., 2024-01-15)."
@@ -3319,11 +3345,14 @@ async def get_receipt_summaries_impl(
             try:
                 end_dt = datetime.fromisoformat(
                     end_date.replace("Z", "+00:00")
-                )
+                ).date()
             except ValueError:
                 return {
                     "error": f"Invalid end_date format: '{end_date}'. Use ISO format (e.g., 2024-01-15)."
                 }
+
+        if start_dt and end_dt and start_dt > end_dt:
+            return {"error": "start_date must be on or before end_date"}
 
         # Load all summaries from DynamoDB (pre-computed)
         all_summaries = []
@@ -3383,12 +3412,16 @@ async def get_receipt_summaries_impl(
                 if not category_match:
                     continue
 
-            # Date filter
-            if start_dt and record.date:
-                if record.date < start_dt:
+            # Date filters use the receipt's calendar date, inclusively:
+            # the printed date, else the matched bank transaction date.
+            # Unknown dates cannot establish membership in a requested range.
+            if start_dt or end_dt:
+                if record.effective_date is None:
                     continue
-            if end_dt and record.date:
-                if record.date > end_dt:
+                receipt_date = record.effective_date.date()
+                if start_dt and receipt_date < start_dt:
+                    continue
+                if end_dt and receipt_date > end_dt:
                     continue
 
             # Build output dict with category info
@@ -3427,6 +3460,148 @@ async def get_receipt_summaries_impl(
 
     except Exception as e:
         logger.exception("Error getting receipt summaries")
+        return {"error": str(e)}
+
+
+MISSING_FIELD_CHOICES = ("date", "merchant_name", "line_merchant")
+
+
+def _encode_summary_cursor(
+    last_evaluated_key: Optional[dict],
+) -> Optional[str]:
+    """Opaque page token wrapping the summary listing's own cursor."""
+    if not last_evaluated_key:
+        return None
+    payload = json.dumps(last_evaluated_key, sort_keys=True).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii")
+
+
+def _decode_summary_cursor(cursor: Optional[str]) -> Optional[dict]:
+    """Inverse of _encode_summary_cursor; ValueError on a foreign token."""
+    if cursor is None or cursor == "":
+        return None
+    if not isinstance(cursor, str):
+        raise ValueError("cursor must be a string")
+    try:
+        key = json.loads(base64.urlsafe_b64decode(cursor.encode("ascii")))
+    except ValueError as exc:
+        raise ValueError(
+            "cursor is not a next_cursor token from this tool"
+        ) from exc
+    if not isinstance(key, dict) or not key:
+        raise ValueError("cursor is not a next_cursor token from this tool")
+    return key
+
+
+async def list_receipts_missing_fields_impl(
+    dynamo_client,
+    fields: Optional[list[str]],
+    limit: int = 50,
+    cursor: Optional[str] = None,
+) -> dict:
+    """Read-only worklist of receipts missing a date, a merchant, or line
+    merchants.
+
+    Walks ReceiptSummaryRecord pages through
+    ``DynamoClient.list_receipt_summaries`` and carries its
+    ``last_evaluated_key`` as the page token, so no receipt is skipped or
+    repeated across pages. ``limit`` bounds the summaries examined per
+    page, not the receipts reported. Never writes.
+    """
+    from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+
+    try:
+        if isinstance(fields, str):
+            fields = [fields]
+        if not isinstance(fields, list) or not fields:
+            return {
+                "error": (
+                    "fields must be a non-empty list drawn from "
+                    f"{list(MISSING_FIELD_CHOICES)}"
+                )
+            }
+        unknown = [f for f in fields if f not in MISSING_FIELD_CHOICES]
+        if unknown:
+            return {
+                "error": (
+                    f"Unknown fields {unknown}; choose from "
+                    f"{list(MISSING_FIELD_CHOICES)}"
+                )
+            }
+        wanted = [f for f in MISSING_FIELD_CHOICES if f in fields]
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= 1000
+        ):
+            return {"error": "limit must be an integer between 1 and 1000"}
+        try:
+            start_key = _decode_summary_cursor(cursor)
+        except ValueError as exc:
+            return {"error": str(exc)}
+
+        records, last_key = dynamo_client.list_receipt_summaries(
+            limit=limit, last_evaluated_key=start_key
+        )
+
+        receipts = []
+        for record in records:
+            merchant = record.merchant_name
+            has_merchant = isinstance(merchant, str) and bool(merchant.strip())
+            missing = []
+            effective_date = record.effective_date
+            if "date" in wanted and effective_date is None:
+                missing.append("date")
+            if "merchant_name" in wanted and not has_merchant:
+                missing.append("merchant_name")
+            line_count = None
+            lines_missing_merchant = None
+            if "line_merchant" in wanted:
+                try:
+                    rows = dynamo_client.get_receipt_line_items_from_receipt(
+                        record.image_id, record.receipt_id
+                    )
+                except EntityNotFoundError:
+                    rows = []
+                line_count = len(rows)
+                lines_missing_merchant = sum(
+                    1
+                    for row in rows
+                    if not str(
+                        getattr(row, "merchant_name", None) or ""
+                    ).strip()
+                )
+                if lines_missing_merchant:
+                    missing.append("line_merchant")
+            if not missing:
+                continue
+            entry = {
+                "image_id": record.image_id,
+                "receipt_id": record.receipt_id,
+                "merchant_name": merchant,
+                "date": (
+                    effective_date.isoformat() if effective_date else None
+                ),
+                "date_source": record.date_source,
+                "grand_total": record.grand_total,
+                "item_count": record.item_count,
+                "missing_fields": missing,
+            }
+            if "line_merchant" in wanted:
+                entry["line_count"] = line_count
+                entry["lines_missing_merchant"] = lines_missing_merchant
+            receipts.append(entry)
+
+        return {
+            "fields": wanted,
+            "scanned": len(records),
+            "count": len(receipts),
+            "receipts": receipts,
+            "next_cursor": _encode_summary_cursor(last_key),
+        }
+
+    except Exception as e:
+        logger.exception("Error listing receipts missing fields")
         return {"error": str(e)}
 
 
@@ -3581,7 +3756,6 @@ async def list_words_by_label_impl(
 
 
 async def validate_word_similarity_impl(
-    chroma_client,
     image_id: str,
     receipt_id: int,
     line_id: int,
@@ -3597,7 +3771,6 @@ async def validate_word_similarity_impl(
     returning silently-empty results, answer with a deprecation pointer
     to the working search-then-join replacement.
     """
-    del chroma_client  # retained for dispatch compatibility; unused
     return {
         "deprecated": True,
         "error_type": "deprecated_tool",
@@ -3642,14 +3815,7 @@ async def similar_labeled_words_impl(
 
     try:
         if vector_client is None:
-            try:
-                vector_client = get_vector_search_client()
-            except ChromaNotConfiguredError as e:
-                return {
-                    "error": str(e),
-                    "error_type": "chroma_not_configured",
-                    "tool": "similar_labeled_words",
-                }
+            vector_client = get_vector_search_client()
         target_merchant = None
         try:
             place = dynamo_client.get_receipt_place(image_id, receipt_id)
@@ -5099,37 +5265,55 @@ async def delete_receipt_impl(
 ) -> dict:
     """Delete a single receipt and its children, keeping the rest of the image.
 
-    Only the Receipt entity is deleted here; the enhanced compactor removes the
-    ChromaDB embeddings and child records (lines, words, letters, labels, place)
-    asynchronously via DynamoDB streams.
+    Sweeps the whole ``RECEIPT#{receipt_id}`` sort-key prefix, so lines,
+    words, letters, labels, place, rows, sections, line items, summary and
+    embedding items all go with the receipt. Deleting the concrete child
+    rows is deliberate: stream consumers need the per-row removal events.
     """
     try:
         from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
 
-        try:
-            details = dynamo_client.get_receipt_details(image_id, receipt_id)
-        except EntityNotFoundError:
-            return {
-                "error": (
-                    f"Receipt {receipt_id} not found for image {image_id}"
-                )
-            }
-
-        place = getattr(details, "place", None)
-        merchant_name = (
-            getattr(place, "merchant_name", None) if place else None
+        # Count straight off the key prefix rather than from
+        # get_receipt_details, whose GSI4 query omits ReceiptLetters and every
+        # derived type. Undercounting here is what made an earlier version of
+        # this tool report 63 of 314 rows.
+        breakdown = dynamo_client.get_receipt_item_type_counts(
+            image_id, receipt_id
         )
 
-        # Note: ReceiptLetters are excluded from the GSI4 query that backs
-        # get_receipt_details, so they are not counted here. The compactor
-        # still deletes them via DynamoDB streams.
-        breakdown = {
-            "RECEIPT": 1,
-            "RECEIPT_LINES": len(details.lines or []),
-            "RECEIPT_WORDS": len(details.words or []),
-            "RECEIPT_WORD_LABELS": len(details.labels or []),
-            "RECEIPT_PLACES": 1 if place else 0,
-        }
+        merchant_name = None
+        try:
+            details = dynamo_client.get_receipt_details(image_id, receipt_id)
+            place = getattr(details, "place", None)
+            merchant_name = (
+                getattr(place, "merchant_name", None) if place else None
+            )
+        except EntityNotFoundError:
+            # A previous cascade may have deleted the parent row and then
+            # exhausted retries on a later chunk, leaving children behind.
+            # The sweep is idempotent, so let a retry finish the job when
+            # child rows are still under the prefix -- but never when the
+            # parent key holds a RESEGMENT_RESERVATION: that is an in-flight
+            # resegmentation between reserve_receipt_ids and its commit,
+            # not an orphan, and sweeping it would fail the commit's
+            # conditional write.
+            if "RESEGMENT_RESERVATION" in breakdown:
+                return {
+                    "error": (
+                        f"Receipt {receipt_id} on image {image_id} is an "
+                        "active resegmentation reservation; refusing to "
+                        "delete it"
+                    ),
+                    "breakdown": breakdown,
+                }
+            if not breakdown:
+                return {
+                    "error": (
+                        f"Receipt {receipt_id} not found for image "
+                        f"{image_id}"
+                    )
+                }
+            merchant_name = "(parent already deleted; orphaned children)"
 
         if dry_run:
             return {
@@ -5138,24 +5322,16 @@ async def delete_receipt_impl(
                 "merchant_name": merchant_name,
                 "dry_run": True,
                 "breakdown": breakdown,
+                "total_rows": sum(breakdown.values()),
                 "message": (
-                    "Deletes the Receipt entity; the compactor then removes "
-                    "ChromaDB embeddings and all child records via DynamoDB "
-                    "streams. Re-run with dry_run=false to delete."
+                    "Deletes the receipt and every row beneath its key "
+                    "prefix. Re-run with dry_run=false to delete."
                 ),
             }
 
-        from receipt_agent.lifecycle.receipt_manager import (
-            delete_receipt as delete_receipt_fn,
+        deleted = dynamo_client.delete_receipt_items(
+            image_id, receipt_id, include_parent=True
         )
-
-        deletion = delete_receipt_fn(dynamo_client, image_id, receipt_id)
-        if not deletion.success:
-            return {
-                "error": deletion.error or "Failed to delete receipt",
-                "image_id": image_id,
-                "receipt_id": receipt_id,
-            }
 
         return {
             "image_id": image_id,
@@ -5164,10 +5340,10 @@ async def delete_receipt_impl(
             "dry_run": False,
             "deleted": True,
             "breakdown": breakdown,
+            "total_rows": deleted,
             "message": (
-                "Receipt entity deleted. The enhanced compactor will remove "
-                "ChromaDB embeddings and child records (lines, words, letters, "
-                "labels, place) asynchronously via DynamoDB streams."
+                f"Deleted {deleted} rows: the receipt and every child row "
+                "beneath its key prefix."
             ),
         }
 
@@ -5568,6 +5744,256 @@ def _reconcile_stored_items(items: list[dict], summary: Optional[dict]):
     return reconcile_extracted_items(items, summary)
 
 
+USER_REJECT_STATUSES = ("rejected", "not_food")
+# Nutrition rows are never written to production this sprint: no flag, no
+# environment variable, no deployed-caller exception. Lifting this is a
+# reviewed change to this tuple, not a switch. Same fragment test as
+# scripts/seed_nutrition_pilot.py.
+PROD_TABLE_FRAGMENTS = ("d7ff76a",)
+
+
+def _product_alias_payload(alias) -> dict:
+    """JSON view of a saved alias row: revision, status, method, pin."""
+    return {
+        "merchant_slug": alias.merchant_slug,
+        "kind": alias.kind,
+        "text": alias.text,
+        "alias_id": alias.alias_id,
+        "revision": alias.revision,
+        "status": alias.status,
+        "method": alias.method,
+        "confirmed_by_user": alias.confirmed_by_user,
+        "expires_at": alias.expires_at,
+        "product_id": alias.product_id,
+        "product_revision": alias.product_revision,
+        "changed_at": alias.changed_at,
+    }
+
+
+def _product_alias_conflict(message: str, current) -> dict:
+    """Stale-revision result: names the current revision, never retries."""
+    result = {
+        "error": message,
+        "conflict": True,
+        "current_revision": current.revision if current else 0,
+    }
+    if current is not None:
+        result["current"] = _product_alias_payload(current)
+    return result
+
+
+def _save_user_alias_decision(
+    dynamo_client,
+    *,
+    tool: str,
+    merchant_slug: str,
+    kind: str,
+    text: str,
+    status: str,
+    product_id: Optional[str],
+    product_revision: Optional[str],
+    expected_alias_revision: Optional[int],
+) -> dict:
+    """Shared confirm/reject path: user method, no expiry, CAS on revision.
+
+    Reads go through the DynamoClient accessors and the single write is
+    ``save_product_alias`` with the client's own table name, so the DAL's
+    table guard and its conditions (revision compare-and-swap, product
+    revision must exist, automatic writes never replace a user decision)
+    are the authority. The pre-reads only turn the most common failures
+    into messages that say what to do next.
+    """
+    from datetime import datetime, timezone
+
+    from receipt_dynamo.data.shared_exceptions import (
+        EntityValidationError,
+        NutritionConflictError,
+    )
+    from receipt_dynamo.entities.product_alias import (
+        ProductAlias,
+        product_alias_key,
+    )
+
+    table_name = getattr(dynamo_client, "table_name", None)
+    if not isinstance(table_name, str) or any(
+        fragment in table_name for fragment in PROD_TABLE_FRAGMENTS
+    ):
+        return {
+            "error": (
+                f"refusing to write nutrition rows to table {table_name!r}: "
+                "user alias decisions are dev-only this sprint"
+            )
+        }
+    if kind not in ("TEXT", "ITEM"):
+        return {"error": f"kind must be TEXT or ITEM, got {kind!r}"}
+    if expected_alias_revision is None:
+        expected = 0
+    elif type(expected_alias_revision) is int and expected_alias_revision >= 0:
+        expected = expected_alias_revision
+    else:
+        return {
+            "error": (
+                "expected_alias_revision must be a non-negative integer "
+                "(the revision you read) or null (alias must not exist yet)"
+            )
+        }
+    try:
+        product_alias_key(merchant_slug, kind, text)
+    except EntityValidationError as error:
+        return {"error": f"invalid alias key: {error}"}
+
+    if status == "matched":
+        pin = f"FOOD_PRODUCT#{product_id} / REV#{product_revision}"
+        try:
+            product = dynamo_client.get_food_product(
+                product_id, product_revision
+            )
+        except EntityValidationError as error:
+            return {"error": f"invalid product pin {pin}: {error}"}
+        if product is None:
+            return {
+                "error": (
+                    f"{pin} does not exist; confirm only pins an existing "
+                    "product revision. List the product's revisions and "
+                    "pass one of them as product_revision."
+                ),
+                "product_id": product_id,
+                "product_revision": product_revision,
+            }
+
+    existing = dynamo_client.get_product_alias(merchant_slug, kind, text)
+    current_revision = existing.revision if existing else 0
+    if current_revision != expected:
+        return _product_alias_conflict(
+            f"alias revision is {current_revision}, not {expected}; "
+            "re-read the alias and call again with "
+            f"expected_alias_revision={current_revision}",
+            existing,
+        )
+
+    now = datetime.now(timezone.utc)
+    if existing is not None:
+        applicability_json = existing.applicability_json
+    else:
+        applicability_json = json.dumps(
+            {"merchant_slug": merchant_slug, "kind": kind, "text": text}
+        )
+    decision = {
+        "tool": tool,
+        "decided_by": "user",
+        "previous_revision": current_revision,
+        "previous_status": existing.status if existing else None,
+        "previous_method": existing.method if existing else None,
+        "previous_product_id": existing.product_id if existing else None,
+        "previous_product_revision": (
+            existing.product_revision if existing else None
+        ),
+    }
+    try:
+        alias = ProductAlias(
+            merchant_slug=merchant_slug,
+            kind=kind,
+            text=text,
+            revision=expected + 1,
+            status=status,
+            method="user",
+            changed_at=now.isoformat(timespec="milliseconds"),
+            applicability_json=applicability_json,
+            decision_json=json.dumps(decision),
+            product_id=product_id if status == "matched" else None,
+            product_revision=(
+                product_revision if status == "matched" else None
+            ),
+            confirmed_by_user=True,
+            expires_at=None,
+        )
+    except EntityValidationError as error:
+        return {"error": f"invalid alias decision: {error}"}
+
+    try:
+        saved = dynamo_client.save_product_alias(
+            alias,
+            expected_revision=expected,
+            expected_table_name=dynamo_client.table_name,
+        )
+    except NutritionConflictError:
+        current = dynamo_client.get_product_alias(merchant_slug, kind, text)
+        now_revision = current.revision if current else 0
+        return _product_alias_conflict(
+            "alias changed between read and write: revision is now "
+            f"{now_revision} (expected {expected}); re-read the alias and "
+            f"call again with expected_alias_revision={now_revision}",
+            current,
+        )
+    return {
+        "success": True,
+        "tool": tool,
+        "previous_revision": current_revision,
+        "previous_status": existing.status if existing else None,
+        "alias": _product_alias_payload(saved),
+    }
+
+
+async def confirm_product_alias_impl(
+    dynamo_client,
+    merchant_slug: str,
+    kind: str,
+    text: str,
+    product_id: str,
+    product_revision: str,
+    expected_alias_revision: Optional[int],
+) -> dict:
+    """Pin an alias to an existing product revision as a user decision."""
+    try:
+        return _save_user_alias_decision(
+            dynamo_client,
+            tool="confirm_product_alias",
+            merchant_slug=merchant_slug,
+            kind=kind,
+            text=text,
+            status="matched",
+            product_id=product_id,
+            product_revision=product_revision,
+            expected_alias_revision=expected_alias_revision,
+        )
+    except Exception as e:
+        logger.exception("Error confirming product alias")
+        return {"error": str(e)}
+
+
+async def reject_product_alias_impl(
+    dynamo_client,
+    merchant_slug: str,
+    kind: str,
+    text: str,
+    expected_alias_revision: Optional[int],
+    status: str = "rejected",
+) -> dict:
+    """Mark an alias rejected / not_food as a user decision (no pin)."""
+    if status not in USER_REJECT_STATUSES:
+        return {
+            "error": (
+                f"status must be one of {list(USER_REJECT_STATUSES)}, "
+                f"got {status!r}"
+            )
+        }
+    try:
+        return _save_user_alias_decision(
+            dynamo_client,
+            tool="reject_product_alias",
+            merchant_slug=merchant_slug,
+            kind=kind,
+            text=text,
+            status=status,
+            product_id=None,
+            product_revision=None,
+            expected_alias_revision=expected_alias_revision,
+        )
+    except Exception as e:
+        logger.exception("Error rejecting product alias")
+        return {"error": str(e)}
+
+
 async def get_receipt_line_items_impl(
     dynamo_client, image_id: str, receipt_id: int
 ) -> dict:
@@ -5669,6 +6095,165 @@ async def get_receipt_line_items_impl(
     except Exception as e:
         logger.exception("Error getting receipt line items")
         return {"error": str(e)}
+
+
+# Table-name markers that set_receipt_fact refuses before any read or
+# write. Mirrors receipt_dynamo's PROTECTED_FACT_TABLE_MARKERS (the
+# accessors refuse the write as well); owner fact overrides are stated on
+# the dev table only.
+FACT_OVERRIDE_TABLE_DENYLIST = ("d7ff76a",)
+
+_FACT_NEXT_STEP = (
+    "The summary updater applies this on its next recompute of the "
+    "receipt (any label change, or scripts/backfill_receipt_summaries.py); "
+    "the summary then lists the field in overrides_applied."
+)
+
+
+def _refuse_protected_fact_table(dynamo_client) -> str | None:
+    """Return a refusal message when the client's table is protected."""
+    table_name = str(getattr(dynamo_client, "table_name", "") or "")
+    for marker in FACT_OVERRIDE_TABLE_DENYLIST:
+        if marker in table_name:
+            return (
+                "set_receipt_fact refuses the configured table: owner "
+                "fact overrides are written to the dev table only"
+            )
+    return None
+
+
+def _fact_override_payload(override) -> dict:
+    return {
+        **override.to_dict(),
+        "facts": override.facts,
+        "references": override.references,
+    }
+
+
+async def set_receipt_fact_impl(
+    dynamo_client,
+    *,
+    image_id: str,
+    receipt_id: int,
+    field: str,
+    value: str | None,
+    reference: str | None,
+    expected_revision: int | None,
+) -> dict:
+    """State or retract one owner fact with a revision compare-and-swap."""
+    from receipt_dynamo.data.shared_exceptions import (
+        EntityAlreadyExistsError,
+        EntityValidationError,
+        FactOverrideConflictError,
+    )
+    from receipt_dynamo.entities.receipt_fact_override import (
+        OVERRIDABLE_FACT_FIELDS,
+        ReceiptFactOverride,
+    )
+
+    refusal = _refuse_protected_fact_table(dynamo_client)
+    if refusal:
+        return {"error": refusal}
+    if field not in OVERRIDABLE_FACT_FIELDS:
+        return {
+            "error": (
+                f"field must be one of {list(OVERRIDABLE_FACT_FIELDS)}, "
+                f"got {field!r}"
+            )
+        }
+    if value is not None and not isinstance(value, str):
+        return {"error": "value must be a string or null"}
+    if expected_revision is not None and (
+        type(expected_revision) is not int or expected_revision < 1
+    ):
+        return {"error": "expected_revision must be null or a positive int"}
+
+    try:
+        if expected_revision is None:
+            if value is None:
+                return {
+                    "error": (
+                        "value is required when creating an override "
+                        "(expected_revision=null)"
+                    )
+                }
+            override = ReceiptFactOverride(
+                image_id=image_id,
+                receipt_id=receipt_id,
+                revision=1,
+                **{field: value, f"{field}_reference": reference},
+            )
+            dynamo_client.add_receipt_fact_override(override)
+            action = "created"
+        else:
+            existing = dynamo_client.get_receipt_fact_override(
+                image_id, receipt_id
+            )
+            if existing is None:
+                return {
+                    "error": (
+                        "no override exists for this receipt; pass "
+                        "expected_revision=null to create one"
+                    )
+                }
+            if existing.revision != expected_revision:
+                return {
+                    "error": (
+                        f"revision conflict: expected {expected_revision}, "
+                        f"stored {existing.revision}; re-read with "
+                        "get_receipt_fact_override and retry"
+                    ),
+                    "current_revision": existing.revision,
+                    "override": _fact_override_payload(existing),
+                }
+            # Only the named fact (and its reference) changes; the row is
+            # kept even when no fact remains so the revision never resets.
+            override = existing.with_fact(
+                field, value, reference, revision=expected_revision + 1
+            )
+            dynamo_client.update_receipt_fact_override(
+                override, expected_revision=expected_revision
+            )
+            action = "retracted" if value is None else "updated"
+    except EntityValidationError as exc:
+        return {"error": f"invalid fact: {exc}"}
+    except EntityAlreadyExistsError:
+        return {
+            "error": (
+                "an override already exists for this receipt; read it "
+                "with get_receipt_fact_override and pass its revision as "
+                "expected_revision"
+            )
+        }
+    except FactOverrideConflictError as exc:
+        return {"error": str(exc)}
+
+    return {
+        "action": action,
+        "override": _fact_override_payload(override),
+        "next_step": _FACT_NEXT_STEP,
+    }
+
+
+async def get_receipt_fact_override_impl(
+    dynamo_client, *, image_id: str, receipt_id: int
+) -> dict:
+    """Read the receipt's owner-stated fact override, if any."""
+    from receipt_dynamo.data.shared_exceptions import EntityValidationError
+
+    try:
+        override = dynamo_client.get_receipt_fact_override(
+            image_id, receipt_id
+        )
+    except EntityValidationError as exc:
+        return {"error": str(exc)}
+    return {
+        "image_id": image_id,
+        "receipt_id": receipt_id,
+        "override": (
+            _fact_override_payload(override) if override is not None else None
+        ),
+    }
 
 
 async def extend_items_section_impl(
@@ -6565,47 +7150,173 @@ async def get_active_model_impl(dynamo_client) -> dict:
         return {"error": str(e)}
 
 
+def coreml_bundle_reference(job) -> tuple[str, str]:
+    """Resolve a Job's immutable export identity without accessing services."""
+    from urllib.parse import urlparse
+
+    results = job.results or {}
+    if isinstance(results, str):
+        results = json.loads(results)
+    export_id = results.get("coreml_export_id")
+    uri = results.get("coreml_versioned_bundle_s3_uri")
+    if uri:
+        parsed = urlparse(uri)
+        match = re.fullmatch(
+            r"/coreml/versions/([A-Za-z0-9_-]+)/layoutlm-coreml-bundle\.zip",
+            parsed.path,
+        )
+        if parsed.scheme != "s3" or not parsed.netloc or not match:
+            raise ValueError("job has an invalid versioned CoreML bundle URI")
+        if export_id and export_id != match[1]:
+            raise ValueError("job CoreML export ID does not match bundle URI")
+        export_id = match[1]
+    if not export_id:
+        raise ValueError(
+            "job has no exported CoreML bundle; export before promoting"
+        )
+    if not isinstance(export_id, str) or not re.fullmatch(
+        r"[A-Za-z0-9_-]+", export_id
+    ):
+        raise ValueError("job has an invalid CoreML export ID")
+    return export_id, (
+        f"coreml/versions/{export_id}/layoutlm-coreml-bundle.zip"
+    )
+
+
 async def set_active_model_impl(
     dynamo_client,
     job_name: str,
+    training_bucket: str | None = None,
+    s3_client=None,
+    resolved_job=None,
 ) -> dict:
-    """Mark a training job as the active model for inference services."""
+    """Promote an exported bundle and align the active Job tag and S3 pointer.
+
+    Preflight the target bucket before changing tags. If publishing the pointer
+    fails, restore the previous tags and report any failed compensation. S3 and
+    DynamoDB cannot participate in one atomic transaction.
+    """
+    from datetime import datetime, timezone
+
+    import boto3
+    import botocore.exceptions
+
     try:
-        # Find the job
-        jobs, _ = dynamo_client.get_job_by_name(job_name)
-        if not jobs:
-            return {"error": f"No job found with name: {job_name}"}
-        job = jobs[0]
+        if resolved_job is not None:
+            # Reuse the Job just copied by the CLI. Both a name-index query
+            # and the client's default primary-key read may lag that write.
+            job = resolved_job
+            if job.name != job_name:
+                raise ValueError(
+                    "resolved job does not match the requested job name"
+                )
+        else:
+            jobs, _ = dynamo_client.get_job_by_name(job_name)
+            if not jobs:
+                return {
+                    "success": False,
+                    "error": f"No job found with name: {job_name}",
+                }
+            job = jobs[0]
+        export_id, bundle_key = coreml_bundle_reference(job)
+        training_bucket = training_bucket or _load_config().get(
+            "layoutlm_training_bucket"
+        )
+        if not training_bucket:
+            raise ValueError("layoutlm_training_bucket is not configured")
+        s3 = s3_client or boto3.client("s3")
+        head = s3.head_object(Bucket=training_bucket, Key=bundle_key)
+        # Capture the pointer's current ETag so the write below can be
+        # conditional. Two overlapping promotions would otherwise both read
+        # the same old_active, both flip tags, and race on active.json; the
+        # table could end with two active Jobs while workers load whichever
+        # pointer landed last. S3 is the arbiter: the loser's write fails
+        # with 412 and falls into the rollback path.
+        try:
+            prior_pointer_etag = s3.head_object(
+                Bucket=training_bucket, Key="coreml/active.json"
+            )["ETag"]
+        except botocore.exceptions.ClientError as e:
+            if e.response.get("Error", {}).get("Code") not in (
+                "404",
+                "NoSuchKey",
+                "NotFound",
+            ):
+                raise
+            prior_pointer_etag = None
+        pointer = {
+            "schema_version": 1,
+            "export_id": export_id,
+            "training_job_id": job.job_id,
+            "training_job_name": job.name,
+            "bundle_key": bundle_key,
+            "bundle_etag": head["ETag"],
+            "bundle_size_bytes": head["ContentLength"],
+            "promoted_at": datetime.now(timezone.utc).isoformat(),
+            "promoted_by": "set_active_model",
+        }
+        if not pointer["bundle_etag"] or pointer["bundle_size_bytes"] <= 0:
+            raise ValueError("exported CoreML bundle is empty or has no ETag")
 
-        # Clear old active model tag
         old_active = dynamo_client.get_active_model_job()
-        if old_active:
-            old_active.tags = {
-                k: v
-                for k, v in (old_active.tags or {}).items()
-                if k != "active_model"
-            }
-            dynamo_client.update_job(old_active)
+        originals = [(job, dict(job.tags or {}))]
+        if old_active and old_active.job_id != job.job_id:
+            originals.insert(0, (old_active, dict(old_active.tags or {})))
+        try:
+            if len(originals) == 2:
+                old_active.tags = {
+                    k: v
+                    for k, v in (old_active.tags or {}).items()
+                    if k != "active_model"
+                }
+                dynamo_client.update_job(old_active)
+            job.tags = {**(job.tags or {}), "active_model": "true"}
+            dynamo_client.update_job(job)
+            # Conditional on the ETag read during preflight (or on absence):
+            # a concurrent promotion that landed in between makes this raise
+            # PreconditionFailed, which the except below turns into a tag
+            # rollback instead of a split-brain pointer.
+            write_condition = (
+                {"IfMatch": prior_pointer_etag}
+                if prior_pointer_etag
+                else {"IfNoneMatch": "*"}
+            )
+            s3.put_object(
+                Bucket=training_bucket,
+                Key="coreml/active.json",
+                Body=json.dumps(pointer).encode("utf-8"),
+                ContentType="application/json",
+                CacheControl="no-cache",
+                **write_condition,
+            )
+        except Exception as error:
+            rollback_errors = []
+            for original, tags in reversed(originals):
+                original.tags = tags
+                try:
+                    dynamo_client.update_job(original)
+                except Exception as rollback_error:
+                    rollback_errors.append(str(rollback_error))
+            if rollback_errors:
+                raise RuntimeError(
+                    f"{error}; tag rollback failed: {rollback_errors}"
+                ) from error
+            raise
 
-        # Set new active model
-        job.tags = {**(job.tags or {}), "active_model": "true"}
-        dynamo_client.update_job(job)
-
-        r = job.results or {}
-        if isinstance(r, str):
-            r = json.loads(r)
-
+        results = job.results or {}
+        if isinstance(results, str):
+            results = json.loads(results)
         return {
             "success": True,
             "name": job.name,
             "job_id": job.job_id,
-            "best_f1": r.get("best_f1"),
+            "best_f1": results.get("best_f1"),
+            "pointer": pointer,
             "message": f"Set {job.name} as the active model",
         }
-
-    except Exception as e:
+    except Exception as error:
         logger.exception("Error setting active model")
-        return {"error": str(e)}
+        return {"success": False, "error": str(error)}
 
 
 async def get_label_distribution_impl(dynamo_client) -> dict:
@@ -6663,27 +7374,22 @@ async def get_label_distribution_impl(dynamo_client) -> dict:
         return {"error": str(e)}
 
 
-async def main():
-    """Run the MCP server."""
+async def main(
+    *,
+    config: dict[str, Any] | None = None,
+    model_activator: ModelActivator | None = None,
+) -> None:
+    """Run stdio with the entry point's config and model activation policy."""
+    if config is not None:
+        _load_config(config)
+    server.call_tool()(partial(call_tool, model_activator=model_activator))
     logger.info("Starting Receipt MCP Server...")
 
-    # Pre-initialize clients (Chroma is optional: Dynamo-only is fine)
+    # Pre-initialize the DynamoDB client (embeddings are built lazily)
     try:
         get_dynamo_client()
     except Exception as e:
         logger.error("Failed to initialize DynamoDB client: %s", e)
-        # Continue anyway - will retry on first tool call
-    try:
-        get_chroma_clients()
-    except ChromaNotConfiguredError as e:
-        logger.warning(
-            "%s Chroma-backed tools (%s) are disabled; Dynamo-backed "
-            "tools remain available.",
-            e,
-            ", ".join(sorted(CHROMA_TOOLS)),
-        )
-    except Exception as e:
-        logger.error("Failed to initialize Chroma clients: %s", e)
         # Continue anyway - will retry on first tool call
 
     async with stdio_server() as (read_stream, write_stream):

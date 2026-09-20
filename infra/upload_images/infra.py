@@ -22,6 +22,7 @@ from dynamo_db import dynamodb_table
 
 # Import the CodeBuildDockerImage component
 from infra.components.codebuild_docker_image import CodeBuildDockerImage
+from infra.components.tracing_config import hosted_tracing_environment
 
 config = Config("portfolio")
 current_region = aws.get_region()
@@ -32,21 +33,9 @@ pinecone_host = config.require("PINECONE_HOST")
 validate_receipt_lambda_arn_cfg = config.get("VALIDATE_RECEIPT_LAMBDA_ARN")
 google_places_api_key = config.require_secret("GOOGLE_PLACES_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
-langchain_api_key = config.require_secret("LANGCHAIN_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
-# Chroma Cloud: the upload path queries Cloud (no per-receipt snapshot download).
-# Batch step functions keep using the local S3 snapshot.
-chroma_cloud_enabled = config.get("CHROMA_CLOUD_ENABLED") or ""
-chroma_cloud_api_key = config.get_secret("CHROMA_CLOUD_API_KEY") or ""
-chroma_cloud_tenant = config.get("CHROMA_CLOUD_TENANT") or ""
-chroma_cloud_database = config.get("CHROMA_CLOUD_DATABASE") or ""
 # Defer grok label validation to the async queue/consumer (off by default).
 llm_validation_async = config.get("LLM_VALIDATION_ASYNC") or "false"
-# Dual-run ingest (SPEC §3.4): also write embedding items to DynamoDB via
-# the receipt_embeddings engine writer (off by default; string "true").
-enable_dual_write_embeddings = (
-    config.get("enable-dual-write-embeddings") or "false"
-)
 
 stack = pulumi.get_stack()
 
@@ -66,7 +55,7 @@ class UploadImages(ComponentResource):
         name: str,
         raw_bucket: Bucket,
         site_bucket: Bucket,
-        chromadb_bucket_name: pulumi.Input[str] | None = None,
+        trace_bucket: Bucket | None = None,
         vpc_subnet_ids: pulumi.Input[list[str]] | None = None,
         security_group_id: pulumi.Input[str] | None = None,
         label_validation_project_name: pulumi.Input[str] | None = None,
@@ -180,7 +169,12 @@ class UploadImages(ComponentResource):
         self.ocr_results_queue = Queue(
             f"{name}-ocr-results-queue",
             name=f"{name}-{stack}-ocr-results-queue",
-            visibility_timeout_seconds=900,  # Must be >= Lambda timeout (900s for container-based process_ocr)
+            # Must cover the 900 s process_ocr Lambda timeout AND the 960 s
+            # regional re-OCR routing lease (claim_ocr_routing_decision).
+            # A redelivery that arrives while a crashed attempt's lease is
+            # still held is rejected as busy and wastes a receive, so match
+            # the llm-validation queue's headroom.
+            visibility_timeout_seconds=960,
             message_retention_seconds=345600,  # 4 days
             receive_wait_time_seconds=0,  # Short polling
             redrive_policy=self.ocr_results_dlq.arn.apply(
@@ -399,7 +393,6 @@ class UploadImages(ComponentResource):
                 image_bucket.arn,
                 self.ocr_queue.arn,
                 artifacts_bucket.arn,
-                pulumi.Output.from_input(chromadb_bucket_name),
                 self.llm_validation_queue.arn,
                 pulumi.Output.from_input(summary_queue_arn or ""),
             ).apply(
@@ -419,6 +412,7 @@ class UploadImages(ComponentResource):
                                         "dynamodb:UpdateItem",
                                         "dynamodb:DeleteItem",
                                         "dynamodb:BatchWriteItem",
+                                        "dynamodb:SearchVectors",
                                     ],
                                     "Resource": f"arn:aws:dynamodb:*:*:table/{args[0]}*",
                                 },
@@ -429,7 +423,7 @@ class UploadImages(ComponentResource):
                                         "s3:PutObject",
                                         "s3:HeadObject",
                                         # Consumer deletes the staged async LLM
-                                        # payload on the chromadb bucket after use.
+                                        # payload (raw bucket) after use.
                                         "s3:DeleteObject",
                                     ],
                                     "Resource": [
@@ -437,12 +431,7 @@ class UploadImages(ComponentResource):
                                         args[2] + "/*",  # site_bucket
                                         args[3] + "/*",  # image_bucket
                                         args[5] + "/*",  # artifacts_bucket
-                                    ]
-                                    + (
-                                        [f"arn:aws:s3:::{args[6]}/*"]
-                                        if args[6]
-                                        else []
-                                    ),
+                                    ],
                                 },
                                 {
                                     # Explicit read access on the image
@@ -460,30 +449,19 @@ class UploadImages(ComponentResource):
                                     ],
                                 },
                             ]
-                            + (
-                                [
-                                    {
-                                        "Effect": "Allow",
-                                        "Action": "s3:ListBucket",
-                                        "Resource": f"arn:aws:s3:::{args[6]}",
-                                    }
-                                ]
-                                if args[6]
-                                else []
-                            )
                             + [
                                 {
                                     "Effect": "Allow",
                                     "Action": "sqs:SendMessage",
                                     "Resource": [
                                         args[4],  # ocr_queue.arn
-                                        args[7],  # llm_validation_queue.arn
+                                        args[6],  # llm_validation_queue.arn
                                     ]
                                     + (
                                         # summary queue (post-re-OCR
                                         # line-item refresh)
-                                        [args[8]]
-                                        if args[8]
+                                        [args[7]]
+                                        if args[7]
                                         else []
                                     ),
                                 },
@@ -567,15 +545,40 @@ class UploadImages(ComponentResource):
         # - Compaction trigger
         # ---------------------------------------------
 
+        if trace_bucket is not None:
+            RolePolicy(
+                f"{name}-native-traces-policy",
+                role=process_ocr_role.id,
+                policy=trace_bucket.arn.apply(
+                    lambda arn: json.dumps(
+                        {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "s3:PutObject",
+                                    "Resource": f"{arn}/native-traces/*",
+                                }
+                            ],
+                        }
+                    )
+                ),
+                opts=ResourceOptions(parent=self),
+            )
+
         # Create container-based process_ocr Lambda with merchant validation
         # This replaces the old zip-based Lambda and integrates merchant validation + embedding
         process_ocr_lambda_config = {
             "role_arn": process_ocr_role.arn,
             "timeout": 900,  # 15 minutes (longer for merchant validation + embedding)
             "memory_size": 3072,  # 3GB - optimal for ~2.2GB actual usage
-            "ephemeral_storage": 4096,  # 4GB for ChromaDB snapshot downloads (words=3.1GB)
+            "ephemeral_storage": 4096,  # 4GB scratch for image processing
             "environment": {
                 "DYNAMO_TABLE_NAME": dynamodb_table.name,
+                # DynamoVectorSearchClient.from_env reads this spelling;
+                # without it the client falls back to the hard-coded dev
+                # table (codex review P1).
+                "DYNAMODB_TABLE_NAME": dynamodb_table.name,
                 "S3_BUCKET": image_bucket.bucket,
                 "RAW_BUCKET": raw_bucket.bucket,
                 "SITE_BUCKET": site_bucket.bucket,
@@ -584,8 +587,6 @@ class UploadImages(ComponentResource):
                 "OCR_RESULTS_QUEUE_URL": self.ocr_results_queue.url,
                 # Async LLM validation: producer enqueues here, same Lambda consumes.
                 "LLM_VALIDATION_ASYNC": llm_validation_async,
-                # Dual-run embedding writes to DynamoDB (non-fatal, flag-gated).
-                "DUAL_WRITE_EMBEDDINGS": enable_dual_write_embeddings,
                 "LLM_VALIDATION_QUEUE_URL": self.llm_validation_queue.url,
                 # Post-re-OCR line-item refresh: the overlay enqueues a
                 # summary recompute here (fresh timestamp_computed fires
@@ -593,16 +594,7 @@ class UploadImages(ComponentResource):
                 "RECEIPT_SUMMARY_QUEUE_URL": pulumi.Output.from_input(
                     summary_queue_url or ""
                 ),
-                "CHROMADB_BUCKET": chromadb_bucket_name,
-                # Chroma Cloud: the upload path reads from Cloud (skipping the
-                # S3 snapshot) and upserts freshly embedded vectors straight to
-                # it, so they are queryable without waiting for compaction.
-                "CHROMA_CLOUD_ENABLED": chroma_cloud_enabled,
-                "CHROMA_CLOUD_API_KEY": chroma_cloud_api_key,
-                "CHROMA_CLOUD_TENANT": chroma_cloud_tenant,
-                "CHROMA_CLOUD_DATABASE": chroma_cloud_database,
-                # Gates the EMF metrics the ingest cloud upsert emits, matching
-                # the compaction Lambda's flag.
+                # Gates the EMF metrics the ingest pipeline emits.
                 "ENABLE_METRICS": "true",
                 # Note: SQS queue URLs removed - DynamoDB streams handle routing
                 "GOOGLE_PLACES_API_KEY": google_places_api_key,
@@ -613,10 +605,12 @@ class UploadImages(ComponentResource):
                 # OpenRouter LLM provider
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
-                "OPENROUTER_MODEL": "x-ai/grok-4.3",
-                "LANGCHAIN_API_KEY": langchain_api_key,
-                "LANGCHAIN_TRACING_V2": "true",  # Enable Langsmith tracing (LangChain)
-                "LANGSMITH_TRACING": "true",  # Enable Langsmith tracing (@traceable decorator)
+                "OPENROUTER_MODEL": config.get("RECEIPT_OPENROUTER_MODEL")
+                or "x-ai/grok-4.3",
+                **hosted_tracing_environment(config),
+                "RECEIPT_TRACE_BUCKET": (
+                    trace_bucket.id if trace_bucket else ""
+                ),
                 "LANGCHAIN_PROJECT": label_validation_project_name
                 or "receipt-validation",
                 "OPENROUTER_API_KEY": openrouter_api_key,
@@ -641,7 +635,6 @@ class UploadImages(ComponentResource):
             source_paths=[
                 "receipt_dynamo",
                 "receipt_embeddings",
-                "receipt_chroma",
                 "receipt_agent",
                 "receipt_places",
                 "receipt_upload",
@@ -667,6 +660,7 @@ class UploadImages(ComponentResource):
             function_name=process_ocr_lambda.name,
             batch_size=10,
             enabled=True,
+            function_response_types=["ReportBatchItemFailures"],
             opts=ResourceOptions(
                 parent=self,
                 import_=(

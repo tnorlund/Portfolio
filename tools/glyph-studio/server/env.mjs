@@ -26,6 +26,8 @@ export const SAMPLES = {
   gelsons: "/tmp/gridfix/gelsons_studio/gelsons.refined.npz",
   thestand: "/tmp/gridfix/thestand_studio/thestand.refined.npz",
   dollartree: "/tmp/gridfix/dollartree_studio/dollartree.refined.npz",
+  speedway: "/tmp/gridfix/speedway_studio/speedway.refined.npz",
+  wholefoods: "/tmp/gridfix/wholefoods_studio/wholefoods.refined.npz",
 };
 
 // Font dir -> canonical merchant name. The receipt renderer caches per-merchant
@@ -44,6 +46,8 @@ export const FONT_MERCHANTS = {
   gelsons: "Gelson's Westlake Village",
   thestand: "The Stand - American Classics Redefined",
   dollartree: "Dollar Tree",
+  speedway: "Speedway",
+  wholefoods: "Whole Foods Market",
 };
 
 // Mirror _render_cache_path's slug: runs of non-alphanumerics -> single "_".
@@ -58,7 +62,7 @@ export const PY_ENV = {
     path.join(WORKTREE, "receipt_agent"),
     path.join(WORKTREE, "receipt_dynamo"),
     path.join(WORKTREE, "receipt_upload"),
-    path.join(WORKTREE, "receipt_chroma"),
+    path.join(WORKTREE, "receipt_embeddings"),
     path.join(WORKTREE, "receipt_places"),
     path.join(WORKTREE, "receipt_dynamo_stream"),
     path.join(WORKTREE, "receipt_label"),

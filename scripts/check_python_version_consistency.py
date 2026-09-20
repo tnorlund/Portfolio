@@ -1,5 +1,5 @@
-#!/usr/bin/env python3.13
-"""Verify that active Python tooling and deployment targets use Python 3.13."""
+#!/usr/bin/env python3.14
+"""Verify the Python 3.14 baseline and the LayoutLM 3.13 runtime carve-out."""
 
 from __future__ import annotations
 
@@ -8,17 +8,41 @@ import tomllib
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
-PYTHON_VERSION = "3.13"
-PYTHON_TARGET = "py313"
+PYTHON_VERSION = "3.14"
+# The oldest runtime still deployed. Only the LayoutLM containers run it
+# (their pinned torch has no 3.14 wheels), and they install receipt_dynamo.
+# Every other runtime and CI leg sits on the 3.14 baseline, but package
+# metadata follows the floor: requires-python, and the black/ruff/mypy
+# targets (which declare the oldest interpreter the code must parse on).
+# When LayoutLM moves, raise PYTHON_FLOOR and everything follows.
+PYTHON_FLOOR = "3.13"
+PYTHON_FLOOR_TARGET = "py" + PYTHON_FLOOR.replace(".", "")
+# Files that legitimately name the 3.13 LayoutLM export/training runtimes.
+# General setup guides and every other runtime file must say 3.14.
+SECONDARY_RUNTIME_DOCUMENTS = {
+    Path("AGENTS.md"),
+    Path("receipt_layoutlm/README.md"),
+    Path(".agents/skills/coreml-export/SKILL.md"),
+    # The [coreai] extra needs coreai-core, which has no cp314 wheel, so
+    # its export venv is documented on the floor.
+    Path(".agents/skills/coreai-export/SKILL.md"),
+}
+SECONDARY_RUNTIME_FILES = {
+    Path("infra/sagemaker_training/Dockerfile"),
+    Path("tests/test_sagemaker_training_runtime.py"),
+}
+# receipt_layoutlm deploys on the 3.14 inference image but its [coreml] and
+# [coreai] extras are pinned to 3.13-only wheels (export venvs, SageMaker
+# training), so it must keep advertising the floor alongside the baseline.
+SECONDARY_RUNTIME_PYPROJECTS = {Path("receipt_layoutlm/pyproject.toml")}
 
 SCAN_ROOTS = (
     ".github",
-    ".codex/skills",
+    ".agents/skills",
     "infra",
     "scripts",
     "synthesis_loop",
     "tests",
-    "receipt_langsmith/scripts",
     "receipt_upload/tests",
 )
 SCAN_SUFFIXES = {".py", ".sh", ".yaml", ".yml"}
@@ -29,9 +53,9 @@ SCAN_NAMES = {
 }
 DOCUMENT_SUFFIXES = {".adoc", ".markdown", ".md", ".mdx", ".rst"}
 
-# Documentation outside these locations is maintained operational guidance and
-# must agree with the active runtime baseline. These directories contain frozen
-# handoffs, review evidence, or explicitly archived material whose version
+# Documentation outside these locations is maintained operational guidance.
+# These directories contain frozen handoffs, review evidence, or explicitly
+# archived material whose version
 # references describe the repository at an earlier point in time.
 HISTORICAL_DOCUMENT_ROOTS = (
     Path(".review-loop"),
@@ -61,21 +85,30 @@ LEGACY_RESOURCE_FILES = {
 
 OLD_VERSION_TOKEN = re.compile(
     r"(?:"
-    r"\bpython3\.(?:8|9|10|11|12)\b|"
-    r"\bpython(?:38|39|310|311|312)\b|"
-    r"\bpy(?:38|39|310|311|312)\b|"
-    r"\bpython:3\.(?:8|9|10|11|12)\b|"
-    r"\bpython@3\.(?:8|9|10|11|12)\b|"
-    r"Versions/3\.(?:8|9|10|11|12)\b"
+    r"\bpython3\.(?:8|9|10|11|12|13)\b|"
+    r"\bpython(?:38|39|310|311|312|313)\b|"
+    r"\bpy(?:38|39|310|311|312|313)\b|"
+    r"\bpython:3\.(?:8|9|10|11|12|13)\b|"
+    r"\bpython@3\.(?:8|9|10|11|12|13)\b|"
+    r"Versions/3\.(?:8|9|10|11|12|13)\b"
     r")"
 )
 OLD_VERSION_DECLARATION = re.compile(
-    r"(?:python[-_]version|python_versions|requires-python)"
-    r"[^\n]*3\.(?:8|9|10|11|12)\b",
+    r"(?:python[-_]version|python_versions)" r"[^\n]*3\.(?:8|9|10|11|12|13)\b",
     re.IGNORECASE,
 )
 NON_BASELINE_DOCUMENT_VERSION_TOKEN = re.compile(
-    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?" + r"(?:2\.\d+|3\.(?!13\b)\d+)\b",
+    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?" + r"(?:2\.\d+|3\.(?!14\b)\d+)\b",
+    re.IGNORECASE,
+)
+# Tokens naming the LayoutLM runtime, stripped from the carved-out files
+# before the scans above run.
+SECONDARY_VERSION_TOKEN = re.compile(
+    r"(?:"
+    r"\bpython\s*(?:(?:>=?|==|~=|[:@])\s*)?3\.13\b|"
+    r"\bpy(?:thon)?313\b|"
+    r"(?:python[-_]version|python_versions)[^\n]*3\.13\b"
+    r")",
     re.IGNORECASE,
 )
 PYTHON_CLASSIFIER = re.compile(r"^Programming Language :: Python :: (3\.\d+)$")
@@ -135,6 +168,8 @@ def _check_runtime_files() -> list[str]:
         if relative in LEGACY_RESOURCE_FILES:
             continue
         text = path.read_text(encoding="utf-8")
+        if relative in SECONDARY_RUNTIME_DOCUMENTS | SECONDARY_RUNTIME_FILES:
+            text = SECONDARY_VERSION_TOKEN.sub("", text)
         patterns = [OLD_VERSION_TOKEN, OLD_VERSION_DECLARATION]
         if _is_document(path):
             patterns.append(NON_BASELINE_DOCUMENT_VERSION_TOKEN)
@@ -168,58 +203,65 @@ def _check_pyprojects() -> list[str]:
     for path in sorted(REPOSITORY_ROOT.rglob("pyproject.toml")):
         if _is_ignored_path(path):
             continue
-
         relative = _relative(path)
         with path.open("rb") as handle:
             data = tomllib.load(handle)
-
         project = data.get("project")
         if project is None:
             continue
-
-        requires_python = project.get("requires-python")
-        if requires_python is None or not str(requires_python).startswith(
-            f">={PYTHON_VERSION}"
+        secondary = relative in SECONDARY_RUNTIME_PYPROJECTS
+        expected_version = PYTHON_FLOOR if secondary else PYTHON_VERSION
+        requires_python = str(project.get("requires-python"))
+        if not (
+            requires_python.startswith(f">={PYTHON_FLOOR}")
+            or requires_python.startswith(f">={PYTHON_VERSION}")
         ):
             errors.append(
                 f"{relative}: requires-python is {requires_python!r}; "
-                f"expected a >={PYTHON_VERSION} baseline"
+                f"expected a >={PYTHON_FLOOR} or >={PYTHON_VERSION} floor"
             )
-
         classifiers = project.get("classifiers", [])
         version_classifiers = {
             match.group(1)
             for classifier in classifiers
             if (match := PYTHON_CLASSIFIER.match(classifier))
         }
-        if version_classifiers and version_classifiers != {PYTHON_VERSION}:
+        # Every package must name the runtime it deploys on. Shared
+        # packages may also advertise the floor (the LayoutLM image installs
+        # them), and the floor package may also advertise the baseline (its
+        # base dependencies run there); nothing else is allowed.
+        allowed = {PYTHON_FLOOR, PYTHON_VERSION}
+        optional = (allowed - {expected_version}).pop()
+        if version_classifiers and (
+            expected_version not in version_classifiers
+            or not version_classifiers <= allowed
+        ):
             errors.append(
                 f"{relative}: Python classifiers are "
-                f"{sorted(version_classifiers)!r}; expected only "
-                f"{PYTHON_VERSION}"
+                f"{sorted(version_classifiers)!r}; expected "
+                f"{expected_version} (optionally with {optional})"
             )
-
         tools = data.get("tool", {})
         _check_tool_version(
             errors,
             relative,
             "Black target-version",
             tools.get("black", {}).get("target-version"),
-            [PYTHON_TARGET],
+            [PYTHON_FLOOR_TARGET],
         )
         _check_tool_version(
             errors,
             relative,
             "Ruff target-version",
             tools.get("ruff", {}).get("target-version"),
-            PYTHON_TARGET,
+            PYTHON_FLOOR_TARGET,
         )
         _check_tool_version(
             errors,
             relative,
             "mypy python_version",
             tools.get("mypy", {}).get("python_version"),
-            PYTHON_VERSION,
+            PYTHON_FLOOR,
         )
     return errors
 
@@ -247,7 +289,9 @@ def main() -> int:
         for error in errors:
             print(f"- {error}")
         return 1
-    print(f"All active Python targets use Python {PYTHON_VERSION}.")
+    print(
+        f"Python {PYTHON_VERSION} baseline and LayoutLM {PYTHON_FLOOR} carve-out declarations are consistent."
+    )
     return 0
 
 

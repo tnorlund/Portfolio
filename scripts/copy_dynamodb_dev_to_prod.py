@@ -40,19 +40,31 @@ parent_dir = os.path.dirname(script_dir)
 sys.path.insert(0, parent_dir)
 sys.path.insert(0, os.path.join(parent_dir, "receipt_dynamo"))
 
+from receipt_dynamo.constants import EmbeddingStatus
 from receipt_dynamo.data._pulumi import load_env
 from receipt_dynamo.data.dynamo_client import DynamoClient
+from receipt_dynamo.data.export_image import (
+    receipt_summary_record_from_export,
+)
+from receipt_dynamo.data.import_image import _parse_datetimes
 from receipt_dynamo.entities.image import Image
 from receipt_dynamo.entities.letter import Letter
 from receipt_dynamo.entities.line import Line
+from receipt_dynamo.entities.ocr_job import OCRJob
 from receipt_dynamo.entities.ocr_routing_decision import OCRRoutingDecision
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_barcode import ReceiptBarcode
+from receipt_dynamo.entities.receipt_embedding import (
+    ReceiptLineEmbedding,
+    ReceiptWordEmbedding,
+)
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 from receipt_dynamo.entities.receipt_metadata import ReceiptMetadata
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
-from receipt_dynamo.constants import EmbeddingStatus
+from receipt_dynamo.entities.receipt_row import ReceiptRow
+from receipt_dynamo.entities.receipt_section import ReceiptSection
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo.entities.word import Word
@@ -195,6 +207,13 @@ def copy_image_entities(
         "receipt_metadatas": 0,
         "receipt_places": 0,
         "receipt_barcodes": 0,
+        "receipt_rows": 0,
+        "receipt_sections": 0,
+        "receipt_line_items": 0,
+        "receipt_summaries": 0,
+        "receipt_fact_overrides": 0,
+        "receipt_embeddings": 0,
+        "ocr_jobs": 0,
         "ocr_routing_decisions": 0,
         "errors": [],
     }
@@ -217,6 +236,30 @@ def copy_image_entities(
             if not dry_run:
                 prod_client.add_images(images)
             stats["images"] = len(images)
+
+        # Process OCRJobs FIRST, before any row that can wake prod's
+        # line-item updater (summaries / ITEMS sections). The updater's
+        # re-OCR cap (REOCR_MAX_ATTEMPTS) is counted from the REGIONAL_REOCR
+        # jobs already in the *destination* table, so a partition copied
+        # without its ledger looks never-attempted: on 2026-09-13 prod burned
+        # two fresh re-OCRs on ~31 permanently-mismatched receipts within
+        # minutes of the copy, rewrote their words and re-minted the reviewed
+        # labels as PENDING. Only s3_bucket is rewritten; the ocr_results/
+        # S3 artifact is still copied by sync_ocr_jobs_dev_to_prod.py.
+        if export_data.get("ocr_jobs"):
+            ocr_jobs = []
+            for raw in export_data["ocr_jobs"]:
+                job = dict(raw)
+                if job.get("s3_bucket") == dev_raw_bucket:
+                    job["s3_bucket"] = prod_raw_bucket
+                ocr_jobs.append(
+                    OCRJob(
+                        **_parse_datetimes(job, ["created_at", "updated_at"])
+                    )
+                )
+            if not dry_run:
+                prod_client.add_ocr_jobs(ocr_jobs)
+            stats["ocr_jobs"] = len(ocr_jobs)
 
         # Process Receipts (update bucket names)
         if export_data.get("receipts"):
@@ -298,7 +341,19 @@ def copy_image_entities(
                 batch_size = 25
                 for i in range(0, len(receipt_word_labels), batch_size):
                     batch = receipt_word_labels[i : i + batch_size]
-                    prod_client.add_receipt_word_labels(batch)
+                    # This mirror restores labels that already exist on dev,
+                    # including legacy values retired from CORE_LABELS
+                    # (OTHER, PHONE, BUSINESS_NAME, ADDRESS, AMOUNT,
+                    # WEIGHT, TENDER, ITEM_QUANTITY, REGISTER, ...). The
+                    # core-label guard exists to stop NEW non-core labels
+                    # being minted; refusing them here instead drops real
+                    # dev labels on the floor, and because the guard raises
+                    # for the whole image it also aborts every entity the
+                    # copy would have written after this point. This is the
+                    # "controlled legacy restoration" the guard carves out.
+                    prod_client.add_receipt_word_labels(
+                        batch, allow_non_core_labels=True
+                    )
             stats["receipt_word_labels"] = len(receipt_word_labels)
 
         # Preserve legacy ReceiptMetadata rows during whole-image mirroring.
@@ -332,9 +387,94 @@ def copy_image_entities(
                 prod_client.add_receipt_barcodes(receipt_barcodes)
             stats["receipt_barcodes"] = len(receipt_barcodes)
 
-        # NOTE: OCRJobs are intentionally NOT copied here. sync_ocr_jobs_dev_to_prod.py
-        # owns them because it also rewrites OCRJob.s3_bucket (dev→prod) and copies
-        # the ocr_results/ S3 artifact, which a raw DynamoDB copy would not do.
+        # Derived rows, owner facts and vectors. A REPLACE deletes the whole
+        # image partition, and nothing in the destination environment
+        # regenerates these after a cross-environment copy, so they must be
+        # restored here or prod silently loses them (and reconcile's
+        # guard_replaces then refuses to ever REPLACE the image again).
+        #
+        # Copied in dependency order: rows -> sections (reference row_ids) ->
+        # line items (reference sections/summaries).
+        if export_data.get("receipt_rows"):
+            receipt_rows = [
+                ReceiptRow(**row) for row in export_data["receipt_rows"]
+            ]
+            if not dry_run:
+                prod_client.add_receipt_rows(receipt_rows)
+            stats["receipt_rows"] = len(receipt_rows)
+
+        if export_data.get("receipt_sections"):
+            receipt_sections = [
+                ReceiptSection(**section)
+                for section in export_data["receipt_sections"]
+            ]
+            if not dry_run:
+                prod_client.add_receipt_sections(receipt_sections)
+            stats["receipt_sections"] = len(receipt_sections)
+
+        if export_data.get("receipt_line_items"):
+            receipt_line_items = [
+                ReceiptLineItem(**li)
+                for li in export_data["receipt_line_items"]
+            ]
+            if not dry_run:
+                prod_client.add_receipt_line_items(receipt_line_items)
+            stats["receipt_line_items"] = len(receipt_line_items)
+
+        # ReceiptSummary carries the offline bank-match fields (ledger,
+        # bank_amount, bank_match_confidence, bank_date) written by
+        # scripts/backfill_tender_bank.py. The summary updater preserves them
+        # by reading the STORED row, so if prod has no summary row a recompute
+        # has nothing to preserve and those fields are lost until the backfill
+        # is re-run against prod. Everything else on the row is recomputed
+        # from the destination's own words within ~30s of the copy.
+        if export_data.get("receipt_summaries"):
+            # The stored row is a ReceiptSummaryRecord, which WRAPS a
+            # ReceiptSummary in `summary` alongside timestamp_computed and
+            # overrides_applied. Reconstructing the inner ReceiptSummary
+            # here instead of the record is a type mismatch against what
+            # get_image_details read and what add_receipt_summaries takes.
+            # Rebuilt by the helper that lives next to the exporter, so
+            # this copier and its contract tests exercise one
+            # implementation. ReceiptSummaryRecord wraps a ReceiptSummary
+            # which holds a MonetaryTotals, and asdict() flattens both.
+            receipt_summaries = [
+                receipt_summary_record_from_export(s)
+                for s in export_data["receipt_summaries"]
+            ]
+            if not dry_run:
+                prod_client.add_receipt_summaries(receipt_summaries)
+            stats["receipt_summaries"] = len(receipt_summaries)
+
+        # ReceiptFactOverride rows are deliberately NOT written. Owner facts
+        # are stated on the dev table only: the DAL refuses the write on any
+        # protected table (_assert_fact_override_writable), and the refusal
+        # raises out of this function, aborting every entity queued after it
+        # (embeddings, routing decisions). Their EFFECT still reaches prod --
+        # the summary updater applies the override on dev and bakes the
+        # result into the ReceiptSummaryRecord (see overrides_applied),
+        # which is copied above. Counted so the operator can see they were
+        # present and intentionally left behind.
+        stats["receipt_fact_overrides"] = len(
+            export_data.get("receipt_fact_overrides") or []
+        )
+
+        # Vectors are copied, not regenerated: OpenAI embeddings are not
+        # bit-stable across calls or model revisions, so copying is the only
+        # way a receipt shared by dev and prod behaves identically in both
+        # (docs/chroma-removal/SPEC.md 3.1).
+        if export_data.get("receipt_embeddings"):
+            receipt_embeddings = [
+                (
+                    ReceiptWordEmbedding(**e)
+                    if "word_vector" in e
+                    else ReceiptLineEmbedding(**e)
+                )
+                for e in export_data["receipt_embeddings"]
+            ]
+            if not dry_run:
+                prod_client.add_receipt_embeddings(receipt_embeddings)
+            stats["receipt_embeddings"] = len(receipt_embeddings)
 
         # Process OCRRoutingDecisions
         if export_data.get("ocr_routing_decisions"):

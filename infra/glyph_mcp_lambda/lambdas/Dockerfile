@@ -3,7 +3,7 @@
 # API Gateway and Lambda Function URL. numpy + PIL only — no scipy/skimage/node.
 
 # Stage 1: dependencies (cached layer — rebuilds only when these change)
-FROM public.ecr.aws/lambda/python:3.13 AS dependencies
+FROM public.ecr.aws/lambda/python:3.14 AS dependencies
 
 # The glyphstudio package (numpy + PIL) plus the MCP-over-Lambda adapter.
 COPY tools/glyph-studio/py/ /tmp/glyphstudio_pkg/

@@ -22,6 +22,7 @@ from typing import (
 from botocore.exceptions import ClientError
 
 from .error_handling import ErrorHandler, ErrorMessageConfig
+from .nutrition_guard import refuse_prohibited_nutrition_write
 from .shared_utils import (
     batch_write_with_retry,
     build_get_item_key,
@@ -164,6 +165,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             **kwargs: Additional arguments for put_item
         """
         item = entity.to_item()
+        refuse_prohibited_nutrition_write(self.table_name, item)
 
         # Build put_item parameters
         put_params: dict[str, Any] = {
@@ -192,6 +194,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
             condition_expression: Condition expression (optional)
             **kwargs: Additional arguments for delete_item
         """
+        refuse_prohibited_nutrition_write(self.table_name, entity)
         # Build delete_item parameters
         delete_params = {
             "TableName": self.table_name,
@@ -260,6 +263,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
         **kwargs: Any,
     ) -> None:
         """Write multiple entities to DynamoDB using transactional write."""
+        refuse_prohibited_nutrition_write(self.table_name, entities)
         # DynamoDB transact_write_items has a limit of 25 items per transaction
         chunk_size = 25
 
@@ -341,6 +345,7 @@ class DynamoDBBaseOperations(DynamoClientProtocol):
                 items
             initial_backoff: Initial backoff time in seconds
         """
+        refuse_prohibited_nutrition_write(self.table_name, request_items)
         batch_write_with_retry(
             self._client,
             self.table_name,

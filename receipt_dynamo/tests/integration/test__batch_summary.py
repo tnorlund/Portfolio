@@ -517,6 +517,35 @@ def test_update_batch_summary_success(
 
 
 @pytest.mark.integration
+@pytest.mark.parametrize("bulk", [False, True])
+def test_enum_status_update_remains_discoverable(
+    dynamodb_table: Literal["MyMockedTable"],
+    sample_batch_summary: BatchSummary,
+    bulk: bool,
+) -> None:
+    """An enum-assigned transition moves the record between GSI statuses."""
+    client = DynamoClient(dynamodb_table)
+    client.add_batch_summary(sample_batch_summary)
+    sample_batch_summary.status = BatchStatus.IN_PROGRESS
+    sample_batch_summary.batch_type = BatchType.WORD_EMBEDDING
+    if bulk:
+        client.update_batch_summaries([sample_batch_summary])
+    else:
+        client.update_batch_summary(sample_batch_summary)
+
+    active, _ = client.get_batch_summaries_by_status(
+        BatchStatus.IN_PROGRESS, BatchType.WORD_EMBEDDING
+    )
+    pending, _ = client.get_batch_summaries_by_status(
+        BatchStatus.PENDING, BatchType.EMBEDDING
+    )
+    assert [batch.batch_id for batch in active] == [
+        sample_batch_summary.batch_id
+    ]
+    assert pending == []
+
+
+@pytest.mark.integration
 def test_update_batch_summary_not_found(
     dynamodb_table: Literal["MyMockedTable"],
     sample_batch_summary: BatchSummary,

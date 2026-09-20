@@ -21,7 +21,9 @@ def test_component_parser_accepts_image_alias_and_internal_name():
 def test_dynamodb_wire_json_round_trips_binary_values():
     wire_item = {"PK": {"S": "BINARY#1"}, "payload": {"B": b"\x00\xff"}}
 
-    restored = cache._restore_binary_values(json.loads(cache._json_dump(wire_item)))
+    restored = cache._restore_binary_values(
+        json.loads(cache._json_dump(wire_item))
+    )
 
     assert restored == wire_item
 
@@ -59,7 +61,9 @@ def test_dynamo_writer_builds_queryable_cache_and_image_index(tmp_path: Path):
 
 def test_dynamo_writer_uses_item_bucket_before_pulumi_fallback(tmp_path: Path):
     db_path = tmp_path / "dynamodb.sqlite3"
-    writer = cache.DynamoSQLiteWriter(db_path, raw_bucket_fallback="pulumi-raw-bucket")
+    writer = cache.DynamoSQLiteWriter(
+        db_path, raw_bucket_fallback="pulumi-raw-bucket"
+    )
     writer.add(
         [
             {
@@ -108,14 +112,17 @@ def test_dynamo_writer_explicit_bucket_override_wins(tmp_path: Path):
     writer.finalize({"table_name": "receipts"})
 
     with sqlite3.connect(db_path) as connection:
-        bucket = connection.execute("SELECT bucket FROM raw_images").fetchone()[0]
+        bucket = connection.execute(
+            "SELECT bucket FROM raw_images"
+        ).fetchone()[0]
 
     assert bucket == "override-raw-bucket"
 
 
-def test_sync_passes_pulumi_raw_bucket_as_fallback(tmp_path: Path, monkeypatch):
+def test_sync_passes_pulumi_raw_bucket_as_fallback(
+    tmp_path: Path, monkeypatch
+):
     monkeypatch.delenv("DYNAMODB_TABLE_NAME", raising=False)
-    monkeypatch.delenv("CHROMADB_BUCKET", raising=False)
     monkeypatch.delenv("RAW_BUCKET", raising=False)
     monkeypatch.setattr(
         cache,
@@ -154,7 +161,6 @@ def test_sync_passes_pulumi_raw_bucket_as_fallback(tmp_path: Path, monkeypatch):
         profile=None,
         region=None,
         table_name=None,
-        chroma_bucket=None,
         raw_bucket=None,
         scan_segments=8,
         consistent_read=False,
@@ -169,7 +175,9 @@ def test_sync_passes_pulumi_raw_bucket_as_fallback(tmp_path: Path, monkeypatch):
     }
 
 
-def test_safe_object_path_preserves_normal_keys_and_blocks_traversal(tmp_path: Path):
+def test_safe_object_path_preserves_normal_keys_and_blocks_traversal(
+    tmp_path: Path,
+):
     normal = cache._safe_object_path(tmp_path, "bucket", "raw/2026/a.png")
     traversal = cache._safe_object_path(tmp_path, "bucket", "../secret.png")
 
@@ -197,7 +205,7 @@ def test_invalidate_is_metadata_only_by_default(tmp_path: Path):
     assert db_path.read_bytes() == b"keep me"
     assert manifest["valid"] is False
     assert manifest["components"]["dynamodb"]["valid"] is False
-    assert manifest["components"]["chroma"]["valid"] is True
+    assert manifest["components"]["raw_images"]["valid"] is True
 
 
 def test_create_local_table_recreates_remote_key_and_index_schema():
@@ -240,7 +248,9 @@ def test_local_dynamo_import_progress_log_formats_large_counts(
     monkeypatch.setattr(
         cache,
         "_iter_dynamo_batches",
-        lambda _path: iter([[{"PK": {"S": str(index)}}] for index in range(4)]),
+        lambda _path: iter(
+            [[{"PK": {"S": str(index)}}] for index in range(4)]
+        ),
     )
     monkeypatch.setattr(
         cache,

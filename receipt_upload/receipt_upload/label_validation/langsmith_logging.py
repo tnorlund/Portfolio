@@ -1,22 +1,15 @@
-"""Langsmith integration for logging label validations and merchant resolution.
+"""Log validation and merchant decisions to native S3 receipt traces.
 
-ALL validation decisions are logged to Langsmith to build a comprehensive dataset
-for improving the system. This includes:
-- ChromaDB consensus validations (Tier 1)
-- LLM validations (Tier 2)
-- Merchant resolution results (both ChromaDB and Place ID Finder)
-
-Human annotators can review and correct any decision, providing feedback
-that improves future accuracy.
-
-Uses @traceable decorator from langsmith for automatic trace creation.
-Requires wait_for_all_tracers() to be called at the end of Lambda handlers
-to ensure traces are flushed before the execution context terminates.
+Hosted LangSmith debugging and feedback remain optional. Native records are
+flushed synchronously when their receipt-processing root finishes.
 """
 
 import logging
 import os
 from typing import Any, Dict, List, Optional
+
+from receipt_upload.tracing import capture_enabled, hosted_enabled
+from receipt_upload.tracing import traceable as native_traceable
 
 logger = logging.getLogger(__name__)
 
@@ -26,26 +19,6 @@ def _log(msg: str) -> None:
     print(f"[LANGSMITH_LOGGING] {msg}", flush=True)
     logger.info(msg)
 
-
-# Enable Langsmith tracing if API key is set
-# Both LANGCHAIN_TRACING_V2 (for LangChain) and LANGSMITH_TRACING (for @traceable)
-# are needed for complete tracing coverage
-_api_key = os.environ.get("LANGCHAIN_API_KEY", "")
-_tracing_v2 = os.environ.get("LANGCHAIN_TRACING_V2", "")
-_langsmith_tracing = os.environ.get("LANGSMITH_TRACING", "")
-_log(
-    f"Langsmith config: API_KEY={'set' if _api_key else 'NOT SET'} "
-    f"({len(_api_key)} chars), TRACING_V2={_tracing_v2!r}, "
-    f"LANGSMITH_TRACING={_langsmith_tracing!r}"
-)
-
-if _api_key:
-    if not _tracing_v2:
-        os.environ["LANGCHAIN_TRACING_V2"] = "true"
-        _log("Auto-enabled LANGCHAIN_TRACING_V2")
-    if not _langsmith_tracing:
-        os.environ["LANGSMITH_TRACING"] = "true"
-        _log("Auto-enabled LANGSMITH_TRACING")
 
 # Default Langsmith projects
 DEFAULT_LABEL_PROJECT = "receipt-label-validation"
@@ -65,27 +38,13 @@ def _get_merchant_resolution_project() -> str:
 
 
 def _is_langsmith_enabled() -> bool:
-    """Check if Langsmith is enabled (API key is set)."""
-    return bool(os.environ.get("LANGCHAIN_API_KEY"))
+    """Check whether hosted tracing was explicitly enabled."""
+    return hosted_enabled()
 
 
 def _get_traceable():
-    """Get the traceable decorator if langsmith is available."""
-    try:
-        from langsmith.run_helpers import traceable
-
-        return traceable
-    except ImportError:
-        _log("langsmith package not installed, tracing disabled")
-
-        # Return a no-op decorator if langsmith not installed
-        def noop_decorator(*args, **kwargs):
-            def wrapper(fn):
-                return fn
-
-            return wrapper
-
-        return noop_decorator
+    """Use durable native tracing with optional hosted debugging."""
+    return native_traceable
 
 
 def log_label_validation(
@@ -96,7 +55,7 @@ def log_label_validation(
     word_text: str,
     predicted_label: str,
     final_label: str,
-    validation_source: str,  # "chroma" or "llm"
+    validation_source: str,  # "similarity" or "llm"
     decision: str,  # "valid", "invalid", "needs_review"
     confidence: float,
     reasoning: str,
@@ -118,7 +77,7 @@ def log_label_validation(
         word_text: The text of the word being validated
         predicted_label: The original predicted label from LayoutLM
         final_label: The final label after validation
-        validation_source: "chroma" for ChromaDB consensus, "llm" for LLM
+        validation_source: "similarity" for consensus, "llm" for LLM
         decision: "valid", "invalid", or "needs_review"
         confidence: Confidence score (0.0 to 1.0)
         reasoning: Explanation for the decision
@@ -130,7 +89,7 @@ def log_label_validation(
     Returns:
         Dict with logged data if successful, None if Langsmith is not enabled
     """
-    if not _is_langsmith_enabled():
+    if not capture_enabled():
         _log(
             f"Langsmith not enabled (no API key), skipping log for "
             f"{image_id}#{receipt_id}#{line_id}#{word_id}"
@@ -213,7 +172,8 @@ def log_label_validation(
 def log_merchant_resolution(
     image_id: str,
     receipt_id: int,
-    resolution_tier: str,  # "chroma_phone", "chroma_address", "chroma_text", "place_id_finder"
+    resolution_tier: str,  # "similarity_phone", "similarity_address",
+    # "similarity_text", "place_id_finder"
     merchant_name: Optional[str],
     place_id: Optional[str],
     confidence: float,
@@ -235,13 +195,13 @@ def log_merchant_resolution(
         confidence: Confidence score (0.0 to 1.0)
         phone_extracted: Phone number extracted from receipt
         address_extracted: Address extracted from receipt
-        similarity_matches: Top ChromaDB similarity matches with scores
+        similarity_matches: Top vector similarity matches with scores
         source_receipt: Source receipt ID for Tier 1 matches
 
     Returns:
         Dict with logged data if successful, None if Langsmith is not enabled
     """
-    if not _is_langsmith_enabled():
+    if not capture_enabled():
         _log(
             f"Langsmith not enabled (no API key), skipping merchant log for "
             f"{image_id}#{receipt_id}"

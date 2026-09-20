@@ -128,22 +128,53 @@ _MONTHS = {
     "dec": 12,
 }
 
-# Month-name dates ("JUL 25, 2026", "25 Jul '26", "July 25 2026").
+# Month-name dates ("JUL 25, 2026", "25 Jul '26", "July 25 2026",
+# "01-Mar-2025", "May 6. 2025", "Mar 10,2026", "April 1: 2024").
 # Receipts print these at least as often as numeric forms, and they
 # arrive split across multiple OCR words — parse_date accepts joined
 # line text as well as single words.
+#
+# The year must be separated from the day by whitespace, by a comma
+# (with or without a space: "Mar 10,2026"), or by a period / colon plus
+# whitespace ("May 6. 2025", "April 1: 2024" — OCR reads the comma
+# after the day as any of these). A bare run of digits never splits
+# into day + year ("MAR 1234" stays None), a price never splits into
+# day + year ("MAYO 5.99" stays None),
+# a "-" after the day is a range or weekday suffix ("June 16 - 22",
+# "June 18-Tuesday,") and is refused, and a two-digit year must not be
+# the integer part of a price ("Jan 21, 32.99" stays None). A month
+# name with no year on the line never parses: the year is not guessed.
+# Year group shared by the month-name patterns: four digits, or two
+# digits that are not the integer part of a price ("32.99"; a following
+# colon time like "'26:10:15" is fine); neither may run into a weekday
+# ("2026-Tuesday", "2026- Tuesday").
+_MONTH_NAME = r"(?P<month>jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)"
+_YEAR_PATTERN = r"(?P<year>\d{4}\b|\d{2}\b(?!\.\d))(?!-\s*[A-Za-z])"
+
 _MONTH_NAME_PATTERNS = [
-    # Month first: JUL 25, 2026 / July 25 '26
+    # Month first: JUL 25, 2026 / July 25 '26 / May 6. 2025 / Mar 10,2026
     re.compile(
-        r"\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+"
-        r"(\d{1,2})(?:st|nd|rd|th)?,?\s+'?(\d{4}|\d{2})\b",
+        r"\b" + _MONTH_NAME + r"[a-z]*\.?\s+"
+        r"(?P<day>\d{1,2})(?:st|nd|rd|th)?(?:,\s*|[.:]\s+|\s+)'?"
+        + _YEAR_PATTERN,
         re.IGNORECASE,
     ),
-    # Day first: 25 JUL 2026 / 25 July '26
+    # Day first, spaced: 25 JUL 2026 / 25 July '26 / 25. Jul 2026
     re.compile(
-        r"\b(\d{1,2})(?:st|nd|rd|th)?\.?\s+"
-        r"(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?,?\s+"
-        r"'?(\d{4}|\d{2})\b",
+        r"\b(?P<day>\d{1,2})(?:st|nd|rd|th)?\.?\s+"
+        + _MONTH_NAME
+        + r"[a-z]*\.?,?\s+'?"
+        + _YEAR_PATTERN,
+        re.IGNORECASE,
+    ),
+    # Day first, punctuated: 01-Mar-2025 / 01.Mar.2025 / 01/Mar/2025. The
+    # same separator must appear on both sides of the month, so a range
+    # ("June 16-June 22") never reads its last day as a year.
+    re.compile(
+        r"\b(?P<day>\d{1,2})(?P<sep>[-./])"
+        + _MONTH_NAME
+        + r"[a-z]*(?P=sep)'?"
+        + _YEAR_PATTERN,
         re.IGNORECASE,
     ),
 ]
@@ -192,6 +223,14 @@ def extract_amount(text: str) -> float | None:
 def parse_date(text: str) -> datetime | None:
     """Parse a date from text.
 
+    Accepts numeric forms ("01/15/2024", "01-15-24", "2024-01-15") and
+    month-name forms in either order ("JUL 25, 2026", "May 6. 2025",
+    "Mar 10,2026", "April 1: 2024", "01-Mar-2025", "25 July '26"),
+    with or without trailing punctuation. Nothing is guessed: a month
+    name with no year, a range ("June 16 - 22"), a weekday-suffixed
+    promo string ("June 18-Tuesday,") and OCR junk ("1/14,23",
+    "6728/25", "3.22") all return None.
+
     Args:
         text: Text that may contain a date (e.g., "01/15/2024", "2024-01-15")
 
@@ -239,15 +278,10 @@ def parse_date(text: str) -> datetime | None:
         match = pattern.search(text)
         if not match:
             continue
-        groups = match.groups()
         try:
-            if groups[0].isdigit():
-                day = int(groups[0])
-                month = _MONTHS[groups[1][:3].lower()]
-            else:
-                month = _MONTHS[groups[0][:3].lower()]
-                day = int(groups[1])
-            year = _expand_year(int(groups[2]))
+            day = int(match.group("day"))
+            month = _MONTHS[match.group("month")[:3].lower()]
+            year = _expand_year(int(match.group("year")))
             return datetime(year, month, day)
         except (ValueError, KeyError):
             continue
@@ -367,9 +401,12 @@ def _extract_summary_fields(
                     (label.word_id, text)
                 )
 
-    # OCR splits dates across words ("JUL" "25" "2026"), so no single
-    # word parses on its own. When per-word parsing found nothing, join
-    # each line's DATE words in word order and parse the whole phrase.
+    # OCR splits dates across words ("JUL" "25" "2026", "May" "6." "2025",
+    # "Mar" "10,2026"), so no single word parses on its own. When
+    # per-word parsing found nothing, join each line's DATE words in
+    # word order and parse the whole phrase; parse_date handles the
+    # punctuation OCR leaves on the day token. A line whose DATE words
+    # carry no year ("Jan" "21,") stays unparsed rather than guessed.
     if state.date is None:
         for _line_id, entries in sorted(date_words_by_line.items()):
             joined = " ".join(t for _, t in sorted(entries) if t)
@@ -847,6 +884,15 @@ def resolve_item_count(
 # ReceiptSummary dataclass
 # =============================================================================
 
+# Minimum bank_match_confidence for bank_date to stand in for a missing
+# printed date (ReceiptSummary.effective_date). Curated Chase matches
+# carry 1.0 (confirmed) / 0.9 (auto) and exact-amount live matches
+# 0.95 / 0.85; tip-band live matches top out at 0.8 and are excluded on
+# purpose -- they pick one of several nearby charges by merchant-name
+# similarity, and a wrong purchase date silently moves spend between
+# months.
+BANK_DATE_MIN_CONFIDENCE = 0.85
+
 
 @dataclass
 class ReceiptSummary(ReceiptIdentifierMixin):
@@ -875,6 +921,10 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             ``chase``, ``apple`` or ``none`` (None when unknown).
         bank_amount: Settled amount from the matched bank transaction.
         bank_match_confidence: Confidence of the bank match in [0, 1].
+        bank_date: Transaction date of the matched bank transaction.
+            Offline like the other bank fields. The fallback date for
+            receipts whose printed date is missing, illegible, or cut
+            off; see ``effective_date``.
     """
 
     image_id: str
@@ -889,6 +939,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
     ledger: str | None = None
     bank_amount: float | None = None
     bank_match_confidence: float | None = None
+    bank_date: datetime | None = None
 
     def __post_init__(self) -> None:
         """Validate identifiers and computed summary fields."""
@@ -946,6 +997,52 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             raise ValueError(
                 "bank_match_confidence must be within [0, 1] or None"
             )
+        if self.bank_date is not None and not isinstance(
+            self.bank_date, datetime
+        ):
+            raise ValueError("bank_date must be a datetime or None")
+
+    @property
+    def bank_date_eligible(self) -> bool:
+        """Whether ``bank_date`` is trustworthy enough to stand in for
+        a missing printed date.
+
+        Fails closed: no bank date, no confidence, or a confidence below
+        ``BANK_DATE_MIN_CONFIDENCE`` all mean *no* fallback. Tip-band
+        matches are a guess about which of several nearby charges a
+        receipt is; a guessed date inside a spending total is worse
+        than an honestly undated receipt.
+        """
+        return (
+            self.bank_date is not None
+            and self.bank_match_confidence is not None
+            and self.bank_match_confidence >= BANK_DATE_MIN_CONFIDENCE
+        )
+
+    @property
+    def effective_date(self) -> datetime | None:
+        """Printed (label-derived) date, else an eligible bank date.
+
+        ``date`` is recomputed from VALID DATE labels on every stream
+        recompute and is None when the receipt has no legible printed
+        date. ``bank_date`` comes from the offline bank match and
+        survives recomputes, so it is the fallback -- never the other
+        way round: a printed date is the purchase date, a bank date can
+        lag it by a day. The fallback only applies when
+        ``bank_date_eligible`` (see ``BANK_DATE_MIN_CONFIDENCE``).
+        """
+        if self.date is not None:
+            return self.date
+        return self.bank_date if self.bank_date_eligible else None
+
+    @property
+    def date_source(self) -> str | None:
+        """Where ``effective_date`` came from: 'label', 'bank', or None."""
+        if self.date is not None:
+            return "label"
+        if self.bank_date_eligible:
+            return "bank"
+        return None
 
     # Convenience properties for backwards compatibility
     @property
@@ -1040,6 +1137,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
         ledger: str | None = None,
         bank_amount: float | None = None,
         bank_match_confidence: float | None = None,
+        bank_date: datetime | None = None,
         line_item_count: int | None = None,
         total_line_ids: Collection[int] | None = None,
     ) -> "ReceiptSummary":
@@ -1060,6 +1158,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             ledger: Optional bank ledger (chase/apple/none).
             bank_amount: Optional matched bank transaction amount.
             bank_match_confidence: Optional match confidence in [0, 1].
+            bank_date: Optional matched bank transaction date.
             line_item_count: Number of ``ReceiptLineItem`` rows the
                 receipt currently holds. Preferred over the LINE_TOTAL
                 label count when non-zero (see :func:`resolve_item_count`).
@@ -1098,6 +1197,7 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             ledger=ledger,
             bank_amount=bank_amount,
             bank_match_confidence=bank_match_confidence,
+            bank_date=bank_date,
         )
 
     def to_dict(self) -> dict:
@@ -1118,6 +1218,15 @@ class ReceiptSummary(ReceiptIdentifierMixin):
             "ledger": self.ledger,
             "bank_amount": self.bank_amount,
             "bank_match_confidence": self.bank_match_confidence,
+            "bank_date": (
+                self.bank_date.isoformat() if self.bank_date else None
+            ),
+            "effective_date": (
+                self.effective_date.isoformat()
+                if self.effective_date
+                else None
+            ),
+            "date_source": self.date_source,
         }
         result.update(self.totals.to_dict())
         return result

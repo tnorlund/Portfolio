@@ -1,5 +1,7 @@
 # AWS → Mac OCR → AWS: the upload handoff contract
 
+> **Historical note (Sept 2026):** the ChromaDB legs described in this document were retired by the vector-store teardown (see `docs/chroma-removal/`). Vector similarity now runs against native DynamoDB embedding items via `receipt_embeddings`; the `receipt_chroma` package no longer exists.
+
 This document describes the round-trip contract between the Swift OCR worker
 (`receipt_ocr_swift`, runs on a Mac) and the AWS post-processing pipeline
 (receipt persistence, embeddings, Chroma, merchant resolution, and section
@@ -471,8 +473,9 @@ match `ReceiptSection.model_source` exactly:
 - `tools/glyph-studio/py/face_map_v2_cli.py` (Counter grouping) and
   `tools/glyph-studio/py/write_section_seeds.py` (None check) — tolerant,
   but grouping output changes if values change.
-- `infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py` — MCP
-  tools read/write `model_source` as an opaque string (defaults
+- `scripts/receipt_mcp_server.py` — shared MCP tools, packaged as
+  `receipt_mcp_server/server.py` by the Lambda Dockerfile, read/write
+  `model_source` as an opaque string (defaults
   `"mcp-claude-review"`); pass-through, no exact match on the
   deterministic literal.
 

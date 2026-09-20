@@ -57,7 +57,7 @@ def get_receipt_place(
     - validation_status
 
     This is the starting point for validation - compare this against
-    what you find in ChromaDB and Google Places.
+    what you find in other receipts and Google Places.
     """
     if _dynamo_client is None:
         return {"error": "DynamoDB client not configured"}

@@ -376,11 +376,11 @@ def test_receipt_row_to_item(example_receipt_row):
 
 
 @pytest.mark.unit
-def test_receipt_row_key_matches_chroma_line_id_convention(
+def test_receipt_row_key_matches_line_embedding_id_convention(
     example_receipt_row,
 ):
-    """SK embeds the primary line id — the Chroma lines-collection join."""
-    # Chroma lines collection id: IMAGE#{image}#RECEIPT#{r:05d}#LINE#{p:05d}
+    """SK embeds the primary line id — the line-embedding join."""
+    # Line embedding id: IMAGE#{image}#RECEIPT#{r:05d}#LINE#{p:05d}
     item = example_receipt_row.to_item()
     assert item["SK"]["S"].endswith(f"#ROW#{example_receipt_row.row_id:05d}")
     assert example_receipt_row.row_id == example_receipt_row.line_ids[0]

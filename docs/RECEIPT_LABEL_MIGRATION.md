@@ -1,5 +1,7 @@
 # Receipt Label Package Migration
 
+> **Historical note (Sept 2026):** the ChromaDB legs described in this document were retired by the vector-store teardown (see `docs/chroma-removal/`). Vector similarity now runs against native DynamoDB embedding items via `receipt_embeddings`; the `receipt_chroma` package no longer exists.
+
 ## Overview
 
 The `receipt_label` package was a monolithic Python module that served as a catch-all for receipt processing utilities. Over time, it became difficult to maintain as responsibilities grew and overlapped with other emerging packages. This document explains what `receipt_label` contained, why it was problematic, and how its functionality was split across specialized packages.

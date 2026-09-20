@@ -116,8 +116,25 @@ def process_export_result(
             job.results["coreml_mlpackage_s3_uri"] = (
                 export_job.mlpackage_s3_uri
             )
+            # Promotion (set_active_model) selects a Job by its CoreML
+            # identity. When the export worker runs without a Dynamo table
+            # -- the documented configuration -- this Lambda is the only
+            # path that identity takes to the Job, so it must carry the
+            # export id and the immutable versioned bundle, not just the
+            # legacy alias. Without these the Job is unpromotable.
+            for message_key, result_key in (
+                ("export_id", "coreml_export_id"),
+                ("versioned_bundle_s3_uri", "coreml_versioned_bundle_s3_uri"),
+                ("versioned_bundle_etag", "coreml_versioned_bundle_etag"),
+                ("canonical_bundle_s3_uri", "coreml_canonical_bundle_s3_uri"),
+                ("canonical_bundle_etag", "coreml_canonical_bundle_etag"),
+                ("model_size_bytes", "coreml_model_size_bytes"),
+            ):
+                value = message.get(message_key)
+                if value is not None:
+                    job.results[result_key] = value
             dynamo.update_job(job)
-            print(f"Updated job {job_id} with CoreML bundle path")
+            print(f"Updated job {job_id} with CoreML bundle identity")
         except Exception as e:
             # Don't fail if we can't update the job - export still succeeded
             print(f"Warning: Could not update job {job_id}: {e}")

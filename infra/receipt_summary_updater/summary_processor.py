@@ -7,7 +7,12 @@ a new ReceiptSummary from ReceiptWordLabel and ReceiptWord records.
 import json
 import logging
 import os
-from typing import Any
+from dataclasses import replace
+from typing import Any, NamedTuple
+
+from receipt_dynamo.data._receipt_fact_override import (
+    PROTECTED_FACT_TABLE_MARKERS,
+)
 
 # receipt_dynamo ships in the Lambda layer; receipt_upload.tender is
 # bundled into this Lambda's archive as a FileAsset referencing the
@@ -15,6 +20,9 @@ from typing import Any
 # updater's band-block decoder).
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import EntityNotFoundError
+from receipt_dynamo.entities.receipt_fact_override import (
+    apply_fact_override,
+)
 from receipt_dynamo.entities.receipt_summary import ReceiptSummary
 from receipt_dynamo.entities.receipt_summary_record import ReceiptSummaryRecord
 from receipt_upload.tender import classify_tender_for_receipt
@@ -46,93 +54,72 @@ def _total_line_ids(sections: list[Any] | None) -> list[int]:
     return ids
 
 
-def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
-    """Recompute and upsert ReceiptSummary for a receipt.
+class ComputedSummary(NamedTuple):
+    """A freshly computed summary, the merchant category it was read with,
+    and the summary fields the owner's ReceiptFactOverride supplied."""
 
-    Fetches ReceiptWordLabel and ReceiptWord records, optionally
-    ReceiptPlace for merchant name, then computes and upserts
-    the summary.
+    summary: ReceiptSummary
+    merchant_category: str | None
+    overrides_applied: list[str]
+
+
+def compute_receipt_summary(
+    image_id: str, receipt_id: int, client: DynamoClient | None = None
+) -> ComputedSummary:
+    """Fetch a receipt's rows and compute its ReceiptSummary without writing.
+
+    This is the single computation path: the Lambda's
+    :func:`update_receipt_summary` calls it and then upserts, and the
+    offline recompute script (``scripts/recompute_receipt_summaries.py``)
+    calls it for dry runs so previews and writes never diverge.
 
     Args:
         image_id: UUID of the image containing the receipt.
         receipt_id: ID of the receipt within the image.
+        client: DynamoClient to read from; defaults to the Lambda's
+            environment-configured client.
 
     Returns:
-        Dictionary with summary details for logging.
+        The computed summary (owner facts already applied), the
+        ReceiptPlace merchant category, and the overridden field names.
 
     Raises:
-        ValueError: If DYNAMODB_TABLE_NAME environment variable is not set.
+        ValueError: If no client is given and DYNAMODB_TABLE_NAME is unset.
     """
-    if dynamo_client is None:
+    dynamo = client if client is not None else dynamo_client
+    if dynamo is None:
         raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
-
-    # Tombstone guard: the parent receipt must still exist. The Dynamo
-    # stream fires on child-row deletions too, so when a re-segmentation
-    # apply deletes a source receipt, the deletion events for its labels
-    # would otherwise resurrect an orphan RECEIPT#N#SUMMARY row minutes
-    # after the receipt is gone. Skip the recompute and clear any freshly
-    # re-created orphan summary instead (self-healing: a later event for
-    # the same deleted receipt sweeps whatever an earlier race left).
-    #
-    # A parent row that exists but does not parse as a Receipt (e.g. a
-    # RESEGMENT_RESERVATION placeholder) raises OperationError, which
-    # propagates so the SQS message is retried after the apply commits.
-    try:
-        dynamo_client.get_receipt(image_id, receipt_id)
-    except EntityNotFoundError:
-        orphan_summary_deleted = False
-        try:
-            orphan = dynamo_client.get_receipt_summary(image_id, receipt_id)
-            dynamo_client.delete_receipt_summary(orphan)
-            orphan_summary_deleted = True
-        except EntityNotFoundError:
-            pass
-        logger.info(
-            "Skipping summary regen for %s:%d: parent receipt no longer "
-            "exists (orphan summary deleted: %s)",
-            image_id[:8],
-            receipt_id,
-            orphan_summary_deleted,
-        )
-        return {
-            "image_id": image_id,
-            "receipt_id": receipt_id,
-            "skipped": "parent receipt deleted",
-            "orphan_summary_deleted": orphan_summary_deleted,
-        }
 
     # Fetch all word labels with pagination
     word_labels = []
     last_key = None
     while True:
-        page_labels, last_key = (
-            dynamo_client.list_receipt_word_labels_for_receipt(
-                image_id, receipt_id, last_evaluated_key=last_key
-            )
+        page_labels, last_key = dynamo.list_receipt_word_labels_for_receipt(
+            image_id, receipt_id, last_evaluated_key=last_key
         )
         word_labels.extend(page_labels)
         if last_key is None:
             break
 
-    words = dynamo_client.list_receipt_words_from_receipt(image_id, receipt_id)
+    words = dynamo.list_receipt_words_from_receipt(image_id, receipt_id)
 
     # Lines + sections feed the tender classifier's payment zone
-    lines = dynamo_client.list_receipt_lines_from_receipt(image_id, receipt_id)
-    sections = dynamo_client.get_receipt_sections_from_receipt(
-        image_id, receipt_id
-    )
+    lines = dynamo.list_receipt_lines_from_receipt(image_id, receipt_id)
+    sections = dynamo.get_receipt_sections_from_receipt(image_id, receipt_id)
     tender = classify_tender_for_receipt(lines, sections, word_labels, words)
     total_line_ids = _total_line_ids(sections)
 
     # Bank-match fields are computed OFFLINE (scripts/
     # backfill_tender_bank.py); carry them over from the stored summary
     # so a label-change recompute does not clobber them.
-    ledger = bank_amount = bank_match_confidence = None
+    ledger = bank_amount = bank_match_confidence = bank_date = None
+    existing = None
     try:
-        existing = dynamo_client.get_receipt_summary(image_id, receipt_id)
+        existing = dynamo.get_receipt_summary(image_id, receipt_id)
         ledger = existing.ledger
         bank_amount = existing.bank_amount
         bank_match_confidence = existing.bank_match_confidence
+        bank_date = existing.bank_date
     except EntityNotFoundError:
         pass
 
@@ -140,7 +127,7 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     merchant_name: str | None = None
     merchant_category: str | None = None
     try:
-        place = dynamo_client.get_receipt_place(image_id, receipt_id)
+        place = dynamo.get_receipt_place(image_id, receipt_id)
         merchant_name = place.merchant_name
         merchant_category = getattr(place, "merchant_category", None)
     except EntityNotFoundError:
@@ -155,19 +142,14 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
     # through the current pipeline never get LINE_TOTAL labels, so the
     # label rule reported 0 for receipts that hold real line items.
     #
-    # Ordering caveat: a summary write is what triggers the line-item
+    # A summary write is what triggers the line-item
     # updater (RECEIPT_SUMMARY -> LINE_ITEMS queue), so on a receipt's
-    # FIRST summary write there are no rows yet and the count still falls
-    # back to labels. It becomes correct on the next recompute (any label
-    # or place change). A stream back-edge from RECEIPT_LINE_ITEM to this
-    # queue is deliberately NOT added: the line-item updater
-    # delete-then-inserts every row on each run, so that edge would be an
-    # unbounded recompute loop.
+    # FIRST summary write there may be no rows yet. The item worker
+    # finalizes only item_count after its rewrite, preserving this summary's
+    # timestamp so that finalization does not trigger another extraction.
     try:
         line_item_count = len(
-            dynamo_client.get_receipt_line_items_from_receipt(
-                image_id, receipt_id
-            )
+            dynamo.get_receipt_line_items_from_receipt(image_id, receipt_id)
         )
     except EntityNotFoundError:
         line_item_count = 0
@@ -185,26 +167,177 @@ def update_receipt_summary(image_id: str, receipt_id: int) -> dict[str, Any]:
         ledger=ledger,
         bank_amount=bank_amount,
         bank_match_confidence=bank_match_confidence,
+        bank_date=bank_date,
         line_item_count=line_item_count,
         total_line_ids=total_line_ids,
     )
 
+    # An owner-stated fact (ReceiptFactOverride) beats an extracted one.
+    # Applied here, in the single computation path, so the Lambda, the
+    # recompute script and any other caller get owner facts from one
+    # place on every recompute; a label change can never drop them.
+    override = dynamo.get_receipt_fact_override(image_id, receipt_id)
+    summary, overrides_applied = apply_fact_override(summary, override)
+    stored_overrides = (
+        getattr(existing, "overrides_applied", None) if existing else None
+    )
+    stored_summary = getattr(existing, "summary", existing)
+    # Only on a protected table (prod), where an override row can never
+    # exist, does its absence mean "carry the stored values forward". On
+    # dev, absence can mean the maintenance API deleted the row on purpose
+    # -- carrying forward there would resurrect a retracted fact.
+    table_name = str(getattr(dynamo, "table_name", "") or "")
+    facts_are_readonly_here = any(
+        marker in table_name for marker in PROTECTED_FACT_TABLE_MARKERS
+    )
+    if override is None and facts_are_readonly_here and stored_overrides:
+        # Owner facts are stated on the dev table only, so on prod there is
+        # never an override row -- but the stored record, copied from dev by
+        # the promotion, says which fields the owner stated and carries
+        # their values. Carry those forward, the same way the bank fields
+        # are, so the stream-triggered recompute that follows a promotion
+        # does not overwrite the copied record with extracted values and an
+        # empty overrides_applied. If the owner retracts the override on
+        # dev, dev's recompute clears overrides_applied there and the next
+        # copy brings the cleared record over, so this never resurrects one.
+        carried = {
+            name: getattr(stored_summary, name)
+            for name in stored_overrides
+            if hasattr(stored_summary, name)
+        }
+        if carried:
+            summary = replace(summary, **carried)
+            overrides_applied = list(carried)
+            logger.info(
+                "Carried stored owner facts %s forward for %s:%d (facts "
+                "are read-only on this table)",
+                overrides_applied,
+                image_id[:8],
+                receipt_id,
+            )
+    if overrides_applied and override is not None:
+        logger.info(
+            "Applied owner fact override %s (revision %d) to %s:%d",
+            overrides_applied,
+            override.revision,
+            image_id[:8],
+            receipt_id,
+        )
+    return ComputedSummary(summary, merchant_category, overrides_applied)
+
+
+def update_receipt_summary(
+    image_id: str, receipt_id: int, client: DynamoClient | None = None
+) -> dict[str, Any]:
+    """Recompute and upsert ReceiptSummary for a receipt.
+
+    Guards against a deleted parent receipt, computes the summary via
+    :func:`compute_receipt_summary`, then upserts it.
+
+    Args:
+        image_id: UUID of the image containing the receipt.
+        receipt_id: ID of the receipt within the image.
+        client: DynamoClient to use; defaults to the Lambda's
+            environment-configured client.
+
+    Returns:
+        Dictionary with summary details for logging.
+
+    Raises:
+        ValueError: If no client is given and DYNAMODB_TABLE_NAME is unset.
+    """
+    dynamo = client if client is not None else dynamo_client
+    if dynamo is None:
+        raise ValueError("DYNAMODB_TABLE_NAME environment variable not set")
+
+    # Tombstone guard: the parent receipt must still exist. The Dynamo
+    # stream fires on child-row deletions too, so when a re-segmentation
+    # apply deletes a source receipt, the deletion events for its labels
+    # would otherwise resurrect an orphan RECEIPT#N#SUMMARY row minutes
+    # after the receipt is gone. Skip the recompute and clear any freshly
+    # re-created orphan summary instead (self-healing: a later event for
+    # the same deleted receipt sweeps whatever an earlier race left).
+    #
+    # A parent row that exists but does not parse as a Receipt (e.g. a
+    # RESEGMENT_RESERVATION placeholder) raises OperationError, which
+    # propagates so the SQS message is retried after the apply commits.
+    try:
+        dynamo.get_receipt(image_id, receipt_id)
+    except EntityNotFoundError:
+        orphan_summary_deleted = False
+        try:
+            orphan = dynamo.get_receipt_summary(image_id, receipt_id)
+            dynamo.delete_receipt_summary(orphan)
+            orphan_summary_deleted = True
+        except EntityNotFoundError:
+            pass
+        logger.info(
+            "Skipping summary regen for %s:%d: parent receipt no longer "
+            "exists (orphan summary deleted: %s)",
+            image_id[:8],
+            receipt_id,
+            orphan_summary_deleted,
+        )
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "skipped": "parent receipt deleted",
+            "orphan_summary_deleted": orphan_summary_deleted,
+        }
+
+    summary, merchant_category, overrides_applied = compute_receipt_summary(
+        image_id, receipt_id, dynamo
+    )
+
     # Convert to record and upsert
-    record = ReceiptSummaryRecord.from_summary(summary)
-    dynamo_client.upsert_receipt_summary(record)
+    record = ReceiptSummaryRecord.from_summary(
+        summary, overrides_applied=overrides_applied
+    )
+    dynamo.upsert_receipt_summary(record)
+
+    # Close the race with a merge deleting the parent after our initial
+    # guard. Parent-first deletion + a consistent child sweep handles writes
+    # before deletion; this consistent POST-write read handles writes after
+    # deletion, even when the sweep already finished. Errors propagate for
+    # SQS retry, whose initial guard also removes an orphan summary.
+    if not dynamo.receipt_exists_consistent(image_id, receipt_id):
+        try:
+            dynamo.delete_receipt_summary(record)
+        except EntityNotFoundError:
+            pass  # The merge sweep or another worker already removed it.
+        logger.info(
+            "Removed late summary for deleted receipt %s#%s",
+            image_id,
+            receipt_id,
+        )
+        return {
+            "image_id": image_id,
+            "receipt_id": receipt_id,
+            "skipped": "parent receipt deleted",
+            "orphan_summary_deleted": True,
+        }
 
     result = {
         "image_id": image_id,
         "receipt_id": receipt_id,
-        "merchant_name": merchant_name,
+        "merchant_name": summary.merchant_name,
         "merchant_category": merchant_category,
         "grand_total": summary.grand_total,
         "tax": summary.tax,
         "item_count": summary.item_count,
         "date": summary.date.isoformat() if summary.date else None,
+        "bank_date": (
+            summary.bank_date.isoformat() if summary.bank_date else None
+        ),
+        "effective_date": (
+            summary.effective_date.isoformat()
+            if summary.effective_date
+            else None
+        ),
         "tender_class": summary.tender_class,
         "card_network": summary.card_network,
         "card_last4": summary.card_last4,
+        "overrides_applied": overrides_applied,
     }
 
     logger.info(

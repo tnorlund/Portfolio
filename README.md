@@ -10,8 +10,8 @@ Full-stack applications demonstrating modern web development, machine learning, 
 
 ```bash
 # Required
-node >= 18.0.0
-python >= 3.13
+node 22 (matches CI)
+python >= 3.14
 aws-cli (configured)
 
 # Optional
@@ -23,7 +23,7 @@ swift >= 5.9 (for OCR processing)
 
 ```bash
 cd portfolio
-npm install
+npm ci
 npm run dev
 # Visit http://localhost:3000
 ```
@@ -35,22 +35,24 @@ npm run dev
 python -m venv .venv
 source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# Install packages
-pip install -e receipt_dynamo
-pip install -e receipt_label
-pip install -e receipt_upload
+# Install packages (same set CI's repository-tests job uses)
+pip install -e receipt_dynamo -e receipt_dynamo_stream -e receipt_embeddings \
+  -e receipt_places -e receipt_nutrition -e receipt_agent -e receipt_upload
 
-# Run tests
-pip install -e "receipt_label[test]"
-pytest receipt_label/tests/ -v
+# Run tests for a package
+pip install -e "receipt_dynamo[test]"
+pytest receipt_dynamo/tests -m unit
 ```
 
 ### Infrastructure Deployment
 
+For an explicitly requested dev deployment, verify AWS account `681647709217`
+and review the preview before applying. See [the infrastructure instructions](infra/AGENTS.md).
+
 ```bash
 cd infra
-pulumi stack select dev
-pulumi up
+pulumi preview --stack tnorlund/portfolio/dev
+pulumi up --stack tnorlund/portfolio/dev
 ```
 
 ## 📁 Project Structure
@@ -65,13 +67,13 @@ pulumi up
 │   ├── entities/      # Data models
 │   └── tests/         # Unit and integration tests
 │
-├── receipt_label/     # ML-based receipt analysis
-│   ├── models/        # ML models and processors
-│   └── pattern_detection/  # Text pattern recognition
+├── receipt_agent/     # LangGraph agents (QA, validation)
+│   ├── agents/        # Graph definitions and prompts
+│   └── tools/         # Receipt search and lookup tools
 │
-├── receipt_upload/    # OCR and image processing
-│   ├── ocr.py        # Text extraction
-│   └── geometry.py   # Spatial analysis
+├── receipt_upload/    # OCR post-processing and line-item decode
+│   ├── line_items/    # Geometry-based item extraction
+│   └── merchant_resolution/
 │
 ├── receipt_ocr_swift/ # Swift OCR worker
 │   ├── Sources/      # Swift source code
@@ -90,9 +92,9 @@ pulumi up
 
 ## 🛠 Tech Stack
 
-**Frontend**: Next.js 14, React, TypeScript, Tailwind CSS  
-**Backend**: Python 3.13, API Gateway, AWS Lambda
-**Database**: DynamoDB, S3, ChromaDB  
+**Frontend**: Next.js 16, React 19, TypeScript, CSS Modules
+**Backend**: Python 3.14, API Gateway, AWS Lambda
+**Database**: DynamoDB (including native vector indexes), S3  
 **Infrastructure**: AWS (CloudFront, Lambda, API Gateway, Step Functions), Pulumi  
 **ML/AI**: Ollama, Hugging Face, Custom OCR pipelines  
 **OCR Processing**: Swift, Apple Vision Framework, SQS queues
@@ -106,7 +108,7 @@ An intelligent document processing pipeline that extracts structured data from r
 - **Automated Text Extraction**: Swift-based OCR using Apple's Vision framework
 - **Intelligent Field Detection**: Ollama-powered extraction of merchant, total, date, items
 - **Merchant Validation**: Automated merchant name normalization and validation
-- **Vector Search**: ChromaDB integration for semantic similarity search
+- **Vector Search**: DynamoDB-native embedding indexes for semantic similarity search
 - **RESTful API**: Complete API for receipt management and querying
 
 ### Swift OCR Processing
@@ -140,19 +142,31 @@ swift receipt_upload/receipt_upload/OCRSwift.swift /tmp/output image.png
 
 ### Code Formatting
 
+Install the pinned formatters and analysis tools in the active virtual environment:
+
 ```bash
-make format  # Runs black and isort
+pip install -e "receipt_dynamo[dev]"
 ```
+
+Format only the files being changed; formatting does not upgrade dependencies.
+
+```bash
+make format PYTHON_FILES="path/to/changed.py"  # Black + isort, 79 columns
+```
+
+`make lint-format PYTHON_FILES="path/to/changed.py"` checks formatting without
+rewriting files. `make lint-types` and `make lint-quality` run mypy and pylint
+for `receipt_dynamo`; either command fails when its checker reports errors.
 
 ### Testing
 
 ```bash
-# Install test dependencies
-pip install -e "receipt_label[test]"
+# Install test dependencies for a package
+pip install -e "receipt_dynamo[test]"
 
-# Run Python tests
-pytest receipt_label/tests/ -v
-pytest receipt_label/tests/ -m "not integration"
+# Run Python tests (from the repo root)
+pytest receipt_dynamo/tests -v
+pytest receipt_dynamo/tests -m "not integration and not end_to_end"
 
 # Run tests for specific package
 ./scripts/test_runner.sh receipt_dynamo
@@ -165,7 +179,7 @@ cd portfolio && npm test
 
 **Format code:**
 ```bash
-make format  # Runs black and isort
+make format PYTHON_FILES="path/to/changed.py"  # Black + isort, 79 columns
 ```
 
 **Run tests:**
@@ -175,8 +189,20 @@ make format  # Runs black and isort
 
 **Deploy infrastructure:**
 ```bash
-cd infra && pulumi up
+cd infra
+pulumi preview --stack tnorlund/portfolio/dev
+pulumi up --stack tnorlund/portfolio/dev
 ```
+
+### Agent instruction files
+
+Cursor, Claude Code, Codex, and Grok all read [`AGENTS.md`](AGENTS.md) (root
+and per-package); `CLAUDE.md` files only contain `@AGENTS.md`, so edit
+`AGENTS.md`, never `CLAUDE.md`. On-demand procedures live in
+`.agents/skills/*/SKILL.md` (symlinked from `.claude/skills/` for Claude Code),
+and `scripts/agent-hooks/guard-shell.py` checks common direct Pulumi/git/AWS
+commands via the Cursor, Claude, and Codex hook configurations. See the
+[supported payloads and limits](docs/agent-hooks.md); hooks are not a sandbox.
 
 ## 📚 Documentation
 
@@ -203,25 +229,20 @@ Infrastructure is managed with Pulumi (Python). Key components:
 - **S3** - Object storage
 - **CloudFront** - CDN distribution
 - **SQS** - Message queues
-- **EFS** - Shared file system for ChromaDB
 
 ### Infrastructure Commands
 
 ```bash
 cd infra
 
-# Preview changes
-pulumi preview
+# Preview changes on the explicitly selected dev stack
+pulumi preview --stack tnorlund/portfolio/dev
 
-# Deploy changes
-pulumi up
+# Deploy only after reviewing the preview
+pulumi up --stack tnorlund/portfolio/dev
 
-# View stack outputs
-pulumi stack output
-
-# Switch stacks
-pulumi stack select dev
-pulumi stack select prod
+# View dev stack outputs
+pulumi stack output --stack tnorlund/portfolio/dev
 ```
 
 ## 🔧 Configuration
@@ -241,8 +262,8 @@ All `receipt_*` packages use editable installs:
 
 ```bash
 pip install -e receipt_dynamo
-pip install -e receipt_label
 pip install -e receipt_upload
+pip install -e receipt_agent
 ```
 
 ## 📦 Packages
@@ -250,22 +271,28 @@ pip install -e receipt_upload
 ### receipt_dynamo
 DynamoDB data access layer. Provides entities and client for interacting with receipt data.
 
-### receipt_label
-ML-based receipt analysis and labeling. Uses Ollama and Hugging Face for intelligent field extraction.
-
 ### receipt_upload
-OCR and image processing. Handles text extraction and spatial analysis.
+OCR post-processing, merchant resolution, and geometry-based line-item decode.
+
+### receipt_agent
+LangGraph agents for receipt question answering and label validation.
+
+### receipt_embeddings
+Native DynamoDB vector storage and search (`SearchVectors`); Chroma was removed in #1576.
+
+### receipt_layoutlm
+LayoutLM training, CoreML export, and inference (heavy dependencies; see `.agents/skills/`).
 
 ### receipt_ocr_swift
 Swift-based OCR worker using Apple Vision framework for high-performance text extraction.
 
 ## 🔄 CI/CD
 
-Simple CI/CD setup using GitHub Actions with a self-hosted macOS ARM64 runner for cost optimization.
+Simple CI/CD setup using GitHub Actions on GitHub-hosted runners.
 
 - **PR Checks**: Automated formatting, linting, and quick tests on pull requests
 - **Main Pipeline**: Full test suite and deployment on merges to main
-- **Cost**: Near $0/month using self-hosted runner
+- **Cost**: $0/month — the repo is public, so standard hosted runners are free
 
 See [CI/CD Documentation](docs/development/ci-cd.md) and [`.github/README.md`](.github/README.md) for workflow details.
 
@@ -274,7 +301,7 @@ See [CI/CD Documentation](docs/development/ci-cd.md) and [`.github/README.md`](.
 - **Package Separation**: Each `receipt_*` package has specific responsibilities. Don't mix concerns.
 - **AWS Resources**: Most operations use DynamoDB, S3, and Lambda
 - **Cost Optimization**: Keep AWS costs under $5/month
-- **Python Version**: Requires Python 3.13+
+- **Python Version**: Requires Python 3.14+
 
 ## 📄 License
 

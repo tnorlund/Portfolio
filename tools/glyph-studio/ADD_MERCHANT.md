@@ -6,6 +6,36 @@ review against a real receipt. It was executed end-to-end for Vons, Trader
 Joe's, and CVS; Sprouts and Costco predate it. Budget roughly one focused
 session per merchant. Every command below is copy-paste runnable.
 
+## The short way: `new_vendor.py`
+
+`tools/glyph-studio/py/new_vendor.py` runs the whole loop below as one
+idempotent stage per command, driven by `fonts/<slug>/vendor.json`
+(Whole Foods Market went from census to a portfolio card with these, in
+about 15 minutes of tool time):
+
+```bash
+cd $WT/tools/glyph-studio/py
+python new_vendor.py census --min-receipts 6            # or --state MI / --name "X;Y"
+python new_vendor.py init wholefoods --merchant "Whole Foods Market" \
+    --alias "WHOLE FOODS MARKET" --hero W --donor homedepot --label "Whole Foods"
+python new_vendor.py corpus wholefoods                  # build + refine
+python new_vendor.py font wholefoods                    # mint -> specimen + strips
+python new_vendor.py font wholefoods --fix "DGHMWbcde"  # triage feedback (repeat)
+python new_vendor.py pitch wholefoods                   # pitchRatioTarget / weight / condense
+python new_vendor.py style wholefoods                   # stylescan+agg -> stylemap.json draft + lines_*.txt
+#   author `rules` in fonts/<slug>/stylemap.json, rerun `style`
+python new_vendor.py profile wholefoods                 # merchant_profiles.json + env.mjs
+python new_vendor.py fixture wholefoods                 # faces -> $BITMATRIX_DIR, local truth fixture
+python new_vendor.py calibrate wholefoods               # render, solve ocr_cap_height_ratio, re-render
+python new_vendor.py export wholefoods                  # manifest entry + pipeline/<slug>/ finale set
+python new_vendor.py wire wholefoods                    # merchants.generated.ts
+```
+
+What stays human: the glyph triage (`--fix`), the section `rules` regexes,
+confirming the drafted stylemap weights against the strips, the logo, and
+the owner-only publish / mint / flip. The long form below explains what
+each stage does and how to hand-tune it.
+
 **Environment** (all steps): `python` = `~/Portfolio/.venv/bin/python`.
 `WT` = this worktree root. AWS creds with access to `ReceiptsTable-dc5be22`
 and the `raw-image-bucket-c779c32` vault bucket. macOS required for OCR steps
@@ -135,6 +165,20 @@ python -m glyphstudio.styleagg /tmp/gridfix/<slug>_studio/scans stylemap-agg.jso
   "• CVS", `extend_left: false`, `center: true`), and `graphics`
   (`footer_codes: false` if the merchant prints no footer QR/barcode —
   check a real receipt).
+- The v1 parity mint pins the profile count
+  (`receipt_dynamo/receipt_dynamo/migrations/merchant_truth_v1.py`
+  `EXPECTED_MERCHANT_COUNT`, mirrored by `tests/test_fleet_status.py`,
+  `tests/test_merchant_truth_profile_parity.py` and the migration unit
+  tests). Bump it with the new profile and add the slug to
+  `EXPECTED_MISSING_FONT_SLUGS` until step 9 publishes its `MerchantFont`
+  rows (Speedway went 16 -> 17 this way).
+- Until the owner mints + activates the truth bundle, render locally with
+  `MERCHANT_TRUTH_MODE=fixture MERCHANT_TRUTH_FIXTURE=<dir>` pointing at a
+  SEALED bundle built from the `migrate_merchant_truth_v1.py --output-dir`
+  dry-run payload plus local `C#assets` pointers whose `content_hash` is the
+  sha256 of the compiled npz in `$BITMATRIX_DIR` (regular + heavy at
+  `weight x 1.33`); the renderer verifies those bytes exactly like a live
+  bundle.
 
 ## 7. Calibrate against a real receipt (the actual quality gate)
 
@@ -245,7 +289,10 @@ the font sources (`fonts/<slug>/` — skeleton JSONs + font.json + stylemap
 are the source of truth; compiled npz and samples npz stay OUT of git),
 the stylescan rules, and the profile.
 
-Optional: showcase finale assets (`final.webp`/`real.webp`/labels) — see the
-existing `portfolio/public/synthetic-receipts/pipeline/<slug>/` sets for the
-format (760px width, render-true labels via `RenderConfig.box_sink`,
-margin 10).
+Optional: showcase finale assets (`final.webp`/`real.webp`/labels) — add
+the merchant to `fixtures/pipeline_merchants.json` and run
+`py/export_pipeline_assets.py <slug> --out-dir /tmp/pipeline` (see
+README "Portfolio figure assets"); it writes the
+`portfolio/public/synthetic-receipts/pipeline/<slug>/` set (760px width,
+render-true labels via `RenderConfig.box_sink`, margin 10) plus the hero-act
+files when a vault corpus exists.

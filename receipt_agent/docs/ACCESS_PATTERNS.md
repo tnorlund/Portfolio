@@ -2,6 +2,8 @@
 
 This document reviews the access patterns for DynamoDB, ChromaDB, and Google Places API used by the `receipt_agent` package.
 
+> **Historical note (Sept 2026):** the ChromaDB sections below describe a retired vector store. Similarity search now runs against native DynamoDB embedding items via `receipt_embeddings` (see `docs/chroma-removal/`).
+
 ## Overview
 
 The `receipt_agent` validation workflow accesses three main data sources:

@@ -5,6 +5,7 @@ This module contains the FlattenedStandardMixin class that provides all
 standard DynamoDB operations in a single class without deep inheritance chains.
 """
 
+import time
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -16,6 +17,7 @@ from typing import (
 from botocore.exceptions import ClientError
 
 from receipt_dynamo.data.shared_exceptions import (
+    BatchOperationError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
@@ -23,7 +25,9 @@ from receipt_dynamo.data.shared_exceptions import (
 from receipt_dynamo.entities.util import assert_valid_uuid
 
 from .error_handling import ErrorMessageConfig, handle_dynamodb_errors
+from .nutrition_guard import refuse_prohibited_nutrition_write
 from .shared_utils import (
+    batch_write_with_retry,
     build_get_item_key,
     build_query_params,
     validate_pagination_params,
@@ -269,6 +273,7 @@ class FlattenedStandardMixin:
             "TableName": self.table_name,
             "Item": entity.to_item(),
         }
+        refuse_prohibited_nutrition_write(self.table_name, put_params)
         if condition_expression:
             put_params["ConditionExpression"] = condition_expression
 
@@ -322,6 +327,7 @@ class FlattenedStandardMixin:
             "TableName": self.table_name,
             "Item": entity.to_item(),
         }
+        refuse_prohibited_nutrition_write(self.table_name, put_params)
         if condition_expression:
             put_params["ConditionExpression"] = condition_expression
 
@@ -348,6 +354,7 @@ class FlattenedStandardMixin:
             "TableName": self.table_name,
             "Key": entity.key,
         }
+        refuse_prohibited_nutrition_write(self.table_name, delete_params)
         if condition_expression:
             delete_params["ConditionExpression"] = condition_expression
 
@@ -389,30 +396,30 @@ class FlattenedStandardMixin:
     def _batch_write_with_retry(
         self, request_items: list[WriteRequestTypeDef]
     ) -> None:
-        """Execute batch write operations with retry logic."""
-        remaining_items = request_items
-
-        while remaining_items:
-            # Split into chunks of 25 (DynamoDB limit)
-            batch = remaining_items[:25]
-            remaining_items = remaining_items[25:]
-
-            response = self._client.batch_write_item(
-                RequestItems={self.table_name: batch}
-            )
-
-            # Handle unprocessed items
-            if "UnprocessedItems" in response:
-                unprocessed = response["UnprocessedItems"].get(
-                    self.table_name, []
+        """Write chunks with bounded retries and report all pending writes."""
+        refuse_prohibited_nutrition_write(self.table_name, request_items)
+        for start in range(0, len(request_items), 25):
+            try:
+                batch_write_with_retry(
+                    self._client,
+                    self.table_name,
+                    request_items[start : start + 25],
                 )
-                if unprocessed:
-                    remaining_items.extend(unprocessed)
+            except BatchOperationError as error:
+                # Later chunks have not been submitted; they remain pending.
+                error.unprocessed_items = {
+                    **error.unprocessed_items,
+                    self.table_name: (
+                        error.unprocessed_items.get(self.table_name, [])
+                        + request_items[start + 25 :]
+                    ),
+                }
+                raise
 
     def _batch_get_items(
         self, keys: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        """Execute batch get operations with chunking and retry logic.
+        """Execute batch gets with chunking and bounded retry backoff.
 
         Args:
             keys: List of DynamoDB key dictionaries, each with PK and SK.
@@ -424,6 +431,11 @@ class FlattenedStandardMixin:
         Note:
             DynamoDB BatchGetItem can handle up to 100 keys per request.
             This method handles chunking and retries for unprocessed keys.
+
+        Raises:
+            BatchOperationError: When keys remain after three retries. The
+                pending keys include later chunks that were not submitted.
+                Partial results are not returned as a successful read.
         """
         if not keys:
             return []
@@ -445,9 +457,12 @@ class FlattenedStandardMixin:
             )
             results.extend(batch_items)
 
-            # Retry unprocessed keys
+            # Retry unprocessed keys with the same budget as batch writes.
             unprocessed = response.get("UnprocessedKeys", {})
-            while unprocessed.get(self.table_name, {}).get("Keys"):
+            for attempt in range(3):
+                if not unprocessed.get(self.table_name, {}).get("Keys"):
+                    break
+                time.sleep(0.1 * 2**attempt)
                 response = self._client.batch_get_item(
                     RequestItems=unprocessed
                 )
@@ -457,6 +472,22 @@ class FlattenedStandardMixin:
                 results.extend(batch_items)
                 unprocessed = response.get("UnprocessedKeys", {})
 
+            pending = unprocessed.get(self.table_name)
+            if pending and pending.get("Keys"):
+                raise BatchOperationError(
+                    "Failed to read all items after 3 retries",
+                    attempts=4,
+                    unprocessed_items={
+                        self.table_name: {
+                            **pending,
+                            "Keys": (
+                                pending["Keys"]
+                                + keys[i + BATCH_GET_CHUNK_SIZE :]
+                            ),
+                        }
+                    },
+                )
+
         return results
 
     # ========== Transactional Operations ==========
@@ -465,6 +496,7 @@ class FlattenedStandardMixin:
         self, transact_items: list[TransactWriteItemTypeDef]
     ) -> None:
         """Execute transactional writes with chunking for large batches."""
+        refuse_prohibited_nutrition_write(self.table_name, transact_items)
         # Process in chunks of 25 (DynamoDB transact limit)
         for i in range(0, len(transact_items), 25):
             chunk = transact_items[i : i + 25]
@@ -572,8 +604,13 @@ class FlattenedStandardMixin:
         last_evaluated_key: dict[str, Any] | None = None,
         filter_expression: str | None = None,
         scan_index_forward: bool | None = None,
+        consistent_read: bool = False,
     ) -> tuple[list[T], dict[str, Any] | None]:
         """Query entities with pagination support."""
+        if consistent_read and index_name:
+            raise EntityValidationError(
+                "Consistent reads require a primary-table query."
+            )
         entities = []
         current_last_key = last_evaluated_key
 
@@ -590,6 +627,8 @@ class FlattenedStandardMixin:
                 limit=None,  # Will be set separately below
                 scan_index_forward=scan_index_forward,
             )
+            if consistent_read:
+                query_params["ConsistentRead"] = True
 
             # Set query limit
             if limit:

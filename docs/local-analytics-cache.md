@@ -4,7 +4,6 @@
 analytics without repeatedly reading AWS:
 
 - every DynamoDB item in a queryable SQLite file;
-- native ChromaDB `lines` and `words` snapshots;
 - every raw S3 image referenced by an Image or Receipt record.
 
 The default cache root is `.cache/analytics/<env>/`, which is already ignored
@@ -20,17 +19,15 @@ DynamoDB-compatible endpoint passed with `serve --endpoint-url ... --no-docker`)
 # Discover the dev resources from Pulumi and sync everything.
 make analytics-cache ENV=dev
 
-# Verify local integrity plus the Dynamo table identity/item count and exact
-# Chroma snapshot pointers.
+# Verify local integrity plus the Dynamo table identity/item count.
 make analytics-cache-validate ENV=dev
 
 # Start DynamoDB Local, hydrate it from the cache, and print client settings.
 make analytics-cache-serve ENV=dev
 ```
 
-The first sync performs a parallel DynamoDB scan, downloads both Chroma
-snapshots concurrently, and downloads raw images with 32 workers. Later syncs
-reuse unchanged Chroma versions and local images. Use `--refresh-images` when
+The first sync performs a parallel DynamoDB scan and downloads raw images
+with 32 workers. Later syncs reuse local images. Use `--refresh-images` when
 you want an S3 `HEAD` check for every cached image.
 
 Explicit resource names can be used without Pulumi:
@@ -38,25 +35,10 @@ Explicit resource names can be used without Pulumi:
 ```bash
 python scripts/local_analytics_cache.py sync \
   --env dev \
-  --table-name ReceiptsTable \
-  --chroma-bucket receipt-chromadb-dev
+  --table-name ReceiptsTable
 ```
 
 ## Use the existing clients
-
-Chroma snapshots are stored in their native persistent format, so the existing
-client opens them directly:
-
-```python
-from receipt_chroma import ChromaClient
-
-with ChromaClient(
-    persist_directory=".cache/analytics/dev/chroma/lines",
-    mode="read",
-) as lines:
-    collection = lines.get_collection("lines")
-    print(collection.count())
-```
 
 `serve` runs the official DynamoDB Local image, recreates the source table's
 keys and GSIs, and imports the cached wire-format items. It skips the import
@@ -136,14 +118,13 @@ python scripts/local_analytics_cache.py invalidate --env dev
 
 # Invalidate only one component.
 python scripts/local_analytics_cache.py invalidate \
-  --env dev --components chroma
+  --env dev --components raw_images
 
 # Delete data as well as invalidating it.
 python scripts/local_analytics_cache.py invalidate --env dev --purge
 ```
 
-The Chroma version check is exact because it compares the S3 atomic snapshot
-pointers. DynamoDB does not expose a cheap content version: quick validation
+DynamoDB does not expose a cheap content version: quick validation
 checks the table ARN and its approximate `DescribeTable` item count. A sync is
 the authoritative refresh and detects updates that do not change the item
 count.

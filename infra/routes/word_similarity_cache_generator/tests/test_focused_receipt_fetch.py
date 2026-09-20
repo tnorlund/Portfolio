@@ -1,5 +1,6 @@
 """Tests for focused receipt reads in the milk cache generator."""
 
+import importlib
 import importlib.util
 import sys
 from pathlib import Path
@@ -13,24 +14,12 @@ import pytest
 def _load_handler(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     """Load the Lambda module without initializing production clients."""
     monkeypatch.setenv("DYNAMODB_TABLE_NAME", "test-table")
-    monkeypatch.setenv("CHROMADB_BUCKET", "test-chroma-bucket")
+    monkeypatch.setenv("S3_CACHE_BUCKET", "test-cache-bucket")
     monkeypatch.setattr(boto3, "client", MagicMock())
 
-    receipt_chroma_module = ModuleType("receipt_chroma")
-    receipt_chroma_module.__path__ = []
-    setattr(receipt_chroma_module, "ChromaClient", MagicMock())
-    monkeypatch.setitem(sys.modules, "receipt_chroma", receipt_chroma_module)
-
-    compaction_module = ModuleType("receipt_chroma.compaction")
-    compaction_module.__path__ = []
-    setattr(compaction_module, "CloudConfig", MagicMock())
-    monkeypatch.setitem(
-        sys.modules, "receipt_chroma.compaction", compaction_module
-    )
-
-    chroma_s3_module = ModuleType("receipt_chroma.s3")
-    setattr(chroma_s3_module, "download_snapshot_atomic", MagicMock())
-    monkeypatch.setitem(sys.modules, "receipt_chroma.s3", chroma_s3_module)
+    # Resolve the real receipt_embeddings import chain before receipt_dynamo
+    # is stubbed below; the handler only needs its pure key helper.
+    importlib.import_module("receipt_embeddings.keys")
 
     receipt_dynamo_module = ModuleType("receipt_dynamo")
     setattr(receipt_dynamo_module, "DynamoClient", MagicMock())
@@ -79,29 +68,47 @@ def test_merge_row_line_ids_preserves_all_visual_rows(
     ) == [42, 51, 48, 43]
 
 
-def test_s3_snapshot_queries_only_target_documents(
+def test_dynamo_fetch_keeps_only_target_rows_and_pages(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     handler = _load_handler(monkeypatch)
-    collection = MagicMock()
-    collection.get.return_value = {"ids": ["row-1"], "metadatas": [{}]}
-    client = MagicMock()
-    client.get_collection.return_value = collection
-    handler.ChromaClient = MagicMock(return_value=client)
-    handler.download_snapshot_atomic.return_value = {"status": "downloaded"}
+    image_id = "3f2a1b0c-4d5e-4f70-8192-a3b4c5d6e7f8"
 
-    result = handler._fetch_lines_from_s3(handler.TimingStats(), "/tmp/chroma")
+    def _item(line_id: int, text: str) -> dict:
+        return {
+            "PK": {"S": f"IMAGE#{image_id}"},
+            "SK": {"S": f"RECEIPT#00001#LINE#{line_id:05d}#EMBEDDING"},
+            "text": {"S": text},
+            "merchant_name": {"S": "Sprouts"},
+            "row_line_ids": {"L": [{"N": str(line_id)}, {"N": "9"}]},
+        }
 
-    assert result["ids"] == ["row-1"]
-    handler.ChromaClient.assert_called_once_with(
-        persist_directory="/tmp/chroma",
-        mode="read",
-        metadata_only=True,
+    raw_client = MagicMock()
+    raw_client.query.side_effect = [
+        {
+            "Items": [_item(4, "Milk Shake 3.99"), _item(5, "BREAD 2.49")],
+            "LastEvaluatedKey": {"PK": {"S": "x"}},
+        },
+        {"Items": [_item(2, "RAW WHOLE MILK 8.99")]},
+    ]
+    dynamo_client = SimpleNamespace(_client=raw_client)
+
+    result = handler._fetch_lines_from_dynamo(
+        handler.TimingStats(), dynamo_client
     )
-    collection.get.assert_called_once_with(
-        where_document={"$contains": "MILK"},
-        include=["metadatas"],
-    )
+
+    assert raw_client.query.call_count == 2
+    first_kwargs = raw_client.query.call_args_list[0].kwargs
+    assert first_kwargs["IndexName"] == "GSITYPE"
+    assert "ExclusiveStartKey" not in first_kwargs
+    assert raw_client.query.call_args_list[1].kwargs["ExclusiveStartKey"] == {
+        "PK": {"S": "x"}
+    }
+    # Case-insensitive MILK match, non-milk rows dropped, sorted by key.
+    assert [meta["line_id"] for meta in result["metadatas"]] == [2, 4]
+    assert result["metadatas"][0]["row_line_ids"] == [2, 9]
+    assert result["metadatas"][0]["merchant_name"] == "Sprouts"
+    assert len(result["ids"]) == 2
 
 
 def test_find_milk_line_limits_candidates_but_detects_void_marker(

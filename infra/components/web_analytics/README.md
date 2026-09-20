@@ -64,9 +64,10 @@ aws lambda invoke --function-name <web-analytics-transform> \
 ## Why the logic lives in the MCP tools, not a Glue view
 
 Beacon parsing, bot/WARP classification, and PT-timezone bucketing are encoded
-as SQL **inside the `analytics_*` MCP tools** (`scripts/receipt_mcp_server.py`
-and `infra/mcp_server_lambda/lambdas/receipt_mcp_server_server.py`), not as a
-Glue/Athena view. That keeps the analytics logic version-controlled,
+as SQL **inside the `analytics_*` MCP tools** in the shared
+`scripts/receipt_mcp_server.py`, packaged as `receipt_mcp_server/server.py`
+by `infra/mcp_server_lambda/lambdas/Dockerfile`, not as a Glue/Athena view.
+That keeps the analytics logic version-controlled,
 diff-reviewable, and testable, and avoids managing Athena view definitions in
 IaC.
 

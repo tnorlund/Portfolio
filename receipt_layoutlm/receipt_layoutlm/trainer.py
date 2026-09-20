@@ -692,6 +692,48 @@ class ReceiptLayoutLMTrainer:
         )
         ta_cls = self._transformers.TrainingArguments
         ta_params = inspect.signature(ta_cls.__init__).parameters
+
+        # The kwargs above are built before ``ta_params`` is known, so unlike
+        # every optional argument below they are passed unconditionally. That
+        # breaks whenever Transformers drops one: v5 removed ``warmup_ratio``
+        # (keeping ``warmup_steps``), which failed training outright with
+        # "TrainingArguments.__init__() got an unexpected keyword argument".
+        #
+        # Translate warmup before filtering. Silently dropping it would leave
+        # the run with no warmup at all -- a quiet change to the recipe, which
+        # is worse than the crash because it still produces a number.
+        if "warmup_ratio" not in ta_params and "warmup_steps" in ta_params:
+            ratio = args_kwargs.pop("warmup_ratio", 0.0) or 0.0
+            train_split = datasets.get("train") if datasets else None
+            n_train = len(train_split) if train_split is not None else 0
+            accum = max(1, self.training_config.gradient_accumulation_steps)
+            # Trainer scales the effective batch by every visible GPU, so a
+            # multi-GPU instance takes proportionally fewer optimizer steps
+            # per epoch. Dividing by the per-device batch alone would inflate
+            # warmup_steps by the device count on e.g. ml.g5.12xlarge.
+            try:
+                world = max(1, int(self._torch.cuda.device_count()))
+            except Exception:  # noqa: BLE001 - CPU-only or torch stub
+                world = 1
+            effective_batch = self.training_config.batch_size * accum * world
+            per_epoch = math.ceil(n_train / max(1, effective_batch))
+            total_steps = per_epoch * max(1, int(self.training_config.epochs))
+            args_kwargs["warmup_steps"] = max(0, round(ratio * total_steps))
+            print(
+                f"TrainingArguments has no warmup_ratio; translated {ratio} "
+                f"to warmup_steps={args_kwargs['warmup_steps']} "
+                f"({n_train} train examples, {world} device(s), "
+                f"{total_steps} total steps)"
+            )
+
+        unsupported = [k for k in args_kwargs if k not in ta_params]
+        for key in unsupported:
+            version = getattr(self._transformers, "__version__", "?")
+            print(
+                f"Warning: TrainingArguments does not accept {key!r} in "
+                f"transformers {version}; dropping it"
+            )
+            args_kwargs.pop(key)
         seqeval_available = True
         try:
             importlib.import_module("seqeval.metrics")
@@ -1150,8 +1192,20 @@ class ReceiptLayoutLMTrainer:
                                     local_path, checkpoint_dir
                                 )
                                 s3_key = f"{s3_checkpoint_prefix}{rel_path}"
+                                # Tag per-epoch checkpoints so the bucket
+                                # lifecycle can expire them (7d) without
+                                # touching best/, output/, or run.json,
+                                # which share the never-expiring runs/
+                                # prefix. S3 prefix filters cannot match
+                                # runs/*/checkpoints/, so the tag is the
+                                # only selector that reaches them.
                                 s3_client.upload_file(
-                                    local_path, self.s3_bucket, s3_key
+                                    local_path,
+                                    self.s3_bucket,
+                                    s3_key,
+                                    ExtraArgs={
+                                        "Tagging": "retention=epoch-checkpoint"
+                                    },
                                 )
 
                         self._synced_checkpoints.add(checkpoint_dir)

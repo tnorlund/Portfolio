@@ -66,14 +66,15 @@ import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import Any, Optional
+
+from receipt_dynamo.constants import MerchantValidationStatus
+from receipt_dynamo.entities import ReceiptPlace
 
 from receipt_agent.agents.place_id_finder import (
     create_place_id_finder_graph,
     run_place_id_finder,
 )
-from receipt_dynamo.constants import MerchantValidationStatus
-from receipt_dynamo.entities import ReceiptPlace
 
 logger = logging.getLogger(__name__)
 
@@ -282,7 +283,7 @@ class PlaceIdFinder:
 
     The agent-based approach is more powerful because it:
     - Examines receipt content (lines, words, labels)
-    - Searches ChromaDB for similar receipts
+    - Checks other receipts from the same merchant in DynamoDB
     - Uses multiple Google Places search strategies
     - Reasons about the best match
 
@@ -295,7 +296,7 @@ class PlaceIdFinder:
 
     Example:
         ```python
-        finder = PlaceIdFinder(dynamo_client, places_client, chroma_client)
+        finder = PlaceIdFinder(dynamo_client, places_client)
 
         # Find place_ids using agent (recommended)
         report = await finder.find_all_place_ids_agentic()
@@ -318,8 +319,6 @@ class PlaceIdFinder:
         self,
         dynamo_client: Any,
         places_client: Optional[Any] = None,
-        chroma_client: Optional[Any] = None,
-        embed_fn: Optional[Callable[[list[str]], list[list[float]]]] = None,
         settings: Optional[Any] = None,
     ):
         """
@@ -328,14 +327,10 @@ class PlaceIdFinder:
         Args:
             dynamo_client: DynamoDB client with list_receipt_places() method
             places_client: Google Places client (PlacesClient from receipt_places)
-            chroma_client: Optional ChromaDB client for agent-based search
-            embed_fn: Optional embedding function for agent-based search
             settings: Optional settings for agent-based search
         """
         self.dynamo = dynamo_client
         self.places = places_client
-        self.chroma = chroma_client
-        self.embed_fn = embed_fn
         self.settings = settings
         self._receipts_without_place_id: list[ReceiptRecord] = []
         self._last_report: Optional[FinderResult] = None
@@ -836,7 +831,7 @@ class PlaceIdFinder:
 
         This method uses an LLM agent to:
         - Examine receipt content (lines, words, labels)
-        - Search ChromaDB for similar receipts
+        - Check other receipts from the same merchant in DynamoDB
         - Use Google Places API with reasoning
         - Determine the best match
 
@@ -846,12 +841,6 @@ class PlaceIdFinder:
         Returns:
             FinderResult with all matches
         """
-        if not self.chroma or not self.embed_fn:
-            raise ValueError(
-                "Agent-based search requires chroma_client and embed_fn. "
-                "Use find_all_place_ids() for simple search."
-            )
-
         # Load receipts if not already loaded
         if not self._receipts_without_place_id:
             self.load_receipts_without_place_id()
@@ -861,8 +850,6 @@ class PlaceIdFinder:
             self._agent_graph, self._agent_state_holder = (
                 create_place_id_finder_graph(
                     dynamo_client=self.dynamo,
-                    chroma_client=self.chroma,
-                    embed_fn=self.embed_fn,
                     places_api=self.places,
                     settings=self.settings,
                 )

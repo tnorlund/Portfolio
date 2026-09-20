@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.13
+#!/usr/bin/env python3.14
 """Safely backfill receipt embedding items into the judge's dev table.
 
 The command is read-only unless ``--apply`` is passed. Applied runs require an
@@ -17,7 +17,7 @@ import os
 import sys
 import time
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -26,20 +26,27 @@ sys.path.insert(0, str(REPOSITORY_ROOT))
 for package_root in (
     REPOSITORY_ROOT / "receipt_embeddings",
     REPOSITORY_ROOT / "receipt_dynamo",
-    REPOSITORY_ROOT / "receipt_chroma",
 ):
     sys.path.insert(0, str(package_root))
 
+from receipt_dynamo import DynamoClient  # noqa: E402
+from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
+    EntityNotFoundError,
+)
 from receipt_embeddings import (  # noqa: E402
     DynamoVectorSearchClient,
     EmbeddingWriter,
     EmbeddingWriteRequest,
 )
-from receipt_embeddings.formatting import (  # noqa: E402
-    format_visual_row,
-    format_word_context_embedding_input,
-    get_row_embedding_inputs,
-    group_lines_into_visual_rows,
+from receipt_embeddings.keys import (  # noqa: E402
+    dynamo_key_from_canonical,
+)
+from receipt_embeddings.label_status import (  # noqa: E402
+    word_label_statuses,
+)
+from receipt_embeddings.protocols import (  # noqa: E402
+    DynamoBatchClient,
+    WriteReportLike,
 )
 from receipt_embeddings.service_limits import (  # noqa: E402
     EMBEDDING_DIMENSIONS,
@@ -47,22 +54,8 @@ from receipt_embeddings.service_limits import (  # noqa: E402
     MAX_SEARCH_RESULTS,
     WORD_INDEX,
 )
-
-from receipt_chroma.embedding.metadata.line_metadata import (  # noqa: E402
-    enrich_row_metadata_with_anchors,
-)
-from receipt_dynamo import DynamoClient  # noqa: E402
-from receipt_dynamo.constants import ValidationStatus  # noqa: E402
-from receipt_dynamo.data.shared_exceptions import (  # noqa: E402
-    EntityNotFoundError,
-)
-from receipt_embeddings.quotas import (  # noqa: E402
-    MAX_GET_LIMIT,
-    ensure_get_ids_within_quota,
-)
-from scripts.similarity_harness.capture_golden import (  # noqa: E402
-    CHROMA_ENVIRONMENT,
-    DEV_DATABASE,
+from receipt_embeddings.write_requests import (  # noqa: E402
+    build_embedding_write_requests,
 )
 from scripts.similarity_harness.common import validate_fixture  # noqa: E402
 
@@ -121,8 +114,13 @@ def select_receipts(
     *,
     extra_receipts: Path | None,
     limit: int | None,
+    manifest_only: bool = False,
 ) -> list[dict[str, Any]]:
-    selected = [dict(value) for value in fixture["receipts"]]
+    if manifest_only and extra_receipts is None:
+        raise SystemExit("--manifest-only requires --extra-receipts")
+    selected = (
+        [] if manifest_only else [dict(value) for value in fixture["receipts"]]
+    )
     seen = {
         (str(value["image_id"]), int(value["receipt_id"]))
         for value in selected
@@ -152,80 +150,11 @@ def fixture_vectors(fixture: Mapping[str, Any]) -> dict[str, list[float]]:
     return result
 
 
-class ChromaVectorSource:
-    """Reuse vectors already stored in Chroma Cloud dev (OpenAI-free).
-
-    Cherry-picked from the ``bakeoff/C/claude`` entry's vector-source
-    abstraction (scripts/embedding_backfill/backfill_embeddings.py).
-    Chroma document ids equal the canonical item keys, so lookup is a
-    batched read-only ``get`` per collection. Reused vectors preserve
-    identity with what the receipts embedded at ingest — OpenAI
-    embeddings are not bit-stable across calls, so reuse is also the
-    higher-fidelity path.
-    """
-
-    def __init__(self, chroma_client: Any = None) -> None:
-        if chroma_client is None:
-            from receipt_chroma import ChromaClient
-
-            chroma_client = ChromaClient(
-                mode="read",
-                cloud_api_key=os.environ["CHROMA_CLOUD_API_KEY"],
-                cloud_tenant=os.environ["CHROMA_CLOUD_TENANT"],
-                cloud_database=os.environ["CHROMA_CLOUD_DATABASE"],
-            )
-        self._chroma = chroma_client
-
-    def close(self) -> None:
-        self._chroma.close()
-
-    def vectors_for(self, keys: Sequence[str]) -> dict[str, list[float]]:
-        by_collection: dict[str, list[str]] = {"lines": [], "words": []}
-        for key in keys:
-            collection = "words" if "#WORD#" in key else "lines"
-            by_collection[collection].append(key)
-        vectors: dict[str, list[float]] = {}
-        for collection, ids in by_collection.items():
-            for start in range(0, len(ids), MAX_GET_LIMIT):
-                batch = ids[start : start + MAX_GET_LIMIT]
-                ensure_get_ids_within_quota(batch)
-                result = self._chroma.get(
-                    collection_name=collection,
-                    ids=batch,
-                    include=["embeddings"],
-                )
-                found_ids = list(result.get("ids") or [])
-                embeddings = result.get("embeddings")
-                if embeddings is None:
-                    continue
-                for key, embedding in zip(found_ids, embeddings):
-                    vectors[str(key)] = [float(value) for value in embedding]
-        return vectors
-
-
-def _chroma_env_ready() -> bool:
-    return all(os.environ.get(name) for name in CHROMA_ENVIRONMENT)
-
-
 def resolve_vector_source(choice: str) -> str:
     """Resolve ``auto`` to a concrete source name (no clients built)."""
     if choice == "auto":
-        return "chroma" if _chroma_env_ready() else "openai"
+        return "openai"
     return choice
-
-
-def build_chroma_source() -> ChromaVectorSource:
-    """Validate credentials + dev-database guard, then open the client."""
-    missing = [name for name in CHROMA_ENVIRONMENT if not os.environ.get(name)]
-    if missing:
-        raise SystemExit("vector source 'chroma' needs " + ", ".join(missing))
-    database = os.environ["CHROMA_CLOUD_DATABASE"].strip()
-    if database != DEV_DATABASE:
-        raise SystemExit(
-            f"refusing to touch Chroma database {database!r}; "
-            f"only {DEV_DATABASE!r} is allowed"
-        )
-    return ChromaVectorSource()
 
 
 def apply_stored_vectors(
@@ -236,7 +165,7 @@ def apply_stored_vectors(
 ) -> tuple[list[EmbeddingWriteRequest], list[dict[str, str]]]:
     """Fill uncovered requests from stored vectors; skip-report the rest.
 
-    Used by the OpenAI-free sources (``chroma``, ``fixture``): a request
+    Used by the OpenAI-free ``fixture`` source: a request
     whose vector cannot be sourced is dropped with a per-item skip
     reason instead of falling through to realtime embedding.
     """
@@ -264,37 +193,12 @@ def _classify_receipt_skip(exc: Exception) -> str:
     return f"error:{type(exc).__name__}"
 
 
-def _label_statuses(labels: Sequence[Any]) -> dict[tuple[int, int], str]:
-    """Same rule as the stream freshener: any terminal human verdict
-    (VALID or INVALID) -> validated, else any PENDING -> pending, else
-    none. INVALID-only words must stay in the validated population or
-    the word index's filter would drop exactly the counterexamples
-    similar_labeled_words needs for evidence_against (E3 review P1-2).
-    """
-    by_word: dict[tuple[int, int], list[str]] = {}
-    for label in labels:
-        key = (int(label.line_id), int(label.word_id))
-        by_word.setdefault(key, []).append(str(label.validation_status))
-    statuses: dict[tuple[int, int], str] = {}
-    for key, values in by_word.items():
-        if (
-            ValidationStatus.VALID.value in values
-            or ValidationStatus.INVALID.value in values
-        ):
-            statuses[key] = "validated"
-        elif ValidationStatus.PENDING.value in values:
-            statuses[key] = "pending"
-        else:
-            statuses[key] = "none"
-    return statuses
-
-
-def _section_by_line(sections: Sequence[Any]) -> dict[int, str]:
-    result: dict[int, str] = {}
-    for section in sections:
-        for line_id in section.line_ids:
-            result[int(line_id)] = str(section.section_type)
-    return result
+# Canonical terminal-verdict rule (receipt_dynamo.word_label_status via
+# receipt_embeddings.label_status): any terminal human verdict (VALID or
+# INVALID) -> validated, else any PENDING -> pending, else none.
+# INVALID-only words must stay in the validated population (E3 review
+# P1-2; #1513 class). Kept under the historical local name.
+_label_statuses = word_label_statuses
 
 
 def build_requests(
@@ -313,86 +217,24 @@ def build_requests(
     place_id = (
         str(getattr(place, "place_id", "") or "") if place is not None else ""
     )
-    section_by_line = _section_by_line(sections)
-    requests: list[EmbeddingWriteRequest] = []
-
-    row_inputs = get_row_embedding_inputs(details.lines)
-    visual_rows = group_lines_into_visual_rows(details.lines)
-    for (embedding_input, line_ids), row in zip(
-        row_inputs, visual_rows, strict=True
-    ):
-        primary_line_id = int(line_ids[0])
-        canonical_key = (
-            f"IMAGE#{details.receipt.image_id}#"
-            f"RECEIPT#{details.receipt.receipt_id:05d}#"
-            f"LINE#{primary_line_id:05d}"
-        )
-        section_values = {
-            section_by_line.get(int(line_id), "") for line_id in line_ids
-        }
-        section_values.discard("")
-        section_type = (
-            next(iter(section_values)) if len(section_values) == 1 else ""
-        )
-        # Fetch-join metadata: the same anchor enrichment the Chroma line
-        # delta writer applies to a visual row's words populates the
-        # resolver's normalized phone/address fields on the Dynamo item.
-        row_line_id_set = {int(value) for value in line_ids}
-        anchors = enrich_row_metadata_with_anchors(
-            {},
-            [
-                word
-                for word in details.words
-                if int(word.line_id) in row_line_id_set
-            ],
-        )
-        requests.append(
-            EmbeddingWriteRequest(
-                kind="line",
-                image_id=details.receipt.image_id,
-                receipt_id=details.receipt.receipt_id,
-                line_id=primary_line_id,
-                text=format_visual_row(row),
-                embedding_input=embedding_input,
-                merchant_name=merchant_name,
-                place_id=place_id,
-                row_line_ids=tuple(int(value) for value in line_ids),
-                section_type=section_type,
-                normalized_phone_10=str(
-                    anchors.get("normalized_phone_10", "")
-                ),
-                normalized_full_address=str(
-                    anchors.get("normalized_full_address", "")
-                ),
-                vector=known_vectors.get(canonical_key),
-            )
-        )
-
-    statuses = _label_statuses(details.labels)
-    for word in details.words:
-        canonical_key = (
-            f"IMAGE#{word.image_id}#RECEIPT#{word.receipt_id:05d}#"
-            f"LINE#{word.line_id:05d}#WORD#{word.word_id:05d}"
-        )
-        requests.append(
-            EmbeddingWriteRequest(
-                kind="word",
-                image_id=word.image_id,
-                receipt_id=word.receipt_id,
-                line_id=word.line_id,
-                word_id=word.word_id,
-                text=word.text,
-                embedding_input=format_word_context_embedding_input(
-                    word, details.words, context_size=2
-                ),
-                merchant_name=merchant_name,
-                label_status=statuses.get(
-                    (int(word.line_id), int(word.word_id)), "none"
-                ),
-                vector=known_vectors.get(canonical_key),
-            )
-        )
-    return requests
+    # Canonical builder (polish-brief item 3): same visual-row grouping,
+    # anchor enrichment, section stamping, and known-vector lookup the
+    # ingest/correction flows use. NOTE the builder skips blank-text
+    # rows/words (the engine writer refuses empty text) — the historical
+    # "text must not be empty" refusals on full backfills become skips.
+    return build_embedding_write_requests(
+        image_id=details.receipt.image_id,
+        receipt_id=details.receipt.receipt_id,
+        lines=details.lines,
+        words=details.words,
+        word_labels=details.labels,
+        merchant_name=merchant_name,
+        place_id=place_id,
+        sections=sections,
+        known_vectors=known_vectors,
+        include_embedding_input=True,
+        missing_row="raise",
+    )
 
 
 def collect_requests(
@@ -571,7 +413,7 @@ EXIT_VERIFICATION_FAILURE = 4
 
 
 def determine_exit_code(
-    write_report: Any, item_verification: Mapping[str, Any]
+    write_report: WriteReportLike, item_verification: Mapping[str, Any]
 ) -> int:
     """Map an applied run's outcome to its exit code.
 
@@ -597,20 +439,18 @@ def determine_exit_code(
 
 
 def _item_key_from_canonical(key: str) -> dict[str, Any]:
-    image_part, _, item_part = key.partition("#RECEIPT#")
-    return {
-        "PK": {"S": image_part},
-        "SK": {"S": f"RECEIPT#{item_part}#EMBEDDING"},
-    }
+    """Canonical key -> Dynamo Key (receipt_embeddings.keys is the one
+    implementation of the partition rule; polish-brief item 4)."""
+    return dynamo_key_from_canonical(key)
 
 
 def verify_written_items(
-    dynamodb_client: Any,
+    dynamodb_client: DynamoBatchClient,
     table_name: str,
     written_keys: Sequence[str],
     *,
     max_retries: int = 3,
-    sleep: Any = time.sleep,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
     """Strongly consistent existence check over EVERY written key.
 
@@ -759,14 +599,33 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--manifest-only",
+        action="store_true",
+        help=(
+            "select receipts ONLY from --extra-receipts, ignoring the "
+            "fixture's receipt list (the fixture still supplies vectors "
+            "for --vector-source fixture/auto); required shape for a "
+            "non-dev table, where fixture receipts may not exist"
+        ),
+    )
+    parser.add_argument(
+        "--allow-table",
+        help=(
+            "explicit opt-in for a non-dev table: must EXACTLY repeat "
+            "the --table-name value to run against it (e.g. the prod "
+            "table during corpus promotion); every other safety rail "
+            "(--apply requires --limit, skip-existing, fail-closed "
+            "exits) still applies"
+        ),
+    )
+    parser.add_argument(
         "--vector-source",
-        choices=("auto", "chroma", "openai", "fixture"),
+        choices=("auto", "openai", "fixture"),
         default="auto",
         help=(
-            "where uncovered vectors come from: 'chroma' reuses stored "
-            "Chroma Cloud dev vectors (OpenAI-free), 'openai' re-embeds "
+            "where uncovered vectors come from: 'openai' re-embeds "
             "realtime, 'fixture' uses only the fixture corpus (offline), "
-            "'auto' picks chroma when CHROMA_CLOUD_* is set, else openai"
+            "'auto' is 'openai'"
         ),
     )
     return parser
@@ -774,9 +633,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if args.table_name != DEV_TABLE:
+    if args.table_name != DEV_TABLE and args.allow_table != args.table_name:
         raise SystemExit(
-            f"refusing table {args.table_name!r}; only {DEV_TABLE!r} is allowed"
+            f"refusing table {args.table_name!r}; only {DEV_TABLE!r} is "
+            "allowed unless --allow-table exactly repeats the table name"
+        )
+    if args.table_name != DEV_TABLE and not (
+        args.manifest_only and args.extra_receipts is not None
+    ):
+        raise SystemExit(
+            "non-dev tables require --manifest-only with --extra-receipts: "
+            "fixture receipts may not exist in the target table (codex "
+            "review P1)"
         )
     if args.limit is not None and args.limit < 1:
         raise SystemExit("--limit must be at least 1")
@@ -792,6 +660,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         fixture,
         extra_receipts=args.extra_receipts,
         limit=args.limit,
+        manifest_only=args.manifest_only,
     )
     dynamo = DynamoClient(table_name=args.table_name, region=args.region)
     if args.repair_label_status:
@@ -799,9 +668,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         repair_report["table_name"] = args.table_name
         print(json.dumps(repair_report, indent=2, sort_keys=True))
         return int(repair_report["exit_code"])
-    requests, receipt_skips = collect_requests(
-        dynamo, receipts, fixture_vectors(fixture)
-    )
+    # A non-dev promotion must not reuse fixture vectors: the canonical
+    # fixture was captured from dev, and twin receipts share keys
+    # across stacks, so fixture seeding could silently write dev vectors
+    # into the target while reporting the opted-in source (codex review
+    # P1). The opted-in source is authoritative for manifest-only runs.
+    seed_vectors = {} if args.manifest_only else fixture_vectors(fixture)
+    requests, receipt_skips = collect_requests(dynamo, receipts, seed_vectors)
     vector_source = resolve_vector_source(args.vector_source)
 
     report: dict[str, Any] = {
@@ -838,27 +711,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     vector_skips: list[dict[str, str]] = []
-    close_source = lambda: None  # noqa: E731 - trivial closer
-    if vector_source == "chroma":
-        source = build_chroma_source()
-        close_source = source.close
-        try:
-            stored = source.vectors_for(
-                [
-                    request.canonical_key
-                    for request in requests
-                    if request.vector is None
-                ]
-            )
-            requests, vector_skips = apply_stored_vectors(
-                requests, stored, missing_reason="missing_stored_vector"
-            )
-        except SystemExit:
-            raise
-        except Exception:
-            close_source()
-            raise
-    elif vector_source == "fixture":
+    if vector_source == "fixture":
         requests, vector_skips = apply_stored_vectors(
             requests, {}, missing_reason="not_in_fixture_corpus"
         )
@@ -868,19 +721,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         raise SystemExit(
             "vector source 'openai' needs OPENAI_API_KEY for "
             f"{sum(r.vector is None for r in requests)} uncovered "
-            "vectors; set CHROMA_CLOUD_* and --vector-source chroma "
-            "for an OpenAI-free run"
+            "vectors; use --vector-source fixture for an OpenAI-free run"
         )
     report["vector_skips"] = vector_skips
     report["vector_skip_reasons"] = dict(
         Counter(skip["reason"] for skip in vector_skips)
     )
 
-    try:
-        writer = EmbeddingWriter(dynamo._client, args.table_name)
-        write_report = writer.write(requests)
-    finally:
-        close_source()
+    writer = EmbeddingWriter(dynamo._client, args.table_name)
+    write_report = writer.write(requests)
     report["write_report"] = write_report.as_dict()
     report["item_failure_reasons"] = dict(
         Counter(failure.stage for failure in write_report.failures)
@@ -901,6 +750,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         sample_size=args.sample_size,
     )
     exit_code = determine_exit_code(write_report, report["item_verification"])
+    if (
+        exit_code == 0
+        and not write_report.written_keys
+        and not write_report.skipped_existing_keys
+        and (receipt_skips or vector_skips)
+    ):
+        # An applied run where every requested item skipped (wrong
+        # region/account/table contents) must not report success with
+        # nothing promoted (codex review P1).
+        exit_code = EXIT_GLOBAL_WRITE_FAILURE
+        report["empty_promotion"] = True
     report["exit_code"] = exit_code
     print(json.dumps(report, indent=2, sort_keys=True))
     return exit_code

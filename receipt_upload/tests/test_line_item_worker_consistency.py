@@ -98,6 +98,15 @@ class _FakeDynamo:
         self.written = []
         self.deleted = 0
 
+    def list_receipt_word_labels_for_receipt(self, *args, **kwargs):
+        return [], None
+
+    def receipt_exists_consistent(self, _image_id, _receipt_id):
+        return True
+
+    def update_receipt_summary_item_count(self, _image_id, _receipt_id, count):
+        self.final_item_count = count
+
     def list_receipt_words_from_receipt(self, _image_id, _receipt_id):
         return [
             SimpleNamespace(
@@ -141,6 +150,9 @@ class _FakeDynamo:
 
     def add_receipt_line_items(self, line_items):
         self.written.extend(line_items)
+
+    def set_receipt_line_item_merchant_if_missing(self, _row, _merchant):
+        return True
 
 
 @pytest.fixture

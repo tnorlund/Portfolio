@@ -395,8 +395,9 @@ def derive_section_vote(
     """Apply the runtime's non-negative cosine-weighted KNN vote.
 
     With normalized vectors, cosine similarity is ``1 - cosine_distance``.
-    This is the scalar form of ``receipt_chroma.propagate_knn`` and therefore
-    does not require search results to expose their stored vectors.
+    This is the scalar form of ``section_propagation.propagate_knn`` and
+    therefore does not require search results to expose their stored
+    vectors.
     """
 
     votes: dict[str, float] = {}

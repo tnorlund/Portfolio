@@ -2,14 +2,13 @@
 
 Sections are seeded sparsely (M0): only words whose line carries a
 ``ReceiptSection`` get a section. This propagates a section to *every* word by
-nearest-neighbor voting in word-embedding space (the receipt_chroma ``words``
-collection), turning the sparse seed into dense per-word coverage — within and
-across receipts.
+nearest-neighbor voting in word-embedding space (the native DynamoDB word
+embedding items), turning the sparse seed into dense per-word coverage —
+within and across receipts.
 
 The core (:func:`propagate_knn`) is a pure array function so it is unit-testable
 and callable per-receipt at runtime (the propagator must not be batch-only —
-epic amendment #1067). The Chroma/DynamoDB loading lives in the CLI adapter
-(``section_propagate_eval.py``).
+epic amendment #1067). Embedding loading belongs in a CLI adapter, not here.
 
 Measured on the dev words snapshot (97,658 words, real OpenAI embeddings), with
 whole-receipt hold-out so there is no same-line leakage: **89% cross-receipt
@@ -22,7 +21,8 @@ from dataclasses import dataclass
 from typing import Optional, Sequence
 
 import numpy as np
-from receipt_chroma import Propagation, propagate_knn
+
+from receipt_embeddings.section_propagation import Propagation, propagate_knn
 
 
 @dataclass

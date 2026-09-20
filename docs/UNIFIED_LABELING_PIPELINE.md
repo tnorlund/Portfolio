@@ -1,5 +1,7 @@
 # Unified Receipt Labeling Pipeline
 
+> **Historical note (Sept 2026):** the ChromaDB legs described in this document were retired by the vector-store teardown (see `docs/chroma-removal/`). Vector similarity now runs against native DynamoDB embedding items via `receipt_embeddings`; the `receipt_chroma` package no longer exists.
+
 ## Overview
 
 This document describes the unified labeling pipeline that processes receipts during upload, combining LayoutLM inference, ChromaDB validation, Google Places metadata, and financial validation into a single coherent flow.

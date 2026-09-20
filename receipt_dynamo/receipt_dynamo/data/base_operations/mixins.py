@@ -19,6 +19,7 @@ from typing import (
 )
 
 from .error_handling import ErrorMessageConfig, handle_dynamodb_errors
+from .nutrition_guard import refuse_prohibited_nutrition_write
 from .shared_utils import batch_write_with_retry_dict
 from .validators import EntityValidator
 
@@ -192,6 +193,8 @@ class BatchOperationsMixin:
             max_retries: Maximum number of retries for unprocessed items
             initial_backoff: Initial backoff time in seconds
         """
+        for table, requests in request_items.items():
+            refuse_prohibited_nutrition_write(table, requests)
         batch_write_with_retry_dict(
             self._client, request_items, max_retries, initial_backoff
         )
@@ -295,6 +298,7 @@ class TransactionalOperationsMixin:
         Args:
             transact_items: List of transactional write items
         """
+        refuse_prohibited_nutrition_write(self.table_name, transact_items)
         self._client.transact_write_items(TransactItems=transact_items)
 
     def _prepare_transact_update_item(

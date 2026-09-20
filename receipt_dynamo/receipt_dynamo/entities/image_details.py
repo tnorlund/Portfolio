@@ -9,9 +9,15 @@ from receipt_dynamo.entities.ocr_job import OCRJob
 from receipt_dynamo.entities.ocr_routing_decision import OCRRoutingDecision
 from receipt_dynamo.entities.receipt import Receipt
 from receipt_dynamo.entities.receipt_barcode import ReceiptBarcode
+from receipt_dynamo.entities.receipt_embedding import ReceiptEmbedding
+from receipt_dynamo.entities.receipt_fact_override import ReceiptFactOverride
 from receipt_dynamo.entities.receipt_letter import ReceiptLetter
 from receipt_dynamo.entities.receipt_line import ReceiptLine
+from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
+from receipt_dynamo.entities.receipt_row import ReceiptRow
+from receipt_dynamo.entities.receipt_section import ReceiptSection
+from receipt_dynamo.entities.receipt_summary import ReceiptSummary
 from receipt_dynamo.entities.receipt_word import ReceiptWord
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo.entities.word import Word
@@ -32,6 +38,18 @@ class ImageDetails:
     receipt_word_labels: list[ReceiptWordLabel] = field(default_factory=list)
     receipt_places: list[ReceiptPlace] = field(default_factory=list)
     receipt_barcodes: list[ReceiptBarcode] = field(default_factory=list)
+    # Derived rows (rows -> sections -> line items) and the owner-stated
+    # fact override. These are produced by their own pipelines rather than
+    # by OCR, but nothing regenerates them in a destination environment
+    # after a cross-environment copy, so they must travel with the image.
+    receipt_rows: list[ReceiptRow] = field(default_factory=list)
+    receipt_sections: list[ReceiptSection] = field(default_factory=list)
+    receipt_line_items: list[ReceiptLineItem] = field(default_factory=list)
+    receipt_summaries: list[ReceiptSummary] = field(default_factory=list)
+    receipt_fact_overrides: list[ReceiptFactOverride] = field(
+        default_factory=list
+    )
+    receipt_embeddings: list[ReceiptEmbedding] = field(default_factory=list)
     ocr_jobs: list[OCRJob] = field(default_factory=list)
     ocr_routing_decisions: list[OCRRoutingDecision] = field(
         default_factory=list
@@ -57,5 +75,11 @@ class ImageDetails:
         yield self.receipt_word_labels
         yield self.receipt_places
         yield self.receipt_barcodes
+        yield self.receipt_rows
+        yield self.receipt_sections
+        yield self.receipt_line_items
+        yield self.receipt_summaries
+        yield self.receipt_fact_overrides
+        yield self.receipt_embeddings
         yield self.ocr_jobs
         yield self.ocr_routing_decisions

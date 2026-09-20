@@ -16,6 +16,11 @@ from receipt_upload.combine.metadata_utils import (
     migrate_receipt_word_labels,
     upsert_receipt_place,
 )
+from receipt_upload.combine.migration import (
+    migrate_receipt_barcodes,
+    migrate_receipt_sections,
+    receipt_barcodes_in_image_space,
+)
 from receipt_upload.combine.records_builder import (
     combine_receipt_letters_to_image_coords,
     combine_receipt_words_to_image_coords,
@@ -30,6 +35,9 @@ __all__ = [
     "clone_receipt_place_for_receipt",
     "get_best_receipt_place",
     "migrate_receipt_word_labels",
+    "migrate_receipt_barcodes",
+    "migrate_receipt_sections",
+    "receipt_barcodes_in_image_space",
     "upsert_receipt_place",
     "combine_receipt_letters_to_image_coords",
     "combine_receipt_words_to_image_coords",

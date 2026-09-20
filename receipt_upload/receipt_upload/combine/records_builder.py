@@ -9,13 +9,12 @@ import copy
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Tuple
-
-logger = logging.getLogger(__name__)
+from typing import Any, Dict, List, Mapping, Tuple
 
 from receipt_dynamo import DynamoClient
 from receipt_dynamo.entities import (
     Receipt,
+    ReceiptDetails,
     ReceiptLetter,
     ReceiptLine,
     ReceiptWord,
@@ -28,6 +27,8 @@ from receipt_upload.geometry.transformations import (
     find_perspective_coeffs,
     invert_warp,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _get_receipt_to_image_transform(
@@ -83,6 +84,9 @@ def combine_receipt_words_to_image_coords(
     image_width: int,
     image_height: int,
     deduplicate: bool = True,
+    *,
+    strict: bool = False,
+    source_details: Mapping[int, ReceiptDetails] | None = None,
 ) -> List[Dict[str, Any]]:
     """
     Combine words from multiple receipts and transform to image coordinates.
@@ -93,22 +97,38 @@ def combine_receipt_words_to_image_coords(
         receipt_ids: List of receipt IDs to combine
         image_width: Width of the original image
         image_height: Height of the original image
+        strict: Raise on incomplete reads/transforms before destructive merges.
+        source_details: Committed source data, when provided by the caller.
 
     Returns:
         List of word dictionaries with transformed coordinates
     """
-    all_words = []
+    all_words: List[Dict[str, Any]] = []
     for receipt_id in receipt_ids:
         try:
-            receipt = client.get_receipt(image_id, receipt_id)
+            details = (
+                source_details[receipt_id]
+                if source_details is not None
+                else None
+            )
+            receipt = (
+                details.receipt
+                if details is not None
+                else client.get_receipt(image_id, receipt_id)
+            )
             transform_coeffs, receipt_width, receipt_height = (
                 _get_receipt_to_image_transform(
                     receipt, image_width, image_height
                 )
             )
-            forward_coeffs = invert_warp(*transform_coeffs)
-            receipt_words = client.list_receipt_words_from_receipt(
-                image_id, receipt_id
+            a, b, c, d, e, f, g, h = invert_warp(*transform_coeffs)
+            forward_coeffs = (a, b, c, d, e, f, g, h)
+            receipt_words = (
+                details.words
+                if details is not None
+                else client.list_receipt_words_from_receipt(
+                    image_id, receipt_id
+                )
             )
             for word in receipt_words:
                 try:
@@ -171,6 +191,8 @@ def combine_receipt_words_to_image_coords(
                         }
                     )
                 except Exception:
+                    if strict:
+                        raise
                     logger.warning(
                         "Failed to transform word %d (line %d) for receipt %d",
                         word.word_id,
@@ -179,6 +201,8 @@ def combine_receipt_words_to_image_coords(
                         exc_info=True,
                     )
         except Exception:
+            if strict:
+                raise
             logger.warning(
                 "Failed to load/transform receipt %d for image %s",
                 receipt_id,
@@ -195,7 +219,7 @@ def combine_receipt_words_to_image_coords(
     # This handles cases where the same word was detected on multiple lines
     # with identical bounding box coordinates
     deduplicated_words = []
-    seen_coords = set()
+    seen_coords = {}
     for word in all_words:
         # Create a coordinate signature for deduplication
         # Use a small tolerance for floating point comparison (0.1 pixels)
@@ -213,8 +237,15 @@ def combine_receipt_words_to_image_coords(
         )
 
         if coord_key not in seen_coords:
-            seen_coords.add(coord_key)
+            word["source_line_keys"] = [(word["line_id"], word["receipt_id"])]
+            seen_coords[coord_key] = word
             deduplicated_words.append(word)
+        else:
+            # A section can belong to the duplicate source's line. Keep
+            # those aliases even though only one word is persisted.
+            seen_coords[coord_key]["source_line_keys"].append(
+                (word["line_id"], word["receipt_id"])
+            )
         # Skip duplicate - log if needed for debugging
         # Note: We keep the first occurrence (already sorted by reading order)
 
@@ -229,6 +260,9 @@ def combine_receipt_letters_to_image_coords(
     image_height: int,
     word_id_map: Dict[Tuple[int, int, int], int],
     line_id_map: Dict[Tuple[int, int], int],
+    *,
+    strict: bool = False,
+    source_details: Mapping[int, ReceiptDetails] | None = None,
 ) -> List[Dict[str, Any]]:
     """
     Combine letters from multiple receipts and transform to image coordinates.
@@ -239,6 +273,8 @@ def combine_receipt_letters_to_image_coords(
         receipt_ids: List of receipt IDs to combine
         image_width: Width of the original image
         image_height: Height of the original image
+        strict: Raise on incomplete reads/transforms before destructive merges.
+        source_details: Committed source data, when provided by the caller.
         word_id_map: Mapping from (word_id, line_id, receipt_id) to new word_id
         line_id_map: Mapping from (line_id, receipt_id) to new line_id
 
@@ -248,20 +284,44 @@ def combine_receipt_letters_to_image_coords(
     all_letters = []
     for receipt_id in receipt_ids:
         try:
-            receipt = client.get_receipt(image_id, receipt_id)
+            details = (
+                source_details[receipt_id]
+                if source_details is not None
+                else None
+            )
+            receipt = (
+                details.receipt
+                if details is not None
+                else client.get_receipt(image_id, receipt_id)
+            )
             transform_coeffs, receipt_width, receipt_height = (
                 _get_receipt_to_image_transform(
                     receipt, image_width, image_height
                 )
             )
-            forward_coeffs = invert_warp(*transform_coeffs)
-            receipt_words = client.list_receipt_words_from_receipt(
-                image_id, receipt_id
+            a, b, c, d, e, f, g, h = invert_warp(*transform_coeffs)
+            forward_coeffs = (a, b, c, d, e, f, g, h)
+            receipt_words = (
+                details.words
+                if details is not None
+                else client.list_receipt_words_from_receipt(
+                    image_id, receipt_id
+                )
             )
+            letters_by_word = defaultdict(list)
+            if details is not None:
+                for letter in details.letters:
+                    letters_by_word[(letter.line_id, letter.word_id)].append(
+                        letter
+                    )
             for word in receipt_words:
                 try:
-                    receipt_letters = client.list_receipt_letters_from_word(
-                        image_id, receipt_id, word.line_id, word.word_id
+                    receipt_letters = (
+                        letters_by_word[(word.line_id, word.word_id)]
+                        if details is not None
+                        else client.list_receipt_letters_from_word(
+                            image_id, receipt_id, word.line_id, word.word_id
+                        )
                     )
                     for letter in receipt_letters:
                         try:
@@ -341,6 +401,8 @@ def combine_receipt_letters_to_image_coords(
                                 }
                             )
                         except Exception:
+                            if strict:
+                                raise
                             logger.warning(
                                 "Failed to transform letter %d (word %d) "
                                 "for receipt %d",
@@ -350,6 +412,8 @@ def combine_receipt_letters_to_image_coords(
                                 exc_info=True,
                             )
                 except Exception:
+                    if strict:
+                        raise
                     logger.warning(
                         "Failed to load letters for word %d (line %d) "
                         "of receipt %d",
@@ -359,6 +423,8 @@ def combine_receipt_letters_to_image_coords(
                         exc_info=True,
                     )
         except Exception:
+            if strict:
+                raise
             logger.warning(
                 "Failed to load/transform receipt %d for image %s",
                 receipt_id,
@@ -553,16 +619,22 @@ def create_combined_receipt_records(
     # Create ReceiptWord entities
     # IMPORTANT: We assign word IDs sequentially to ALL words (including noise)
     # to maintain proper structure (words belong to lines, letters belong to words).
-    # However, we need to ensure word IDs match between DynamoDB and ChromaDB.
+    # However, we need to ensure word IDs match between DynamoDB and the
+    # embedding index.
     # Since noise words are filtered out during embedding, we assign IDs to all
     # words but only non-noise words will be embedded with those IDs.
     receipt_words = []
     word_id_map = {}
+    section_line_id_map = defaultdict(set)
     new_word_id = 1
 
     for word in combined_words:
         original_key = (word["word_id"], word["line_id"], word["receipt_id"])
         new_line_id = line_id_map.get((word["line_id"], word["receipt_id"]), 1)
+        for source_key in word.get(
+            "source_line_keys", [(word["line_id"], word["receipt_id"])]
+        ):
+            section_line_id_map[tuple(source_key)].add(new_line_id)
 
         # Transform word corners from original image space to warped space
         word_corners_ocr_warped = {}
@@ -682,6 +754,7 @@ def create_combined_receipt_records(
         "receipt_words": receipt_words,
         "receipt_letters": [],
         "line_id_map": line_id_map,
+        "section_line_id_map": dict(section_line_id_map),
         "word_id_map": word_id_map,
         "letter_id_map": {},
     }

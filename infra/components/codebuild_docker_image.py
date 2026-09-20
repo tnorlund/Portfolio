@@ -16,6 +16,7 @@ Similar to EcsLambda but for Docker images:
 # pylint: disable=import-error
 
 import json
+import re
 import shlex
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -267,9 +268,11 @@ class CodeBuildDockerImage(ComponentResource):
         Returns:
             True if path is safe, False otherwise
         """
-        import re
-
-        return bool(re.match(r"^[a-zA-Z0-9_/-]+$", path))
+        return (
+            bool(re.fullmatch(r"[a-zA-Z0-9_./-]+", path))
+            and all(part not in {"", ".", ".."} for part in path.split("/"))
+            and not path.startswith("-")
+        )
 
     def _generate_package_rsync_patterns(self, packages: list[str]) -> str:
         """Generate rsync include/exclude patterns for Python packages.
@@ -287,8 +290,9 @@ class CodeBuildDockerImage(ComponentResource):
         for pkg in packages:
             if not self._validate_source_path(pkg):
                 raise ValueError(
-                    f"Invalid source path '{pkg}': must contain only alphanumeric, "
-                    f"underscore, hyphen, and forward slash characters"
+                    f"Invalid source path '{pkg}': use a relative path "
+                    "with alphanumeric, dot, underscore, hyphen, and slash "
+                    "characters, without traversal or leading hyphens"
                 )
 
         includes = []
@@ -434,14 +438,15 @@ class CodeBuildDockerImage(ComponentResource):
         for extra in self.extra_context_paths:
             if not self._validate_source_path(extra):
                 raise ValueError(
-                    f"Invalid extra context path '{extra}': must contain only "
-                    "alphanumeric, underscore, hyphen, and forward slash "
-                    "characters"
+                    f"Invalid extra context path '{extra}': "
+                    "use a relative path with alphanumeric, dot, underscore, "
+                    "hyphen, and slash characters, without traversal or "
+                    "leading hyphens"
                 )
         extra_context_paths_str = " ".join(self.extra_context_paths)
 
-        # Package trees are explicit. This keeps an unrelated receipt_chroma
-        # edit from rebuilding a Lambda whose Dockerfile never copies it.
+        # Package trees are explicit. This keeps an edit to an unlisted
+        # package from rebuilding a Lambda whose Dockerfile never copies it.
         packages_to_include = sorted(set(self.source_paths))
 
         # Build rsync include patterns for each package
@@ -1108,13 +1113,13 @@ fi
 
 echo "📦 Pushing minimal bootstrap image to ECR..."
 # Pull public Lambda base image (with error handling)
-if ! docker pull public.ecr.aws/lambda/python:3.13-arm64; then
+if ! docker pull public.ecr.aws/lambda/python:3.14-arm64; then
   echo "⚠️  Failed to pull base image."
   wait_for_pipeline_image
 fi
 
 # Tag it for our ECR repo
-docker tag public.ecr.aws/lambda/python:3.13-arm64 "$REPO_URL:latest"
+docker tag public.ecr.aws/lambda/python:3.14-arm64 "$REPO_URL:latest"
 
 # Login to ECR
 # Note: On macOS, credential helper may fail but login still succeeds

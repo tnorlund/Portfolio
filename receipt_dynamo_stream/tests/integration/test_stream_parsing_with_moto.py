@@ -8,7 +8,7 @@ from moto import mock_aws
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_word_label import ReceiptWordLabel
 from receipt_dynamo_stream import (
-    get_chromadb_relevant_changes,
+    get_update_relevant_changes,
     parse_stream_record,
 )
 
@@ -129,7 +129,7 @@ def test_parse_stream_record_for_place_insert_and_modify(
     assert parsed_modify.new_entity is not None
     assert isinstance(parsed_modify.old_entity, ReceiptPlace)
     assert isinstance(parsed_modify.new_entity, ReceiptPlace)
-    changes = get_chromadb_relevant_changes(
+    changes = get_update_relevant_changes(
         parsed_modify.entity_type,
         parsed_modify.old_entity,
         parsed_modify.new_entity,

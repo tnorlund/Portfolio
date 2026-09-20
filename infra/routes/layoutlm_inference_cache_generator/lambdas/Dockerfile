@@ -2,13 +2,17 @@
 # Multi-stage build for LayoutLM Inference Cache Generator Lambda
 
 # Stage 1: Build and install dependencies (cached layer)
-FROM public.ecr.aws/lambda/python:3.13 AS dependencies
+# Runs on Python 3.14 like every other container Lambda. torch publishes
+# cp314 CPU wheels from 2.10 onward; receipt_layoutlm only caps torch <3.0
+# because the coremltools/Core AI ceilings live in the [coreml]/[coreai]
+# extras that the isolated macOS export workers install.
+FROM public.ecr.aws/lambda/python:3.14 AS dependencies
 
 # Note: awscli is pre-installed in the Lambda base image, no need to install it
 
 # Install CPU-only PyTorch first (Lambda has no GPU, saves ~1.5GB)
 RUN pip install --no-cache-dir \
-    torch==2.6.0 \
+    torch==2.14.0 \
     --index-url https://download.pytorch.org/whl/cpu
 
 # Copy dependency packages

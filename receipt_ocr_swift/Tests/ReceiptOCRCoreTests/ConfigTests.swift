@@ -47,6 +47,34 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(cfg.rawBucketName, "rb")
     }
 
+    func test_environment_cache_defaults_and_explicit_override() throws {
+        for env: String? in ["dev", "prod", nil] {
+            for explicit: String? in [nil, "/tmp/custom-model-cache"] {
+                let config = try Config.load(
+                    env: env, ocrJobQueueURL: "q1", ocrResultsQueueURL: "q2",
+                    dynamoTableName: "table", rawBucketName: "raw", region: "us-east-1",
+                    localstackEndpoint: nil, layoutLMLocalCachePath: explicit,
+                    pulumi: StubPulumi(outputs: [:])
+                )
+                XCTAssertEqual(config.layoutLMLocalCachePath, explicit ?? ".models/layoutlm/\(env ?? "local")")
+                XCTAssertEqual(config.environment, env ?? "local")
+                XCTAssertEqual(config.layoutLMPointerKey, "coreml/active.json")
+            }
+        }
+    }
+
+    func test_pointer_key_precedence() throws {
+        for explicit: String? in [nil, "coreml/custom.json"] {
+            let config = try Config.load(
+                env: "dev", ocrJobQueueURL: "q1", ocrResultsQueueURL: "q2",
+                dynamoTableName: "table", rawBucketName: "raw", region: "us-east-1",
+                localstackEndpoint: nil, layoutLMPointerKey: explicit,
+                pulumi: StubPulumi(outputs: ["layoutlm_model_pointer_key": "coreml/pulumi.json"])
+            )
+            XCTAssertEqual(config.layoutLMPointerKey, explicit ?? "coreml/pulumi.json")
+        }
+    }
+
     func test_missing_fields_throw() {
         XCTAssertThrowsError(
             try Config.load(

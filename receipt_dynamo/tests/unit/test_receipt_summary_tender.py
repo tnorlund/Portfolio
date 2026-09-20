@@ -37,6 +37,7 @@ def tender_summary() -> ReceiptSummary:
         ledger="apple",
         bank_amount=47.18,
         bank_match_confidence=0.95,
+        bank_date=datetime(2025, 5, 29),
     )
 
 
@@ -51,6 +52,7 @@ def test_round_trip_with_tender_fields(tender_summary):
     assert item["ledger"] == {"S": "apple"}
     assert item["bank_amount"] == {"N": "47.18"}
     assert item["bank_match_confidence"] == {"N": "0.95"}
+    assert item["bank_date"] == {"S": "2025-05-29T00:00:00"}
 
     restored = ReceiptSummaryRecord.from_item(item)
     assert restored.tender_class == "card"
@@ -59,6 +61,7 @@ def test_round_trip_with_tender_fields(tender_summary):
     assert restored.ledger == "apple"
     assert restored.bank_amount == 47.18
     assert restored.bank_match_confidence == 0.95
+    assert restored.bank_date == datetime(2025, 5, 29)
     assert restored.summary == tender_summary
 
 
@@ -79,6 +82,7 @@ def test_round_trip_without_tender_fields():
         "ledger",
         "bank_amount",
         "bank_match_confidence",
+        "bank_date",
     ):
         assert key not in item
 
@@ -89,6 +93,9 @@ def test_round_trip_without_tender_fields():
     assert restored.ledger is None
     assert restored.bank_amount is None
     assert restored.bank_match_confidence is None
+    assert restored.bank_date is None
+    assert restored.effective_date is None
+    assert restored.date_source is None
 
 
 @pytest.mark.unit
@@ -132,6 +139,8 @@ def test_cash_tender_round_trip():
         {"bank_amount": True},
         {"bank_match_confidence": 1.5},
         {"bank_match_confidence": -0.1},
+        {"bank_date": "2025-05-29"},
+        {"bank_date": 20250529},
     ],
 )
 def test_invalid_tender_fields_rejected(kwargs):
@@ -153,6 +162,7 @@ def test_from_word_labels_and_words_accepts_tender_kwargs():
         ledger="chase",
         bank_amount=101.44,
         bank_match_confidence=1.0,
+        bank_date=datetime(2026, 8, 17),
     )
     assert summary.tender_class == "card"
     assert summary.card_network == "VISA"
@@ -160,6 +170,7 @@ def test_from_word_labels_and_words_accepts_tender_kwargs():
     assert summary.ledger == "chase"
     assert summary.bank_amount == 101.44
     assert summary.bank_match_confidence == 1.0
+    assert summary.bank_date == datetime(2026, 8, 17)
 
 
 @pytest.mark.unit
@@ -171,3 +182,103 @@ def test_to_dict_includes_tender_fields(tender_summary):
     assert d["ledger"] == "apple"
     assert d["bank_amount"] == 47.18
     assert d["bank_match_confidence"] == 0.95
+    assert d["bank_date"] == "2025-05-29T00:00:00"
+    # the printed date wins over the bank date when both are known
+    assert d["date"] == "2025-05-28T00:00:00"
+    assert d["effective_date"] == "2025-05-28T00:00:00"
+    assert d["date_source"] == "label"
+
+
+@pytest.mark.unit
+def test_effective_date_falls_back_to_bank_date():
+    """No legible printed date -> the matched bank date is the date."""
+    summary = ReceiptSummary(
+        image_id=IMAGE_ID,
+        receipt_id=6,
+        merchant_name="Marufuku Ramen",
+        totals=MonetaryTotals(grand_total=31.96),
+        ledger="chase",
+        bank_amount=37.27,
+        bank_match_confidence=1.0,
+        bank_date=datetime(2026, 4, 16),
+    )
+    assert summary.date is None
+    assert summary.effective_date == datetime(2026, 4, 16)
+    assert summary.date_source == "bank"
+    d = summary.to_dict()
+    assert d["date"] is None
+    assert d["effective_date"] == "2026-04-16T00:00:00"
+    assert d["date_source"] == "bank"
+
+    record = ReceiptSummaryRecord.from_item(
+        ReceiptSummaryRecord.from_summary(summary).to_item()
+    )
+    assert record.date is None
+    assert record.effective_date == datetime(2026, 4, 16)
+    assert record.date_source == "bank"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("confidence", "eligible"),
+    [
+        (1.0, True),  # curated confirmed
+        (0.9, True),  # curated auto
+        (0.85, True),  # exact-amount live, amount-only
+        (0.8, False),  # best possible tip-band live match
+        (0.6, False),  # tip-band floor
+        (None, False),  # legacy item: bank_date without a confidence
+    ],
+)
+def test_effective_date_fails_closed_below_min_confidence(
+    confidence, eligible
+):
+    from receipt_dynamo.entities.receipt_summary import (
+        BANK_DATE_MIN_CONFIDENCE,
+    )
+
+    summary = ReceiptSummary(
+        image_id=IMAGE_ID,
+        receipt_id=8,
+        ledger="chase",
+        bank_amount=24.0,
+        bank_match_confidence=confidence,
+        bank_date=datetime(2026, 8, 1),
+    )
+    assert BANK_DATE_MIN_CONFIDENCE == 0.85
+    assert summary.bank_date_eligible is eligible
+    # the raw evidence is always kept ...
+    assert summary.bank_date == datetime(2026, 8, 1)
+    assert summary.to_dict()["bank_date"] == "2026-08-01T00:00:00"
+    # ... but only an eligible match becomes the receipt's date
+    if eligible:
+        assert summary.effective_date == datetime(2026, 8, 1)
+        assert summary.date_source == "bank"
+    else:
+        assert summary.effective_date is None
+        assert summary.date_source is None
+        assert summary.to_dict()["effective_date"] is None
+
+
+@pytest.mark.unit
+def test_printed_date_wins_over_any_bank_date():
+    summary = ReceiptSummary(
+        image_id=IMAGE_ID,
+        receipt_id=9,
+        date=datetime(2026, 8, 31),
+        ledger="chase",
+        bank_amount=24.0,
+        bank_match_confidence=1.0,
+        bank_date=datetime(2026, 9, 2),  # posted two days later
+    )
+    assert summary.effective_date == datetime(2026, 8, 31)
+    assert summary.date_source == "label"
+
+
+@pytest.mark.unit
+def test_bank_date_is_an_offline_field():
+    from receipt_dynamo.entities.receipt_summary_record import (
+        OFFLINE_BANK_FIELDS,
+    )
+
+    assert "bank_date" in OFFLINE_BANK_FIELDS

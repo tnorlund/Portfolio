@@ -56,7 +56,6 @@ from receipt_agent.utils import (
     LLMRateLimitError,
     ainvoke_structured_with_retry,
     build_structured_failure_decisions,
-    build_word_chroma_id,
     get_structured_output_settings,
     invoke_structured_with_retry,
 )
@@ -179,7 +178,7 @@ def extract_financial_values(
 
 
 # =============================================================================
-# Enhanced Value Extraction (CHROMA_COLUMN approach)
+# Enhanced Value Extraction (column-alignment approach)
 # =============================================================================
 
 # Summary labels that need column alignment filtering
@@ -239,120 +238,17 @@ def _detect_price_column(words: list, labels: list) -> float | None:
     return median(right_edges)
 
 
-def _chroma_get_label_column_x(
-    chroma_client: Any,
-    image_id: str,
-    receipt_id: int,
-    line_id: int,
-    word_id: int,
-    target_label: str,
-    merchant_name: str,
-    n_results: int = 15,
-    min_similarity: float = 0.70,
-) -> tuple[float | None, float, int, int]:
-    """Query ChromaDB for the typical right-edge x-position of a label.
-
-    Finds similar validated words in ChromaDB and returns:
-    - median_x: median right-edge x of positively-matching words (or None)
-    - consensus: -1.0 to 1.0 score
-    - pos_count, neg_count
-    """
-    chroma_id = build_word_chroma_id(image_id, receipt_id, line_id, word_id)
-
-    # Get the word's embedding
-    try:
-        result = chroma_client.get(
-            collection_name="words",
-            ids=[chroma_id],
-            include=["embeddings"],
-        )
-        embeddings = result.get("embeddings")
-        if embeddings is None or len(embeddings) == 0:
-            return None, 0.0, 0, 0
-        embedding = embeddings[0]
-        if hasattr(embedding, "tolist"):
-            embedding = embedding.tolist()
-    except Exception:
-        return None, 0.0, 0, 0
-
-    label_field = f"label_{target_label}"
-    positive_weight = 0.0
-    negative_weight = 0.0
-    pos_count = 0
-    neg_count = 0
-    positive_x_positions: list[float] = []
-
-    for label_val in [True, False]:
-        try:
-            results = chroma_client.query(
-                collection_name="words",
-                query_embeddings=[embedding],
-                n_results=n_results,
-                where={label_field: label_val},
-                include=["metadatas", "distances"],
-            )
-        except Exception:
-            continue
-
-        ids = results.get("ids", [[]])[0]
-        distances = results.get("distances", [[]])[0]
-        metadatas = results.get("metadatas", [[]])[0]
-
-        for rid, dist, meta in zip(ids, distances, metadatas):
-            if rid == chroma_id:
-                continue
-            similarity = max(0.0, 1.0 - (dist / 2.0))
-            if similarity < min_similarity:
-                continue
-
-            weight = similarity
-            m_name = meta.get("merchant_name", "")
-            if (
-                m_name
-                and merchant_name
-                and m_name.lower() == merchant_name.lower()
-            ):
-                weight += 0.1
-
-            if label_val:
-                positive_weight += weight
-                pos_count += 1
-                x = meta.get("x")
-                w_width = meta.get("width")
-                if x is not None:
-                    right_edge = (
-                        float(x) + float(w_width)
-                        if w_width is not None
-                        else float(x)
-                    )
-                    if 0.0 < right_edge <= 1.1:
-                        positive_x_positions.append(right_edge)
-            else:
-                negative_weight += weight
-                neg_count += 1
-
-    total = positive_weight + negative_weight
-    consensus = (
-        (positive_weight - negative_weight) / total if total > 0 else 0.0
-    )
-
-    median_x = median(positive_x_positions) if positive_x_positions else None
-
-    return median_x, consensus, pos_count, neg_count
-
-
 def extract_financial_values_enhanced(
     visual_lines: list[VisualLine],
     words: list,
     labels: list,
-    chroma_client: Any,
-    merchant_name: str,
 ) -> dict[str, list[FinancialValue]]:
-    """Enhanced extraction: ChromaDB column alignment + summary section dedup.
+    """Enhanced extraction: price-column alignment + summary section dedup.
 
     Unlike extract_financial_values() which only uses VALID labels, this:
     1. Accepts labels of ANY validation status
-    2. Filters misaligned non-VALID summary labels via ChromaDB right-edge x
+    2. Filters misaligned non-VALID summary labels via the receipt's local
+       price-column right-edge x
     3. Detects the summary section boundary
     4. Deduplicates summary labels (keeps best per label)
     5. Scopes line items above the summary section
@@ -370,9 +266,7 @@ def extract_financial_values_enhanced(
                 getattr(lbl, "validation_status", "NONE"), 0
             ) >= _STATUS_RANK.get(existing, 0):
                 label_map[key] = lbl.label
-                label_status[key] = getattr(
-                    lbl, "validation_status", "NONE"
-                )
+                label_status[key] = getattr(lbl, "validation_status", "NONE")
 
     # Step 2: Local column fallback
     local_col_x = _detect_price_column(words, labels)
@@ -393,11 +287,8 @@ def extract_financial_values_enhanced(
 
     # Step 5: Collect numeric candidates with column filtering
     # Store as (line_id, label, value, text, word_context, line_index) tuples
-    candidates: list[
-        tuple[int, str, float, str, WordContext | None, int]
-    ] = []
+    candidates: list[tuple[int, str, float, str, WordContext | None, int]] = []
     x_tolerance = 0.20
-    min_chroma_evidence = 3
 
     for w in words:
         key = (w.line_id, w.word_id)
@@ -427,9 +318,7 @@ def extract_financial_values_enhanced(
         # different x-positions and the single-median column rejects one
         # group.
         if status == "VALID":
-            candidates.append(
-                (w.line_id, label, num, w.text, wc, line_index)
-            )
+            candidates.append((w.line_id, label, num, w.text, wc, line_index))
             continue
 
         # INVALID labels were explicitly rejected — never use them in
@@ -438,54 +327,26 @@ def extract_financial_values_enhanced(
         if status == "INVALID":
             continue
 
-        # Non-VALID currency labels: column filter via Chroma + local
+        # Non-VALID currency labels: filter against the local price column
         if label in _COLUMN_FILTERED_LABELS:
-            chroma_col_x, _consensus, pos_count, _neg_count = (
-                _chroma_get_label_column_x(
-                    chroma_client=chroma_client,
-                    image_id=w.image_id if hasattr(w, "image_id") else "",
-                    receipt_id=(
-                        w.receipt_id if hasattr(w, "receipt_id") else 0
-                    ),
-                    line_id=w.line_id,
-                    word_id=w.word_id,
-                    target_label=label,
-                    merchant_name=merchant_name,
-                )
-            )
-
-            col_right = (
-                chroma_col_x
-                if chroma_col_x is not None
-                and pos_count >= min_chroma_evidence
-                else local_col_x
-            )
+            col_right = local_col_x
             word_right = _get_right_edge(w)
 
             if col_right is not None:
                 diff = abs(word_right - col_right)
                 if diff > x_tolerance:
-                    src = (
-                        "chroma"
-                        if chroma_col_x is not None
-                        and pos_count >= min_chroma_evidence
-                        else "local"
-                    )
                     logger.debug(
                         "Enhanced extraction column filter: '%s' as %s "
-                        "(right=%.3f, col=%.3f[%s], diff=%.3f)",
+                        "(right=%.3f, col=%.3f[local], diff=%.3f)",
                         w.text,
                         label,
                         word_right,
                         col_right,
-                        src,
                         diff,
                     )
                     continue
 
-        candidates.append(
-            (w.line_id, label, num, w.text, wc, line_index)
-        )
+        candidates.append((w.line_id, label, num, w.text, wc, line_index))
 
     logger.info(
         "Enhanced extraction: %d numeric candidates after column filter",
@@ -502,7 +363,9 @@ def extract_financial_values_enhanced(
 
     # Step 7: Deduplicate summary labels
     # For each summary label, prefer in-block occurrence over pre-block
-    summary_best: dict[str, tuple[int, float, str, WordContext | None, int]] = {}
+    summary_best: dict[
+        str, tuple[int, float, str, WordContext | None, int]
+    ] = {}
     for line_id, label, val, txt, wc, li in candidates:
         if label not in SUMMARY_LABELS:
             continue
@@ -714,7 +577,10 @@ def _match_llm_items_to_words(
                 if found_word is None:
                     for w in vl.words:
                         num = extract_number(w.text)
-                        if num is not None and abs(abs(num) - llm_amount) < 0.01:
+                        if (
+                            num is not None
+                            and abs(abs(num) - llm_amount) < 0.01
+                        ):
                             found_word = w
                             break
 
@@ -781,8 +647,7 @@ async def _llm_identify_line_items_async(
     diff = subtotal - algo_expected
 
     algo_lt_desc = "\n".join(
-        f'  - ${fv.numeric_value:.2f} ("{fv.word_text}")'
-        for fv in line_totals
+        f'  - ${fv.numeric_value:.2f} ("{fv.word_text}")' for fv in line_totals
     )
     algo_disc_desc = (
         "\n".join(
@@ -875,8 +740,7 @@ Return ONLY valid JSON (no markdown, no explanation) in this format:
         # Accept if math balances within $0.05
         if abs(computed - subtotal) > 0.05:
             logger.info(
-                "LLM fallback rejected: math doesn't balance "
-                "(diff=$%.2f)",
+                "LLM fallback rejected: math doesn't balance " "(diff=$%.2f)",
                 abs(computed - subtotal),
             )
             return None
@@ -918,8 +782,7 @@ def _llm_identify_line_items(
     diff = subtotal - algo_expected
 
     algo_lt_desc = "\n".join(
-        f'  - ${fv.numeric_value:.2f} ("{fv.word_text}")'
-        for fv in line_totals
+        f'  - ${fv.numeric_value:.2f} ("{fv.word_text}")' for fv in line_totals
     )
     algo_disc_desc = (
         "\n".join(
@@ -1009,8 +872,7 @@ Return ONLY valid JSON (no markdown, no explanation) in this format:
         # Accept if math balances within $0.05
         if abs(computed - subtotal) > 0.05:
             logger.info(
-                "LLM fallback rejected: math doesn't balance "
-                "(diff=$%.2f)",
+                "LLM fallback rejected: math doesn't balance " "(diff=$%.2f)",
                 abs(computed - subtotal),
             )
             return None
@@ -1556,8 +1418,7 @@ def classify_receipt_type(
     # "service" because they contain SUBTOTAL/TAX keywords.
     if labels:
         line_total_count = sum(
-            1 for lbl in labels
-            if getattr(lbl, "label", None) == "LINE_TOTAL"
+            1 for lbl in labels if getattr(lbl, "label", None) == "LINE_TOTAL"
         )
         if line_total_count >= 2:
             logger.info(
@@ -1833,9 +1694,7 @@ def check_grand_total_math(
         else "0.00"
     )
     tip_desc = (
-        " + ".join(f"{t.numeric_value:.2f}" for t in tips)
-        if tips
-        else "0.00"
+        " + ".join(f"{t.numeric_value:.2f}" for t in tips) if tips else "0.00"
     )
     discount_desc = (
         " + ".join(f"{abs(d.numeric_value):.2f}" for d in discounts)
@@ -2459,7 +2318,6 @@ def evaluate_financial_math(
     words: list | None = None,
     line_item_patterns: dict | None = None,
     labels: list | None = None,
-    chroma_client: Any | None = None,
 ) -> list[dict]:
     """
     Validate financial math on a receipt.
@@ -2474,8 +2332,7 @@ def evaluate_financial_math(
         merchant_name: Merchant name for context
         words: Raw ReceiptWord list for text scanning (service/terminal)
         line_item_patterns: Pattern discovery result with receipt_type
-        labels: ReceiptWordLabel list for enhanced extraction
-        chroma_client: ChromaDB client for column alignment
+        labels: ReceiptWordLabel list (receipt-type classification)
 
     Returns:
         List of decisions ready for apply_llm_decisions()
@@ -2484,23 +2341,13 @@ def evaluate_financial_math(
     # same label-based extraction and math-check path).
     receipt_type = classify_receipt_type(words, line_item_patterns, labels)
 
-    # Unified path: try enhanced extraction if labels + chroma available
+    # Label-based extraction over the visual lines. (The vector-store
+    # column-alignment path was retired; the two-tier structured validator
+    # owns the enhanced extraction now.)
     enhanced_values: dict[str, list[FinancialValue]] | None = None
     used_llm_fallback = False
     used_text_scan_fallback = False
-    if labels and chroma_client and words:
-        enhanced_values = extract_financial_values_enhanced(
-            visual_lines, words, labels, chroma_client, merchant_name
-        )
-        enhanced_values = filter_junk_values(enhanced_values)
-        math_issues = detect_math_issues_from_values(enhanced_values)
-        logger.info(
-            "Enhanced extraction: %d math issues from %d label types",
-            len(math_issues),
-            len(enhanced_values),
-        )
-    else:
-        math_issues = detect_math_issues(visual_lines)
+    math_issues = detect_math_issues(visual_lines)
 
     # Text-scan fallback: if label-based extraction found no financial
     # values, try keyword-based text scanning on raw OCR words.
@@ -2514,9 +2361,7 @@ def evaluate_financial_math(
             )
             if any(text_scan_values.values()):
                 enhanced_values = text_scan_values
-                math_issues = detect_math_issues_from_values(
-                    enhanced_values
-                )
+                math_issues = detect_math_issues_from_values(enhanced_values)
                 used_text_scan_fallback = True
                 logger.info(
                     "Text-scan fallback: %d values from %d label types, "
@@ -2803,7 +2648,6 @@ async def evaluate_financial_math_async(
     words: list | None = None,
     line_item_patterns: dict | None = None,
     labels: list | None = None,
-    chroma_client: Any | None = None,
 ) -> list[dict]:
     """
     Async version of evaluate_financial_math.
@@ -2822,8 +2666,7 @@ async def evaluate_financial_math_async(
         merchant_name: Merchant name for context
         words: Raw ReceiptWord list for text scanning (service/terminal)
         line_item_patterns: Pattern discovery result with receipt_type
-        labels: ReceiptWordLabel list for enhanced extraction
-        chroma_client: ChromaDB client for column alignment
+        labels: ReceiptWordLabel list (receipt-type classification)
 
     Returns:
         List of decisions ready for apply_llm_decisions()
@@ -2832,23 +2675,13 @@ async def evaluate_financial_math_async(
     # same label-based extraction and math-check path).
     receipt_type = classify_receipt_type(words, line_item_patterns, labels)
 
-    # Unified path: try enhanced extraction if labels + chroma available
+    # Label-based extraction over the visual lines. (The vector-store
+    # column-alignment path was retired; the two-tier structured validator
+    # owns the enhanced extraction now.)
     enhanced_values: dict[str, list[FinancialValue]] | None = None
     used_llm_fallback = False
     used_text_scan_fallback = False
-    if labels and chroma_client and words:
-        enhanced_values = extract_financial_values_enhanced(
-            visual_lines, words, labels, chroma_client, merchant_name
-        )
-        enhanced_values = filter_junk_values(enhanced_values)
-        math_issues = detect_math_issues_from_values(enhanced_values)
-        logger.info(
-            "Enhanced extraction: %d math issues from %d label types",
-            len(math_issues),
-            len(enhanced_values),
-        )
-    else:
-        math_issues = detect_math_issues(visual_lines)
+    math_issues = detect_math_issues(visual_lines)
 
     # Text-scan fallback: if label-based extraction found no financial
     # values, try keyword-based text scanning on raw OCR words.
@@ -2862,9 +2695,7 @@ async def evaluate_financial_math_async(
             )
             if any(text_scan_values.values()):
                 enhanced_values = text_scan_values
-                math_issues = detect_math_issues_from_values(
-                    enhanced_values
-                )
+                math_issues = detect_math_issues_from_values(enhanced_values)
                 used_text_scan_fallback = True
                 logger.info(
                     "Text-scan fallback: %d values from %d label types, "

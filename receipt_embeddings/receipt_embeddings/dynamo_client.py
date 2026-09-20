@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import os
-import re
 import time
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from receipt_dynamo.constants import CORE_LABEL_NAMES, ValidationStatus
 from receipt_dynamo.entities.dynamodb_utils import parse_dynamodb_map
 
+from receipt_embeddings.keys import CANONICAL_KEY_RE as _CANONICAL_KEY
+from receipt_embeddings.keys import canonical_key_from_item as _canonical_key
+from receipt_embeddings.protocols import DynamoVectorLowLevelClient
 from receipt_embeddings.service_limits import (
     EMBEDDING_DIMENSIONS,
     INDEX_VECTOR_ATTRIBUTES,
@@ -28,10 +30,6 @@ from receipt_embeddings.vector_client import FilterValue, ScoredItem
 
 DEFAULT_TABLE_NAME = "ReceiptsTable-dc5be22"
 DEFAULT_REGION = "us-east-1"
-_CANONICAL_KEY = re.compile(
-    r"^IMAGE#(?P<image_id>[^#]+)#RECEIPT#(?P<receipt_id>[0-9]+)#"
-    r"LINE#(?P<line_id>[0-9]+)(?:#WORD#(?P<word_id>[0-9]+))?$"
-)
 # Fetch-join ruling (spec §3.2/§3.3 amendment): the line index's projection
 # omits fields the resolver's phone/address tiers need, so line retrieval is
 # SearchVectors -> strongly consistent BatchGetItem of the neighbor items ->
@@ -64,22 +62,12 @@ _WORD_LABEL_JOIN_ATTRIBUTES = (
 )
 
 
-def _canonical_key(item: Mapping[str, Any], *, index: str) -> str:
-    image_id = str(item["image_id"])
-    receipt_id = int(item["receipt_id"])
-    line_id = int(item["line_id"])
-    prefix = f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{line_id:05d}"
-    if index == WORD_INDEX:
-        return f"{prefix}#WORD#{int(item['word_id']):05d}"
-    return prefix
-
-
 class DynamoVectorSearchClient:
     """Search and retrieve vectors from the two judge-provisioned indexes."""
 
     def __init__(
         self,
-        dynamodb_client: Any,
+        dynamodb_client: "DynamoVectorLowLevelClient",
         table_name: str,
         *,
         max_retries: int = 3,
@@ -89,7 +77,8 @@ class DynamoVectorSearchClient:
             raise ValueError("table_name must not be empty")
         if not callable(getattr(dynamodb_client, "search_vectors", None)):
             raise RuntimeError(
-                "DynamoDB client lacks SearchVectors; boto3 >= 1.43.64 is required"
+                "DynamoDB client lacks SearchVectors; "
+                "boto3 >= 1.43.64 is required"
             )
         self._client = dynamodb_client
         self.table_name = table_name
@@ -256,6 +245,7 @@ class DynamoVectorSearchClient:
                         break
                     if attempt < self._max_retries:
                         self._sleep(0.1 * (2**attempt))
+            # pylint: disable-next=broad-exception-caught
             except Exception:  # noqa: BLE001 - degrade to projection metadata
                 continue
         self.last_join_read_units = consumed
@@ -274,15 +264,16 @@ class DynamoVectorSearchClient:
             )
         return joined
 
+    # pylint: disable-next=too-many-statements
     def _join_word_label_metadata(
         self, results: list[ScoredItem]
     ) -> list[ScoredItem]:
-        """Hydrate Chroma-compatible validated-label arrays for words.
+        """Hydrate validated-label arrays for word neighbors.
 
         The word index can filter on aggregate ``label_status`` but its
         immutable projection does not contain the label names used by the
         semantic proposer. Fetch the known core-label rows by exact key and
-        surface the same ``valid_labels_array`` metadata shape as Chroma,
+        surface the ``valid_labels_array`` metadata shape consumers expect,
         plus the full per-row provenance as ``label_rows`` so
         similar_labeled_words reuses this single join instead of
         re-fetching the same keys (E3 review P2-4). Any failed or
@@ -296,7 +287,7 @@ class DynamoVectorSearchClient:
 
         owner_by_token: dict[str, tuple[str, str]] = {}
         request_keys: list[dict[str, Any]] = []
-        valid = {result.key: set() for result in results}
+        valid: dict[str, set[str]] = {result.key: set() for result in results}
         rows_by_key: dict[str, list[dict[str, Any]]] = {}
         hydratable: set[str] = set()
         for result in results:
@@ -375,6 +366,7 @@ class DynamoVectorSearchClient:
                         self._sleep(0.1 * (2**attempt))
                 if pending:
                     return results
+        # pylint: disable-next=broad-exception-caught
         except Exception:  # noqa: BLE001 - abstain on join failure
             return results
 
@@ -430,7 +422,12 @@ class DynamoVectorSearchClient:
             raise KeyError(f"unknown vector key: {key}")
         vector = parse_dynamodb_map(item).get(vector_attribute)
         try:
-            return normalize_vector(vector, dimensions=EMBEDDING_DIMENSIONS)
+            # Annotation-only cast: a None/malformed value still raises
+            # inside normalize_vector and lands in the except (unchanged).
+            return normalize_vector(
+                cast(Sequence[float], vector),
+                dimensions=EMBEDDING_DIMENSIONS,
+            )
         except (TypeError, ValueError) as exc:
             raise KeyError(f"stored vector is invalid for key: {key}") from exc
 

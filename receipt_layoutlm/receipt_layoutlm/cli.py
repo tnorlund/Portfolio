@@ -472,6 +472,76 @@ def main() -> None:
         help="Save detailed results to JSON file",
     )
 
+    # Export to Core AI subcommand (experimental, LayoutLM v1)
+    export_coreai_p = sub.add_parser(
+        "export-coreai",
+        help="Export LayoutLM v1 checkpoint to Core AI (.aimodel)",
+    )
+    export_coreai_p.add_argument(
+        "--checkpoint-dir",
+        help="Local directory containing model checkpoint",
+    )
+    export_coreai_p.add_argument(
+        "--s3-uri",
+        help="S3 URI to model checkpoint (s3://bucket/prefix/)",
+    )
+    export_coreai_p.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory to write Core AI bundle",
+    )
+    export_coreai_p.add_argument(
+        "--model-name",
+        default="LayoutLM",
+        help="Name for the .aimodel asset (default: LayoutLM)",
+    )
+    export_coreai_p.add_argument(
+        "--local-cache",
+        help="Local directory to cache S3 downloads",
+    )
+    export_coreai_p.add_argument(
+        "--seq-length",
+        type=int,
+        default=512,
+        help="Fixed sequence length for torch.export (default: 512)",
+    )
+
+    # Validate Core AI subcommand
+    validate_coreai_p = sub.add_parser(
+        "validate-coreai",
+        help="Validate Core AI model against PyTorch",
+    )
+    validate_coreai_p.add_argument(
+        "--checkpoint-dir",
+        required=True,
+        help="Path to PyTorch checkpoint",
+    )
+    validate_coreai_p.add_argument(
+        "--coreai-bundle",
+        required=True,
+        help="Path to Core AI bundle directory",
+    )
+    validate_coreai_p.add_argument(
+        "--dynamo-table",
+        default=os.getenv("DYNAMO_TABLE_NAME"),
+        help="DynamoDB table for test data",
+    )
+    validate_coreai_p.add_argument(
+        "--region",
+        default="us-east-1",
+        help="AWS region",
+    )
+    validate_coreai_p.add_argument(
+        "--num-samples",
+        type=int,
+        default=100,
+        help="Number of samples to test",
+    )
+    validate_coreai_p.add_argument(
+        "--output-json",
+        help="Save detailed results to JSON file",
+    )
+
     # Export worker subcommand (macOS only)
     worker_p = sub.add_parser(
         "export-worker",
@@ -864,6 +934,48 @@ def main() -> None:
         result = validate_coreml(
             checkpoint_dir=args.checkpoint_dir,
             coreml_bundle_dir=args.coreml_bundle,
+            dynamo_table=args.dynamo_table,
+            region=args.region,
+            num_samples=args.num_samples,
+        )
+        print(result)
+
+        if args.output_json:
+            import json as _json
+
+            with open(args.output_json, "w") as f:
+                _json.dump(result.to_dict(), f, indent=2)
+            print(f"\nDetailed results saved to {args.output_json}")
+
+    elif args.cmd == "export-coreai":
+        from .export_coreai import export_coreai, export_coreai_from_s3
+
+        if not args.checkpoint_dir and not args.s3_uri:
+            raise SystemExit("Either --checkpoint-dir or --s3-uri is required")
+
+        if args.s3_uri:
+            bundle_path = export_coreai_from_s3(
+                s3_uri=args.s3_uri,
+                output_dir=args.output_dir,
+                model_name=args.model_name,
+                local_cache=args.local_cache,
+                seq_length=args.seq_length,
+            )
+        else:
+            bundle_path = export_coreai(
+                checkpoint_dir=args.checkpoint_dir,
+                output_dir=args.output_dir,
+                model_name=args.model_name,
+                seq_length=args.seq_length,
+            )
+        print(f"Core AI bundle created: {bundle_path}")
+
+    elif args.cmd == "validate-coreai":
+        from .validate_coreai import validate_coreai
+
+        result = validate_coreai(
+            checkpoint_dir=args.checkpoint_dir,
+            coreai_bundle_dir=args.coreai_bundle,
             dynamo_table=args.dynamo_table,
             region=args.region,
             num_samples=args.num_samples,

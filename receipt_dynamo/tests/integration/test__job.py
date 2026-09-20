@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import pytest
 from botocore.exceptions import ClientError
@@ -7,17 +7,13 @@ from botocore.exceptions import ClientError
 from receipt_dynamo.data._job import validate_last_evaluated_key
 from receipt_dynamo.data.dynamo_client import DynamoClient
 from receipt_dynamo.data.shared_exceptions import (
-    DynamoDBAccessError,
     DynamoDBError,
-    DynamoDBResourceNotFoundError,
-    DynamoDBServerError,
     EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityValidationError,
     OperationError,
 )
 from receipt_dynamo.entities.job import Job
-from receipt_dynamo.entities.job_status import JobStatus
 
 pytestmark = pytest.mark.integration
 
@@ -47,19 +43,6 @@ def sample_job():
         },
         estimated_duration=3600,
         tags={"env": "test", "purpose": "integration-test"},
-    )
-
-
-@pytest.fixture
-def sample_job_status(sample_job):
-    return JobStatus(
-        job_id=sample_job.job_id,
-        status="running",
-        updated_at=datetime.now(),
-        progress=50.0,
-        message="Processing data",
-        updated_by="test_system",
-        instance_id="i-12345678",
     )
 
 
@@ -583,92 +566,6 @@ def test_deleteJob_raises_conditional_check_failed(job_dynamo, sample_job):
 
 
 @pytest.mark.integration
-def test_addJobStatus_success(job_dynamo, sample_job, sample_job_status):
-    """Test adding a job status successfully"""
-    # Add the job first
-    job_dynamo.add_job(sample_job)
-
-    # Add the job status
-    job_dynamo.add_job_status(sample_job_status)
-
-    # Get the latest job status
-    status = job_dynamo.get_latest_job_status(sample_job.job_id)
-
-    # Verify
-    assert status.job_id == sample_job_status.job_id
-    assert status.status == sample_job_status.status
-    assert status.progress == sample_job_status.progress
-    assert status.message == sample_job_status.message
-
-
-@pytest.mark.integration
-@pytest.mark.parametrize(
-    ("value", "match"),
-    [
-        (None, "job_status cannot be None"),
-        ("not a job status", "job_status must be an instance of JobStatus"),
-    ],
-)
-def test_addJobStatus_rejects_invalid_status(job_dynamo, value, match):
-    """Job-status writes reject missing and incorrectly typed entities."""
-    with pytest.raises(OperationError, match=match):
-        job_dynamo.add_job_status(value)
-
-
-@pytest.mark.integration
-def test_getJobWithStatus_success(job_dynamo, sample_job, sample_job_status):
-    """Test getting a job with its status updates"""
-    # Add the job
-    job_dynamo.add_job(sample_job)
-
-    # Add a status update
-    job_dynamo.add_job_status(sample_job_status)
-
-    # Add another status update with different status
-    new_status = JobStatus(
-        job_id=sample_job.job_id,
-        status="succeeded",
-        updated_at=(
-            datetime.fromisoformat(sample_job_status.updated_at)
-            + timedelta(microseconds=1)
-        ),
-        progress=100.0,
-        message="Job completed successfully",
-        updated_by="test_system",
-        instance_id="i-12345678",
-    )
-    job_dynamo.add_job_status(new_status)
-
-    # Get the job with status updates
-    job, statuses = job_dynamo.get_job_with_status(sample_job.job_id)
-
-    # Verify
-    assert job.job_id == sample_job.job_id
-    assert len(statuses) == 2
-    assert [status.status for status in statuses] == ["running", "succeeded"]
-    assert statuses[0].job_id == sample_job.job_id
-
-
-@pytest.mark.integration
-def test_getLatestJobStatus_raises_value_error_no_status(
-    job_dynamo, sample_job
-):
-    """
-    Test that getLatestJobStatus raises ValueError when there are no status
-    updates
-    """
-    # Add the job
-    job_dynamo.add_job(sample_job)
-
-    # Try to get the latest status - should raise EntityNotFoundError
-    with pytest.raises(
-        EntityNotFoundError,
-        match="No status updates found for job",
-    ):
-        job_dynamo.get_latest_job_status(sample_job.job_id)
-
-
-@pytest.mark.integration
 def test_listJobs_success(job_dynamo, sample_job):
     """Test listJobs successfully lists jobs"""
     # Add the job first
@@ -693,65 +590,6 @@ def test_listJobs_with_limit(job_dynamo, sample_job):
 
     # Verify
     assert len(jobs) <= 1
-
-
-@pytest.mark.integration
-def test_listJobStatuses_success(job_dynamo, sample_job_status):
-    """Test listJobStatuses successfully lists job statuses"""
-    # Add the job status first
-    job_dynamo.add_job_status(sample_job_status)
-
-    # List job statuses
-    job_statuses, last_evaluated_key = job_dynamo.list_job_statuses(
-        sample_job_status.job_id
-    )
-
-    # Verify
-    assert len(job_statuses) >= 1
-    assert any(
-        status.job_id == sample_job_status.job_id for status in job_statuses
-    )
-
-
-@pytest.mark.integration
-def test_listJobStatuses_with_limit(job_dynamo, sample_job_status):
-    """A status limit returns a usable key for the next page."""
-    job_dynamo.add_job_status(sample_job_status)
-    second_status = JobStatus(
-        job_id=sample_job_status.job_id,
-        status="succeeded",
-        updated_at=(
-            datetime.fromisoformat(sample_job_status.updated_at)
-            + timedelta(microseconds=1)
-        ),
-        progress=100,
-    )
-    job_dynamo.add_job_status(second_status)
-
-    first_page, last_evaluated_key = job_dynamo.list_job_statuses(
-        sample_job_status.job_id, limit=1
-    )
-    assert len(first_page) == 1
-    assert last_evaluated_key is not None
-
-    second_page, final_key = job_dynamo.list_job_statuses(
-        sample_job_status.job_id,
-        limit=1,
-        last_evaluated_key=last_evaluated_key,
-    )
-    assert len(second_page) == 1
-    assert final_key is None
-    assert {status.status for status in first_page + second_page} == {
-        "running",
-        "succeeded",
-    }
-
-
-@pytest.mark.integration
-def test_listJobStatuses_raises_value_error_job_id_none(job_dynamo):
-    """Test listJobStatuses raises ValueError when job_id is None"""
-    with pytest.raises(EntityValidationError, match="job_id cannot be None"):
-        job_dynamo.list_job_statuses(None)
 
 
 @pytest.mark.integration
@@ -822,47 +660,6 @@ def test_listJobs_raises_client_error_resource_not_found(job_dynamo, mocker):
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize(
-    ("error_code", "error_message", "error_type", "match"),
-    [
-        (
-            "ResourceNotFoundException",
-            "Table not found",
-            DynamoDBResourceNotFoundError,
-            "DynamoDB resource not found during query_by_parent: Table not found",
-        ),
-        (
-            "InternalServerError",
-            "Internal server error",
-            DynamoDBServerError,
-            "DynamoDB server error during query_by_parent: Internal server error",
-        ),
-        (
-            "AccessDeniedException",
-            "Access denied",
-            DynamoDBAccessError,
-            (
-                "DynamoDB error during query_by_parent: "
-                "AccessDeniedException - Access denied"
-            ),
-        ),
-    ],
-)
-def test_listJobStatuses_maps_client_errors(
-    job_dynamo, mocker, error_code, error_message, error_type, match
-):
-    """Status queries map AWS errors to the exact public domain contract."""
-    mocked_error = ClientError(
-        {"Error": {"Code": error_code, "Message": error_message}}, "Query"
-    )
-    mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
-
-    with pytest.raises(error_type, match=match) as exc_info:
-        job_dynamo.list_job_statuses(str(uuid.uuid4()))
-    assert exc_info.type is error_type
-
-
-@pytest.mark.integration
 def test_listJobsByStatus_raises_client_error_unknown(job_dynamo, mocker):
     """
     Test that listJobsByStatus raises an exception when an unknown ClientError
@@ -926,35 +723,6 @@ def test_getJob_raises_client_error_internal_server_error(job_dynamo, mocker):
     # Call the method and verify it raises the expected exception
     with pytest.raises(Exception, match="Internal server error"):
         job_dynamo.get_job(str(uuid.uuid4()))
-
-
-@pytest.mark.integration
-def test_getLatestJobStatus_raises_client_error_resource_not_found(
-    job_dynamo, mocker
-):
-    """
-    Test that getLatestJobStatus raises an exception when
-    ResourceNotFoundException occurs
-    """
-    # Mock the client to raise a ResourceNotFoundException
-    mocked_response = {
-        "Error": {
-            "Code": "ResourceNotFoundException",
-            "Message": "Table not found",
-        }
-    }
-    mocked_error = ClientError(mocked_response, "Query")
-    mocker.patch.object(job_dynamo._client, "query", side_effect=mocked_error)
-
-    # Resource loss is surfaced as an operation failure with method context.
-    with pytest.raises(
-        OperationError,
-        match=(
-            "DynamoDB resource not found during get_latest_job_status: "
-            "Table not found"
-        ),
-    ):
-        job_dynamo.get_latest_job_status(str(uuid.uuid4()))
 
 
 @pytest.mark.integration

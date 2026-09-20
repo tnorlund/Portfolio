@@ -1,0 +1,1307 @@
+{
+  "schema_version": 1,
+  "evidence_tier": "synthetic",
+  "description": "Independent hand-computed arithmetic examples. These are not real product labels, receipt truth, or model-quality evidence.",
+  "products": [
+    {
+      "product_id": "grain",
+      "name": "Synthetic grain",
+      "identity_kind": "exact",
+      "evidence": [
+        {
+          "evidence_id": "synthetic-label",
+          "source": "synthetic",
+          "record_id": "contract-v1",
+          "reference": "synthetic arithmetic, not a real product label",
+          "observed_on": "2026-09-08",
+          "verification": "synthetic",
+          "license": "synthetic fixture",
+          "public_allowed": false
+        }
+      ],
+      "net_amount": {
+        "value": "100",
+        "unit": "g"
+      },
+      "serving": {
+        "value": "25",
+        "unit": "g"
+      },
+      "package_source_ref": "synthetic-label",
+      "nutrients": [
+        {
+          "nutrient_id": "208",
+          "amount": "400",
+          "unit": "kcal",
+          "basis": "100g",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "203",
+          "amount": "10",
+          "unit": "g",
+          "basis": "100g",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "307",
+          "amount": "0",
+          "unit": "mg",
+          "basis": "100g",
+          "source_ref": "synthetic-label"
+        }
+      ]
+    },
+    {
+      "product_id": "milk",
+      "name": "Synthetic milk",
+      "identity_kind": "exact",
+      "evidence": [
+        {
+          "evidence_id": "synthetic-label",
+          "source": "synthetic",
+          "record_id": "contract-v1",
+          "reference": "synthetic arithmetic, not a real product label",
+          "observed_on": "2026-09-08",
+          "verification": "synthetic",
+          "license": "synthetic fixture",
+          "public_allowed": false
+        }
+      ],
+      "net_amount": {
+        "value": "1000",
+        "unit": "ml"
+      },
+      "serving": {
+        "value": "250",
+        "unit": "ml"
+      },
+      "package_source_ref": "synthetic-label",
+      "nutrients": [
+        {
+          "nutrient_id": "208",
+          "amount": "50",
+          "unit": "kcal",
+          "basis": "100ml",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "203",
+          "amount": "3",
+          "unit": "g",
+          "basis": "100ml",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "307",
+          "amount": "40",
+          "unit": "mg",
+          "basis": "100ml",
+          "source_ref": "synthetic-label"
+        }
+      ]
+    },
+    {
+      "product_id": "eggs",
+      "name": "Synthetic eggs",
+      "identity_kind": "generic",
+      "evidence": [
+        {
+          "evidence_id": "synthetic-label",
+          "source": "synthetic",
+          "record_id": "contract-v1",
+          "reference": "synthetic arithmetic, not a real product label",
+          "observed_on": "2026-09-08",
+          "verification": "synthetic",
+          "license": "synthetic fixture",
+          "public_allowed": false
+        }
+      ],
+      "net_amount": {
+        "value": "12",
+        "unit": "each"
+      },
+      "serving": {
+        "value": "1",
+        "unit": "each"
+      },
+      "package_source_ref": "synthetic-label",
+      "nutrients": [
+        {
+          "nutrient_id": "208",
+          "amount": "72",
+          "unit": "kcal",
+          "basis": "each",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "203",
+          "amount": "6",
+          "unit": "g",
+          "basis": "each",
+          "source_ref": "synthetic-label"
+        }
+      ],
+      "mass_per_each_g": "50",
+      "conversion_source_ref": "synthetic-label"
+    },
+    {
+      "product_id": "rounded-label",
+      "name": "Synthetic rounded-label",
+      "identity_kind": "exact",
+      "evidence": [
+        {
+          "evidence_id": "synthetic-label",
+          "source": "synthetic",
+          "record_id": "contract-v1",
+          "reference": "synthetic arithmetic, not a real product label",
+          "observed_on": "2026-09-08",
+          "verification": "synthetic",
+          "license": "synthetic fixture",
+          "public_allowed": false
+        }
+      ],
+      "net_amount": {
+        "value": "99",
+        "unit": "g"
+      },
+      "serving": {
+        "value": "25",
+        "unit": "g"
+      },
+      "package_source_ref": "synthetic-label",
+      "nutrients": [
+        {
+          "nutrient_id": "208",
+          "amount": "100",
+          "unit": "kcal",
+          "basis": "serving",
+          "source_ref": "synthetic-label"
+        }
+      ],
+      "servings_per_container": "4"
+    },
+    {
+      "product_id": "label-no-net",
+      "name": "Synthetic rounded-label",
+      "identity_kind": "exact",
+      "evidence": [
+        {
+          "evidence_id": "synthetic-label",
+          "source": "synthetic",
+          "record_id": "contract-v1",
+          "reference": "synthetic arithmetic, not a real product label",
+          "observed_on": "2026-09-08",
+          "verification": "synthetic",
+          "license": "synthetic fixture",
+          "public_allowed": false
+        }
+      ],
+      "net_amount": null,
+      "serving": {
+        "value": "25",
+        "unit": "g"
+      },
+      "package_source_ref": "synthetic-label",
+      "nutrients": [
+        {
+          "nutrient_id": "208",
+          "amount": "100",
+          "unit": "kcal",
+          "basis": "serving",
+          "source_ref": "synthetic-label"
+        }
+      ],
+      "servings_per_container": "4"
+    },
+    {
+      "product_id": "no-serving",
+      "name": "Synthetic grain",
+      "identity_kind": "exact",
+      "evidence": [
+        {
+          "evidence_id": "synthetic-label",
+          "source": "synthetic",
+          "record_id": "contract-v1",
+          "reference": "synthetic arithmetic, not a real product label",
+          "observed_on": "2026-09-08",
+          "verification": "synthetic",
+          "license": "synthetic fixture",
+          "public_allowed": false
+        }
+      ],
+      "net_amount": {
+        "value": "100",
+        "unit": "g"
+      },
+      "serving": null,
+      "package_source_ref": "synthetic-label",
+      "nutrients": [
+        {
+          "nutrient_id": "208",
+          "amount": "400",
+          "unit": "kcal",
+          "basis": "100g",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "203",
+          "amount": "10",
+          "unit": "g",
+          "basis": "100g",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "307",
+          "amount": "0",
+          "unit": "mg",
+          "basis": "100g",
+          "source_ref": "synthetic-label"
+        }
+      ]
+    },
+    {
+      "product_id": "unknown-size",
+      "name": "Synthetic grain",
+      "identity_kind": "exact",
+      "evidence": [
+        {
+          "evidence_id": "synthetic-label",
+          "source": "synthetic",
+          "record_id": "contract-v1",
+          "reference": "synthetic arithmetic, not a real product label",
+          "observed_on": "2026-09-08",
+          "verification": "synthetic",
+          "license": "synthetic fixture",
+          "public_allowed": false
+        }
+      ],
+      "net_amount": null,
+      "serving": {
+        "value": "25",
+        "unit": "g"
+      },
+      "package_source_ref": "synthetic-label",
+      "nutrients": [
+        {
+          "nutrient_id": "208",
+          "amount": "400",
+          "unit": "kcal",
+          "basis": "100g",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "203",
+          "amount": "10",
+          "unit": "g",
+          "basis": "100g",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "307",
+          "amount": "0",
+          "unit": "mg",
+          "basis": "100g",
+          "source_ref": "synthetic-label"
+        }
+      ]
+    },
+    {
+      "product_id": "missing-energy",
+      "name": "Synthetic grain",
+      "identity_kind": "exact",
+      "evidence": [
+        {
+          "evidence_id": "synthetic-label",
+          "source": "synthetic",
+          "record_id": "contract-v1",
+          "reference": "synthetic arithmetic, not a real product label",
+          "observed_on": "2026-09-08",
+          "verification": "synthetic",
+          "license": "synthetic fixture",
+          "public_allowed": false
+        }
+      ],
+      "net_amount": {
+        "value": "100",
+        "unit": "g"
+      },
+      "serving": {
+        "value": "25",
+        "unit": "g"
+      },
+      "package_source_ref": "synthetic-label",
+      "nutrients": [
+        {
+          "nutrient_id": "203",
+          "amount": "10",
+          "unit": "g",
+          "basis": "100g",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "307",
+          "amount": "0",
+          "unit": "mg",
+          "basis": "100g",
+          "source_ref": "synthetic-label"
+        }
+      ]
+    },
+    {
+      "product_id": "empty-panel",
+      "name": "Synthetic grain",
+      "identity_kind": "exact",
+      "evidence": [
+        {
+          "evidence_id": "synthetic-label",
+          "source": "synthetic",
+          "record_id": "contract-v1",
+          "reference": "synthetic arithmetic, not a real product label",
+          "observed_on": "2026-09-08",
+          "verification": "synthetic",
+          "license": "synthetic fixture",
+          "public_allowed": false
+        }
+      ],
+      "net_amount": {
+        "value": "100",
+        "unit": "g"
+      },
+      "serving": {
+        "value": "25",
+        "unit": "g"
+      },
+      "package_source_ref": "synthetic-label",
+      "nutrients": []
+    },
+    {
+      "product_id": "dense-milk",
+      "name": "Synthetic milk",
+      "identity_kind": "exact",
+      "evidence": [
+        {
+          "evidence_id": "synthetic-label",
+          "source": "synthetic",
+          "record_id": "contract-v1",
+          "reference": "synthetic arithmetic, not a real product label",
+          "observed_on": "2026-09-08",
+          "verification": "synthetic",
+          "license": "synthetic fixture",
+          "public_allowed": false
+        }
+      ],
+      "net_amount": {
+        "value": "1000",
+        "unit": "ml"
+      },
+      "serving": {
+        "value": "250",
+        "unit": "ml"
+      },
+      "package_source_ref": "synthetic-label",
+      "nutrients": [
+        {
+          "nutrient_id": "208",
+          "amount": "50",
+          "unit": "kcal",
+          "basis": "100ml",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "203",
+          "amount": "3",
+          "unit": "g",
+          "basis": "100ml",
+          "source_ref": "synthetic-label"
+        },
+        {
+          "nutrient_id": "307",
+          "amount": "40",
+          "unit": "mg",
+          "basis": "100ml",
+          "source_ref": "synthetic-label"
+        }
+      ],
+      "density_g_per_ml": "1.03",
+      "conversion_source_ref": "synthetic-label"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "one-package",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "4",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "4",
+        "cost_per_serving": "1",
+        "cost_per_100g": "4",
+        "energy": "400",
+        "protein": "10",
+        "sodium": "0"
+      }
+    },
+    {
+      "case_id": "two-packages-rounding",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "7",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "2",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "8",
+        "cost_per_serving": ".88",
+        "cost_per_100g": "3.50",
+        "energy": "800",
+        "protein": "20",
+        "sodium": "0"
+      }
+    },
+    {
+      "case_id": "three-packages",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "9",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "3",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "12",
+        "cost_per_serving": ".75",
+        "cost_per_100g": "3",
+        "energy": "1200",
+        "protein": "30",
+        "sodium": "0"
+      }
+    },
+    {
+      "case_id": "explicit-quarter-package",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "1",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": ".25",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "1",
+        "cost_per_serving": "1",
+        "cost_per_100g": "4",
+        "energy": "100",
+        "protein": "2.5",
+        "sodium": "0"
+      }
+    },
+    {
+      "case_id": "fifty-grams",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "2",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "50",
+            "unit": "g",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "2",
+        "cost_per_serving": "1",
+        "cost_per_100g": "4",
+        "energy": "200",
+        "protein": "5",
+        "sodium": "0"
+      }
+    },
+    {
+      "case_id": "bulk-two-hundred-grams",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "6",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "200",
+            "unit": "g",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "8",
+        "cost_per_serving": ".75",
+        "cost_per_100g": "3",
+        "energy": "800",
+        "protein": "20",
+        "sodium": "0"
+      }
+    },
+    {
+      "case_id": "small-cent-price",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": ".33",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "25",
+            "unit": "g",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "1",
+        "cost_per_serving": ".33",
+        "cost_per_100g": "1.32",
+        "energy": "100",
+        "protein": "2.5",
+        "sodium": "0"
+      }
+    },
+    {
+      "case_id": "free-product",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "0",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "4",
+        "cost_per_serving": "0",
+        "cost_per_100g": "0",
+        "energy": "400",
+        "protein": "10",
+        "sodium": "0"
+      }
+    },
+    {
+      "case_id": "half-up-boundary",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "3.98",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "4",
+        "cost_per_serving": "1.00",
+        "cost_per_100g": "3.98",
+        "energy": "400",
+        "protein": "10",
+        "sodium": "0"
+      }
+    },
+    {
+      "case_id": "liter-package",
+      "product_id": "milk",
+      "purchase": {
+        "extended_price": "3",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "4",
+        "cost_per_serving": ".75",
+        "cost_per_100ml": ".30",
+        "energy": "500",
+        "protein": "30",
+        "sodium": "400"
+      }
+    },
+    {
+      "case_id": "two-liter-packages",
+      "product_id": "milk",
+      "purchase": {
+        "extended_price": "5.5",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "2",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "8",
+        "cost_per_serving": ".69",
+        "cost_per_100ml": ".28",
+        "energy": "1000",
+        "protein": "60",
+        "sodium": "800"
+      }
+    },
+    {
+      "case_id": "one-volume-serving",
+      "product_id": "milk",
+      "purchase": {
+        "extended_price": "1",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "250",
+            "unit": "ml",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "1",
+        "cost_per_serving": "1",
+        "cost_per_100ml": ".40",
+        "energy": "125",
+        "protein": "7.5",
+        "sodium": "100"
+      }
+    },
+    {
+      "case_id": "half-liter",
+      "product_id": "milk",
+      "purchase": {
+        "extended_price": "1.25",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "500",
+            "unit": "ml",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "2",
+        "cost_per_serving": ".63",
+        "cost_per_100ml": ".25",
+        "energy": "250",
+        "protein": "15",
+        "sodium": "200"
+      }
+    },
+    {
+      "case_id": "small-volume",
+      "product_id": "milk",
+      "purchase": {
+        "extended_price": ".01",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "ml",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": ".004",
+        "cost_per_serving": "2.50",
+        "cost_per_100ml": "1",
+        "energy": ".5",
+        "protein": ".03",
+        "sodium": ".4"
+      }
+    },
+    {
+      "case_id": "mass-without-density",
+      "product_id": "milk",
+      "purchase": {
+        "extended_price": "4",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1000",
+            "unit": "g",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "cost_per_100g": ".40"
+      }
+    },
+    {
+      "case_id": "volume-without-density",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "2",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "100",
+            "unit": "ml",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "cost_per_100ml": "2"
+      }
+    },
+    {
+      "case_id": "one-dozen",
+      "product_id": "eggs",
+      "purchase": {
+        "extended_price": "3",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "12",
+        "cost_per_serving": ".25",
+        "cost_per_100g": ".50",
+        "energy": "864",
+        "protein": "72"
+      }
+    },
+    {
+      "case_id": "two-dozen",
+      "product_id": "eggs",
+      "purchase": {
+        "extended_price": "5",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "2",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "24",
+        "cost_per_serving": ".21",
+        "cost_per_100g": ".42",
+        "energy": "1728",
+        "protein": "144"
+      }
+    },
+    {
+      "case_id": "three-each",
+      "product_id": "eggs",
+      "purchase": {
+        "extended_price": ".75",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "3",
+            "unit": "each",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "3",
+        "cost_per_serving": ".25",
+        "cost_per_100g": ".50",
+        "energy": "216",
+        "protein": "18"
+      }
+    },
+    {
+      "case_id": "explicit-half-each",
+      "product_id": "eggs",
+      "purchase": {
+        "extended_price": ".13",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": ".5",
+            "unit": "each",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": ".5",
+        "cost_per_serving": ".26",
+        "cost_per_100g": ".52",
+        "energy": "36",
+        "protein": "3"
+      }
+    },
+    {
+      "case_id": "evidenced-mass-to-each",
+      "product_id": "eggs",
+      "purchase": {
+        "extended_price": ".25",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "50",
+            "unit": "g",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "1",
+        "cost_per_serving": ".25",
+        "cost_per_100g": ".50",
+        "energy": "72",
+        "protein": "6"
+      }
+    },
+    {
+      "case_id": "rounded-container-label",
+      "product_id": "rounded-label",
+      "purchase": {
+        "extended_price": "4",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "4",
+        "cost_per_serving": "1",
+        "cost_per_100g": "4.04",
+        "energy": "400"
+      }
+    },
+    {
+      "case_id": "two-rounded-labels",
+      "product_id": "rounded-label",
+      "purchase": {
+        "extended_price": "7",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "2",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "8",
+        "cost_per_serving": ".88",
+        "cost_per_100g": "3.54",
+        "energy": "800"
+      }
+    },
+    {
+      "case_id": "measured-label-serving",
+      "product_id": "rounded-label",
+      "purchase": {
+        "extended_price": "2",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "50",
+            "unit": "g",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "2",
+        "cost_per_serving": "1",
+        "cost_per_100g": "4",
+        "energy": "200"
+      }
+    },
+    {
+      "case_id": "container-label-without-mass",
+      "product_id": "label-no-net",
+      "purchase": {
+        "extended_price": "8",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "2",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "8",
+        "cost_per_serving": "1",
+        "energy": "800"
+      }
+    },
+    {
+      "case_id": "mass-facts-without-serving",
+      "product_id": "no-serving",
+      "purchase": {
+        "extended_price": "4",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "cost_per_100g": "4",
+        "energy": "400",
+        "protein": "10",
+        "sodium": "0"
+      }
+    },
+    {
+      "case_id": "unknown-package-size",
+      "product_id": "unknown-size",
+      "purchase": {
+        "extended_price": "4",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known"
+      }
+    },
+    {
+      "case_id": "unknown-count",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "4",
+        "quantity": {
+          "status": "unknown",
+          "reason": "synthetic case"
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "unknown"
+      }
+    },
+    {
+      "case_id": "conflicting-count",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "4",
+        "quantity": {
+          "status": "conflict",
+          "reason": "synthetic case"
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "conflict"
+      }
+    },
+    {
+      "case_id": "return-excluded",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "-4",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "excluded"
+      }
+    },
+    {
+      "case_id": "separate-discount-excluded",
+      "product_id": "grain",
+      "purchase": {
+        "extended_price": "4",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": true
+      },
+      "expected": {
+        "quantity_status": "excluded"
+      }
+    },
+    {
+      "case_id": "missing-energy-stays-null",
+      "product_id": "missing-energy",
+      "purchase": {
+        "extended_price": "4",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "4",
+        "cost_per_serving": "1",
+        "cost_per_100g": "4",
+        "protein": "10",
+        "sodium": "0"
+      }
+    },
+    {
+      "case_id": "empty-panel",
+      "product_id": "empty-panel",
+      "purchase": {
+        "extended_price": "4",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "4",
+        "cost_per_serving": "1",
+        "cost_per_100g": "4"
+      }
+    },
+    {
+      "case_id": "mass-to-volume-with-density",
+      "product_id": "dense-milk",
+      "purchase": {
+        "extended_price": ".40",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "103",
+            "unit": "g",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": ".4",
+        "cost_per_serving": "1",
+        "cost_per_100g": ".39",
+        "cost_per_100ml": ".40",
+        "energy": "50",
+        "protein": "3",
+        "sodium": "40"
+      }
+    },
+    {
+      "case_id": "volume-with-density",
+      "product_id": "dense-milk",
+      "purchase": {
+        "extended_price": "3",
+        "quantity": {
+          "status": "known",
+          "reason": "synthetic case",
+          "quantity": {
+            "value": "1",
+            "unit": "package",
+            "method": "user",
+            "reference": "synthetic explicit purchase evidence"
+          }
+        },
+        "is_adjustment": false
+      },
+      "expected": {
+        "quantity_status": "known",
+        "servings": "4",
+        "cost_per_serving": ".75",
+        "cost_per_100g": ".29",
+        "cost_per_100ml": ".30",
+        "energy": "500",
+        "protein": "30",
+        "sodium": "400"
+      }
+    }
+  ]
+}

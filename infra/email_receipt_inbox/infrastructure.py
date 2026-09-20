@@ -354,7 +354,7 @@ class EmailReceiptInbox(ComponentResource):
         )
         self.mcp_lambda = aws.lambda_.Function(
             f"{name}-mcp",
-            runtime="python3.13",
+            runtime="python3.14",
             handler="mcp.lambda_handler",
             role=mcp_role.arn,
             # The gateway integration window is 29s; leave headroom so a

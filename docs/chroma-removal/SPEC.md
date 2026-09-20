@@ -1,5 +1,10 @@
 # Spec: Remove ChromaDB — collapse vector search into DynamoDB
 
+> MCP layout note (2026-09-10): Fork references below preserve the historical
+> snapshot. Current tools live in `scripts/receipt_mcp_server.py`;
+> `infra/mcp_server_lambda/lambdas/Dockerfile` packages that source as
+> `receipt_mcp_server/server.py`.
+
 Status: DRAFT for review · Branch: `claude/chroma-removal-spec` · 2026-08-31
 Companion docs (full evidence, file:line):
 [research-dynamodb-vector-search.md](research-dynamodb-vector-search.md) ·
@@ -502,6 +507,16 @@ change. Editorial rules:
 5. Types follow the same rule: `validation_source: "chroma"` → `"similarity"`,
    `chromadb_init_ms` → stage-named fields, `avg_chroma_rate` →
    `avg_similarity_rate` — coordinated generator+frontend change per figure.
+
+### 5b. Measure ZIP packaging candidates after teardown
+
+Evaluate each proposed function payload and its attached layers on the
+intended Lambda Linux runtime and architecture. The combined uncompressed
+artifact size must be **strictly below 200 MiB**, and handler/import tests
+must pass before a package-type replacement is proposed. Dockerfile text
+and historical platform estimates are not acceptance evidence. See
+[ZIP_LAMBDA_FOLLOWUP.md](ZIP_LAMBDA_FOLLOWUP.md) and
+`scripts/lambda_zip_budget.py` for the artifact check and conversion sequence.
 
 ## 6. Landmines (each verified, with evidence in the inventories)
 

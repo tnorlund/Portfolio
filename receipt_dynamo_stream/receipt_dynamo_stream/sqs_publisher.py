@@ -2,8 +2,8 @@
 SQS publishing utilities for stream messages.
 
 Publishes to Standard SQS queues for high throughput (batch size 1000).
-The compactor Lambda handles ordering by sorting REMOVE first and using
-within-batch deduplication to prevent orphaned embeddings.
+Consumers refetch current state from DynamoDB and deduplicate within a
+batch, so no FIFO ordering is required.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable, Optional, Protocol
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -21,14 +21,18 @@ from receipt_dynamo_stream.exceptions import (
     QueueConfigurationError,
     QueueServiceError,
 )
-from receipt_dynamo_stream.models import (
-    ChromaDBCollection,
-    StreamMessage,
-    TargetQueue,
-)
+from receipt_dynamo_stream.models import StreamMessage, TargetQueue
 from receipt_dynamo_stream.stream_types import MetricsRecorder
 
 logger = logging.getLogger(__name__)
+
+
+class _SQSBatchClient(Protocol):
+    """The one SQS surface this module uses. Local so the stream bundle
+    needs no extra dependency for a type."""
+
+    def send_message_batch(self, **kwargs: Any) -> dict[str, Any]:
+        """Send up to ten messages; may return per-entry Failed records."""
 
 
 def publish_messages(
@@ -36,43 +40,19 @@ def publish_messages(
     metrics: Optional[MetricsRecorder] = None,
 ) -> int:
     """
-    Send StreamMessage objects to collection-specific SQS queues.
+    Send StreamMessage objects to queue-specific SQS queues.
     """
-    sqs: Any = boto3.client("sqs")
+    sqs: _SQSBatchClient = boto3.client("sqs")
     sent_count = 0
-    lines_messages: list[tuple[dict[str, object], ChromaDBCollection]] = []
-    words_messages: list[tuple[dict[str, object], ChromaDBCollection]] = []
     summary_messages: list[tuple[dict[str, object], TargetQueue]] = []
     line_item_messages: list[tuple[dict[str, object], TargetQueue]] = []
 
     for msg in messages:
         msg_dict = _message_to_dict(msg)
-        if ChromaDBCollection.LINES in msg.collections:
-            lines_messages.append((msg_dict, ChromaDBCollection.LINES))
-        if ChromaDBCollection.WORDS in msg.collections:
-            words_messages.append((msg_dict, ChromaDBCollection.WORDS))
         if TargetQueue.RECEIPT_SUMMARY in msg.collections:
             summary_messages.append((msg_dict, TargetQueue.RECEIPT_SUMMARY))
         if TargetQueue.LINE_ITEMS in msg.collections:
             line_item_messages.append((msg_dict, TargetQueue.LINE_ITEMS))
-
-    if lines_messages:
-        sent_count += send_batch_to_queue(
-            sqs,
-            lines_messages,
-            "LINES_QUEUE_URL",
-            ChromaDBCollection.LINES,
-            metrics,
-        )
-
-    if words_messages:
-        sent_count += send_batch_to_queue(
-            sqs,
-            words_messages,
-            "WORDS_QUEUE_URL",
-            ChromaDBCollection.WORDS,
-            metrics,
-        )
 
     if summary_messages:
         sent_count += send_batch_to_queue(
@@ -121,7 +101,7 @@ def _message_to_dict(msg: StreamMessage) -> dict[str, object]:
 def _build_sqs_entry(
     entry_id: str,
     message_dict: dict[str, object],
-    collection: ChromaDBCollection | TargetQueue,
+    collection: TargetQueue,
 ) -> dict[str, object]:
     """Build a single SQS batch entry for Standard queues."""
     return {
@@ -151,10 +131,10 @@ def _build_sqs_entry(
 
 
 def send_batch_to_queue(
-    sqs: Any,
-    messages: list[tuple[dict[str, object], ChromaDBCollection | TargetQueue]],
+    sqs: _SQSBatchClient,
+    messages: list[tuple[dict[str, object], TargetQueue]],
     queue_env_var: str,
-    collection: ChromaDBCollection | TargetQueue,
+    collection: TargetQueue,
     metrics: Optional[MetricsRecorder] = None,
 ) -> int:
     """Send a batch of messages to a specific queue.

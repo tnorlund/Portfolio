@@ -4,7 +4,7 @@
 
 ## Overview
 
-This project uses GitHub Actions for continuous integration and deployment, with cost-optimized self-hosted runners. This guide provides comprehensive documentation for understanding, configuring, and troubleshooting the CI/CD pipeline.
+This project uses GitHub Actions for continuous integration and deployment on GitHub-hosted runners (`ubuntu-latest` for tests and deploys, `macos-latest` for Swift). This guide provides comprehensive documentation for understanding, configuring, and troubleshooting the CI/CD pipeline.
 
 ## Workflow Structure
 
@@ -33,26 +33,11 @@ Runs on merges to main branch for comprehensive validation.
 - **`claude.yml`**: AI-assisted code review (manual trigger)
 - **`swift-ci.yml`**: Swift OCR worker build and tests
 
-## Self-Hosted Runners
+## Runners
 
-### Setup
-We use self-hosted Apple Silicon runners for cost optimization:
+All test jobs in `main.yml` run on GitHub-hosted `ubuntu-latest`. The repository is public, so standard hosted runners cost nothing and up to 20 jobs run concurrently (5 for macOS). Runners are ephemeral: jobs do not clean up after themselves, and pip/npm caches come from `actions/setup-python` and `actions/setup-node`.
 
-```bash
-# Location
-/Users/tnorlund/GitHub/actions-runner/
-
-# Start runner
-./run.sh
-
-# Runner labels
-[self-hosted, ARM64, python-tests]
-```
-
-### Benefits
-- Reduces GitHub Actions costs by ~90%
-- Faster execution on local hardware
-- Cached dependencies between runs
+The self-hosted Apple Silicon runners used until September 2026 are no longer referenced by any workflow. They were retired after a macOS update broke Playwright Firefox under launchd and an offline Mac mini left a single machine draining 37-job PR runs for hours. `scripts/ensure_python_runtime.sh` remains for local use.
 
 ## Cost Optimization
 
@@ -95,7 +80,7 @@ git commit -m "fix: typo [skip tests]"
 ### Environment Variables
 ```yaml
 env:
-  PYTHON_VERSION: "3.13"
+  PYTHON_VERSION: "3.14"
   NODE_VERSION: "18"
   AWS_REGION: "us-east-1"
 ```
@@ -135,7 +120,7 @@ Required secrets in GitHub repository settings:
 
 **Python version mismatch**
 ```bash
-# Ensure Python 3.13 is used
+# Ensure Python 3.14 is used
 python --version
 ```
 

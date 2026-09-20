@@ -175,6 +175,14 @@ STYLESCAN_TO_SECTION: dict[str, Optional[str]] = {
     "transaction": "footer",  # ticket#/station/cashier metadata trailer
     "reg_line": "footer",  # CVS REG#/TRN#/CSHR# register metadata
     "note": "footer",  # In-N-Out order note
+    # Speedway (gas-station POS)
+    "sale_header": "section_header",  # standalone SALE / CUSTOMER COPY heading
+    "column_header": "items",  # Description / Qty / Amount column header
+    "tender_line": "payment",  # "DEBIT $13.38" double-width bold tender line
+    "fuel": "items",  # pump / grade / gallons block on fuel slips
+    "agreement": "footer",  # card-holder agreement lines
+    # Whole Foods Market
+    "promo": "footer",  # Prime Visa / amazon.com promo block
 }
 
 

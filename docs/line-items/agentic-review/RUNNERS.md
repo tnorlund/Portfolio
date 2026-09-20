@@ -29,7 +29,8 @@ Both machines run the same command through per-env wrapper scripts (the prod
 agent is identical except `--env prod`):
 
 ```bash
-receipt-ocr --env dev --continuous --log-level info
+receipt-ocr --env dev --continuous --log-level info \
+  --layoutlm-cache-path "$SWIFT_DIR/.models/layoutlm/dev"
 ```
 
 `--continuous` means "process until the queue is empty, then exit". Each
@@ -50,7 +51,7 @@ invocation instead of being resurrected forever. That is also why the agents set
 
 The wrappers are byte-identical on both machines: each picks the first checkout
 path that exists on the host, so there is nothing per-machine to keep in sync.
-The two envs' wrappers differ only in the env flag, lock, and log; the plists
+The two envs' wrappers differ in the env flag, cache path, lock, and log; the plists
 differ only in their four scheduled minutes. Both envs run the **same binary**
 from the same checkout — `--env` selects the Pulumi stack outputs (queue URLs,
 Dynamo table) at startup, so one `update_ocr_workers.sh` run refreshes dev and
@@ -98,10 +99,54 @@ pulumi install, so the wrapper exports it explicitly. The install location
 differs per machine — `~/.pulumi/bin/pulumi` on the MacBook,
 `/opt/homebrew/bin/pulumi` on the mini — so the wrapper puts both on `PATH`.
 
-**Working directory.** The LayoutLM CoreML bundle is cached at the relative
-path `.models/layoutlm`. The wrapper `cd`s into `receipt_ocr_swift` first so the
-~400 MB model is downloaded once and reused, rather than re-fetched from S3 into
-whatever directory launchd happened to pick.
+**Model cache.** Each wrapper explicitly sets an absolute cache path under
+`$SWIFT_DIR/.models/layoutlm/dev` or `$SWIFT_DIR/.models/layoutlm/prod`.
+`Config.load` uses `.models/layoutlm/<env>` by default, or
+`.models/layoutlm/local` without `--env`; an explicit path always wins.
+The wrapper still changes into the checkout before starting the worker.
+
+At every drain start the worker reads `coreml/active.json` from that env's
+training bucket. The pointer selects an immutable export at
+`coreml/versions/<export_id>/layoutlm-coreml-bundle.zip`. Override the pointer
+key with `--layoutlm-pointer-key` or the `layoutlm_model_pointer_key` Pulumi
+output. Downloads are extracted into a temporary directory, validated against
+`model_identity.json`, then renamed to `<cache-path>/<export_id>/`. The compiled
+`LayoutLM.mlmodelc` stays inside that version, beside its own `.mlpackage`.
+
+A validated version is reused without downloading the bundle again. The current
+version and the most recently used other version are retained; older versions
+and abandoned `.tmp-*` directories are removed. The wrappers' per-env locks
+serialize drains on each machine; do not run overlapping workers against the
+same explicit cache path.
+
+Without a pointer, the worker checks the legacy alias
+`coreml/layoutlm-coreml-bundle.zip` and uses its ETag as the version directory.
+The alias also needs `model_identity.json`. If neither object exists, it logs
+`layoutlm_no_active_model env=<env>` and drains with Vision OCR alone. It never
+uses the old shared `.models/layoutlm` bundle as an environment fallback.
+A successful resolution emits one line:
+
+```text
+layoutlm_model_active env=<env> version=<version_id> export_id=<id|none> training_job=<name-or-id|none> source=<pointer|alias> cached=<true|false> path=<dir>
+```
+
+Exports upload an immutable version and retain the legacy alias, but do not
+write the pointer. Promotion through `set_active_model` publishes the pointer
+and changes the Job's `active_model` tag. The standalone helper uses the MCP
+server's Python environment and can copy a missing version and Job from the
+other environment:
+
+```bash
+python scripts/promote_layoutlm_model.py --env dev --job-name <training-job> --dry-run
+```
+
+The dry run lists every proposed bundle copy, Job copy, tag change, and pointer
+write. A prod target requires `--yes-prod`, including with `--dry-run`.
+Promotion validates that the target bundle exists before changing tags and
+attempts to restore tags on failure. S3 and DynamoDB writes are not atomic;
+a process crash or ambiguous network failure requires an operator to inspect
+both the pointer and the tag before retrying. Worker deployment and live
+promotion remain separate operator steps.
 
 ## Xcode vs Command Line Tools
 

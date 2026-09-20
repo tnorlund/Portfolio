@@ -18,7 +18,7 @@ WORKTREE="${WORKTREE:-$PORTFOLIO_ROOT/.claude/worktrees/fable-showcase}"
 SCREEN_NAME="claude-fable-showcase-rc"
 RC_NAME="fable-showcase"
 BASE_DIR="/tmp/claude-remote-screen/fable-showcase"
-PRIMER="$WORKTREE/.claude/skills/portfolio-remote-control/scripts/prime_claude_screen.py"
+PRIMER="$WORKTREE/.agents/skills/portfolio-remote-control/scripts/prime_claude_screen.py"
 CAFFEINATE_SECONDS="${CAFFEINATE_SECONDS:-86400}"
 
 MISSION="Read docs/SYNTH_SHOWCASE_TASK.md in this worktree first -- it is the complete, self-contained brief (the story, the committed showcase/*.webp assets, exactly what UI to build, and the done-criteria). Build the frontend-only \"growing the training set\" visualization it describes, working autonomously. Setup: cd portfolio && npm ci. Implement the interactive piece using the committed assets (do NOT run Python/synthesis/AWS/glyph code). Keep 'npm run lint && npm test' and typecheck green and add a component test. When it works, commit, push, open a PR, then run the @codex review loop and address findings until clean. Begin with npm ci and reading the task doc now."

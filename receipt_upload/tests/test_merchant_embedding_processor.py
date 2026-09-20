@@ -1,12 +1,11 @@
 """
 Integration tests for MerchantResolvingEmbeddingProcessor.
 
-Tests the full embedding and merchant resolution pipeline:
-1. Generate embeddings via receipt_chroma
-2. Resolve merchant via MerchantResolver
-3. Enrich DynamoDB with merchant data
+Tests the merchant enrichment step of the embedding pipeline:
+1. Resolve merchant via MerchantResolver
+2. Enrich DynamoDB with merchant data
 
-All external services (ChromaDB, DynamoDB, S3, OpenAI) are mocked.
+All external services (DynamoDB, S3, OpenAI) are mocked.
 """
 
 import tempfile
@@ -19,346 +18,6 @@ from receipt_upload.merchant_resolution import (
     MerchantResolvingEmbeddingProcessor,
     MerchantResult,
 )
-
-
-@pytest.mark.skip(
-    reason="Obsolete: these mock the pre-refactor single-call embedding API "
-    "(create_embeddings_and_compaction_run). process_embeddings was rewritten "
-    "into a two-pipeline impl (OpenAI embed + snapshot download + "
-    "create_compaction_run) and no longer returns the mocked EmbeddingResult "
-    "shape. Needs a rewrite against the new internals (tracked separately)."
-)
-class TestMerchantResolvingEmbeddingProcessor:
-    """Test MerchantResolvingEmbeddingProcessor."""
-
-    @pytest.fixture
-    def mock_dynamo_client(self):
-        """Create mock DynamoDB client."""
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.DynamoClient"
-        ) as MockDynamo:
-            client = MagicMock()
-            client.list_receipt_lines_from_receipt.return_value = []
-            client.list_receipt_words_from_receipt.return_value = []
-            client.list_receipt_word_labels_for_receipt.return_value = (
-                [],
-                None,
-            )
-            client.get_receipt_place.return_value = None
-            MockDynamo.return_value = client
-            yield client
-
-    @pytest.fixture
-    def mock_s3_client(self):
-        """Create mock S3 client."""
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.boto3"
-        ) as MockBoto:
-            s3 = MagicMock()
-            MockBoto.client.return_value = s3
-            yield s3
-
-    @pytest.fixture
-    def mock_embedding_result(self):
-        """Create mock EmbeddingResult."""
-        result = MagicMock()
-        result.lines_client = MagicMock()
-        result.words_client = MagicMock()
-        result.compaction_run = MagicMock()
-        result.compaction_run.run_id = "test-run-123"
-        result.close = MagicMock()
-        return result
-
-    @pytest.fixture
-    def sample_lines(self):
-        """Create sample ReceiptLine entities."""
-        return [
-            MagicMock(
-                spec=ReceiptLine,
-                image_id="test-image",
-                receipt_id=1,
-                line_id=1,
-                text="Coffee Shop",
-            ),
-            MagicMock(
-                spec=ReceiptLine,
-                image_id="test-image",
-                receipt_id=1,
-                line_id=2,
-                text="123 Main St",
-            ),
-        ]
-
-    @pytest.fixture
-    def sample_words(self):
-        """Create sample ReceiptWord entities."""
-        return [
-            MagicMock(
-                spec=ReceiptWord,
-                image_id="test-image",
-                receipt_id=1,
-                line_id=1,
-                word_id=1,
-                text="Coffee",
-                extracted_data={},
-            ),
-            MagicMock(
-                spec=ReceiptWord,
-                image_id="test-image",
-                receipt_id=1,
-                line_id=1,
-                word_id=2,
-                text="Shop",
-                extracted_data={},
-            ),
-            MagicMock(
-                spec=ReceiptWord,
-                image_id="test-image",
-                receipt_id=1,
-                line_id=2,
-                word_id=3,
-                text="(555) 123-4567",
-                extracted_data={"type": "phone", "value": "5551234567"},
-            ),
-        ]
-
-    def test_process_embeddings_success_with_merchant(
-        self,
-        mock_dynamo_client,
-        mock_s3_client,
-        mock_embedding_result,
-        sample_lines,
-        sample_words,
-    ):
-        """Test successful processing with merchant resolution."""
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.create_embeddings_and_compaction_run"
-        ) as mock_create:
-            mock_create.return_value = mock_embedding_result
-
-            # Mock MerchantResolver
-            with patch(
-                "receipt_upload.merchant_resolution.embedding_processor.MerchantResolver"
-            ) as MockResolver:
-                mock_resolver = MagicMock()
-                mock_resolver.resolve.return_value = MerchantResult(
-                    place_id="ChIJ_test_place",
-                    merchant_name="Coffee Shop Inc",
-                    address="123 Main St",
-                    phone="5551234567",
-                    confidence=0.95,
-                    resolution_tier="phone",
-                )
-                MockResolver.return_value = mock_resolver
-
-                processor = MerchantResolvingEmbeddingProcessor(
-                    table_name="test-table",
-                    chromadb_bucket="test-bucket",
-                )
-
-                result = processor.process_embeddings(
-                    image_id="test-image",
-                    receipt_id=1,
-                    lines=sample_lines,
-                    words=sample_words,
-                )
-
-        assert result["success"] is True
-        assert result["merchant_found"] is True
-        assert result["merchant_name"] == "Coffee Shop Inc"
-        assert result["merchant_place_id"] == "ChIJ_test_place"
-        assert result["merchant_resolution_tier"] == "phone"
-        assert result["run_id"] == "test-run-123"
-        mock_embedding_result.close.assert_called_once()
-
-    def test_process_embeddings_success_without_merchant(
-        self,
-        mock_dynamo_client,
-        mock_s3_client,
-        mock_embedding_result,
-        sample_lines,
-        sample_words,
-    ):
-        """Test successful processing when no merchant found."""
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.create_embeddings_and_compaction_run"
-        ) as mock_create:
-            mock_create.return_value = mock_embedding_result
-
-            with patch(
-                "receipt_upload.merchant_resolution.embedding_processor.MerchantResolver"
-            ) as MockResolver:
-                mock_resolver = MagicMock()
-                mock_resolver.resolve.return_value = MerchantResult()
-                MockResolver.return_value = mock_resolver
-
-                processor = MerchantResolvingEmbeddingProcessor(
-                    table_name="test-table",
-                    chromadb_bucket="test-bucket",
-                )
-
-                result = processor.process_embeddings(
-                    image_id="test-image",
-                    receipt_id=1,
-                    lines=sample_lines,
-                    words=sample_words,
-                )
-
-        assert result["success"] is True
-        assert result["merchant_found"] is False
-        assert result["merchant_place_id"] is None
-        mock_embedding_result.close.assert_called_once()
-
-    def test_process_embeddings_fetches_data_when_not_provided(
-        self,
-        mock_dynamo_client,
-        mock_s3_client,
-        mock_embedding_result,
-    ):
-        """Test that lines/words are fetched from DynamoDB when not provided."""
-        mock_dynamo_client.list_receipt_lines_from_receipt.return_value = [
-            MagicMock(spec=ReceiptLine)
-        ]
-        mock_dynamo_client.list_receipt_words_from_receipt.return_value = [
-            MagicMock(spec=ReceiptWord, extracted_data={})
-        ]
-
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.create_embeddings_and_compaction_run"
-        ) as mock_create:
-            mock_create.return_value = mock_embedding_result
-
-            with patch(
-                "receipt_upload.merchant_resolution.embedding_processor.MerchantResolver"
-            ) as MockResolver:
-                mock_resolver = MagicMock()
-                mock_resolver.resolve.return_value = MerchantResult()
-                MockResolver.return_value = mock_resolver
-
-                processor = MerchantResolvingEmbeddingProcessor(
-                    table_name="test-table",
-                    chromadb_bucket="test-bucket",
-                )
-
-                result = processor.process_embeddings(
-                    image_id="test-image",
-                    receipt_id=1,
-                    lines=None,
-                    words=None,
-                )
-
-        mock_dynamo_client.list_receipt_lines_from_receipt.assert_called_once_with(
-            "test-image", 1
-        )
-        mock_dynamo_client.list_receipt_words_from_receipt.assert_called_once_with(
-            "test-image", 1
-        )
-        assert result["success"] is True
-
-    def test_process_embeddings_handles_embedding_failure(
-        self,
-        mock_dynamo_client,
-        mock_s3_client,
-        sample_lines,
-        sample_words,
-    ):
-        """Test handling of embedding creation failure."""
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.create_embeddings_and_compaction_run"
-        ) as mock_create:
-            mock_create.side_effect = Exception("OpenAI API error")
-
-            processor = MerchantResolvingEmbeddingProcessor(
-                table_name="test-table",
-                chromadb_bucket="test-bucket",
-            )
-
-            result = processor.process_embeddings(
-                image_id="test-image",
-                receipt_id=1,
-                lines=sample_lines,
-                words=sample_words,
-            )
-
-        assert result["success"] is False
-        assert "OpenAI API error" in result["error"]
-        assert result["merchant_found"] is False
-
-    def test_process_embeddings_handles_merchant_resolution_failure(
-        self,
-        mock_dynamo_client,
-        mock_s3_client,
-        mock_embedding_result,
-        sample_lines,
-        sample_words,
-    ):
-        """Test handling of merchant resolution failure."""
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.create_embeddings_and_compaction_run"
-        ) as mock_create:
-            mock_create.return_value = mock_embedding_result
-
-            with patch(
-                "receipt_upload.merchant_resolution.embedding_processor.MerchantResolver"
-            ) as MockResolver:
-                mock_resolver = MagicMock()
-                mock_resolver.resolve.side_effect = Exception(
-                    "Resolution failed"
-                )
-                MockResolver.return_value = mock_resolver
-
-                processor = MerchantResolvingEmbeddingProcessor(
-                    table_name="test-table",
-                    chromadb_bucket="test-bucket",
-                )
-
-                result = processor.process_embeddings(
-                    image_id="test-image",
-                    receipt_id=1,
-                    lines=sample_lines,
-                    words=sample_words,
-                )
-
-        # Should still succeed - embeddings were created
-        assert result["success"] is True
-        assert result["merchant_found"] is False
-        mock_embedding_result.close.assert_called_once()
-
-    def test_process_embeddings_closes_clients_on_error(
-        self,
-        mock_dynamo_client,
-        mock_s3_client,
-        mock_embedding_result,
-        sample_lines,
-        sample_words,
-    ):
-        """Test that clients are closed even when resolution fails."""
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.create_embeddings_and_compaction_run"
-        ) as mock_create:
-            mock_create.return_value = mock_embedding_result
-
-            with patch(
-                "receipt_upload.merchant_resolution.embedding_processor.MerchantResolver"
-            ) as MockResolver:
-                mock_resolver = MagicMock()
-                mock_resolver.resolve.side_effect = Exception("Error")
-                MockResolver.return_value = mock_resolver
-
-                processor = MerchantResolvingEmbeddingProcessor(
-                    table_name="test-table",
-                    chromadb_bucket="test-bucket",
-                )
-
-                processor.process_embeddings(
-                    image_id="test-image",
-                    receipt_id=1,
-                    lines=sample_lines,
-                    words=sample_words,
-                )
-
-        # Verify close was called
-        mock_embedding_result.close.assert_called_once()
 
 
 class TestMerchantResolvingEmbeddingProcessorEnrichment:
@@ -399,7 +58,6 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         ):
             processor = MerchantResolvingEmbeddingProcessor(
                 table_name="test-table",
-                chromadb_bucket="test-bucket",
             )
 
             merchant_result = MerchantResult(
@@ -437,7 +95,6 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         ):
             processor = MerchantResolvingEmbeddingProcessor(
                 table_name="test-table",
-                chromadb_bucket="test-bucket",
             )
 
             merchant_result = MerchantResult(
@@ -471,7 +128,6 @@ class TestMerchantResolvingEmbeddingProcessorEnrichment:
         ):
             processor = MerchantResolvingEmbeddingProcessor(
                 table_name="test-table",
-                chromadb_bucket="test-bucket",
             )
 
             merchant_result = MerchantResult(
@@ -514,7 +170,6 @@ class TestMerchantResolvingEmbeddingProcessorInit:
 
                     processor = MerchantResolvingEmbeddingProcessor(
                         table_name="test-table",
-                        chromadb_bucket="test-bucket",
                         google_places_api_key="test-api-key",
                     )
 
@@ -531,51 +186,16 @@ class TestMerchantResolvingEmbeddingProcessorInit:
             ):
                 processor = MerchantResolvingEmbeddingProcessor(
                     table_name="test-table",
-                    chromadb_bucket="test-bucket",
                 )
 
                 assert processor.places_client is None
-
-    @pytest.mark.skip(
-        reason="Obsolete: the processor no longer accepts queue-URL kwargs nor "
-        "sets them in the environment. Compaction is now triggered via a "
-        "DynamoDB stream off the CompactionRun record, not SQS queue URLs."
-    )
-    def test_init_sets_queue_urls_in_environment(self, monkeypatch):
-        """Test that queue URLs are set in environment."""
-        import os
-
-        # Use monkeypatch to set env vars (auto-restores after test)
-        monkeypatch.delenv("CHROMADB_LINES_QUEUE_URL", raising=False)
-        monkeypatch.delenv("CHROMADB_WORDS_QUEUE_URL", raising=False)
-
-        with patch(
-            "receipt_upload.merchant_resolution.embedding_processor.DynamoClient"
-        ):
-            with patch(
-                "receipt_upload.merchant_resolution.embedding_processor.boto3"
-            ):
-                MerchantResolvingEmbeddingProcessor(
-                    table_name="test-table",
-                    chromadb_bucket="test-bucket",
-                    lines_queue_url="https://sqs.us-east-1.amazonaws.com/lines",
-                    words_queue_url="https://sqs.us-east-1.amazonaws.com/words",
-                )
-
-        assert (
-            os.environ.get("CHROMADB_LINES_QUEUE_URL")
-            == "https://sqs.us-east-1.amazonaws.com/lines"
-        )
-        assert (
-            os.environ.get("CHROMADB_WORDS_QUEUE_URL")
-            == "https://sqs.us-east-1.amazonaws.com/words"
-        )
 
 
 class TestEnrichReceiptPlacePersistsConfidence:
     """New ReceiptPlace records must persist the resolver's match-quality
     signals (confidence / validation_status / matched_fields), not drop them
-    to defaults (the bug that stored every chroma place as confidence=0.0)."""
+    to defaults (the bug that stored every similarity place as confidence=0.0).
+    """
 
     @pytest.fixture
     def mock_dynamo_client(self):
@@ -594,7 +214,6 @@ class TestEnrichReceiptPlacePersistsConfidence:
         ):
             processor = MerchantResolvingEmbeddingProcessor(
                 table_name="test-table",
-                chromadb_bucket="test-bucket",
             )
             processor._enrich_receipt_place(
                 image_id="550e8400-e29b-41d4-a716-446655440000",
@@ -605,7 +224,7 @@ class TestEnrichReceiptPlacePersistsConfidence:
                     address="6815 Tom Rodriguez St, Las Vegas, NV 89113",
                     phone=None,
                     confidence=confidence,
-                    resolution_tier="chroma_text",
+                    resolution_tier="similarity_text",
                 ),
             )
         mock_dynamo_client.add_receipt_place.assert_called_once()

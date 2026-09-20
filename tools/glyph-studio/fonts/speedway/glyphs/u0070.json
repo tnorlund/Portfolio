@@ -1,0 +1,75 @@
+{
+ "version": 1,
+ "char": "p",
+ "codepoint": 112,
+ "provenance": "edited",
+ "width": 552.8,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 60,
+     "y": 606.1676646706587,
+     "type": "corner"
+    },
+    {
+     "x": 60,
+     "y": -348.8023952095809,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 60,
+     "y": 599.7005988023952,
+     "type": "corner"
+    },
+    {
+     "x": 280,
+     "y": 599.7005988023952,
+     "type": "corner",
+     "hOut": {
+      "x": 399,
+      "y": 599.7005988023952
+     }
+    },
+    {
+     "x": 450,
+     "y": 441.25748502994014,
+     "type": "smooth",
+     "hIn": {
+      "x": 450,
+      "y": 551.1976047904192
+     },
+     "hOut": {
+      "x": 450,
+      "y": 331.3173652694611
+     }
+    },
+    {
+     "x": 280,
+     "y": 283.8922155688623,
+     "type": "corner",
+     "hIn": {
+      "x": 399,
+      "y": 283.8922155688623
+     }
+    },
+    {
+     "x": 60,
+     "y": 283.8922155688623,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "note": "Speedway corpus too thin/polluted for this char (6 receipts); skeleton adopted from the vons face (same C1-heavy thermal ROM, overlay-verified against the Speedway consensus).",
+ "normalized": "y: vons(100..935) -> speedway(50..950)",
+ "donor": "vons"
+}

@@ -14,10 +14,13 @@ and adds DynamoDB-specific persistence fields and methods.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, ClassVar
 
+from receipt_dynamo.entities.receipt_fact_override import (
+    OVERRIDABLE_FACT_FIELDS,
+)
 from receipt_dynamo.entities.receipt_summary import (
     MonetaryTotals,
     ReceiptSummary,
@@ -52,6 +55,9 @@ class ReceiptSummaryRecord:
     Attributes:
         summary: The underlying ReceiptSummary with core receipt data.
         timestamp_computed: When this summary was computed.
+        overrides_applied: Summary fields whose value came from the
+            receipt's ReceiptFactOverride (an owner-stated fact) rather
+            than from the extracted labels. Empty when none applied.
     """
 
     REQUIRED_KEYS: ClassVar[set[str]] = {
@@ -66,11 +72,22 @@ class ReceiptSummaryRecord:
 
     # Metadata for persistence
     timestamp_computed: str | datetime | None = None
+    overrides_applied: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         """Validate and normalize initialization arguments."""
         if not isinstance(self.summary, ReceiptSummary):
             raise ValueError("summary must be a ReceiptSummary object")
+        if not isinstance(self.overrides_applied, list) or any(
+            name not in OVERRIDABLE_FACT_FIELDS
+            for name in self.overrides_applied
+        ):
+            raise ValueError(
+                "overrides_applied must be a list drawn from "
+                f"{list(OVERRIDABLE_FACT_FIELDS)}"
+            )
+        if len(set(self.overrides_applied)) != len(self.overrides_applied):
+            raise ValueError("overrides_applied must not repeat a field")
         # Set timestamp if not provided
         if self.timestamp_computed is None:
             self.timestamp_computed = datetime.now(timezone.utc).isoformat()
@@ -161,6 +178,25 @@ class ReceiptSummaryRecord:
         return self.summary.bank_match_confidence
 
     @property
+    def bank_date(self) -> datetime | None:
+        """Get bank_date from summary."""
+        return self.summary.bank_date
+
+    @property
+    def effective_date(self) -> datetime | None:
+        """Printed date, else bank date (see ReceiptSummary)."""
+        return self.summary.effective_date
+
+    @property
+    def date_source(self) -> str | None:
+        """Where ``effective_date`` came from: 'owner' when the owner's
+        ReceiptFactOverride supplied ``date`` (``overrides_applied``
+        lists it), else the summary's own 'label' / 'bank' / None."""
+        if "date" in self.overrides_applied:
+            return "owner"
+        return self.summary.date_source
+
+    @property
     def key(self) -> dict[str, Any]:
         """Generate the primary key for this summary."""
         return {
@@ -233,6 +269,15 @@ class ReceiptSummaryRecord:
             value = getattr(self.summary, field_name)
             if value is not None:
                 item[field_name] = {"N": str(value)}
+        if self.summary.bank_date is not None:
+            item["bank_date"] = {"S": self.summary.bank_date.isoformat()}
+
+        # Provenance of owner-stated facts. Written only when non-empty so
+        # summaries without an override stay byte-identical.
+        if self.overrides_applied:
+            item["overrides_applied"] = {
+                "L": [{"S": name} for name in self.overrides_applied]
+            }
 
         return item
 
@@ -306,6 +351,15 @@ class ReceiptSummaryRecord:
                 return item[field_name]["S"]
             return None
 
+        bank_date = None
+        if "bank_date" in item and "S" in item["bank_date"]:
+            try:
+                bank_date = datetime.fromisoformat(item["bank_date"]["S"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "bank_date must contain a valid ISO timestamp"
+                ) from exc
+
         summary = ReceiptSummary(
             image_id=image_id,
             receipt_id=receipt_id,
@@ -319,20 +373,34 @@ class ReceiptSummaryRecord:
             ledger=parse_string("ledger"),
             bank_amount=parse_number("bank_amount"),
             bank_match_confidence=parse_number("bank_match_confidence"),
+            bank_date=bank_date,
         )
+
+        overrides_applied: list[str] = []
+        if "overrides_applied" in item and "L" in item["overrides_applied"]:
+            for entry in item["overrides_applied"]["L"]:
+                if not isinstance(entry, dict) or "S" not in entry:
+                    raise ValueError(
+                        "overrides_applied must be a list of strings"
+                    )
+                overrides_applied.append(entry["S"])
 
         return cls(
             summary=summary,
             timestamp_computed=item["timestamp_computed"]["S"],
+            overrides_applied=overrides_applied,
         )
 
     @classmethod
     def from_summary(
         cls,
         summary: ReceiptSummary,
+        overrides_applied: list[str] | None = None,
     ) -> "ReceiptSummaryRecord":
         """Create a persisted record from a computed summary."""
-        return cls(summary=summary)
+        return cls(
+            summary=summary, overrides_applied=list(overrides_applied or [])
+        )
 
     def to_summary(self) -> ReceiptSummary:
         """Return the underlying ReceiptSummary."""
@@ -340,7 +408,11 @@ class ReceiptSummaryRecord:
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        return self.summary.to_dict()
+        return {
+            **self.summary.to_dict(),
+            "date_source": self.date_source,
+            "overrides_applied": list(self.overrides_applied),
+        }
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -372,7 +444,14 @@ def item_to_receipt_summary_record(
 # that nulls them destroys data that only a laptop can restore. The
 # 2026-08-04 dev incident: a summary backfill without carry-over wiped
 # bank_amount on 422 receipts and collapsed dev PROVEN 281 -> 2.
-OFFLINE_BANK_FIELDS = ("ledger", "bank_amount", "bank_match_confidence")
+# bank_date is the same class of data: the matched transaction's date,
+# and the only date a receipt with no legible printed date will ever have.
+OFFLINE_BANK_FIELDS = (
+    "ledger",
+    "bank_amount",
+    "bank_match_confidence",
+    "bank_date",
+)
 
 
 def offline_fields_cleared(

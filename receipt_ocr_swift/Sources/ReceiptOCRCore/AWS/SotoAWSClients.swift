@@ -23,13 +23,23 @@ public final class SotoAWSFactory {
     public let endpoint: String?
 
     public init(config: Config) {
-        self.awsClient = AWSClient(httpClientProvider: .createNew)
+        // soto 7: the client rides on AsyncHTTPClient's process-wide
+        // `HTTPClient.shared` (the initializer's default), so one connection
+        // pool and event-loop group serve S3, SQS and DynamoDB instead of a
+        // per-factory client. Credentials resolve via the default chain
+        // (env, ~/.aws, instance metadata) and retries use soto's jittered
+        // exponential backoff, both defaults.
+        self.awsClient = AWSClient()
         self.region = SotoCore.Region(rawValue: config.region)
         self.endpoint = config.localstackEndpoint?.absoluteString
     }
 
-    deinit {
-        try? awsClient.syncShutdown()
+    /// Flush in-flight work before the process exits. soto 7 has no
+    /// synchronous shutdown, so this must be awaited explicitly by the
+    /// owner (see `OCRWorker.shutdown`); the shared HTTP client itself
+    /// outlives the factory and needs no teardown.
+    public func shutdown() async throws {
+        try await awsClient.shutdown()
     }
 
     func makeS3() -> S3 { S3(client: awsClient, region: region, endpoint: endpoint) }
@@ -74,26 +84,61 @@ public final class SotoS3Client: S3ClientProtocol {
 
     public init(s3: S3) { self.s3 = s3 }
 
-    public func getObject(bucket: String, key: String) async throws -> Data {
-        let req = S3.GetObjectRequest(bucket: bucket, key: key)
-        var data = Data()
+    public func headObject(bucket: String, key: String) async throws -> S3ObjectHead? {
         do {
-            _ = try await s3.multipartDownload(
-                req,
-                logger: AWSClient.loggingDisabled,
-                on: nil
-            ) { byteBuffer, _, _ in
-                data.append(contentsOf: byteBuffer.readableBytesView)
-            }
-        } catch let error as AWSErrorType where error.context?.responseCode == .notFound {
+            let response = try await s3.headObject(S3.HeadObjectRequest(bucket: bucket, key: key))
+            return S3ObjectHead(eTag: response.eTag ?? "", contentLength: Int(response.contentLength ?? 0))
+        } catch let error as AWSErrorType where error.errorCode == "NoSuchKey" || error.context?.responseCode == .notFound {
+            return nil
+        }
+    }
+
+    public func getObjectIfExists(bucket: String, key: String) async throws -> Data? {
+        do {
+            return try await download(bucket: bucket, key: key)
+        } catch let error as AWSErrorType where Self.isNotFound(error) {
+            return nil
+        }
+    }
+
+    public func getObject(bucket: String, key: String) async throws -> Data {
+        do {
+            return try await download(bucket: bucket, key: key)
+        } catch let error as AWSErrorType where Self.isNotFound(error) {
             throw ObjectNotFoundError(bucket: bucket, key: key)
+        }
+    }
+
+    /// One GET, streamed. soto 7 returns the body as an `AsyncSequence` of
+    /// `ByteBuffer`s, so a receipt photo (a few MB) costs a single request
+    /// where the old multipart path issued a HEAD plus one GET per part, and
+    /// the LayoutLM bundle (hundreds of MB) is still consumed chunk by chunk
+    /// rather than materialised twice. `Content-Length` sizes the buffer.
+    private func download(bucket: String, key: String) async throws -> Data {
+        let response = try await s3.getObject(
+            S3.GetObjectRequest(bucket: bucket, key: key)
+        )
+        var data = Data()
+        if let length = response.contentLength, length > 0,
+           let capacity = Int(exactly: length) {
+            data.reserveCapacity(capacity)
+        }
+        for try await buffer in response.body {
+            data.append(contentsOf: buffer.readableBytesView)
         }
         return data
     }
 
+    private static func isNotFound(_ error: AWSErrorType) -> Bool {
+        error.errorCode == "NoSuchKey"
+            || error.context?.responseCode == .notFound
+    }
+
     public func uploadFile(url: URL, bucket: String, key: String) async throws {
         let data = try Data(contentsOf: url)
-        let req = S3.PutObjectRequest(body: .data(data), bucket: bucket, key: key)
+        let req = S3.PutObjectRequest(
+            body: AWSHTTPBody(bytes: data), bucket: bucket, key: key
+        )
         _ = try await s3.putObject(req)
     }
 }
@@ -497,4 +542,3 @@ public final class SotoDynamoClient: DynamoClientProtocol {
         )
     }
 }
-

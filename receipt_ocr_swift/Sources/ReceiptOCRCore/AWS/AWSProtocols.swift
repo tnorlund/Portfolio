@@ -30,9 +30,31 @@ public struct ObjectNotFoundError: Error {
     }
 }
 
+public struct S3ObjectHead {
+    public let eTag: String
+    public let contentLength: Int
+
+    public init(eTag: String, contentLength: Int) {
+        self.eTag = eTag
+        self.contentLength = contentLength
+    }
+}
+
 public protocol S3ClientProtocol {
     func getObject(bucket: String, key: String) async throws -> Data
+    func headObject(bucket: String, key: String) async throws -> S3ObjectHead?
+    func getObjectIfExists(bucket: String, key: String) async throws -> Data?
     func uploadFile(url: URL, bucket: String, key: String) async throws
+}
+
+public extension S3ClientProtocol {
+    func getObjectIfExists(bucket: String, key: String) async throws -> Data? {
+        do {
+            return try await getObject(bucket: bucket, key: key)
+        } catch is ObjectNotFoundError {
+            return nil
+        }
+    }
 }
 
 public protocol DynamoClientProtocol {
@@ -118,5 +140,4 @@ public protocol DynamoClientProtocol {
         baselineFiguresAgreeing: Int?
     ) async throws -> Int
 }
-
 

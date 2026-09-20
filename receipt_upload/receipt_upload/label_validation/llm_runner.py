@@ -10,14 +10,13 @@ reusable pieces so it can run in TWO places from ONE implementation:
   (``build_async_payload``), drops it on S3 + an SQS queue, and returns without
   waiting; a separate consumer Lambda calls ``apply_async_payload`` to run grok
   and persist the results to DynamoDB. The payload carries the pre-computed
-  similar-evidence and word context, so the consumer needs **no** Chroma access
-  (which sidesteps the embedding-handoff problem: per-word embeddings are far too
-  large for SQS, and re-reading them from Chroma Cloud would race async
-  compaction).
+  similar-evidence and word context, so the consumer needs **no** vector-index
+  access (which sidesteps the embedding-handoff problem: per-word embeddings
+  are far too large for SQS).
 
 Deferred grok writes land in DynamoDB (the source of truth) within seconds of
-upload; the Chroma copy converges on the next compaction. The apply logic is a
-verbatim port of the original inline block — same decisions, same audit trail.
+upload. The apply logic is a verbatim port of the original inline block — same
+decisions, same audit trail.
 """
 
 from __future__ import annotations
@@ -29,8 +28,10 @@ from typing import Any, Dict, List, Optional, Tuple
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
 
+from receipt_upload.tracing import current_trace_context, traceable
+
 # NOTE: ``receipt_agent.constants`` (CORE_LABELS) and the LLM validator pull in
-# heavy, slow-importing dependencies (chromadb, OpenRouter client). They are
+# heavy, slow-importing dependencies (OpenRouter client). They are
 # imported lazily inside the functions that need them so this module imports
 # cheaply — both for OCR-only Lambda invocations (no grok) and for unit-testing
 # the JSON serialization without standing up those deps.
@@ -80,7 +81,7 @@ def _delete_non_core_label(
 
 
 # --------------------------------------------------------------------------- #
-# Payload builders (synchronous — need Chroma / embeddings).
+# Payload builders (synchronous — need embeddings).
 # --------------------------------------------------------------------------- #
 def build_words_context(words: List[Any]) -> List[Dict[str, Any]]:
     """Build the lightweight word-context list passed to the LLM validator."""
@@ -109,9 +110,9 @@ def build_pending_and_evidence(
 ) -> Tuple[List[Dict[str, Any]], Dict[str, List[Dict]]]:
     """Build ``pending_labels_data`` and per-word ``similar_evidence``.
 
-    This is the only part that touches Chroma (via the lightweight validator's
-    similarity query); doing it here lets the async consumer skip Chroma
-    entirely by carrying the result in its payload.
+    This is the only part that queries similarity evidence (via the
+    lightweight validator); doing it here lets the async consumer skip the
+    vector index entirely by carrying the result in its payload.
     """
     pending_labels_data: List[Dict[str, Any]] = []
     similar_evidence: Dict[str, List[Dict]] = {}
@@ -127,7 +128,7 @@ def build_pending_and_evidence(
             }
         )
         try:
-            chroma_id = (
+            vector_id = (
                 f"IMAGE#{image_id}#RECEIPT#{receipt_id:05d}"
                 f"#LINE#{label.line_id:05d}#WORD#{label.word_id:05d}"
             )
@@ -138,7 +139,7 @@ def build_pending_and_evidence(
                 similar_evidence[word_id_str] = (
                     lightweight_validator._query_similar_for_label(
                         embedding=embedding,
-                        exclude_id=chroma_id,
+                        exclude_id=vector_id,
                         predicted_label=label.label,
                         n_results_per_query=5,
                     )
@@ -152,7 +153,7 @@ def build_pending_and_evidence(
 
 
 # --------------------------------------------------------------------------- #
-# Apply step (no Chroma — runs grok + persists results).
+# Apply step (no vector index — runs grok + persists results).
 # --------------------------------------------------------------------------- #
 def apply_llm_results(
     *,
@@ -403,7 +404,7 @@ def build_async_payload(
 ) -> Dict[str, Any]:
     """Build a self-contained, JSON-safe payload for the async consumer.
 
-    Carries everything ``apply_llm_results`` needs — no Chroma on the consumer
+    Carries everything ``apply_llm_results`` needs — no vector index on the consumer
     side for the grok step.
     """
     llm_words_context = build_words_context(words)
@@ -416,6 +417,7 @@ def build_async_payload(
     )
     return {
         "version": 1,
+        "native_trace_context": current_trace_context(),
         "image_id": image_id,
         "receipt_id": receipt_id,
         "table_name": table_name,
@@ -448,15 +450,36 @@ def apply_async_payload(
     # A local working list so _delete_non_core_label has something to mutate;
     # the authoritative writes go straight to DynamoDB inside apply_llm_results.
     word_labels = list(needed_labels)
-    return apply_llm_results(
-        needed_labels=needed_labels,
-        llm_words_context=payload.get("llm_words_context", []),
-        pending_labels_data=payload.get("pending_labels_data", []),
-        similar_evidence=payload.get("similar_evidence", {}),
-        image_id=payload["image_id"],
-        receipt_id=payload["receipt_id"],
-        dynamo=dynamo,
-        word_labels=word_labels,
-        merchant_name=payload.get("merchant_name"),
-        raise_on_failure=raise_on_failure,
+
+    @traceable(
+        name=(
+            "async_label_validation"
+            if payload.get("native_trace_context")
+            else "receipt_processing"
+        ),
+        native_parent=payload.get("native_trace_context"),
+        metadata={
+            "image_id": payload["image_id"],
+            "receipt_id": payload["receipt_id"],
+        },
     )
+    def apply() -> Dict[str, Any]:
+        validated = apply_llm_results(
+            needed_labels=needed_labels,
+            llm_words_context=payload.get("llm_words_context", []),
+            pending_labels_data=payload.get("pending_labels_data", []),
+            similar_evidence=payload.get("similar_evidence", {}),
+            image_id=payload["image_id"],
+            receipt_id=payload["receipt_id"],
+            dynamo=dynamo,
+            word_labels=word_labels,
+            merchant_name=payload.get("merchant_name"),
+            raise_on_failure=raise_on_failure,
+        )
+        return {
+            "validated_count": validated,
+            "success": True,
+            "merchant_name": payload.get("merchant_name"),
+        }
+
+    return apply()["validated_count"]

@@ -26,6 +26,7 @@ import CoreGraphics
     }
 
     final class S3Mock: S3ClientProtocol {
+        func headObject(bucket: String, key: String) async throws -> S3ObjectHead? { nil }
         var objects: [String: Data] = [:] // "bucket:key" -> Data
         var uploads: [(bucket: String, key: String, data: Data)] = []
         func getObject(bucket: String, key: String) async throws -> Data {

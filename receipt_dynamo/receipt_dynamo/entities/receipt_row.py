@@ -19,17 +19,17 @@ class ReceiptRow:
     Apple Vision OCR frequently splits one printed row into multiple
     ReceiptLine entities (e.g. "TOTAL" on the left and "6.70" on the right).
     A ReceiptRow persists the visual-row grouping
-    (``receipt_chroma.embedding.formatting.line_format
+    (``receipt_embeddings.formatting.line_format
     .group_lines_into_visual_rows``) as a first-class entity so downstream
-    consumers (row-granularity sections, the Chroma lines collection, the
+    consumers (row-granularity sections, the line-embedding items, the
     embedding batch pipeline) share one durable row identity instead of
     re-deriving it.
 
     Identity convention: ``row_id`` is the row's *primary line id* — the
     ``line_id`` of the leftmost member line (``get_primary_line_id``). This
-    is the same id the Chroma lines collection uses for the row's embedding
+    is the same id the row's line-embedding item uses
     (``IMAGE#{image_id}#RECEIPT#{receipt_id:05d}#LINE#{primary:05d}``), so
-    ReceiptRow rows and lines-collection entries join without translation.
+    ReceiptRow rows and line embeddings join without translation.
 
     Attributes:
         receipt_id (int): Identifier for the receipt.

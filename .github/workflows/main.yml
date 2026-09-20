@@ -4,8 +4,14 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    # Validate children against their immediate parent in a PR stack too.
   workflow_dispatch:
+    inputs:
+      profile_dev_api:
+        description: "Deploy and capture dev /images + /receipts profiles"
+        required: false
+        type: boolean
+        default: false
 
 # Superseded PR runs are cancelled (a new push makes the old one moot), but
 # main-push runs are NEVER cancelled: their `deploy` job runs `pulumi up`, and
@@ -17,27 +23,41 @@ concurrency:
 
 env:
   PYTHONPATH: ${{ github.workspace }}
-  PYTHON_VERSION: "3.13"
+  PYTHON_VERSION: "3.14"
 
 jobs:
   # ============================================================================
   # STAGE 1: All tests run in parallel
   # ============================================================================
+  # Test jobs run on GitHub-hosted `ubuntu-latest`. The repo is public, so
+  # standard hosted runners are free and 20 jobs run concurrently; nothing
+  # below needs macOS (Swift CI uses hosted macos-latest in its own
+  # workflow). Runners are ephemeral, so jobs do not clean up after
+  # themselves. Python jobs install with uv (astral-sh/setup-uv caches
+  # ~/.cache/uv between runs; a full editable stack resolves in seconds
+  # instead of the ~30-40 s pip needed) and npm caches come from
+  # actions/setup-node. Every job keeps a `timeout-minutes` so a hung job
+  # cannot pin a concurrency slot.
 
   lambda-syntax:
     name: Lambda Syntax
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
         with:
           clean: true
 
-      - name: Resolve Python
-        run: |
-          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "$PYTHON_VERSION")"
-          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
-          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
-          "$PYTHON_BIN" --version
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: lambda-syntax
+          cache-dependency-glob: "**/pyproject.toml"
 
       - name: Compile all Lambda handler sources
         run: |
@@ -46,68 +66,96 @@ jobs:
           # guards against `keyword argument repeated`-class regressions like
           # the one that crashed unified_evaluator after #861's rebase.
           find infra -name '*.py' -not -path '*/node_modules/*' -not -path '*/.venv*/*' -print0 \
-            | xargs -0 "$PYTHON_BIN" -m py_compile
+            | xargs -0 python -m py_compile
 
       - name: Verify Python version declarations
         run: |
-          "$PYTHON_BIN" scripts/check_python_version_consistency.py
+          python scripts/check_python_version_consistency.py
 
-      - name: Test inbound email trust boundaries
+      - name: Test Lambda trust and API contracts
         run: |
-          "$PYTHON_BIN" -m venv .venv-email-receipt
+          uv venv --quiet --python "$(command -v python)" .venv-email-receipt
           source .venv-email-receipt/bin/activate
-          python -m pip install --quiet boto3 pytest
+          uv pip install --quiet boto3 pytest "pulumi>=3.261.0,<4" "pulumi-aws>=7.44.0,<8"
           python -m pytest -q \
             infra/tests/test_email_receipt_mcp.py \
             infra/tests/test_ats_verification_ingest.py \
-            infra/tests/test_ats_verification_mcp.py
+            infra/tests/test_ats_verification_mcp.py \
+            infra/tests/test_ocr_results_redrive_mapping.py
+          python -m pytest -q --import-mode=importlib \
+            infra/components/test_lambda_profiler.py \
+            infra/components/test_route_lambda.py \
+            infra/routes/images/handler/test_handler.py \
+            infra/routes/receipts/handler/test_handler.py
 
-      - name: Test compaction lock configuration
-        run: |
-          # Stubs its Lambda-only imports, so the venv above (pytest only) is
-          # enough. Guards the lock heartbeat wiring and delta-failure
-          # propagation that caused the 07-12 compaction outage.
-          source .venv-email-receipt/bin/activate
-          python -m pytest -q infra/tests/test_compaction_lock_config.py
+  lambda-images:
+    name: Lambda image compatibility
+    uses: ./.github/workflows/lambda-images.yml
 
   python-tests:
-    name: Python (${{ matrix.package }})
-    runs-on: [self-hosted, macOS, ARM64]
+    # Legs keep their historical check names ("Python (<package>)"); a leg on
+    # a non-baseline runtime would get a version suffix.
+    name: Python (${{ matrix.package }}${{ matrix.python-version != '3.14' && format(', {0}', matrix.python-version) || '' }}${{ matrix.shard && format(', shard {0}/2', matrix.shard) || '' }})
+    runs-on: ubuntu-latest
+    # Every leg must pass before deploy.
     strategy:
       fail-fast: false
       matrix:
+        python-version: ["3.14"]
         package:
           - receipt_embeddings
-          - receipt_dynamo
           - receipt_dynamo_stream
-          - receipt_chroma
           - receipt_places
-          - receipt_langsmith
+          - receipt_nutrition
           - receipt_upload
           - receipt_agent
+        # Every deployed Python runtime is 3.14 (ZIP Lambdas, their layers and
+        # the container images), so each package gets one leg. The only 3.13
+        # runtime left is receipt_layoutlm's image (its pinned torch has no
+        # cp314 wheels); that package has no leg here.
+        # receipt_dynamo runs as two shards: its ~1,400 moto integration tests
+        # are the whole run's critical path (3+ min on a 4-vCPU runner) while
+        # its ~1,960 unit tests finish in ~2 s. See the sharding note in
+        # "Install and test".
+        include:
+          - { python-version: "3.14", package: receipt_dynamo, shard: 1 }
+          - { python-version: "3.14", package: receipt_dynamo, shard: 2 }
     steps:
       - uses: actions/checkout@v7
         with:
           clean: true
-          fetch-depth: 0
+          # Only the receipt_agent leg diffs against origin/<base> (changed-file
+          # lint); every other leg is fine with a shallow clone, which is
+          # several seconds faster on this repo.
+          fetch-depth: ${{ matrix.package != 'receipt_agent' && 1 || 0 }}
 
-      - name: Setup Python
-        run: |
-          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "$PYTHON_VERSION")"
-          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
-          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
-          "$PYTHON_BIN" --version
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: ${{ matrix.package }}-py${{ matrix.python-version }}
+          cache-dependency-glob: "**/pyproject.toml"
 
       - name: Install and test
         run: |
-          # Never fall back to the system interpreter: packages and Lambda use
-          # the same Python minor as CI.
-          "$PYTHON_BIN" -m venv .venv-${{ matrix.package }}
+          # setup-python pins the interpreter to the matrix minor, which is
+          # also what the Lambda images run; uv builds the venv from it.
+          # `pip` below is an alias for `uv pip` so the per-package recipes
+          # read the same as a local install.
+          uv venv --quiet --python "$(command -v python)" .venv-${{ matrix.package }}
           source .venv-${{ matrix.package }}/bin/activate
-          pip install --upgrade pip wheel
+          pip() { uv pip "$@"; }
 
           # Install based on package dependencies
           case "${{ matrix.package }}" in
+            receipt_nutrition)
+              pip install -e receipt_dynamo
+              pip install -e "receipt_nutrition[test]"
+              ;;
             receipt_embeddings)
               # Local receipt-dynamo dep is unpublished: install it editable
               # first so the [test]/[lint] resolves never reach for PyPI.
@@ -115,14 +163,6 @@ jobs:
               pip install --no-deps -e receipt_embeddings
               pip install numpy "openai>=2.8.1,<3.0.0"
               pip install pytest pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures
-              ;;
-            receipt_chroma)
-              pip install -e receipt_dynamo
-              pip install --no-deps -e receipt_dynamo_stream
-              pip install --no-deps -e receipt_embeddings
-              pip install --no-deps -e receipt_chroma
-              pip install boto3 chromadb "openai>=2.8.1,<3.0.0"
-              pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto
               ;;
             receipt_dynamo_stream)
               pip install -e receipt_dynamo
@@ -135,10 +175,6 @@ jobs:
               pip install pydantic pydantic-settings structlog boto3 requests tenacity
               pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto responses
               ;;
-            receipt_langsmith)
-              # Standalone package; pyspark extra needed for tests/spark
-              pip install -e "receipt_langsmith[pyspark,dev]"
-              ;;
             receipt_upload)
               # Depends on the full local stack (incl. receipt_agent for the
               # Place ID Finder + CORE_LABELS). Install locals editable with
@@ -147,11 +183,10 @@ jobs:
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_dynamo_stream
               pip install --no-deps -e receipt_embeddings
-              pip install --no-deps -e receipt_chroma
               pip install --no-deps -e receipt_places
               pip install --no-deps -e receipt_agent
               pip install --no-deps -e receipt_upload
-              pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow pillow-avif-plugin \
+              pip install boto3 "openai>=2.8.1,<3.0.0" Pillow pillow-avif-plugin \
                 langsmith langgraph "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
                 pydantic pydantic-settings structlog requests tenacity
               pip install pytest pytest-mock pytest-cov pytest-xdist pytest-timeout pytest-rerunfailures moto responses
@@ -163,11 +198,10 @@ jobs:
               pip install -e receipt_dynamo
               pip install --no-deps -e receipt_dynamo_stream
               pip install --no-deps -e receipt_embeddings
-              pip install --no-deps -e receipt_chroma
               pip install --no-deps -e receipt_places
               pip install --no-deps -e receipt_agent
               pip install --no-deps -e receipt_upload
-              pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow \
+              pip install boto3 "openai>=2.8.1,<3.0.0" Pillow \
                 pillow-avif-plugin langsmith langgraph \
                 "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
                 pydantic pydantic-settings structlog requests tenacity \
@@ -181,8 +215,11 @@ jobs:
               ;;
           esac
 
-          # Lint (uses versions from pyproject.toml [lint] dependency)
-          if [ "${{ matrix.package }}" = "receipt_agent" ]; then
+          # Lint (uses versions from pyproject.toml [lint] dependency).
+          # Sharded packages lint once, in shard 1.
+          if [ -n "${{ matrix.shard }}" ] && [ "${{ matrix.shard }}" != "1" ]; then
+            :
+          elif [ "${{ matrix.package }}" = "receipt_agent" ]; then
             pip install black isort
             BASE_REF="${{ github.base_ref || 'main' }}"
             CHANGED_PY="$(git diff --name-only --diff-filter=ACMRT \
@@ -203,51 +240,91 @@ jobs:
 
           # Test
           # --reruns 1 --reruns-delay 2: retry once with a 2s pause to absorb
-          # environmental flakes (moto-S3 timestamp races, ChromaDB lock
-          # contention under pytest-xdist). Real test failures still fail
+          # environmental flakes (moto-S3 timestamp races, lock contention
+          # under pytest-xdist). Real test failures still fail
           # the build after the retry; only transient failures get masked.
           cd ${{ matrix.package }}
-          python -m pytest tests -n auto --timeout=120 --tb=short --maxfail=5 \
+          # Sharding (receipt_dynamo): integration test files alternate
+          # between the two shards by sorted position, so a new file lands in
+          # exactly one shard and the split needs no durations file or
+          # plugin. Shard 1 also carries every non-integration directory.
+          # Measured locally: 2,645 vs 710 tests but ~17 s vs ~16 s wall.
+          TEST_ARGS=(tests)
+          if [ -n "${{ matrix.shard }}" ]; then
+            TEST_ARGS=()
+            i=0
+            while IFS= read -r test_file; do
+              if [ $(( i % 2 )) -eq $(( ${{ matrix.shard }} - 1 )) ]; then
+                TEST_ARGS+=("$test_file")
+              fi
+              i=$(( i + 1 ))
+            done < <(find tests/integration -name 'test_*.py' | sort)
+            if [ "${{ matrix.shard }}" = "1" ]; then
+              TEST_ARGS+=(tests/unit tests/end_to_end)
+            fi
+          fi
+          python -m pytest "${TEST_ARGS[@]}" -n auto --timeout=120 --tb=short --maxfail=5 \
             --reruns 1 --reruns-delay 2 \
             -m "not end_to_end and not slow and not performance and not unused_in_production" \
             --cov --cov-report=xml
 
+      - name: Test Glyph Studio on the selected runtime
+        if: matrix.package == 'receipt_agent'
+        run: |
+          # The glyph Lambda ships this package too. Reuse the agent job's
+          # local dependency stack for its optional section/renderer tests.
+          source .venv-receipt_agent/bin/activate
+          # Existing offline degradation/metric tests use scipy; the deployed
+          # glyph MCP image retains its numpy + Pillow dependency contract.
+          uv pip install -e tools/glyph-studio/py scipy
+          python -m pytest tools/glyph-studio/py/tests -n auto \
+            --timeout=120 --tb=short --maxfail=5
+
       - name: Upload coverage
         uses: actions/upload-artifact@v7
         with:
-          name: coverage-${{ matrix.package }}
+          # Artifact names must be unique per run; only the 3.14 legs are suffixed.
+          name: coverage-${{ matrix.package }}${{ matrix.python-version != '3.14' && format('-py{0}', matrix.python-version) || '' }}${{ matrix.shard && format('-shard{0}', matrix.shard) || '' }}
           path: ${{ matrix.package }}/coverage.xml
           retention-days: 1
+    # Job-level key; placed after `steps` so it stays clear of the matrix
+    # header, which other branches edit.
+    timeout-minutes: 30
 
   repository-tests:
     name: Python (repository tests)
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
         with:
           clean: true
           fetch-depth: 0
 
-      - name: Setup Python
-        run: |
-          PYTHON_BIN="$(scripts/ensure_python_runtime.sh "$PYTHON_VERSION")"
-          echo "PYTHON_BIN=$PYTHON_BIN" >> "$GITHUB_ENV"
-          echo "$(dirname "$PYTHON_BIN")" >> "$GITHUB_PATH"
-          "$PYTHON_BIN" --version
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: repository-tests
+          cache-dependency-glob: "**/pyproject.toml"
 
       - name: Install editable local stack
         run: |
-          "$PYTHON_BIN" -m venv .venv-repository-tests
+          uv venv --quiet --python "$(command -v python)" .venv-repository-tests
           source .venv-repository-tests/bin/activate
-          pip install --upgrade pip wheel
+          pip() { uv pip "$@"; }
           pip install -e receipt_dynamo
           pip install --no-deps -e receipt_embeddings
           pip install --no-deps -e receipt_dynamo_stream
-          pip install --no-deps -e receipt_chroma
           pip install --no-deps -e receipt_places
+          pip install --no-deps -e receipt_nutrition
           pip install --no-deps -e receipt_agent
           pip install --no-deps -e receipt_upload
-          pip install boto3 chromadb "openai>=2.8.1,<3.0.0" Pillow \
+          pip install boto3 "openai>=2.8.1,<3.0.0" Pillow \
             pillow-avif-plugin langsmith langgraph \
             "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \
             pydantic pydantic-settings structlog requests tenacity \
@@ -274,21 +351,36 @@ jobs:
             SCRIPT_TESTS+=("$test_file")
           done < <(find scripts -maxdepth 1 -name 'test_*.py' \
             ! -name 'test_noise_detection.py' \
-            ! -name 'test_realtime_embedding.py' \
-            ! -name 'test_spark_processor_local.py' -print)
+            ! -name 'test_realtime_embedding.py' -print)
           python -m pytest tests "${SCRIPT_TESTS[@]}" \
+            -n auto --timeout=120 --tb=short --maxfail=5 \
+            --reruns 1 --reruns-delay 2
+
+      - name: Test container OCR handler contracts
+        run: |
+          # The container OCR image ships the same local stack this job
+          # installs, so its failure-injection suite (re-OCR retry, overlay,
+          # CDN, Swift payload contracts) runs here. Keep it a separate
+          # invocation: listing it alongside infra/tests makes infra/ the
+          # rootdir and pytest then imports infra/upload_images/__init__.py
+          # (Pulumi) during collection.
+          source .venv-repository-tests/bin/activate
+          python -m pytest infra/upload_images/container_ocr/handler/tests \
             -n auto --timeout=120 --tb=short --maxfail=5 \
             --reruns 1 --reruns-delay 2
 
   typescript-tests:
     name: TypeScript
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: portfolio/package-lock.json
 
       - name: Lint and test
         working-directory: portfolio
@@ -307,36 +399,35 @@ jobs:
 
   browser-tests:
     name: Browser Tests
-    runs-on: [self-hosted, macOS, ARM64]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: portfolio/package-lock.json
 
       - name: Build and test
         working-directory: portfolio
         env:
           CI: true
         run: |
-          # Free port 3001 from any prior CI job that crashed without
-          # cleanup. Without this, Playwright's webServer fails to bind
-          # ("localhost:3001 already used") and skips the rest of the
-          # pipeline including Deploy. Self-hosted runners share state
-          # across jobs, so we can't rely on container teardown.
-          PIDS="$(lsof -ti:3001 2>/dev/null || true)"
-          if [ -n "$PIDS" ]; then
-            kill -9 $PIDS 2>/dev/null || true
-          fi
-
-          # Re-free the port on exit so the next job starts clean even
-          # if Playwright crashes mid-run.
-          trap 'PIDS="$(lsof -ti:3001 2>/dev/null || true)"; [ -z "$PIDS" ] || kill -9 $PIDS 2>/dev/null || true' EXIT
-
           npm ci --prefer-offline
           npm run build
-          npx playwright install chromium firefox webkit
+          # --with-deps installs the browsers' apt dependencies (~50 s, most
+          # of it WebKit's). Measured alternative: running the job in
+          # mcr.microsoft.com/playwright:<ver>-noble trades that for a
+          # 26-49 s image pull plus a version pin to keep in step with
+          # @playwright/test, so it was not worth the coupling. This job is
+          # not on the run's critical path either way.
+          npx playwright install --with-deps chromium firefox webkit
+          # Bind the dev server to a free port rather than a fixed one so
+          # the test is independent of anything else on the runner.
+          # Playwright owns server teardown.
+          export PLAYWRIGHT_PORT="$(node -e 'const server = require("node:net").createServer(); server.listen(0, "127.0.0.1", () => { console.log(server.address().port); server.close(); });')"
           npx playwright test e2e/hydration.spec.ts --project=chromium --project=firefox --project=webkit
 
       - name: Upload test results
@@ -345,6 +436,99 @@ jobs:
         with:
           name: playwright-report
           path: portfolio/playwright-report/
+          retention-days: 7
+
+  # ============================================================================
+  # MANUAL: targeted dev API profiling (never runs on push or pull_request)
+  # ============================================================================
+
+  profile-dev-api:
+    name: Profile dev API Lambdas
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.profile_dev_api
+    needs:
+      - lambda-syntax
+      - repository-tests
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-development
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Install infrastructure and profiling tools
+        run: |
+          pip install -e infra -e receipt_dynamo
+          pip install boto3 flameprof pytest tuna
+
+      - name: Test profiling instrumentation
+        run: |
+          python -m pytest -q --import-mode=importlib \
+            receipt_dynamo/tests/unit/test_api_read.py \
+            infra/components/test_lambda_profiler.py \
+            infra/components/test_route_lambda.py \
+            infra/routes/images/handler/test_handler.py \
+            infra/routes/receipts/handler/test_handler.py \
+            scripts/test_capture_dev_api_profiles.py
+
+      - name: Deploy dev stack
+        id: profiled-dev-deploy
+        working-directory: infra
+        env:
+          ENABLE_DEV_LAMBDA_PROFILING: "1"
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          test "$(aws sts get-caller-identity --query Account --output text)" = "681647709217"
+          pulumi preview --stack tnorlund/portfolio/dev --non-interactive
+          pulumi up --stack tnorlund/portfolio/dev --yes --non-interactive
+
+      - name: Capture handler and import profiles
+        run: |
+          mkdir -p api-profile-artifacts
+          python scripts/capture_dev_api_profiles.py \
+            --route images \
+            --route receipts \
+            --output-dir api-profile-artifacts \
+            | tee api-profile-artifacts/summary.json
+
+          for route in images receipts; do
+            flameprof \
+              --out "api-profile-artifacts/${route}-handler.svg" \
+              "api-profile-artifacts/${route}.prof"
+            if [ -s "api-profile-artifacts/${route}.importtime" ]; then
+              tuna \
+                --outdir "api-profile-artifacts/${route}-imports" \
+                "api-profile-artifacts/${route}.importtime"
+            fi
+          done
+
+      - name: Disable dev profiling
+        if: always() && contains(fromJSON('["success", "failure"]'), steps.profiled-dev-deploy.outcome)
+        working-directory: infra
+        env:
+          PULUMI_ACCESS_TOKEN: ${{ secrets.PULUMI_ACCESS_TOKEN }}
+        run: |
+          test "$(aws sts get-caller-identity --query Account --output text)" = "681647709217"
+          pulumi preview --stack tnorlund/portfolio/dev --non-interactive
+          pulumi up --stack tnorlund/portfolio/dev --yes --non-interactive
+
+      - name: Upload dev API profiles
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-api-lambda-profiles-${{ github.sha }}
+          path: api-profile-artifacts/
           retention-days: 7
 
   # ============================================================================
@@ -361,6 +545,7 @@ jobs:
       cancel-in-progress: false
     needs:
       - lambda-syntax
+      - lambda-images
       - python-tests
       - repository-tests
       - typescript-tests
@@ -374,6 +559,13 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          # One cache per job; a shared key made the first job to finish
+          # define the cache and every other leg download its packages.
+          cache-suffix: deploy
+          cache-dependency-glob: "infra/pyproject.toml"
 
       - uses: actions/setup-node@v7
         with:
@@ -387,8 +579,6 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
-
-      - uses: docker/setup-buildx-action@v4
 
       - name: Export public analytics build config
         run: |
@@ -408,7 +598,9 @@ jobs:
       - name: Deploy infrastructure
         run: |
           cd infra
-          pip install -e .
+          # Pulumi.yaml declares no virtualenv, so the program runs on the
+          # setup-python interpreter; install the infra package into it.
+          uv pip install --python "$(command -v python)" -e .
           pulumi stack select tnorlund/portfolio/prod
           pulumi up --yes
         env:

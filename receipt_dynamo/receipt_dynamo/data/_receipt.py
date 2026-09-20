@@ -1,4 +1,5 @@
 # infra/lambda_layer/python/dynamo/data/_receipt.py
+import time
 from collections import Counter
 from typing import Any
 
@@ -12,6 +13,7 @@ from receipt_dynamo.data.base_operations import (
     handle_dynamodb_errors,
 )
 from receipt_dynamo.data.shared_exceptions import (
+    DynamoDBThroughputError,
     EntityNotFoundError,
     EntityValidationError,
 )
@@ -19,12 +21,14 @@ from receipt_dynamo.entities.receipt import Receipt, item_to_receipt
 from receipt_dynamo.entities.receipt_barcode import item_to_receipt_barcode
 from receipt_dynamo.entities.receipt_bundle import ReceiptBundlePage
 from receipt_dynamo.entities.receipt_details import ReceiptDetails
+from receipt_dynamo.entities.receipt_letter import item_to_receipt_letter
 from receipt_dynamo.entities.receipt_line import (
     item_to_receipt_line,
 )
 from receipt_dynamo.entities.receipt_place import (
     item_to_receipt_place,
 )
+from receipt_dynamo.entities.receipt_section import item_to_receipt_section
 from receipt_dynamo.entities.receipt_word import item_to_receipt_word
 from receipt_dynamo.entities.receipt_word_label import (
     item_to_receipt_word_label,
@@ -36,16 +40,112 @@ _RECEIPT_DETAILS_CONVERTERS = {
     "RECEIPT": ("receipt", item_to_receipt),
     "RECEIPT_LINE": ("line", item_to_receipt_line),
     "RECEIPT_WORD": ("word", item_to_receipt_word),
+    "RECEIPT_LETTER": ("letter", item_to_receipt_letter),
     "RECEIPT_WORD_LABEL": ("label", item_to_receipt_word_label),
     "RECEIPT_PLACE": ("place", item_to_receipt_place),
     "RECEIPT_BARCODE": ("barcode", item_to_receipt_barcode),
+    "RECEIPT_SECTION": ("section", item_to_receipt_section),
 }
 
 
 class _Receipt(FlattenedStandardMixin):
+    @handle_dynamodb_errors("receipt_exists_consistent")
+    def receipt_exists_consistent(
+        self, image_id: str, receipt_id: int
+    ) -> bool:
+        """Check the parent on the base table after a derived-row write."""
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
+        response = self._client.get_item(
+            TableName=self.table_name,
+            Key={
+                "PK": {"S": f"IMAGE#{image_id}"},
+                "SK": {"S": f"RECEIPT#{receipt_id:05d}"},
+            },
+            ConsistentRead=True,
+            ProjectionExpression="PK",
+        )
+        return "Item" in response
+
+    @handle_dynamodb_errors("purge_receipt_children")
+    def purge_receipt_children(self, image_id: str, receipt_id: int) -> int:
+        """Delete canonical and legacy children, never the parent or a neighbor.
+
+        Parent-first deletion plus each writer's post-write consistent check
+        covers both orderings of the deletion race. Retry throttled batches
+        at most five times so failures reach the caller's retry policy.
+        """
+        self._validate_image_id(image_id)
+        self._validate_receipt_id(receipt_id)
+        deleted = 0
+        prefixes = sorted(
+            {f"RECEIPT#{receipt_id:05d}#", f"RECEIPT#{receipt_id}#"}
+        )
+        for prefix in prefixes:
+            pages = self._client.get_paginator("query").paginate(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
+                ExpressionAttributeValues={
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":prefix": {"S": prefix},
+                },
+                ProjectionExpression="PK, SK",
+                ConsistentRead=True,
+            )
+            for page in pages:
+                items = page.get("Items", [])
+                for start in range(0, len(items), 25):
+                    pending = [
+                        {"DeleteRequest": {"Key": item}}
+                        for item in items[start : start + 25]
+                    ]
+                    for attempt in range(5):
+                        response = self._client.batch_write_item(
+                            RequestItems={self.table_name: pending}
+                        )
+                        remaining = response.get("UnprocessedItems", {}).get(
+                            self.table_name, []
+                        )
+                        deleted += len(pending) - len(remaining)
+                        pending = remaining
+                        if not pending:
+                            break
+                        if attempt < 4:
+                            time.sleep(0.1 * 2**attempt)
+                    if pending:
+                        raise DynamoDBThroughputError(
+                            "Child purge exhausted retries for "
+                            f"{image_id}#{receipt_id}"
+                        )
+        return deleted
+
+    @handle_dynamodb_errors("get_receipts_from_image_consistent")
+    def get_receipts_from_image_consistent(
+        self, image_id: str
+    ) -> list[Receipt]:
+        """Read surviving asset owners without GSI or eventual-read lag."""
+        self._validate_image_id(image_id)
+        pages = self._client.get_paginator("query").paginate(
+            TableName=self.table_name,
+            KeyConditionExpression="PK = :pk AND begins_with(SK, :prefix)",
+            FilterExpression="#type = :type",
+            ExpressionAttributeNames={"#type": "TYPE"},
+            ExpressionAttributeValues={
+                ":pk": {"S": f"IMAGE#{image_id}"},
+                ":prefix": {"S": "RECEIPT#"},
+                ":type": {"S": "RECEIPT"},
+            },
+            ConsistentRead=True,
+        )
+        return [
+            item_to_receipt(item)
+            for page in pages
+            for item in page.get("Items", [])
+        ]
+
     @staticmethod
     def _convert_receipt_details_item(item):
-        """Convert one GSI4 item into its ReceiptDetails collection name."""
+        """Convert one receipt item into its ReceiptDetails collection name."""
         item_type = item.get("TYPE", {}).get("S")
         converter = _RECEIPT_DETAILS_CONVERTERS.get(item_type)
         if converter is None:
@@ -59,10 +159,11 @@ class _Receipt(FlattenedStandardMixin):
         image_id: str,
         receipt_id: int,
     ) -> ReceiptDetails:
-        """Build ReceiptDetails from converted GSI4 items."""
+        """Build ReceiptDetails from converted receipt items."""
         receipt = None
         place = None
-        lines, words, labels, barcodes = [], [], [], []
+        lines, words, letters, labels, barcodes = [], [], [], [], []
+        sections = []
 
         for item in items:
             if item is None:
@@ -74,12 +175,16 @@ class _Receipt(FlattenedStandardMixin):
                 lines.append(entity)
             elif item_type == "word":
                 words.append(entity)
+            elif item_type == "letter":
+                letters.append(entity)
             elif item_type == "label":
                 labels.append(entity)
             elif item_type == "place":
                 place = entity
             elif item_type == "barcode":
                 barcodes.append(entity)
+            elif item_type == "section":
+                sections.append(entity)
 
         if receipt is None:
             raise EntityNotFoundError(
@@ -92,10 +197,11 @@ class _Receipt(FlattenedStandardMixin):
             receipt=receipt,
             lines=lines,
             words=words,
+            letters=letters,
             labels=labels,
             place=place,
             barcodes=barcodes,
-            # letters excluded by GSI4 design - uses default empty list
+            sections=sections,
         )
 
     @handle_dynamodb_errors("add_receipt")
@@ -319,6 +425,70 @@ class _Receipt(FlattenedStandardMixin):
         )
         self._client.transact_write_items(TransactItems=transact_items)
 
+    def _receipt_prefix_keys(
+        self, image_id: str, receipt_id: int, *, include_parent: bool
+    ) -> list[dict[str, Any]]:
+        """Keys of the exact parent row (optional) plus every delimited child.
+
+        The parent is matched by exact key, never by prefix: an undelimited
+        ``begins_with(SK, "RECEIPT#10000")`` would also select receipt
+        100000. Children are swept under both the canonical padded prefix
+        and the legacy unpadded one, the same way purge_receipt_children
+        does. Reads are strongly consistent so rows written moments before
+        a delete are not missed.
+        """
+        pk = {"S": f"IMAGE#{image_id}"}
+        keys: list[dict[str, Any]] = []
+        if include_parent:
+            parent = self._client.query(
+                TableName=self.table_name,
+                KeyConditionExpression="PK = :pk AND SK = :sk",
+                ExpressionAttributeValues={
+                    ":pk": pk,
+                    ":sk": {"S": f"RECEIPT#{receipt_id:05d}"},
+                },
+                ProjectionExpression="PK, SK, #t",
+                ExpressionAttributeNames={"#t": "TYPE"},
+                ConsistentRead=True,
+            )
+            keys.extend(parent.get("Items", []))
+        prefixes = sorted(
+            {f"RECEIPT#{receipt_id:05d}#", f"RECEIPT#{receipt_id}#"}
+        )
+        for prefix in prefixes:
+            exclusive_start_key = None
+            while True:
+                params: dict[str, Any] = {
+                    "TableName": self.table_name,
+                    "KeyConditionExpression": (
+                        "PK = :pk AND begins_with(SK, :prefix)"
+                    ),
+                    "ExpressionAttributeValues": {
+                        ":pk": pk,
+                        ":prefix": {"S": prefix},
+                    },
+                    "ProjectionExpression": "PK, SK, #t",
+                    "ExpressionAttributeNames": {"#t": "TYPE"},
+                    "ConsistentRead": True,
+                }
+                if exclusive_start_key:
+                    params["ExclusiveStartKey"] = exclusive_start_key
+                response = self._client.query(**params)
+                keys.extend(response.get("Items", []))
+                exclusive_start_key = response.get("LastEvaluatedKey")
+                if not exclusive_start_key:
+                    break
+        # Three queries feed this list; a key must be enqueued once even if
+        # a client returns it for more than one of them.
+        seen: set[tuple[str, str]] = set()
+        unique: list[dict[str, Any]] = []
+        for item in keys:
+            key = (item["PK"]["S"], item["SK"]["S"])
+            if key not in seen:
+                seen.add(key)
+                unique.append(item)
+        return unique
+
     @handle_dynamodb_errors("delete_receipt_items")
     def delete_receipt_items(
         self,
@@ -327,49 +497,29 @@ class _Receipt(FlattenedStandardMixin):
         *,
         include_parent: bool = True,
     ) -> int:
-        """Delete every row beneath a receipt primary-key prefix.
+        """Delete the receipt row and every row beneath its key prefix.
 
         This intentionally deletes concrete child rows so DynamoDB stream
         consumers receive word and line removal events for vector cleanup.
         The operation is idempotent and paginates the full partition prefix.
+        The parent is matched exactly and children by delimited prefix; see
+        :meth:`_receipt_prefix_keys`.
         """
         self._validate_image_id(image_id)
         self._validate_receipt_id(receipt_id)
-        parent_sk = f"RECEIPT#{receipt_id:05d}"
-        items: list[dict[str, Any]] = []
-        exclusive_start_key = None
-
-        while True:
-            params: dict[str, Any] = {
-                "TableName": self.table_name,
-                "KeyConditionExpression": (
-                    "PK = :pk AND begins_with(SK, :receipt_prefix)"
-                ),
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":receipt_prefix": {"S": parent_sk},
-                },
-                "ProjectionExpression": "PK, SK",
-            }
-            if exclusive_start_key:
-                params["ExclusiveStartKey"] = exclusive_start_key
-            response = self._client.query(**params)
-            items.extend(response.get("Items", []))
-            exclusive_start_key = response.get("LastEvaluatedKey")
-            if not exclusive_start_key:
-                break
-
-        requests = []
-        for item in items:
-            if not include_parent and item["SK"]["S"] == parent_sk:
-                continue
-            requests.append(
-                WriteRequestTypeDef(
-                    DeleteRequest=DeleteRequestTypeDef(
-                        Key={"PK": item["PK"], "SK": item["SK"]}
-                    )
+        items = self._receipt_prefix_keys(
+            image_id, receipt_id, include_parent=include_parent
+        )
+        # A receipt cascade deletes its derived NUTRITION_SUMMARY row by
+        # design; the nutrition write guard only covers nutrition partitions.
+        requests = [
+            WriteRequestTypeDef(
+                DeleteRequest=DeleteRequestTypeDef(
+                    Key={"PK": item["PK"], "SK": item["SK"]}
                 )
             )
+            for item in items
+        ]
         if requests:
             self._batch_write_with_retry(requests)
         return len(requests)
@@ -378,32 +528,19 @@ class _Receipt(FlattenedStandardMixin):
     def get_receipt_item_type_counts(
         self, image_id: str, receipt_id: int
     ) -> dict[str, int]:
-        """Count all entity types stored below a receipt key prefix."""
+        """Count entity types stored at and below a receipt key prefix.
+
+        Walks exactly the keys :meth:`delete_receipt_items` would delete
+        (exact parent + delimited canonical and legacy child prefixes,
+        strongly consistent), so a dry-run preview matches the sweep.
+        """
         self._validate_image_id(image_id)
         self._validate_receipt_id(receipt_id)
         counts: Counter[str] = Counter()
-        exclusive_start_key = None
-        while True:
-            params: dict[str, Any] = {
-                "TableName": self.table_name,
-                "KeyConditionExpression": (
-                    "PK = :pk AND begins_with(SK, :receipt_prefix)"
-                ),
-                "ExpressionAttributeValues": {
-                    ":pk": {"S": f"IMAGE#{image_id}"},
-                    ":receipt_prefix": {"S": f"RECEIPT#{receipt_id:05d}"},
-                },
-                "ProjectionExpression": "#type",
-                "ExpressionAttributeNames": {"#type": "TYPE"},
-            }
-            if exclusive_start_key:
-                params["ExclusiveStartKey"] = exclusive_start_key
-            response = self._client.query(**params)
-            for item in response.get("Items", []):
-                counts[item.get("TYPE", {}).get("S", "UNKNOWN")] += 1
-            exclusive_start_key = response.get("LastEvaluatedKey")
-            if not exclusive_start_key:
-                break
+        for item in self._receipt_prefix_keys(
+            image_id, receipt_id, include_parent=True
+        ):
+            counts[item.get("TYPE", {}).get("S", "UNKNOWN")] += 1
         return dict(sorted(counts.items()))
 
     @handle_dynamodb_errors("release_receipt_id_reservations")
@@ -498,22 +635,57 @@ class _Receipt(FlattenedStandardMixin):
 
     @handle_dynamodb_errors("get_receipt_details")
     def get_receipt_details(
-        self, image_id: str, receipt_id: int
+        self,
+        image_id: str,
+        receipt_id: int,
+        *,
+        consistent_read: bool = False,
     ) -> ReceiptDetails:
-        """Get a receipt with its details using optimized GSI4 query.
+        """Get a receipt and its details, optionally from the primary table.
 
-        This method uses GSI4 which is designed for efficient single-query
-        retrieval of receipt details. By design, GSI4 excludes ReceiptLetters
-        to reduce read costs - letters are rarely needed in most patterns.
+        The default GSI4 query excludes letters and sections to reduce read
+        costs. Corrections can read committed primary-table values,
+        including letters and sections, without waiting for GSI
+        propagation. All pages are read consistently; this does not
+        provide snapshot isolation against concurrent writers.
 
         Args:
             image_id (str): The ID of the image the receipt belongs to
             receipt_id (int): The ID of the receipt to get
+            consistent_read: Read committed primary-table values,
+                including letters and sections (absent from GSI4).
 
         Returns:
             ReceiptDetails: Dataclass with receipt and related data.
-                Note: letters will be an empty list (excluded from GSI4).
+                Letters are empty for the default GSI4 query.
         """
+        if consistent_read:
+            self._validate_image_id(image_id)
+            self._validate_receipt_id(receipt_id)
+            receipt_key = f"RECEIPT#{receipt_id:05d}"
+            detail_types = {
+                f":type{index}": {"S": item_type}
+                for index, item_type in enumerate(_RECEIPT_DETAILS_CONVERTERS)
+            }
+            # '#' children sort before '$'; longer numeric IDs sort after it.
+            # This range includes the parent without matching a neighbor ID.
+            items, _ = self._query_entities(
+                index_name=None,
+                key_condition_expression=(
+                    "PK = :pk AND SK BETWEEN :receipt AND :children_end"
+                ),
+                expression_attribute_names={"#type": "TYPE"},
+                expression_attribute_values={
+                    ":pk": {"S": f"IMAGE#{image_id}"},
+                    ":receipt": {"S": receipt_key},
+                    ":children_end": {"S": f"{receipt_key}$"},
+                    **detail_types,
+                },
+                converter_func=self._convert_receipt_details_item,
+                filter_expression=f"#type IN ({', '.join(detail_types)})",
+                consistent_read=True,
+            )
+            return self._build_receipt_details(items, image_id, receipt_id)
 
         # Query GSI4 for all receipt-related items (excluding letters)
         # GSI4PK: IMAGE#{image_id}#RECEIPT#{receipt_id:05d}
@@ -698,9 +870,8 @@ class _Receipt(FlattenedStandardMixin):
         This method queries the database for receipt-related items using GSI2
         (where GSI2PK = 'RECEIPT') and returns a page of receipt bundles.
 
-        Note: With the addition of new entities using the same GSI2PK pattern
-        (ReceiptLineItemAnalysis, ReceiptLabelAnalysis), this method now uses
-        a filter expression to only retrieve the specific types needed.
+        Note: Other entities share the same GSI2PK pattern, so this method
+        uses a filter expression to only retrieve the specific types needed.
 
         Args:
             limit: The maximum number of receipt bundles to return.

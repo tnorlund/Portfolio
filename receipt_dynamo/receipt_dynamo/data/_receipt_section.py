@@ -327,8 +327,8 @@ class _ReceiptSection(FlattenedStandardMixin):
                     ":pk": {"S": expected_pk},
                     ":sk": {"S": start_of_sk},
                 },
-                # Strongly consistent: the ChromaDB stream consumer
-                # recomputes section_label from this read immediately
+                # Strongly consistent: the stream consumer recomputes
+                # section_label from this read immediately
                 # after a section write and then acknowledges the event,
                 # so a stale eventually-consistent read could persist
                 # wrong metadata with no later event to correct it.

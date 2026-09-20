@@ -33,6 +33,8 @@ export interface QAQuestionData {
   question: string;
   questionIndex: number;
   traceId?: string;
+  success?: boolean;
+  error?: string | null;
   trace: TraceStep[];
   stats: {
     llmCalls: number;

@@ -98,9 +98,19 @@ def make_manifest(
     )
 
 
-def test_legacy_enumerations_union_to_sixteen_merchants() -> None:
+def _profile_count() -> int:
+    with open(fleet_status.PROFILES_PATH, encoding="utf-8") as fh:
+        return len(json.load(fh)["profiles"])
+
+
+def _env_mjs_font_merchant_count() -> int:
+    with open(fleet_status.ENV_MJS_PATH, encoding="utf-8") as fh:
+        return len(set(fleet_status.parse_font_merchants(fh.read()).values()))
+
+
+def test_legacy_enumerations_union_to_every_profile() -> None:
     legacy = fleet_status.load_legacy_merchants()
-    assert len(legacy) == 16
+    assert len(legacy) == _profile_count()
     assert "vons" in legacy
     assert "sprouts_farmers_market" in legacy
     # env.mjs-only presence never adds merchants beyond the profile keys,
@@ -110,10 +120,10 @@ def test_legacy_enumerations_union_to_sixteen_merchants() -> None:
         for slug, entry in legacy.items()
         if fleet_status.FONT_MERCHANTS_SOURCE in entry["sources"]
     ]
-    assert len(dual) == 11
+    assert len(dual) == _env_mjs_font_merchant_count()
 
 
-def test_empty_fleet_renders_zero_active_sixteen_missing_exit_zero(
+def test_empty_fleet_renders_zero_active_all_missing_exit_zero(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     reader = StubReader([])
@@ -123,7 +133,10 @@ def test_empty_fleet_renders_zero_active_sixteen_missing_exit_zero(
     assert exit_code == 0
     assert reader.fleet_calls == 1
     output = capsys.readouterr().out
-    assert "**0 ACTIVE / 0 SEALED pending activation / 16 missing**" in output
+    assert (
+        f"**0 ACTIVE / 0 SEALED pending activation / {_profile_count()} missing**"
+        in output
+    )
     assert "(no ACTIVE merchant-truth rows)" in output
     assert "| vons | Vons |" in output
     assert "| sprouts_farmers_market | Sprouts Farmers Market |" in output
@@ -140,7 +153,10 @@ def test_populated_fleet_renders_row_with_short_hash_and_staleness(
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "**1 ACTIVE / 0 SEALED pending activation / 15 missing**" in output
+    assert (
+        f"**1 ACTIVE / 0 SEALED pending activation / {_profile_count() - 1} missing**"
+        in output
+    )
     assert f"| vons | 1 | `{'a' * 12}` | PASS " in output
     assert "| 2026-07-18T12:00:00+00:00 | 3 |" in output
     # vons moved out of the missing list
@@ -157,8 +173,8 @@ def test_json_output_is_machine_readable(
     assert exit_code == 0
     report = json.loads(capsys.readouterr().out)
     assert report["active_count"] == 2
-    assert report["missing_count"] == 14
-    assert report["legacy_count"] == 16
+    assert report["missing_count"] == _profile_count() - 2
+    assert report["legacy_count"] == _profile_count()
     assert [row["slug"] for row in report["active"]] == ["cvs", "vons"]
     row = report["active"][1]
     assert row["bundle_hash"] == HASH_A
@@ -178,7 +194,7 @@ def test_active_slug_outside_legacy_is_surfaced_not_fatal(
 
     assert exit_code == 0
     report = json.loads(capsys.readouterr().out)
-    assert report["missing_count"] == 16
+    assert report["missing_count"] == _profile_count()
     assert report["unlisted_in_legacy"] == ["mystery_mart"]
 
 
@@ -272,7 +288,10 @@ def test_sealed_without_active_is_listed_pending(
     assert exit_code == 0
     assert reader.manifest_calls == 1
     output = capsys.readouterr().out
-    assert "**0 ACTIVE / 1 SEALED pending activation / 16 missing**" in output
+    assert (
+        f"**0 ACTIVE / 1 SEALED pending activation / {_profile_count()} missing**"
+        in output
+    )
     assert "## SEALED (pending activation)" in output
     assert "| vons | 1 | PASS | 2026-07-21T05:00:00+00:00 |" in output
 

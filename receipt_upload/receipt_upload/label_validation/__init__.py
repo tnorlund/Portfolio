@@ -1,4 +1,4 @@
-"""Label validation using ChromaDB similarity search and LLM."""
+"""Label validation using similarity consensus and LLM."""
 
 from .llm_validator import (
     LLMBatchValidator,

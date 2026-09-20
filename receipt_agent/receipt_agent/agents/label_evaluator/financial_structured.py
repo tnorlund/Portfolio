@@ -16,7 +16,6 @@ in the unified evaluator works unchanged.
 import logging
 import time
 from dataclasses import dataclass
-
 from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
@@ -141,9 +140,7 @@ def render_receipt_text(words: list, labels: list, visual_lines: list) -> str:
             text = w.text
             key = (w.line_id, w.word_id)
             if key in label_map:
-                tags = " ".join(
-                    f"[{ln}:{st}]" for ln, st in label_map[key]
-                )
+                tags = " ".join(f"[{ln}:{st}]" for ln, st in label_map[key])
                 parts.append(f"{text}{tags}")
             else:
                 parts.append(text)
@@ -501,7 +498,10 @@ def run_structured_financial_validation(
     receipt_text = render_receipt_text(words, labels, visual_lines)
     financial_values = render_financial_values(words, labels)
     messages = build_structured_prompt(
-        receipt_text, financial_values, merchant_name, fast_path_summary,
+        receipt_text,
+        financial_values,
+        merchant_name,
+        fast_path_summary,
     )
 
     _, retries = get_structured_output_settings(logger_instance=logger)
@@ -520,7 +520,11 @@ def run_structured_financial_validation(
         return []
 
     return _run_structured_core(
-        so_result, words, labels, image_id, receipt_id,
+        so_result,
+        words,
+        labels,
+        image_id,
+        receipt_id,
     )
 
 
@@ -541,7 +545,10 @@ async def run_structured_financial_validation_async(
     receipt_text = render_receipt_text(words, labels, visual_lines)
     financial_values = render_financial_values(words, labels)
     messages = build_structured_prompt(
-        receipt_text, financial_values, merchant_name, fast_path_summary,
+        receipt_text,
+        financial_values,
+        merchant_name,
+        fast_path_summary,
     )
 
     _, retries = get_structured_output_settings(logger_instance=logger)
@@ -560,7 +567,11 @@ async def run_structured_financial_validation_async(
         return []
 
     return _run_structured_core(
-        so_result, words, labels, image_id, receipt_id,
+        so_result,
+        words,
+        labels,
+        image_id,
+        receipt_id,
     )
 
 
@@ -590,7 +601,6 @@ def _run_two_tier_core(
     words,
     labels,
     visual_lines,
-    chroma_client,
     image_id: str,
     receipt_id: int,
     merchant_name: str,
@@ -622,12 +632,12 @@ def _run_two_tier_core(
 
     # Tier 1: fast path (deterministic)
     raw_enhanced_values = extract_financial_values_enhanced(
-        visual_lines, words, labels, chroma_client, merchant_name,
+        visual_lines, words, labels
     )
     enhanced_values = filter_junk_values(raw_enhanced_values)
-    phantom_values_filtered = len(raw_enhanced_values.get("LINE_TOTAL", [])) > len(
-        enhanced_values.get("LINE_TOTAL", [])
-    )
+    phantom_values_filtered = len(
+        raw_enhanced_values.get("LINE_TOTAL", [])
+    ) > len(enhanced_values.get("LINE_TOTAL", []))
 
     # Text-scan supplement: when label-based extraction finds <2 label
     # types, merge keyword-based text-scan findings.
@@ -636,10 +646,15 @@ def _run_two_tier_core(
     if len(label_types_with_values) < 2:
         scanned = scan_receipt_text(words)
         scan_values = _text_scan_to_financial_values(
-            scanned, words, visual_lines,
+            scanned,
+            words,
+            visual_lines,
         )
         for scan_label, scan_fvs in scan_values.items():
-            if scan_label not in enhanced_values or not enhanced_values[scan_label]:
+            if (
+                scan_label not in enhanced_values
+                or not enhanced_values[scan_label]
+            ):
                 enhanced_values[scan_label] = scan_fvs
                 text_scan_used = True
         label_types_with_values = [k for k, v in enhanced_values.items() if v]
@@ -653,7 +668,9 @@ def _run_two_tier_core(
     if has_values:
         if not math_issues and label_type_count >= 2:
             decisions = _build_valid_decisions(
-                enhanced_values, image_id, receipt_id,
+                enhanced_values,
+                image_id,
+                receipt_id,
                 "structured_fast_path_balanced",
             )
             return (
@@ -682,7 +699,9 @@ def _run_two_tier_core(
         else:
             # Math issues found — mark as INVALID so frontend surfaces them
             decisions = _build_valid_decisions(
-                enhanced_values, image_id, receipt_id,
+                enhanced_values,
+                image_id,
+                receipt_id,
                 "structured_fast_path_issues",
                 math_balanced=False,
             )
@@ -717,7 +736,6 @@ def run_two_tier_financial_validation(
     words,
     labels,
     visual_lines,
-    chroma_client,
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
@@ -743,8 +761,12 @@ def run_two_tier_financial_validation(
         phantom_values_filtered,
         reocr_region,
     ) = _run_two_tier_core(
-        words, labels, visual_lines, chroma_client,
-        image_id, receipt_id, merchant_name,
+        words,
+        labels,
+        visual_lines,
+        image_id,
+        receipt_id,
+        merchant_name,
         skip_fast_path=skip_fast_path,
     )
 
@@ -765,7 +787,6 @@ async def run_two_tier_financial_validation_async(
     words,
     labels,
     visual_lines,
-    chroma_client,
     image_id: str,
     receipt_id: int,
     merchant_name: str = "Unknown",
@@ -791,8 +812,12 @@ async def run_two_tier_financial_validation_async(
         phantom_values_filtered,
         reocr_region,
     ) = _run_two_tier_core(
-        words, labels, visual_lines, chroma_client,
-        image_id, receipt_id, merchant_name,
+        words,
+        labels,
+        visual_lines,
+        image_id,
+        receipt_id,
+        merchant_name,
         skip_fast_path=skip_fast_path,
     )
 
