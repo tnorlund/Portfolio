@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
  */
 export function useIsVisible(
   threshold: number = 0.1,
-  rootMargin: string = "100px"
+  rootMargin: string = "100px",
 ): [React.RefObject<HTMLDivElement | null>, boolean] {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -32,7 +32,7 @@ export function useIsVisible(
       {
         threshold,
         rootMargin, // Start animating slightly before element is in view
-      }
+      },
     );
 
     observer.observe(element);
@@ -73,7 +73,7 @@ export function getCachedPathLength(path: SVGPathElement): number {
  */
 export function pointAtCached(
   ref: React.RefObject<SVGPathElement | null>,
-  pct: number
+  pct: number,
 ): { x: number; y: number } {
   const el = ref.current;
   if (!el) return { x: 0, y: 0 };
@@ -90,7 +90,7 @@ export function pointAtCached(
  */
 export function usePrecomputedPath(
   ref: React.RefObject<SVGPathElement | null>,
-  steps: number = 101
+  steps: number = 101,
 ): (pct: number) => { x: number; y: number } {
   const pointsRef = useRef<Array<{ x: number; y: number }> | null>(null);
   const pathRef = useRef<SVGPathElement | null>(null);
@@ -148,7 +148,7 @@ export function usePrecomputedPath(
         y: lower.y + (upper.y - lower.y) * t,
       };
     },
-    [computePoints]
+    [computePoints],
   );
 
   return getPoint;
@@ -197,7 +197,7 @@ export function fadeOriginal(pct: number): number {
  */
 export function useAnimationControl(
   isVisible: boolean,
-  isPaused: boolean = false
+  isPaused: boolean = false,
 ): {
   shouldAnimate: boolean;
   springConfig: { immediate: boolean };
@@ -214,12 +214,32 @@ export function useAnimationControl(
 }
 
 /**
+ * Tracks `prefers-reduced-motion: reduce`. False during SSR and when
+ * matchMedia is unavailable, so the default is the animated path.
+ */
+export function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      return;
+    }
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReduced(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setReduced(e.matches);
+    mq.addEventListener?.("change", onChange);
+    return () => mq.removeEventListener?.("change", onChange);
+  }, []);
+  return reduced;
+}
+
+/**
  * Hook to manage viewport-aware animation with reduced rendering when not visible.
  * Combines visibility detection with animation control.
  */
-export function useViewportAnimation(
-  isPaused: boolean = false
-): {
+export function useViewportAnimation(isPaused: boolean = false): {
   containerRef: React.RefObject<HTMLDivElement | null>;
   isVisible: boolean;
   shouldAnimate: boolean;

@@ -37,6 +37,6 @@ describe("Home", () => {
     expect(nav.className).toMatch(/actions/);
     expect(
       [...nav.querySelectorAll("a")].map((link) => link.getAttribute("href")),
-    ).toEqual(["/resume", "/receipt", "/rotoscope"]);
+    ).toEqual(["/resume", "/receipt", "/email", "/rotoscope"]);
   });
 });

@@ -453,6 +453,10 @@ def cmd_init(args) -> int:
         v["donor"] = args.donor
     if args.logo:
         v["logo"] = os.path.relpath(os.path.abspath(args.logo), _ROOT)
+    if args.card_logo:
+        v["card_logo"] = os.path.relpath(
+            os.path.abspath(args.card_logo), _ROOT
+        )
     if args.gold:
         image_id, rid = args.gold.split("#")
         v["gold_receipt"] = {"image_id": image_id, "receipt_id": int(rid)}
@@ -812,6 +816,11 @@ def cmd_profile(args) -> int:
         }
     )
     rec["typography"] = typ
+    if "section_scale" in v:
+        # e.g. {"HEADER": 1.0} = no default 0.8 HEADER shrink. Use a
+        # non-empty map: the v1 mint collapses an explicit {} and the
+        # profile-parity test then fails the round-trip.
+        rec["section_scale"] = v["section_scale"]
     if v.get("logo"):
         rec["logo"] = f"{v['slug']}_logo.png"
         rec.setdefault(
@@ -930,10 +939,17 @@ def _render_review(
         sys.stdout.write(text)
         raise SystemExit("could not parse the glyph_review metrics line")
     print("  " + line)
+    # Optional read-back of the renderer's advance-clamp geometry: the OCR
+    # word-start pitch (its measured advance) and the rendered cap height
+    # (its cap_px), both in synth pixels. Missing/zero -> None.
+    pitch_px = re.search(r"ocr_pitch_med=([\d.]+)", line)
+    cap_px = re.search(r"synth_h_med=([\d.]+)", line)
     return {
         "h_ratio": float(m.group(1)),
         "wpc_ratio": float(w2.group(1)) / float(w1.group(1)),
         "density_ratio": float(dr.group(1)),
+        "ocr_pitch_px": float(pitch_px.group(1)) if pitch_px else None,
+        "synth_cap_px": float(cap_px.group(1)) if cap_px else None,
         "png": out,
         "scorecard": out.replace(".png", ".scorecard.md"),
     }
@@ -967,45 +983,218 @@ def _export_ocr_cap_pin(v: dict[str, Any], typ: dict[str, Any]) -> float:
     return float(typ.get("ocr_cap_height_ratio", 0.72))
 
 
-def cmd_calibrate(args) -> int:
-    """Solve ocr_cap_height_ratio against the gold receipt.
+def _export_pitch_pin(v: dict[str, Any], typ: dict[str, Any]) -> float:
+    """The pitch_ratio export renders: vendor.json pin, else the profile.
 
-    ``vendor.json`` is the export pin. A passing calibration writes that pin
-    (and the merchant profile) so ``cmd_export`` without
-    ``--calibrate-from-corpus`` renders the same ratio the review just scored.
+    A vendor.json ``pitch_ratio`` is an opt-in pin (``gold_render_pins``)
+    that wins over both the profile and font.json ``pitchRatioTarget``, so
+    calibrate must start from -- and write back to -- the same value.
+    """
+    raw = v.get("pitch_ratio")
+    if raw is not None:
+        return float(raw)
+    return float(typ.get("pitch_ratio", 0.55))
+
+
+def _record_calibrated_knob(v: dict[str, Any], key: str, value: float) -> None:
+    """Persist a solved knob where BOTH the review and the export read it.
+
+    The profile is what the review render resolves through the truth
+    registry; ``fonts/<slug>/vendor.json`` is the export pin that
+    ``apply_gold_pins`` overlays. Writing one without the other lets a
+    passing calibration describe a receipt the export does not render.
+    """
+    _set_profile_knob(v["merchant"], key, value)
+    _set_vendor_export_pin(v["slug"], key, value)
+    v[key] = value
+
+
+def _in_band(x: float) -> bool:
+    return H_BAND[0] <= x <= H_BAND[1]
+
+
+# receipt_renderer: the grid advance is clamped to pitch_ratio x cap x this.
+PITCH_CLAMP = (0.85, 1.15)
+PITCH_EDGE_MARGIN = 0.02
+# Bounded expansion when a re-render is unmoved: at most this many steps,
+# never outside these pitch_ratio bounds; only then is it saturation.
+PITCH_EXPANSION_STEPS = 4
+PITCH_BOUNDS = (0.3, 1.2)
+PITCH_MIN_STEP = 0.02
+
+
+def pitch_past_clamp_edge(
+    pitch_ratio: float, metrics: dict[str, Any]
+) -> tuple[float | None, str]:
+    """A pitch_ratio whose clamp EDGE lands the advance on target.
+
+    Under ocr_font_sizing the advance is the measured OCR word-start pitch
+    clamped to ``pitch_ratio * cap_px * [0.85, 1.15]``. While the measured
+    advance lies INSIDE that interval the clamp is inert and a small
+    pitch_ratio move changes nothing -- a deadband, not saturation. For wpc
+    low the floor must rise above the measured advance,
+    ``pitch > measured / (0.85 * cap)``; for wpc high the ceiling must drop
+    below it, ``pitch < measured / (1.15 * cap)``; the solve lands wpc on
+    1.0 and always clears the edge by ``PITCH_EDGE_MARGIN``. The geometry
+    comes from the review metrics (ocr_pitch_med, synth_h_med), which only
+    approximate the renderer's own numbers; ``None`` when it is missing.
+    """
+    wpc = float(metrics["wpc_ratio"])
+    measured = metrics.get("ocr_pitch_px") or 0.0
+    cap = metrics.get("synth_cap_px") or 0.0
+    if not (measured > 0 and cap > 0):
+        return None, "no clamp geometry in the review metrics"
+    lo, hi = PITCH_CLAMP
+    if wpc < H_BAND[0]:
+        edge = measured / (lo * cap)
+        target = measured / (wpc * lo * cap)
+        new = max(target, edge * (1 + PITCH_EDGE_MARGIN))
+    else:
+        edge = measured / (hi * cap)
+        target = measured / (wpc * hi * cap)
+        new = min(target, edge * (1 - PITCH_EDGE_MARGIN))
+    return round(new, 3), (
+        f"measured advance {measured:.2f}px sits inside the clamp "
+        f"[{pitch_ratio * lo * cap:.2f}, {pitch_ratio * hi * cap:.2f}]px "
+        f"(deadband); clamp edge at pitch_ratio {edge:.3f}"
+    )
+
+
+def next_pitch_step(
+    pitch_ratio: float,
+    last_pitch: float | None,
+    metrics: dict[str, Any],
+    steps_taken: int,
+) -> tuple[float | None, str]:
+    """The next pitch_ratio to try after an unmoved re-render, or None.
+
+    Step one is the clamp-edge solve when the review carries usable
+    geometry and it points the way wpc says (a review pitch that disagrees
+    with the renderer's, e.g. a sparse receipt where the renderer fell back
+    to box widths, can point the wrong way; it is then ignored). Every
+    further step doubles the last pitch delta in the direction wpc needs.
+    Saturation is declared -- ``None`` -- only once ``PITCH_EXPANSION_STEPS``
+    are spent or the next step would leave ``PITCH_BOUNDS``.
+    """
+    if steps_taken >= PITCH_EXPANSION_STEPS:
+        return None, (
+            f"{PITCH_EXPANSION_STEPS} expansion steps did not move the render"
+        )
+    direction = 1.0 if float(metrics["wpc_ratio"]) < H_BAND[0] else -1.0
+    why = ""
+    new = None
+    if steps_taken == 0:
+        solved, why = pitch_past_clamp_edge(pitch_ratio, metrics)
+        if solved is not None and (solved - pitch_ratio) * direction > 0:
+            new = solved
+        elif solved is not None:
+            why = (
+                f"review clamp geometry points the wrong way "
+                f"(solved {solved} vs {pitch_ratio}); it disagrees with "
+                "the renderer, ignoring it"
+            )
+    if new is None:
+        delta = 0.0 if last_pitch is None else abs(pitch_ratio - last_pitch)
+        delta = max(2 * delta, PITCH_MIN_STEP)
+        new = round(pitch_ratio + direction * delta, 3)
+        why = (why + "; " if why else "") + (
+            f"expansion step {steps_taken + 1}/{PITCH_EXPANSION_STEPS}: "
+            f"{'raising' if direction > 0 else 'lowering'} pitch_ratio by "
+            f"{delta:.3f}"
+        )
+    if not PITCH_BOUNDS[0] <= new <= PITCH_BOUNDS[1]:
+        return None, (
+            f"next step {new} would leave pitch_ratio bounds {PITCH_BOUNDS}"
+        )
+    return new, why
+
+
+def cmd_calibrate(args) -> int:
+    """Solve ocr_cap_height_ratio / pitch_ratio against the gold receipt.
+
+    ``vendor.json`` is the export pin. Every knob the loop solves is written
+    to that pin AND the merchant profile (``_record_calibrated_knob``) so
+    ``cmd_export`` without ``--calibrate-from-corpus`` renders the same
+    values the review just scored.
     """
     v = load_vendor(args.slug)
     with open(PROFILES, encoding="utf-8") as fh:
         typ = json.load(fh)["profiles"][v["merchant"]]["typography"]
     ratio = _export_ocr_cap_pin(v, typ)
+    pitch_ratio = _export_pitch_pin(v, typ)
+    fixture_mode = (
+        args.truth or _truth_env(v, args.truth).get("MERCHANT_TRUTH_MODE")
+    ) == "fixture"
     metrics = _render_review(v, "cal0", args.truth)
+    last_wpc = None
+    last_pitch: float | None = None
+    edge_steps = 0
     for i in range(1, args.iterations + 1):
-        if H_BAND[0] <= metrics["h_ratio"] <= H_BAND[1]:
+        if _in_band(metrics["h_ratio"]) and _in_band(metrics["wpc_ratio"]):
             break
-        # cap_px = median(OCR box heights) * clamp(ratio, 0.65, 0.95): h_ratio
-        # is linear in the ratio, so one solve lands it (the renderer clamps).
-        solved = max(
-            CAP_RATIO_CLAMP[0],
-            min(CAP_RATIO_CLAMP[1], ratio / metrics["h_ratio"]),
+        changed = False
+        wpc_stuck = (
+            last_wpc is not None
+            and abs(metrics["wpc_ratio"] - last_wpc) < 0.005
         )
-        if abs(solved - ratio) < 1e-3:
-            print(
-                f"  ocr_cap_height_ratio is pinned at the renderer clamp {solved}; h_ratio {metrics['h_ratio']:.3f} needs a weight/glyph change, not this knob"
+        if not _in_band(metrics["h_ratio"]):
+            # cap_px = median(OCR box heights) * clamp(ratio, 0.65, 0.95):
+            # h_ratio is linear in the ratio, so one solve lands it (the
+            # renderer clamps).
+            solved = max(
+                CAP_RATIO_CLAMP[0],
+                min(CAP_RATIO_CLAMP[1], ratio / metrics["h_ratio"]),
             )
+            if abs(solved - ratio) < 1e-3:
+                print(
+                    f"  ocr_cap_height_ratio is pinned at the renderer clamp {solved}; h_ratio {metrics['h_ratio']:.3f} needs a weight/glyph change, not this knob"
+                )
+            else:
+                print(
+                    f"  ocr_cap_height_ratio {ratio} -> {solved:.3f} (h_ratio {metrics['h_ratio']:.3f})"
+                )
+                ratio = round(solved, 3)
+                _record_calibrated_knob(v, "ocr_cap_height_ratio", ratio)
+                changed = True
+        if not _in_band(metrics["wpc_ratio"]) and wpc_stuck:
+            # An unmoved re-render is only saturation once the clamp edge
+            # has been crossed; inside the clamp interval the knob is in a
+            # deadband (Codex P2 on #1711). Expand, bounded, then judge.
+            stepped, why = next_pitch_step(
+                pitch_ratio, last_pitch, metrics, edge_steps
+            )
+            edge_steps += 1
+            if stepped is not None and abs(stepped - pitch_ratio) > 1e-9:
+                print(
+                    f"  wpc_ratio unmoved at {metrics['wpc_ratio']:.3f}: {why}; pitch_ratio {pitch_ratio} -> {stepped}"
+                )
+                last_pitch = pitch_ratio
+                pitch_ratio = stepped
+                _record_calibrated_knob(v, "pitch_ratio", pitch_ratio)
+                changed = True
+            else:
+                print(
+                    f"  wpc_ratio did not respond to pitch_ratio (stuck at {metrics['wpc_ratio']:.3f}; {why}); the rendered glyph ink per char is bounded by the cell, not this knob. Leaving pitch_ratio at {pitch_ratio}."
+                )
+        elif not _in_band(metrics["wpc_ratio"]):
+            # Under ocr_font_sizing the grid pitch comes from the OCR word
+            # starts, clamped to profile pitch_ratio x cap x [0.85, 1.15];
+            # font.json condense is inert there. Moving pitch_ratio moves the
+            # clamp floor/ceiling, which is what binds on skewed photos.
+            solved_p = round(pitch_ratio / metrics["wpc_ratio"], 3)
+            print(
+                f"  pitch_ratio {pitch_ratio} -> {solved_p} (wpc_ratio {metrics['wpc_ratio']:.3f})"
+            )
+            last_pitch = pitch_ratio
+            pitch_ratio = solved_p
+            _record_calibrated_knob(v, "pitch_ratio", pitch_ratio)
+            changed = True
+        if not changed:
             break
-        print(
-            f"  ocr_cap_height_ratio {ratio} -> {solved:.3f} (h_ratio {metrics['h_ratio']:.3f})"
-        )
-        ratio = round(solved, 3)
-        _set_profile_knob(v["merchant"], "ocr_cap_height_ratio", ratio)
-        _set_vendor_export_pin(v["slug"], "ocr_cap_height_ratio", ratio)
-        if (
-            args.truth or _truth_env(v, args.truth).get("MERCHANT_TRUTH_MODE")
-        ) == "fixture":
+        if fixture_mode:
             cmd_fixture(argparse.Namespace(slug=v["slug"]))
+        last_wpc = metrics["wpc_ratio"]
         metrics = _render_review(v, f"cal{i}", args.truth)
-    _set_profile_knob(v["merchant"], "ocr_cap_height_ratio", ratio)
-    _set_vendor_export_pin(v["slug"], "ocr_cap_height_ratio", ratio)
     ok = (
         H_BAND[0] <= metrics["h_ratio"] <= H_BAND[1]
         and H_BAND[0] <= metrics["wpc_ratio"] <= H_BAND[1]
@@ -1022,9 +1211,9 @@ def cmd_calibrate(args) -> int:
         print(
             f"  density high: lower font.json params.weight (~x{1 / metrics['density_ratio']:.2f}) or raise profile bitmap_thin; rerun `pitch`, `fixture`, `calibrate`"
         )
-    if not H_BAND[0] <= metrics["wpc_ratio"] <= H_BAND[1]:
+    if not _in_band(metrics["wpc_ratio"]):
         print(
-            f"  wpc off: adjust font.json preview.condense by x{1 / metrics['wpc_ratio']:.3f}"
+            f"  wpc still off after {args.iterations} iterations (pitch_ratio now {pitch_ratio}); check the gold receipt's OCR word boxes for skew"
         )
     print(f"  scorecard: {metrics['scorecard']}")
     return 0 if ok else 1
@@ -1064,8 +1253,12 @@ def cmd_export(args) -> int:
         cmd.append("--finale-only")
     elif os.path.exists(_refined_npz(v)):
         cmd += ["--corpus", _refined_npz(v)]
-    if v.get("logo"):
-        cmd += ["--logo", os.path.join(_ROOT, v["logo"])]
+    # `logo` is the print's own wordmark (renderer logo band + card);
+    # `card_logo` is a card-only mark for vendors whose print carries no
+    # logo graphic (Speedway, Burritt's) so the finale card still has one.
+    card_logo = v.get("card_logo") or v.get("logo")
+    if card_logo:
+        cmd += ["--logo", os.path.join(_ROOT, card_logo)]
     _clear_render_cache(v)
     text = _run(cmd, env=_sub_env(_truth_env(v, args.truth)), capture=True)
     sys.stdout.write(text)
@@ -1202,7 +1395,14 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("--label", help="finale card label")
     i.add_argument("--callout", help="act-4 bold weight callout")
     i.add_argument(
-        "--logo", help="black-on-white L-mode wordmark PNG (repo path)"
+        "--logo",
+        help="black-on-white L-mode wordmark PNG (repo path) that the PRINT "
+        "carries -> renderer logo band + finale card",
+    )
+    i.add_argument(
+        "--card-logo",
+        help="card-only wordmark PNG for prints with no logo graphic "
+        "(no renderer band)",
     )
     i.add_argument(
         "--footer-codes",

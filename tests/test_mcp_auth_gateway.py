@@ -106,6 +106,25 @@ def test_gateway_uses_separate_cognito_scopes():
     assert "oauth-protected-resource" in source
 
 
+def test_gateway_exposes_email_replica_as_its_own_scope():
+    """The email-receipt read replica is a separate Cognito scope and a
+    separate zip Lambda; it never shares the receipt scope or container."""
+    source = (REPO_ROOT / "infra/mcp_auth_gateway.py").read_text()
+    inbox = (
+        REPO_ROOT / "infra/email_receipt_inbox/infrastructure.py"
+    ).read_text()
+    assert "email_lambda: Optional[aws.lambda_.Function] = None" in source
+    assert '"Read the email-receipt replica"' in source
+    assert 'route_urls["email"] = self.email_url' in source
+    assert 'handler="mcp.lambda_handler"' in inbox
+    # The Lambda's role reads the agent-safe projection prefix only: never
+    # raw/ mail and never the full replica/.
+    assert 'f"{bucket_arn}/{PROJECTION_PREFIX}*"' in inbox
+    mcp_section = inbox.split("projection MCP Lambda")[1]
+    assert '"raw/*"' not in mcp_section
+    assert "REPLICA_PREFIX" not in mcp_section
+
+
 def test_ats_machine_auth_is_rotated_and_monitored():
     source = (REPO_ROOT / "infra/mcp_auth_gateway.py").read_text()
     rotation = (
