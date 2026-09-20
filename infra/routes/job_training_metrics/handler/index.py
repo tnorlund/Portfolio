@@ -51,9 +51,7 @@ def _job_has_visualization_metrics(
     empty loading shell.
     """
     for metric_name in ("val_f1", "confusion_matrix"):
-        metrics, _ = client.list_job_metrics(
-            job_id, metric_name=metric_name
-        )
+        metrics, _ = client.list_job_metrics(job_id, metric_name=metric_name)
 
         if not any(m.epoch is not None for m in metrics):
             logger.info(
