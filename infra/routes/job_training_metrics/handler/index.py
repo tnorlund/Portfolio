@@ -202,9 +202,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         return _success_response(response_body)
 
-    except Exception as e:
+    except Exception:
         logger.exception("Error processing request")
-        return _error_response(500, str(e))
+        raise
 
 
 def _fetch_all_metrics(client: DynamoClient, job_id: str) -> Dict[str, List]:
