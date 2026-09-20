@@ -355,3 +355,18 @@ def test_rows_without_measured_amount_column_keep_the_ocr_lane():
         assert right == pytest.approx(ocr_lane_px, abs=1.0), (text, right)
     assert len(set(rights.values())) == 1, rights
     assert rights["12.99"] < boxes["45.00"]["px"][2] - spec.cell_w
+
+
+def test_unmeasured_section_keeps_ocr_lane_not_other_section_x():
+    spec = GridSpec(cell_w=10.0, cell_h=20.0, font_px=16, grid_left=10.0)
+    ocr_lane = 50
+    items = [{"role": "amount", "anchor": "right", "x": 0.9399}]
+    footer = [{"role": "desc", "anchor": "left", "x": 0.02}]
+    items_lane = receipt_grid.prefer_measured_amount_lane(
+        ocr_lane, items, spec, 760.0
+    )
+    footer_lane = receipt_grid.prefer_measured_amount_lane(
+        ocr_lane, footer, spec, 760.0
+    )
+    assert items_lane != ocr_lane
+    assert footer_lane == ocr_lane
