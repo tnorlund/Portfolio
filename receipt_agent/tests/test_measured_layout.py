@@ -13,9 +13,11 @@ from receipt_agent.agents.label_evaluator.rendering import (
 from receipt_agent.agents.label_evaluator.rendering.receipt_grid import (
     GridSpec,
     GridWord,
+    amount_lane_end,
     build_grid_spec,
     draw_grid_line,
     effective_canonical_row_sections,
+    glyph_advance,
     plan_grid_line,
 )
 
@@ -298,11 +300,11 @@ def _render_words(words, template, *, width=760, height=1000):
 def test_rows_without_measured_amount_column_keep_the_ocr_lane():
     """Only the section that measured an amount column snaps to its x.
 
-    Default grid: cell_w 9.25px on a 760-wide canvas, so one grid cell is
-    12.5 source units and a source right edge of ``col * 12.5`` lands on
-    column ``col``. Three item prices jitter over columns 74/75/75 (OCR
-    lane = 75); the total_line template measured its amount edge at 0.95
-    of the paper (column ~77), within snap tolerance of every price.
+    ``render_receipt`` sets ``cell_w`` from the loaded face advance, not
+    the profile fallback 9.25. Item prices jitter across neighbouring
+    OCR columns and unify on that median lane; the total_line template's
+    amount edge at 0.95 of the paper is further right, within snap
+    tolerance of every price.
     """
 
     def word(text, x0, y_top, x1, labels=()):
@@ -334,21 +336,44 @@ def test_rows_without_measured_amount_column_keep_the_ocr_lane():
         },
     }
     boxes = _render_words(words, template)
-    spec = build_grid_spec(
-        None,
-        760 - 20,
-        1000 - 20,
-        receipt_renderer.RenderConfig(margin=10, width=760, height=1000),
+    config = receipt_renderer.RenderConfig(
+        margin=10, width=760, height=1000, grid_mode=True
     )
-    assert spec.cell_w == pytest.approx(9.25)
+    inner_w = config.width - 2 * config.margin
+    inner_h = config.height - 2 * config.margin
+    sizing = build_grid_spec(None, inner_w, inner_h, config)
+    font = receipt_renderer._load_grid_font(sizing.font_px, config)
+    advance = glyph_advance(
+        ImageDraw.Draw(Image.new("RGB", (8, 8), "white")), font
+    ) * float(config.condense)
+    spec = build_grid_spec(
+        None, inner_w, inner_h, config, char_advance_px=advance
+    )
 
     # the measured section sits on its template edge (quarter-cell bearing)
     assert boxes["45.00"]["px"][2] == pytest.approx(
         0.95 * 760 - 0.25 * spec.cell_w, abs=0.5
     )
-    # item rows have no measured column: they unify on the OCR-median lane
-    # (column 75), not on the total_line template edge
-    ocr_lane_px = spec.grid_left + 75 * spec.cell_w
+
+    # item rows have no measured column: they unify on the OCR-median lane,
+    # not on the total_line template edge
+    scale = 1000.0
+    item_rights_src = (925.0, 937.5, 937.5)
+    item_rights_px = tuple(
+        config.margin + (x1 / scale) * inner_w for x1 in item_rights_src
+    )
+    ocr_lane = amount_lane_end(
+        [
+            [
+                _word("12.99", 0, item_rights_px[0]),
+                _word("3.49", 0, item_rights_px[1]),
+                _word("7.25", 0, item_rights_px[2]),
+            ]
+        ],
+        spec,
+    )
+    assert ocr_lane is not None
+    ocr_lane_px = spec.grid_left + ocr_lane * spec.cell_w
     rights = {t: boxes[t]["px"][2] for t in ("12.99", "3.49", "7.25")}
     for text, right in rights.items():
         # render-true boxes are integer px: allow the floor
