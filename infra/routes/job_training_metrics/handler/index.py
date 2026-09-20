@@ -39,10 +39,49 @@ FEATURED_JOB_ID = os.environ.get(
 )
 
 
+def _job_has_visualization_metrics(
+    client: "DynamoClient", job_id: str
+) -> bool:
+    """Return whether a job can drive the training-metrics visualization.
+
+    The receipt page needs both per-epoch F1 values (for the convergence
+    sparkline) and confusion matrices. New training jobs can appear in the
+    Job table before those JobMetric rows have been copied to the environment
+    serving the portfolio, so selecting by version alone can strand prod on an
+    empty loading shell.
+    """
+    for metric_name in ("val_f1", "confusion_matrix"):
+        try:
+            metrics, _ = client.list_job_metrics(
+                job_id, metric_name=metric_name
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            logger.exception(
+                "Failed checking %s metrics for job %s",
+                metric_name,
+                job_id,
+            )
+            return False
+
+        if not any(m.epoch is not None for m in metrics):
+            logger.info(
+                "Skipping job %s: no per-epoch %s metrics",
+                job_id,
+                metric_name,
+            )
+            return False
+
+    return True
+
+
 def _resolve_newest_layoutlm_job(client: "DynamoClient") -> Optional[str]:
-    """Return the job_id of the newest ``layoutlm-vNN`` run (highest version),
-    so the confusion matrix tracks the SAME model the inference viz auto-picks.
-    Falls back to None on any error (caller then uses FEATURED_JOB_ID)."""
+    """Return the newest ``layoutlm-vNN`` run that is ready for the viz.
+
+    A Job row may exist before its training metrics are available in the
+    current environment. Only promote the newest run when it has both the F1
+    timeline and confusion-matrix data required by the receipt page. Otherwise
+    return None so the caller falls back to FEATURED_JOB_ID.
+    """
     try:
         jobs, _ = client.list_jobs(limit=500)
     except Exception:  # pylint: disable=broad-exception-caught
@@ -56,8 +95,18 @@ def _resolve_newest_layoutlm_job(client: "DynamoClient") -> Optional[str]:
     cands = [j for j in jobs if vnum(getattr(j, "name", "")) >= 0]
     if not cands:
         return None
+
     best = max(cands, key=lambda j: (vnum(j.name), j.created_at or ""))
-    logger.info("Newest layoutlm job: %s (%s)", best.name, best.job_id)
+    if not _job_has_visualization_metrics(client, best.job_id):
+        logger.warning(
+            "Newest layoutlm job %s (%s) is missing visualization metrics; "
+            "falling back to FEATURED_JOB_ID",
+            best.name,
+            best.job_id,
+        )
+        return None
+
+    logger.info("Newest ready layoutlm job: %s (%s)", best.name, best.job_id)
     return best.job_id
 
 
