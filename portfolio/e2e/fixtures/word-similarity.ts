@@ -68,14 +68,12 @@ export const mockWordSimilarityResponse: MilkSimilarityResponse = {
   ],
   cached_at: "2025-01-20T00:00:00Z",
   timing: {
-    chromadb_init_ms: 100,
-    chromadb_fetch_all_ms: 200,
+    // Shape the cache generator has emitted since the Chroma teardown
+    line_fetch_all_ms: 300,
     filter_lines_ms: 5,
     dynamo_fetch_total_ms: 500,
     total_ms: 850,
     parallel_workers: 50,
-    use_chroma_cloud: true,
-    cloud_connect_ms: 50,
   },
   grand_total: 21.47,
   commentary:
