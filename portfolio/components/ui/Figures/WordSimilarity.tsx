@@ -643,6 +643,40 @@ const getPieSlicePath = (progress: number, cx: number, cy: number, r: number): s
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
 };
 
+export type TimingStep = { name: string; ms: number; color: string };
+
+/**
+ * Build the timing bar segments from whichever fields the cache generator
+ * emitted. The generator stopped writing the Chroma fields when Chroma was
+ * removed (#1576); the prod cache regenerated with the new shape on
+ * 2026-09-19 and every missing field used to reach `toFixed` as undefined.
+ * Only finite, positive numbers become segments.
+ */
+export const buildTimingSteps = (timing: MilkSimilarityTiming): TimingStep[] => {
+  const candidates: Array<[string, number | undefined, string]> = [
+    ["S3 Download", timing.use_chroma_cloud ? undefined : timing.s3_download_ms, "var(--color-green)"],
+    ["Open Chroma", timing.chromadb_init_ms, "var(--color-blue)"],
+    ["Chroma Fetch", timing.chromadb_fetch_all_ms, "var(--color-purple)"],
+    ["Fetch Lines", timing.line_fetch_all_ms, "var(--color-blue)"],
+    ["Filter Lines", timing.filter_lines_ms, "var(--color-purple)"],
+    ["Fetch Receipts", timing.dynamo_fetch_total_ms, "var(--color-orange)"],
+  ];
+  const steps: TimingStep[] = [];
+  for (const [name, ms, color] of candidates) {
+    if (typeof ms === "number" && Number.isFinite(ms) && ms > 0) {
+      steps.push({ name, ms, color });
+    }
+  }
+  // Remaining time (finalization, upload, processing)
+  const total = Number.isFinite(timing.total_ms) ? timing.total_ms : 0;
+  const accounted = steps.reduce((sum, step) => sum + step.ms, 0);
+  const otherTime = total - accounted;
+  if (otherTime > 0) {
+    steps.push({ name: "Finalize", ms: otherTime, color: "var(--color-red)" });
+  }
+  return steps;
+};
+
 /**
  * Component that displays the timing breakdown for cache generation.
  */
@@ -691,6 +725,7 @@ const TimingBreakdown: React.FC<{
   }, [animationDuration, hasAnimated]);
 
   const formatMs = (ms: number): string => {
+    if (!Number.isFinite(ms)) return "—";
     if (ms >= 1000) {
       return `${(ms / 1000).toFixed(2)}s`;
     }
@@ -698,29 +733,11 @@ const TimingBreakdown: React.FC<{
   };
 
   const calculatePercent = (ms: number): string => {
+    if (!Number.isFinite(ms) || !timing.total_ms) return "—";
     return `${((ms / timing.total_ms) * 100).toFixed(1)}%`;
   };
 
-  // Build timing steps using CSS color variables
-  const steps: Array<{ name: string; ms: number; color: string }> = [];
-
-  // Only show S3 Download for legacy S3 mode
-  if (!timing.use_chroma_cloud && timing.s3_download_ms !== undefined) {
-    steps.push({ name: "S3 Download", ms: timing.s3_download_ms, color: "var(--color-green)" });
-  }
-
-  steps.push(
-    { name: "Open Chroma", ms: timing.chromadb_init_ms, color: "var(--color-blue)" },
-    { name: "Chroma Fetch", ms: timing.chromadb_fetch_all_ms, color: "var(--color-purple)" },
-    { name: "Fetch Receipts", ms: timing.dynamo_fetch_total_ms, color: "var(--color-orange)" },
-  );
-
-  // Calculate remaining time (finalization, upload, processing)
-  const accountedTime = steps.reduce((sum, step) => sum + step.ms, 0);
-  const otherTime = timing.total_ms - accountedTime;
-  if (otherTime > 0) {
-    steps.push({ name: "Finalize", ms: otherTime, color: "var(--color-red)" });
-  }
+  const steps = buildTimingSteps(timing);
 
   // Calculate cumulative percentages for each step
   const stepsWithCumulative = steps.map((step, index) => {

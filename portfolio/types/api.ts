@@ -332,13 +332,15 @@ export interface MilkSimilarityTiming {
   // Chroma Cloud mode - present when use_chroma_cloud is true
   cloud_connect_ms?: number;
   use_chroma_cloud?: boolean;
-  // Common fields
-  chromadb_init_ms: number;
-  chromadb_fetch_all_ms: number;
-  filter_lines_ms: number;
-  dynamo_fetch_total_ms: number;
+  // Chroma-era fields; absent since the Chroma teardown (#1576)
+  chromadb_init_ms?: number;
+  chromadb_fetch_all_ms?: number;
+  // DynamoDB vector-search fields (current cache generator)
+  line_fetch_all_ms?: number;
+  filter_lines_ms?: number;
+  dynamo_fetch_total_ms?: number;
   total_ms: number;
-  parallel_workers: number;
+  parallel_workers?: number;
   dynamo_details?: {
     avg_ms: number;
     min_ms: number;
