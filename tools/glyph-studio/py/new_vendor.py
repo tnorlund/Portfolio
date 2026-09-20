@@ -939,10 +939,17 @@ def _render_review(
         sys.stdout.write(text)
         raise SystemExit("could not parse the glyph_review metrics line")
     print("  " + line)
+    # Optional read-back of the renderer's advance-clamp geometry: the OCR
+    # word-start pitch (its measured advance) and the rendered cap height
+    # (its cap_px), both in synth pixels. Missing/zero -> None.
+    pitch_px = re.search(r"ocr_pitch_med=([\d.]+)", line)
+    cap_px = re.search(r"synth_h_med=([\d.]+)", line)
     return {
         "h_ratio": float(m.group(1)),
         "wpc_ratio": float(w2.group(1)) / float(w1.group(1)),
         "density_ratio": float(dr.group(1)),
+        "ocr_pitch_px": float(pitch_px.group(1)) if pitch_px else None,
+        "synth_cap_px": float(cap_px.group(1)) if cap_px else None,
         "png": out,
         "scorecard": out.replace(".png", ".scorecard.md"),
     }
@@ -961,6 +968,58 @@ def _in_band(x: float) -> bool:
     return H_BAND[0] <= x <= H_BAND[1]
 
 
+# receipt_renderer: the grid advance is clamped to pitch_ratio x cap x this.
+PITCH_CLAMP = (0.85, 1.15)
+PITCH_EDGE_MARGIN = 0.02
+
+
+def pitch_past_clamp_edge(
+    pitch_ratio: float,
+    last_pitch: float | None,
+    metrics: dict[str, Any],
+) -> tuple[float | None, str]:
+    """A pitch_ratio that provably moves the renderer's grid advance.
+
+    Under ocr_font_sizing the advance is the measured OCR word-start pitch
+    clamped to ``pitch_ratio * cap_px * [0.85, 1.15]``. While the measured
+    advance lies INSIDE that interval the clamp is inert and a small
+    pitch_ratio move changes nothing -- a deadband, not saturation. Solve for
+    the pitch whose clamp EDGE lands the advance on target (wpc 1.0):
+    for wpc low the floor must rise above the measured advance,
+    ``pitch > measured / (0.85 * cap)``; for wpc high the ceiling must drop
+    below it, ``pitch < measured / (1.15 * cap)``. The result always clears
+    the edge by ``PITCH_EDGE_MARGIN``. Without the geometry in the review
+    metrics, fall back to doubling the last pitch step once.
+
+    Returns ``(new_pitch or None, why)``.
+    """
+    wpc = float(metrics["wpc_ratio"])
+    measured = metrics.get("ocr_pitch_px") or 0.0
+    cap = metrics.get("synth_cap_px") or 0.0
+    if measured > 0 and cap > 0:
+        lo, hi = PITCH_CLAMP
+        if wpc < H_BAND[0]:
+            edge = measured / (lo * cap)
+            target = measured / (wpc * lo * cap)
+            new = max(target, edge * (1 + PITCH_EDGE_MARGIN))
+        else:
+            edge = measured / (hi * cap)
+            target = measured / (wpc * hi * cap)
+            new = min(target, edge * (1 - PITCH_EDGE_MARGIN))
+        return round(new, 3), (
+            f"measured advance {measured:.2f}px sits inside the clamp "
+            f"[{pitch_ratio * lo * cap:.2f}, {pitch_ratio * hi * cap:.2f}]px "
+            f"(deadband); clamp edge at pitch_ratio {edge:.3f}"
+        )
+    if last_pitch is not None and abs(pitch_ratio - last_pitch) > 1e-9:
+        new = round(pitch_ratio + 2 * (pitch_ratio - last_pitch), 3)
+        return new, (
+            "no clamp geometry in the review metrics; doubling the last "
+            "pitch_ratio step once before calling it saturated"
+        )
+    return None, "no clamp geometry and no previous pitch_ratio step"
+
+
 def cmd_calibrate(args) -> int:
     v = load_vendor(args.slug)
     with open(PROFILES, encoding="utf-8") as fh:
@@ -972,6 +1031,8 @@ def cmd_calibrate(args) -> int:
     ) == "fixture"
     metrics = _render_review(v, "cal0", args.truth)
     last_wpc = None
+    last_pitch: float | None = None
+    edge_step_done = False
     for i in range(1, args.iterations + 1):
         if _in_band(metrics["h_ratio"]) and _in_band(metrics["wpc_ratio"]):
             break
@@ -1000,9 +1061,27 @@ def cmd_calibrate(args) -> int:
                 _set_profile_knob(v["merchant"], "ocr_cap_height_ratio", ratio)
                 changed = True
         if not _in_band(metrics["wpc_ratio"]) and wpc_stuck:
-            print(
-                f"  wpc_ratio did not respond to pitch_ratio (stuck at {metrics['wpc_ratio']:.3f}); the rendered glyph ink per char is bounded by the cell, not this knob. Leaving pitch_ratio at {pitch_ratio}."
+            # An unmoved re-render is only saturation once the clamp edge
+            # has been crossed; inside the clamp interval the knob is in a
+            # deadband (Codex P2 on #1711). Cross the edge once, then judge.
+            stepped, why = (
+                (None, "already stepped past the clamp edge")
+                if edge_step_done
+                else pitch_past_clamp_edge(pitch_ratio, last_pitch, metrics)
             )
+            edge_step_done = True
+            if stepped is not None and abs(stepped - pitch_ratio) > 1e-9:
+                print(
+                    f"  wpc_ratio unmoved at {metrics['wpc_ratio']:.3f}: {why}; pitch_ratio {pitch_ratio} -> {stepped}"
+                )
+                last_pitch = pitch_ratio
+                pitch_ratio = stepped
+                _set_profile_knob(v["merchant"], "pitch_ratio", pitch_ratio)
+                changed = True
+            else:
+                print(
+                    f"  wpc_ratio did not respond to pitch_ratio (stuck at {metrics['wpc_ratio']:.3f}; {why}); the rendered glyph ink per char is bounded by the cell, not this knob. Leaving pitch_ratio at {pitch_ratio}."
+                )
         elif not _in_band(metrics["wpc_ratio"]):
             # Under ocr_font_sizing the grid pitch comes from the OCR word
             # starts, clamped to profile pitch_ratio x cap x [0.85, 1.15];
@@ -1012,6 +1091,7 @@ def cmd_calibrate(args) -> int:
             print(
                 f"  pitch_ratio {pitch_ratio} -> {solved_p} (wpc_ratio {metrics['wpc_ratio']:.3f})"
             )
+            last_pitch = pitch_ratio
             pitch_ratio = solved_p
             _set_profile_knob(v["merchant"], "pitch_ratio", pitch_ratio)
             changed = True
