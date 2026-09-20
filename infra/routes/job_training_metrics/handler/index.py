@@ -51,17 +51,7 @@ def _job_has_visualization_metrics(
     empty loading shell.
     """
     for metric_name in ("val_f1", "confusion_matrix"):
-        try:
-            metrics, _ = client.list_job_metrics(
-                job_id, metric_name=metric_name
-            )
-        except Exception:  # pylint: disable=broad-exception-caught
-            logger.exception(
-                "Failed checking %s metrics for job %s",
-                metric_name,
-                job_id,
-            )
-            return False
+        metrics, _ = client.list_job_metrics(job_id, metric_name=metric_name)
 
         if not any(m.epoch is not None for m in metrics):
             logger.info(
@@ -82,11 +72,7 @@ def _resolve_newest_layoutlm_job(client: "DynamoClient") -> Optional[str]:
     timeline and confusion-matrix data required by the receipt page. Otherwise
     return None so the caller falls back to FEATURED_JOB_ID.
     """
-    try:
-        jobs, _ = client.list_jobs(limit=500)
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.exception("list_jobs failed; falling back to FEATURED_JOB_ID")
-        return None
+    jobs, _ = client.list_jobs(limit=500)
 
     def vnum(name: Optional[str]) -> int:
         m = re.search(r"-v(\d+)", name or "")
@@ -214,9 +200,9 @@ def handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
 
         return _success_response(response_body)
 
-    except Exception as e:
+    except Exception:
         logger.exception("Error processing request")
-        return _error_response(500, str(e))
+        raise
 
 
 def _fetch_all_metrics(client: DynamoClient, job_id: str) -> Dict[str, List]:
