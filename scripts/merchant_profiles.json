@@ -463,14 +463,15 @@
      "regular": "gelsons.glyphs.npz",
      "heavy": "gelsons-heavy.glyphs.npz"
     },
-    "condense": 0.9139,
-    "pitch_ratio": 0.5255,
+    "condense": 0.936,
+    "pitch_ratio": 0.501,
     "stylemap": "gelsons.stylemap.json",
     "bitmap_cap_ratio": 0.66,
     "ocr_font_sizing": true,
-    "ocr_cap_height_ratio": 0.649,
+    "ocr_cap_height_ratio": 0.748,
     "mixed_layout": true,
-    "bitmap_thin": 0.0
+    "bitmap_thin": 0.0,
+    "font": "PTMONO"
    },
    "logo": "gelsons_logo.png",
    "graphics": {
@@ -689,6 +690,16 @@
       "pos_frac_med": 0.939
      }
     ]
+   },
+   "aliases": [],
+   "logo_anchor": {
+    "phrases": [
+     "GELSON'S",
+     "GELSONS",
+     "Gelson's"
+    ],
+    "extend_left": false,
+    "center": true
    }
   },
   "Trader Joe's": {
