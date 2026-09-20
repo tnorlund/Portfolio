@@ -971,53 +971,97 @@ def _in_band(x: float) -> bool:
 # receipt_renderer: the grid advance is clamped to pitch_ratio x cap x this.
 PITCH_CLAMP = (0.85, 1.15)
 PITCH_EDGE_MARGIN = 0.02
+# Bounded expansion when a re-render is unmoved: at most this many steps,
+# never outside these pitch_ratio bounds; only then is it saturation.
+PITCH_EXPANSION_STEPS = 4
+PITCH_BOUNDS = (0.3, 1.2)
+PITCH_MIN_STEP = 0.02
 
 
 def pitch_past_clamp_edge(
-    pitch_ratio: float,
-    last_pitch: float | None,
-    metrics: dict[str, Any],
+    pitch_ratio: float, metrics: dict[str, Any]
 ) -> tuple[float | None, str]:
-    """A pitch_ratio that provably moves the renderer's grid advance.
+    """A pitch_ratio whose clamp EDGE lands the advance on target.
 
     Under ocr_font_sizing the advance is the measured OCR word-start pitch
     clamped to ``pitch_ratio * cap_px * [0.85, 1.15]``. While the measured
     advance lies INSIDE that interval the clamp is inert and a small
-    pitch_ratio move changes nothing -- a deadband, not saturation. Solve for
-    the pitch whose clamp EDGE lands the advance on target (wpc 1.0):
-    for wpc low the floor must rise above the measured advance,
+    pitch_ratio move changes nothing -- a deadband, not saturation. For wpc
+    low the floor must rise above the measured advance,
     ``pitch > measured / (0.85 * cap)``; for wpc high the ceiling must drop
-    below it, ``pitch < measured / (1.15 * cap)``. The result always clears
-    the edge by ``PITCH_EDGE_MARGIN``. Without the geometry in the review
-    metrics, fall back to doubling the last pitch step once.
-
-    Returns ``(new_pitch or None, why)``.
+    below it, ``pitch < measured / (1.15 * cap)``; the solve lands wpc on
+    1.0 and always clears the edge by ``PITCH_EDGE_MARGIN``. The geometry
+    comes from the review metrics (ocr_pitch_med, synth_h_med), which only
+    approximate the renderer's own numbers; ``None`` when it is missing.
     """
     wpc = float(metrics["wpc_ratio"])
     measured = metrics.get("ocr_pitch_px") or 0.0
     cap = metrics.get("synth_cap_px") or 0.0
-    if measured > 0 and cap > 0:
-        lo, hi = PITCH_CLAMP
-        if wpc < H_BAND[0]:
-            edge = measured / (lo * cap)
-            target = measured / (wpc * lo * cap)
-            new = max(target, edge * (1 + PITCH_EDGE_MARGIN))
-        else:
-            edge = measured / (hi * cap)
-            target = measured / (wpc * hi * cap)
-            new = min(target, edge * (1 - PITCH_EDGE_MARGIN))
-        return round(new, 3), (
-            f"measured advance {measured:.2f}px sits inside the clamp "
-            f"[{pitch_ratio * lo * cap:.2f}, {pitch_ratio * hi * cap:.2f}]px "
-            f"(deadband); clamp edge at pitch_ratio {edge:.3f}"
+    if not (measured > 0 and cap > 0):
+        return None, "no clamp geometry in the review metrics"
+    lo, hi = PITCH_CLAMP
+    if wpc < H_BAND[0]:
+        edge = measured / (lo * cap)
+        target = measured / (wpc * lo * cap)
+        new = max(target, edge * (1 + PITCH_EDGE_MARGIN))
+    else:
+        edge = measured / (hi * cap)
+        target = measured / (wpc * hi * cap)
+        new = min(target, edge * (1 - PITCH_EDGE_MARGIN))
+    return round(new, 3), (
+        f"measured advance {measured:.2f}px sits inside the clamp "
+        f"[{pitch_ratio * lo * cap:.2f}, {pitch_ratio * hi * cap:.2f}]px "
+        f"(deadband); clamp edge at pitch_ratio {edge:.3f}"
+    )
+
+
+def next_pitch_step(
+    pitch_ratio: float,
+    last_pitch: float | None,
+    metrics: dict[str, Any],
+    steps_taken: int,
+) -> tuple[float | None, str]:
+    """The next pitch_ratio to try after an unmoved re-render, or None.
+
+    Step one is the clamp-edge solve when the review carries usable
+    geometry and it points the way wpc says (a review pitch that disagrees
+    with the renderer's, e.g. a sparse receipt where the renderer fell back
+    to box widths, can point the wrong way; it is then ignored). Every
+    further step doubles the last pitch delta in the direction wpc needs.
+    Saturation is declared -- ``None`` -- only once ``PITCH_EXPANSION_STEPS``
+    are spent or the next step would leave ``PITCH_BOUNDS``.
+    """
+    if steps_taken >= PITCH_EXPANSION_STEPS:
+        return None, (
+            f"{PITCH_EXPANSION_STEPS} expansion steps did not move the render"
         )
-    if last_pitch is not None and abs(pitch_ratio - last_pitch) > 1e-9:
-        new = round(pitch_ratio + 2 * (pitch_ratio - last_pitch), 3)
-        return new, (
-            "no clamp geometry in the review metrics; doubling the last "
-            "pitch_ratio step once before calling it saturated"
+    direction = 1.0 if float(metrics["wpc_ratio"]) < H_BAND[0] else -1.0
+    why = ""
+    new = None
+    if steps_taken == 0:
+        solved, why = pitch_past_clamp_edge(pitch_ratio, metrics)
+        if solved is not None and (solved - pitch_ratio) * direction > 0:
+            new = solved
+        elif solved is not None:
+            why = (
+                f"review clamp geometry points the wrong way "
+                f"(solved {solved} vs {pitch_ratio}); it disagrees with "
+                "the renderer, ignoring it"
+            )
+    if new is None:
+        delta = 0.0 if last_pitch is None else abs(pitch_ratio - last_pitch)
+        delta = max(2 * delta, PITCH_MIN_STEP)
+        new = round(pitch_ratio + direction * delta, 3)
+        why = (why + "; " if why else "") + (
+            f"expansion step {steps_taken + 1}/{PITCH_EXPANSION_STEPS}: "
+            f"{'raising' if direction > 0 else 'lowering'} pitch_ratio by "
+            f"{delta:.3f}"
         )
-    return None, "no clamp geometry and no previous pitch_ratio step"
+    if not PITCH_BOUNDS[0] <= new <= PITCH_BOUNDS[1]:
+        return None, (
+            f"next step {new} would leave pitch_ratio bounds {PITCH_BOUNDS}"
+        )
+    return new, why
 
 
 def cmd_calibrate(args) -> int:
@@ -1032,7 +1076,7 @@ def cmd_calibrate(args) -> int:
     metrics = _render_review(v, "cal0", args.truth)
     last_wpc = None
     last_pitch: float | None = None
-    edge_step_done = False
+    edge_steps = 0
     for i in range(1, args.iterations + 1):
         if _in_band(metrics["h_ratio"]) and _in_band(metrics["wpc_ratio"]):
             break
@@ -1063,13 +1107,11 @@ def cmd_calibrate(args) -> int:
         if not _in_band(metrics["wpc_ratio"]) and wpc_stuck:
             # An unmoved re-render is only saturation once the clamp edge
             # has been crossed; inside the clamp interval the knob is in a
-            # deadband (Codex P2 on #1711). Cross the edge once, then judge.
-            stepped, why = (
-                (None, "already stepped past the clamp edge")
-                if edge_step_done
-                else pitch_past_clamp_edge(pitch_ratio, last_pitch, metrics)
+            # deadband (Codex P2 on #1711). Expand, bounded, then judge.
+            stepped, why = next_pitch_step(
+                pitch_ratio, last_pitch, metrics, edge_steps
             )
-            edge_step_done = True
+            edge_steps += 1
             if stepped is not None and abs(stepped - pitch_ratio) > 1e-9:
                 print(
                     f"  wpc_ratio unmoved at {metrics['wpc_ratio']:.3f}: {why}; pitch_ratio {pitch_ratio} -> {stepped}"

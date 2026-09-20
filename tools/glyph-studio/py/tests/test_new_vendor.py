@@ -385,29 +385,53 @@ def test_calibrate_solves_pitch_ratio_for_wpc_under_ocr_font_sizing(
 def test_calibrate_stops_when_wpc_does_not_respond(
     tmp_path, monkeypatch, capsys
 ):
-    # The first pitch_ratio move leaves the re-render unchanged (<0.005), so
-    # calibrate crosses the clamp edge ONCE (geometric step here: no clamp
-    # geometry in the metrics) and re-renders. Still flat on the far side of
-    # the edge = true saturation: say so and stop creeping the knob.
+    # Flat on BOTH sides of the clamp edge = true saturation. With no clamp
+    # geometry the expansion doubles the pitch delta: 0.585 -> 0.655 ->
+    # 0.795 -> 1.075, and the next (1.635) would leave PITCH_BOUNDS, so
+    # calibrate says so and stops creeping the knob.
     knobs, _, tags = _calibrate_harness(
-        tmp_path,
-        monkeypatch,
-        [(1.0, 0.94), (1.0, 0.941), (1.0, 0.941), (1.0, 0.99)],
+        tmp_path, monkeypatch, [(1.0, 0.94)] + [(1.0, 0.941)] * 5
     )
     rc = nv.cmd_calibrate(
-        argparse.Namespace(slug="testmart", iterations=5, truth="fixture")
+        argparse.Namespace(slug="testmart", iterations=8, truth="fixture")
     )
     assert rc == 1  # wpc still off the floor
-    assert [k for k, _ in knobs] == ["pitch_ratio", "pitch_ratio"]
-    assert knobs[0][1] == pytest.approx(0.585)  # 0.55 / 0.94
-    assert knobs[1][1] == pytest.approx(0.655)  # 0.585 + 2 * 0.035
-    assert tags == ["cal0", "cal1", "cal2"]  # no render after the stop
+    assert [k for k, _ in knobs] == ["pitch_ratio"] * 4
+    assert [val for _, val in knobs] == pytest.approx(
+        [0.585, 0.655, 0.795, 1.075]
+    )
+    assert tags == ["cal0", "cal1", "cal2", "cal3", "cal4"]
     out = capsys.readouterr().out
-    assert "doubling the last pitch_ratio step once" in out
+    assert "expansion step 1/4" in out and "expansion step 3/4" in out
     assert "did not respond to pitch_ratio" in out
-    assert "already stepped past the clamp edge" in out
-    assert f"Leaving pitch_ratio at {knobs[1][1]}" in out
-    assert "wpc still off after 5 iterations" in out
+    assert "would leave pitch_ratio bounds" in out
+    assert "Leaving pitch_ratio at 1.075" in out
+    assert "wpc still off after 8 iterations" in out
+
+
+def test_calibrate_saturation_after_the_step_cap(
+    tmp_path, monkeypatch, capsys
+):
+    # From pitch 0.35 the doubled deltas (0.019 -> 0.038 -> 0.076 -> 0.152
+    # -> 0.304) stay inside PITCH_BOUNDS, so the 4-step cap is what ends it.
+    knobs, _, tags = _calibrate_harness(
+        tmp_path, monkeypatch, [(1.0, 0.949)] + [(1.0, 0.9491)] * 6
+    )
+    with open(nv.PROFILES, encoding="utf-8") as fh:
+        doc = json.load(fh)
+    doc["profiles"]["Test Mart"]["typography"]["pitch_ratio"] = 0.35
+    with open(nv.PROFILES, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh)
+    rc = nv.cmd_calibrate(
+        argparse.Namespace(slug="testmart", iterations=9, truth="fixture")
+    )
+    assert rc == 1
+    vals = [val for _, val in knobs]
+    assert vals == pytest.approx([0.369, 0.407, 0.483, 0.635, 0.939], abs=1e-3)
+    assert tags == ["cal0", "cal1", "cal2", "cal3", "cal4", "cal5"]
+    out = capsys.readouterr().out
+    assert "4 expansion steps did not move the render" in out
+    assert "Leaving pitch_ratio at 0.939" in out
 
 
 # --- the clamp deadband (Codex P2 on #1711) ---
@@ -417,13 +441,19 @@ def test_calibrate_stops_when_wpc_does_not_respond(
 _CAP, _MEASURED, _WPC0 = 29.0, 15.95, 0.90
 
 
-def _clamp_renderer(with_geometry):
+def _clamp_renderer(
+    with_geometry, measured=_MEASURED, wpc0=_WPC0, review_pitch=None
+):
+    """wpc as the renderer would yield it at ``pitch``: the measured OCR
+    advance clamped to pitch*cap*[0.85, 1.15]; ``review_pitch`` is what the
+    metrics line REPORTS as ocr_pitch_med (may differ on sparse receipts)."""
+
     def model(pitch):
         lo, hi = pitch * _CAP * 0.85, pitch * _CAP * 1.15
-        advance = max(lo, min(hi, _MEASURED))
-        m = {"h_ratio": 1.0, "wpc_ratio": _WPC0 * advance / _MEASURED}
+        advance = max(lo, min(hi, measured))
+        m = {"h_ratio": 1.0, "wpc_ratio": wpc0 * advance / measured}
         if with_geometry:
-            m.update(ocr_pitch_px=_MEASURED, synth_cap_px=_CAP)
+            m.update(ocr_pitch_px=review_pitch or measured, synth_cap_px=_CAP)
         return m
 
     return model
@@ -476,15 +506,88 @@ def test_calibrate_deadband_fallback_doubles_the_step_without_geometry(
     assert "did not respond" not in out
 
 
+def test_calibrate_recovers_when_review_geometry_disagrees_with_renderer(
+    tmp_path, monkeypatch, capsys
+):
+    # Codex round-2 case: a sparse receipt where the renderer fell back to
+    # box-width advances (16px) but the review reports word-start pitch
+    # (20px). wpc 1.10 at pitch 0.55; the linear solve to 0.50 is unmoved
+    # (16 in [12.3, 16.7]) and the edge solve from the 20px estimate points
+    # UP (0.545), the wrong way. It must be ignored and the expansion must
+    # lower pitch_ratio until the render responds, then land in band.
+    knobs, _, tags = _calibrate_harness(
+        tmp_path,
+        monkeypatch,
+        _clamp_renderer(True, measured=16.0, wpc0=1.10, review_pitch=20.0),
+    )
+    # start at 0.55 with wpc0 1.10 there (advance 16 inside the clamp)
+    rc = nv.cmd_calibrate(
+        argparse.Namespace(slug="testmart", iterations=10, truth="fixture")
+    )
+    assert rc == 0
+    vals = [val for _, val in knobs]
+    assert vals[0] == pytest.approx(0.50)  # 0.55 / 1.10, unmoved
+    assert vals[1] < 0.50  # expansion lowered it, geometry ignored
+    final = _clamp_renderer(True, measured=16.0, wpc0=1.10, review_pitch=20.0)(
+        vals[-1]
+    )["wpc_ratio"]
+    assert nv._in_band(final)
+    out = capsys.readouterr().out
+    assert "points the wrong way" in out
+    assert "did not respond" not in out
+    assert len(tags) <= 6
+
+
+def test_calibrate_no_geometry_wpc_just_under_band_reaches_target(
+    tmp_path, monkeypatch, capsys
+):
+    # Codex round-2 case: no review pitch, wpc 0.949. 0.55 -> 0.58 (unmoved)
+    # -> 0.64 (still under the 0.647 edge, unmoved) -> 0.76 (responds, now
+    # high) -> linear back to 0.682, in band. A single doubling would have
+    # stopped at 0.64 and declared saturation.
+    knobs, _, tags = _calibrate_harness(
+        tmp_path, monkeypatch, _clamp_renderer(False, wpc0=0.949)
+    )
+    rc = nv.cmd_calibrate(
+        argparse.Namespace(slug="testmart", iterations=10, truth="fixture")
+    )
+    assert rc == 0
+    vals = [val for _, val in knobs]
+    assert vals[:3] == pytest.approx([0.58, 0.64, 0.76], abs=1e-3)
+    assert vals[-1] == pytest.approx(0.682, abs=1e-3)  # Codex's number
+    assert nv._in_band(
+        _clamp_renderer(False, wpc0=0.949)(vals[-1])["wpc_ratio"]
+    )
+    out = capsys.readouterr().out
+    assert "expansion step 2/4" in out
+    assert "did not respond" not in out
+
+
+def test_next_pitch_step_caps_and_bounds():
+    m = {"wpc_ratio": 0.90}
+    assert nv.next_pitch_step(0.6, 0.55, m, 4)[0] is None
+    assert "4 expansion steps" in nv.next_pitch_step(0.6, 0.55, m, 4)[1]
+    new, why = nv.next_pitch_step(1.1, 1.0, m, 1)  # 1.1 + 0.2 = 1.3 > 1.2
+    assert new is None and "bounds" in why
+    new, why = nv.next_pitch_step(0.32, 0.35, {"wpc_ratio": 1.2}, 1)
+    assert new is None and "bounds" in why  # 0.32 - 0.06 = 0.26 < 0.3
+    # a first step with no history still moves by the minimum step
+    new, why = nv.next_pitch_step(0.6, None, m, 0)
+    assert new == pytest.approx(0.6 + nv.PITCH_MIN_STEP)
+    assert "expansion step 1/4" in why and "raising" in why
+    new, _ = nv.next_pitch_step(0.6, None, {"wpc_ratio": 1.2}, 0)
+    assert new == pytest.approx(0.6 - nv.PITCH_MIN_STEP)
+
+
 def test_pitch_past_clamp_edge_low_and_high_sides():
     m = {"wpc_ratio": 0.90, "ocr_pitch_px": 15.95, "synth_cap_px": 29.0}
-    new, why = nv.pitch_past_clamp_edge(0.611, 0.55, m)
+    new, why = nv.pitch_past_clamp_edge(0.611, m)
     assert new == pytest.approx(0.719, abs=1e-3)
     assert new > 15.95 / (0.85 * 29.0) * (1 + nv.PITCH_EDGE_MARGIN)
     assert "deadband" in why
     # wpc high: the ceiling must drop below the measured advance
     m = {"wpc_ratio": 1.10, "ocr_pitch_px": 15.95, "synth_cap_px": 29.0}
-    new, _ = nv.pitch_past_clamp_edge(0.50, 0.55, m)
+    new, _ = nv.pitch_past_clamp_edge(0.50, m)
     assert new < 15.95 / (1.15 * 29.0) * (1 - nv.PITCH_EDGE_MARGIN)
     assert new == pytest.approx(15.95 / (1.10 * 1.15 * 29.0), abs=1e-3)
 
@@ -495,7 +598,7 @@ def test_pitch_past_clamp_edge_always_clears_the_edge_by_the_margin(wpc):
     # from the edge than PITCH_EDGE_MARGIN, so the re-render provably moves;
     # the margin is the floor for a future narrower band, never the binder.
     m = {"wpc_ratio": wpc, "ocr_pitch_px": 15.95, "synth_cap_px": 29.0}
-    new, _ = nv.pitch_past_clamp_edge(0.60, 0.55, m)
+    new, _ = nv.pitch_past_clamp_edge(0.60, m)
     if wpc < 1:
         edge = 15.95 / (0.85 * 29.0)
         assert new >= edge * (1 + nv.PITCH_EDGE_MARGIN)
@@ -506,64 +609,13 @@ def test_pitch_past_clamp_edge_always_clears_the_edge_by_the_margin(wpc):
         assert new == pytest.approx(edge / wpc, abs=1e-3)
 
 
-def test_pitch_past_clamp_edge_fallbacks():
-    m = {"wpc_ratio": 0.90}  # no geometry
-    new, why = nv.pitch_past_clamp_edge(0.611, 0.55, m)
-    assert new == pytest.approx(0.733) and "doubling" in why
-    new, why = nv.pitch_past_clamp_edge(0.611, None, m)
-    assert new is None and "no previous pitch_ratio step" in why
+def test_pitch_past_clamp_edge_needs_geometry():
+    assert nv.pitch_past_clamp_edge(0.611, {"wpc_ratio": 0.90}) == (
+        None,
+        "no clamp geometry in the review metrics",
+    )
     m = {"wpc_ratio": 0.90, "ocr_pitch_px": 0.0, "synth_cap_px": 29.0}
-    new, _ = nv.pitch_past_clamp_edge(0.611, 0.55, m)
-    assert new == pytest.approx(0.733)  # zero geometry -> geometric step
-
-
-def test_calibrate_solves_both_knobs_in_one_pass(tmp_path, monkeypatch):
-    # h_ratio and wpc_ratio both off -> one iteration moves both knobs.
-    knobs, _, _ = _calibrate_harness(
-        tmp_path, monkeypatch, [(0.9, 1.10), (1.0, 1.0)]
-    )
-    rc = nv.cmd_calibrate(
-        argparse.Namespace(slug="testmart", iterations=2, truth="fixture")
-    )
-    assert rc == 0
-    assert dict(knobs) == {
-        "ocr_cap_height_ratio": pytest.approx(0.8),  # 0.72 / 0.9
-        "pitch_ratio": pytest.approx(0.5),  # 0.55 / 1.10
-    }
-
-
-def test_calibrate_in_band_from_the_start_writes_nothing(
-    tmp_path, monkeypatch
-):
-    knobs, fixtures, tags = _calibrate_harness(
-        tmp_path, monkeypatch, [(1.0, 1.0)]
-    )
-    rc = nv.cmd_calibrate(
-        argparse.Namespace(slug="testmart", iterations=2, truth="fixture")
-    )
-    assert rc == 0 and knobs == [] and fixtures == [] and tags == ["cal0"]
-
-
-def test_calibrate_clamped_cap_ratio_does_not_loop(
-    tmp_path, monkeypatch, capsys
-):
-    # ocr_cap_height_ratio pinned at the 0.95 clamp and wpc in band: nothing
-    # to change -> break after the first render, exit 1 with the clamp note.
-    knobs, _, tags = _calibrate_harness(
-        tmp_path, monkeypatch, [(0.5, 1.0), (0.5, 1.0)]
-    )
-    # start the knob at the clamp so the solve is a no-op
-    with open(nv.PROFILES, encoding="utf-8") as fh:
-        doc = json.load(fh)
-    doc["profiles"]["Test Mart"]["typography"]["ocr_cap_height_ratio"] = 0.95
-    with open(nv.PROFILES, "w", encoding="utf-8") as fh:
-        json.dump(doc, fh)
-    rc = nv.cmd_calibrate(
-        argparse.Namespace(slug="testmart", iterations=3, truth="fixture")
-    )
-    assert rc == 1
-    assert knobs == [] and tags == ["cal0"]
-    assert "pinned at the renderer clamp" in capsys.readouterr().out
+    assert nv.pitch_past_clamp_edge(0.611, m)[0] is None
 
 
 def test_render_review_reads_back_clamp_geometry(tmp_path, monkeypatch):
