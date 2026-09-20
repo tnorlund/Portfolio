@@ -216,3 +216,16 @@ def test_corpus_font_inputs_solves_thin_only_when_unrecorded(monkeypatch):
     )
     assert "bitmap_thin" not in out  # TTF merchant: nothing to solve
     assert [c[0] for c in calls] == ["profile"]
+
+
+def test_render_synthetic_receipts_has_no_module_level_glyphstudio_import():
+    import ast
+    from pathlib import Path
+
+    tree = ast.parse(Path(renderer.__file__).read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert not alias.name.startswith("glyphstudio"), alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            assert not node.module.startswith("glyphstudio"), node.module
