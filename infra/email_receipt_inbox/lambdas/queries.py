@@ -6,8 +6,22 @@ this file byte-identical to the source module apart from this docstring.
 Regenerate with: cp ~/receipts-email/emlrec/queries.py <here> and re-add
 this header.
 """
+
 import json
 import re
+from decimal import ROUND_HALF_UP, Decimal
+
+PERIODS = ("month", "year")
+UNMATCHED_KINDS = ("txns", "email_receipts")
+
+
+def _cents(dollars):
+    """Dollars -> integer cents without binary-float truncation (19.99 -> 1999)."""
+    return int(
+        (Decimal(str(dollars)) * 100).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP
+        )
+    )
 
 
 def _row(r):
@@ -24,10 +38,22 @@ def _row(r):
     return d
 
 
-def email_receipt_summaries(conn, merchant=None, grp=None, start_date=None,
-                            end_date=None, min_total=None, max_total=None,
-                            include_superseded=False, include_inflows=False,
-                            limit=200, offset=0):
+def email_receipt_summaries(
+    conn,
+    merchant=None,
+    grp=None,
+    start_date=None,
+    end_date=None,
+    min_total=None,
+    max_total=None,
+    include_superseded=False,
+    include_inflows=False,
+    limit=200,
+    offset=0,
+    currency="USD",
+):
+    """Aggregates never mix currencies: the top-level totals cover `currency`
+    only and `by_currency` breaks every matching currency out separately."""
     where, args = ["1=1"], []
     if merchant:
         where.append("merchant_name LIKE ?")
@@ -43,64 +69,110 @@ def email_receipt_summaries(conn, merchant=None, grp=None, start_date=None,
         args.append(end_date)
     if min_total is not None:
         where.append("grand_total_cents >= ?")
-        args.append(int(min_total * 100))
+        args.append(_cents(min_total))
     if max_total is not None:
         where.append("grand_total_cents <= ?")
-        args.append(int(max_total * 100))
+        args.append(_cents(max_total))
     if not include_superseded:
         where.append("superseded_by IS NULL")
     if not include_inflows:
         where.append("direction = 'outflow'")
     w = " AND ".join(where)
-    agg = conn.execute(
-        f"""SELECT COUNT(*) AS count, SUM(grand_total_cents) AS total_cents,
-                   SUM(tax_cents) AS tax_cents, SUM(tip_cents) AS tip_cents
-            FROM email_receipts WHERE {w}""", args).fetchone()
+    by_currency = {}
+    for agg in conn.execute(
+        f"""SELECT currency, COUNT(*) AS count,
+                       COUNT(grand_total_cents) AS priced,
+                       SUM(grand_total_cents) AS total_cents,
+                       SUM(tax_cents) AS tax_cents, SUM(tip_cents) AS tip_cents
+                FROM email_receipts WHERE {w}
+                GROUP BY currency ORDER BY count DESC""",
+        args,
+    ):
+        total = (agg["total_cents"] or 0) / 100
+        by_currency[agg["currency"]] = {
+            "currency": agg["currency"],
+            "count": agg["count"],
+            "total_spending": round(total, 2),
+            "total_tax": round((agg["tax_cents"] or 0) / 100, 2),
+            "total_tip": round((agg["tip_cents"] or 0) / 100, 2),
+            # Receipts whose total could not be parsed are counted but do not
+            # drag the average toward zero.
+            "average_receipt": (
+                round(total / agg["priced"], 2) if agg["priced"] else None
+            ),
+        }
     rows = conn.execute(
         f"""SELECT message_id, grp, merchant_name, merchant_platform, date, order_id,
                    grand_total_cents, subtotal_cents, tax_cents, tip_cents, total_kind,
-                   payment_type, card_last4, recon_scope, item_count
+                   payment_type, card_last4, recon_scope, currency, item_count
             FROM email_receipts WHERE {w}
-            ORDER BY date DESC LIMIT ? OFFSET ?""", args + [limit, offset]).fetchall()
-    count = agg["count"] or 0
-    total = (agg["total_cents"] or 0) / 100
+            ORDER BY date DESC LIMIT ? OFFSET ?""",
+        args + [limit, offset],
+    ).fetchall()
+    head = by_currency.get(currency) or {
+        "total_spending": 0,
+        "total_tax": 0,
+        "total_tip": 0,
+        "average_receipt": None,
+    }
     return {
-        "count": count,
-        "total_spending": round(total, 2),
-        "total_tax": round((agg["tax_cents"] or 0) / 100, 2),
-        "total_tip": round((agg["tip_cents"] or 0) / 100, 2),
-        "average_receipt": round(total / count, 2) if count else None,
-        "filters": {"merchant": merchant, "group": grp,
-                    "start_date": start_date, "end_date": end_date},
+        "count": sum(c["count"] for c in by_currency.values()),
+        "currency": currency,
+        "total_spending": head["total_spending"],
+        "total_tax": head["total_tax"],
+        "total_tip": head["total_tip"],
+        "average_receipt": head["average_receipt"],
+        "by_currency": list(by_currency.values()),
+        "filters": {
+            "merchant": merchant,
+            "group": grp,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
         "summaries": [_row(r) for r in rows],
     }
 
 
 def email_receipt(conn, message_id):
-    r = conn.execute("SELECT * FROM email_receipts WHERE message_id = ?",
-                     (message_id,)).fetchone()
+    r = conn.execute(
+        "SELECT * FROM email_receipts WHERE message_id = ?", (message_id,)
+    ).fetchone()
     if not r:
         like = conn.execute(
-            "SELECT * FROM email_receipts WHERE message_id LIKE ? LIMIT 1",
-            (f"%{message_id}%",)).fetchone()
+            "SELECT * FROM email_receipts WHERE message_id LIKE ? LIMIT 2",
+            (f"%{message_id}%",),
+        ).fetchall()
         if not like:
             return {"error": f"no email receipt for message_id {message_id}"}
-        r = like
+        if len(like) > 1:
+            return {
+                "error": f"partial message_id {message_id!r} matches more than "
+                "one receipt; pass the full message_id"
+            }
+        r = like[0]
     items = conn.execute(
         """SELECT line_no, description, quantity, unit_price_cents, total_cents, kind
            FROM receipt_items WHERE message_id = ? ORDER BY line_no""",
-        (r["message_id"],)).fetchall()
+        (r["message_id"],),
+    ).fetchall()
     msg = conn.execute(
         """SELECT subject, from_addr, mbox_file, byte_offset, byte_length
-           FROM messages WHERE message_id = ?""", (r["message_id"],)).fetchone()
+           FROM messages WHERE message_id = ?""",
+        (r["message_id"],),
+    ).fetchone()
     out = _row(r)
     out["items"] = [_row(i) for i in items]
     out["email"] = dict(msg) if msg else None
-    out["matches"] = [dict(m) for m in conn.execute(
-        """SELECT m.txn_id, m.score, m.status, c.description, c.txn_date,
+    out["matches"] = [
+        dict(m)
+        for m in conn.execute(
+            """SELECT m.txn_id, m.score, m.status, c.description, c.txn_date,
                   c.amount_cents / -100.0 AS charged
            FROM matches m JOIN chase_transactions c ON c.txn_id = m.txn_id
-           WHERE m.ref_kind = 'email' AND m.ref = ?""", (r["message_id"],))]
+           WHERE m.ref_kind = 'email' AND m.ref = ?""",
+            (r["message_id"],),
+        )
+    ]
     return out
 
 
@@ -114,7 +186,9 @@ def search_receipts(conn, query, limit=25):
            LEFT JOIN receipt_items ri ON ri.message_id = er.message_id
            WHERE er.merchant_name LIKE ? OR er.order_id LIKE ?
               OR ri.description LIKE ? OR er.extra LIKE ?
-           ORDER BY er.date DESC LIMIT ?""", (q, q, q, q, limit)).fetchall()
+           ORDER BY er.date DESC LIMIT ?""",
+        (q, q, q, q, limit),
+    ).fetchall()
     paper = conn.execute(
         """SELECT DISTINCT 'paper' AS source,
                   pr.image_id || ':' || pr.receipt_id AS ref, 'paper' AS grp,
@@ -123,90 +197,172 @@ def search_receipts(conn, query, limit=25):
            LEFT JOIN paper_receipt_items pi
                   ON pi.image_id = pr.image_id AND pi.receipt_id = pr.receipt_id
            WHERE pr.merchant_name LIKE ? OR pi.description LIKE ?
-           ORDER BY pr.date DESC LIMIT ?""", (q, q, limit)).fetchall()
+           ORDER BY pr.date DESC LIMIT ?""",
+        (q, q, limit),
+    ).fetchall()
     rows = [_row(r) for r in email] + [_row(r) for r in paper]
     rows.sort(key=lambda r: r.get("date") or "", reverse=True)
     return {"query": query, "count": len(rows), "results": rows[:limit]}
 
 
 def _canon_expr(alias):
-    return (f"COALESCE((SELECT canonical FROM merchant_canonical mc "
-            f"WHERE mc.raw = {alias}.merchant_name), {alias}.merchant_name)")
+    return (
+        f"COALESCE((SELECT canonical FROM merchant_canonical mc "
+        f"WHERE mc.raw = {alias}.merchant_name), {alias}.merchant_name)"
+    )
 
 
 def list_merchants(conn, grp=None, min_count=1, source="both"):
     out = {}
     if source in ("email", "both"):
         for r in conn.execute(
-                f"""SELECT {_canon_expr('er')} m, COUNT(*) n, SUM(grand_total_cents) t
+            f"""SELECT {_canon_expr('er')} m, COUNT(*) n, SUM(grand_total_cents) t
                     FROM email_receipts er
                     WHERE merchant_name IS NOT NULL AND superseded_by IS NULL
                       AND (? IS NULL OR grp = ?)
-                    GROUP BY 1""", (grp, grp)):
-            out[r["m"]] = {"merchant": r["m"], "email_receipts": r["n"],
-                           "email_total": round((r["t"] or 0) / 100, 2),
-                           "paper_receipts": 0, "paper_total": 0}
+                    GROUP BY 1""",
+            (grp, grp),
+        ):
+            out[r["m"]] = {
+                "merchant": r["m"],
+                "email_receipts": r["n"],
+                "email_total": round((r["t"] or 0) / 100, 2),
+                "paper_receipts": 0,
+                "paper_total": 0,
+            }
     if source in ("paper", "both"):
         for r in conn.execute(
-                f"""SELECT {_canon_expr('pr')} m, COUNT(*) n, SUM(grand_total_cents) t
+            f"""SELECT {_canon_expr('pr')} m, COUNT(*) n, SUM(grand_total_cents) t
                     FROM paper_receipts pr
-                    WHERE merchant_name IS NOT NULL GROUP BY 1"""):
-            e = out.setdefault(r["m"], {"merchant": r["m"], "email_receipts": 0,
-                                        "email_total": 0, "paper_receipts": 0,
-                                        "paper_total": 0})
+                    WHERE merchant_name IS NOT NULL GROUP BY 1"""
+        ):
+            e = out.setdefault(
+                r["m"],
+                {
+                    "merchant": r["m"],
+                    "email_receipts": 0,
+                    "email_total": 0,
+                    "paper_receipts": 0,
+                    "paper_total": 0,
+                },
+            )
             e["paper_receipts"] = r["n"]
             e["paper_total"] = round((r["t"] or 0) / 100, 2)
     for v in out.values():
         cat = conn.execute(
             "SELECT category FROM merchant_canonical WHERE canonical = ? AND category IS NOT NULL LIMIT 1",
-            (v["merchant"],)).fetchone()
+            (v["merchant"],),
+        ).fetchone()
         v["category"] = cat["category"] if cat else None
-    rows = [v for v in out.values()
-            if v["email_receipts"] + v["paper_receipts"] >= min_count]
+    rows = [
+        v
+        for v in out.values()
+        if v["email_receipts"] + v["paper_receipts"] >= min_count
+    ]
     rows.sort(key=lambda v: -(v["email_receipts"] + v["paper_receipts"]))
     return {"merchants": rows}
 
 
 def spend_summary(conn, start_date=None, end_date=None, period="month"):
-    """Unified spend by period x source (email receipts / paper receipts / chase card)."""
-    fmt = "%Y-%m" if period == "month" else "%Y"
+    """Unified spend by period x source (email receipts / paper receipts / chase card).
+
+    Paper receipts and Chase transactions are USD. Email receipts in any other
+    currency are reported per period under `email_other_currencies` (minor
+    units / 100 of that currency) and never added to the USD columns."""
+    if period not in PERIODS:
+        return {"error": f"period must be one of {', '.join(PERIODS)}"}
     buckets = {}
 
-    def bucket(date, source, cents_):
+    def bucket(date, source, cents_, currency="USD"):
         if not date or cents_ is None:
             return
         if start_date and date < start_date or end_date and date > end_date:
             return
         key = date[:7] if period == "month" else date[:4]
-        b = buckets.setdefault(key, {"period": key, "email": 0, "paper": 0, "chase_card": 0,
-                                     "email_n": 0, "paper_n": 0, "chase_n": 0})
+        b = buckets.setdefault(
+            key,
+            {
+                "period": key,
+                "email": 0,
+                "paper": 0,
+                "chase_card": 0,
+                "email_n": 0,
+                "paper_n": 0,
+                "chase_n": 0,
+                "other": {},
+            },
+        )
+        if currency != "USD":
+            o = b["other"].setdefault(currency, {"n": 0, "total": 0})
+            o["n"] += 1
+            o["total"] += cents_
+            return
         b[source] += cents_
-        b[source.replace("_card", "") + "_n" if source == "chase_card" else source + "_n"] += 1
+        b[
+            (
+                source.replace("_card", "") + "_n"
+                if source == "chase_card"
+                else source + "_n"
+            )
+        ] += 1
 
-    for r in conn.execute("""SELECT date, grand_total_cents FROM email_receipts
+    for r in conn.execute(
+        """SELECT date, grand_total_cents, currency FROM email_receipts
                              WHERE superseded_by IS NULL AND direction='outflow'
-                               AND recon_scope != 'off_ledger' AND date IS NOT NULL"""):
-        bucket(r["date"], "email", r["grand_total_cents"])
-    for r in conn.execute("SELECT date, grand_total_cents FROM paper_receipts WHERE date IS NOT NULL"):
+                               AND recon_scope != 'off_ledger' AND date IS NOT NULL"""
+    ):
+        bucket(
+            r["date"], "email", r["grand_total_cents"], r["currency"] or "USD"
+        )
+    for r in conn.execute(
+        "SELECT date, grand_total_cents FROM paper_receipts WHERE date IS NOT NULL"
+    ):
         bucket(r["date"], "paper", r["grand_total_cents"])
-    for r in conn.execute("""SELECT txn_date, -amount_cents AS a FROM chase_transactions
-                             WHERE is_card_purchase = 1"""):
+    for r in conn.execute(
+        """SELECT txn_date, -amount_cents AS a FROM chase_transactions
+                             WHERE is_card_purchase = 1"""
+    ):
         bucket(r["txn_date"], "chase_card", r["a"])
 
     rows = []
     for k in sorted(buckets):
         b = buckets[k]
-        rows.append({"period": k,
-                     "email_receipts": {"n": b["email_n"], "total": round(b["email"] / 100, 2)},
-                     "paper_receipts": {"n": b["paper_n"], "total": round(b["paper"] / 100, 2)},
-                     "chase_card_spend": {"n": b["chase_n"], "total": round(b["chase_card"] / 100, 2)}})
-    return {"period": period, "rows": rows}
+        rows.append(
+            {
+                "period": k,
+                "email_receipts": {
+                    "n": b["email_n"],
+                    "total": round(b["email"] / 100, 2),
+                },
+                "paper_receipts": {
+                    "n": b["paper_n"],
+                    "total": round(b["paper"] / 100, 2),
+                },
+                "chase_card_spend": {
+                    "n": b["chase_n"],
+                    "total": round(b["chase_card"] / 100, 2),
+                },
+                "email_other_currencies": {
+                    cur: {"n": o["n"], "total": round(o["total"] / 100, 2)}
+                    for cur, o in sorted(b["other"].items())
+                },
+            }
+        )
+    return {"period": period, "currency": "USD", "rows": rows}
 
 
-def coverage(conn, period="month", account=None, receiptable_only=False,
-             start_date=None, end_date=None):
+def coverage(
+    conn,
+    period="month",
+    account=None,
+    receiptable_only=False,
+    start_date=None,
+    end_date=None,
+):
     """The headline metric: % of Chase card spend covered by a matched receipt
     (email or paper). Excludes tagged txns (dad/ignored/cash/off_ledger)."""
+    if period not in PERIODS:
+        return {"error": f"period must be one of {', '.join(PERIODS)}"}
     where, args = ["c.is_card_purchase = 1", "g.tag IS NULL"], []
     if account:
         where.append("c.account = ?")
@@ -219,7 +375,11 @@ def coverage(conn, period="month", account=None, receiptable_only=False,
     if end_date:
         where.append("c.txn_date <= ?")
         args.append(end_date)
-    key = "substr(c.txn_date, 1, 7)" if period == "month" else "substr(c.txn_date, 1, 4)"
+    key = (
+        "substr(c.txn_date, 1, 7)"
+        if period == "month"
+        else "substr(c.txn_date, 1, 4)"
+    )
     rows = conn.execute(
         f"""SELECT {key} AS period, c.account,
                    COUNT(*) AS txns,
@@ -231,24 +391,50 @@ def coverage(conn, period="month", account=None, receiptable_only=False,
             LEFT JOIN (SELECT DISTINCT txn_id FROM matches
                        WHERE status IN ('auto', 'confirmed')) m ON m.txn_id = c.txn_id
             WHERE {' AND '.join(where)}
-            GROUP BY 1, 2 ORDER BY 1, 2""", args).fetchall()
+            GROUP BY 1, 2 ORDER BY 1, 2""",
+        args,
+    ).fetchall()
     out = []
     for r in rows:
         spend = r["spend_cents"] or 0
-        out.append({
-            "period": r["period"], "account": r["account"],
-            "txns": r["txns"], "matched_txns": r["matched_txns"],
-            "spend": round(spend / 100, 2),
-            "matched_spend": round((r["matched_cents"] or 0) / 100, 2),
-            "coverage_by_count": round(r["matched_txns"] / r["txns"], 3) if r["txns"] else None,
-            "coverage_by_spend": round((r["matched_cents"] or 0) / spend, 3) if spend else None,
-        })
-    return {"period": period, "receiptable_only": receiptable_only, "rows": out}
+        out.append(
+            {
+                "period": r["period"],
+                "account": r["account"],
+                "txns": r["txns"],
+                "matched_txns": r["matched_txns"],
+                "spend": round(spend / 100, 2),
+                "matched_spend": round((r["matched_cents"] or 0) / 100, 2),
+                "coverage_by_count": (
+                    round(r["matched_txns"] / r["txns"], 3)
+                    if r["txns"]
+                    else None
+                ),
+                "coverage_by_spend": (
+                    round((r["matched_cents"] or 0) / spend, 3)
+                    if spend
+                    else None
+                ),
+            }
+        )
+    return {
+        "period": period,
+        "receiptable_only": receiptable_only,
+        "rows": out,
+    }
 
 
-def unmatched(conn, kind="txns", account=None, start_date=None, end_date=None, limit=50):
+def unmatched(
+    conn, kind="txns", account=None, start_date=None, end_date=None, limit=50
+):
+    if kind not in UNMATCHED_KINDS:
+        return {"error": f"kind must be one of {', '.join(UNMATCHED_KINDS)}"}
     if kind == "txns":
-        where, args = ["c.is_card_purchase = 1", "g.tag IS NULL", "m.txn_id IS NULL"], []
+        where, args = [
+            "c.is_card_purchase = 1",
+            "g.tag IS NULL",
+            "m.txn_id IS NULL",
+        ], []
         if account:
             where.append("c.account = ?")
             args.append(account)
@@ -266,8 +452,14 @@ def unmatched(conn, kind="txns", account=None, start_date=None, end_date=None, l
                 LEFT JOIN (SELECT DISTINCT txn_id FROM matches
                            WHERE status IN ('auto', 'confirmed')) m ON m.txn_id = c.txn_id
                 WHERE {' AND '.join(where)}
-                ORDER BY c.txn_date DESC LIMIT ?""", args + [limit]).fetchall()
-        return {"kind": kind, "count": len(rows), "rows": [dict(r) for r in rows]}
+                ORDER BY c.txn_date DESC LIMIT ?""",
+            args + [limit],
+        ).fetchall()
+        return {
+            "kind": kind,
+            "count": len(rows),
+            "rows": [dict(r) for r in rows],
+        }
     # unmatched email receipts
     rows = conn.execute(
         """SELECT er.message_id, er.grp, er.merchant_name, er.date,
@@ -279,40 +471,77 @@ def unmatched(conn, kind="txns", account=None, start_date=None, end_date=None, l
              AND er.direction = 'outflow' AND er.recon_scope = 'chase'
              AND (? IS NULL OR er.date >= ?) AND (? IS NULL OR er.date <= ?)
            ORDER BY er.date DESC LIMIT ?""",
-        (start_date, start_date, end_date, end_date, limit)).fetchall()
+        (start_date, start_date, end_date, end_date, limit),
+    ).fetchall()
     return {"kind": kind, "count": len(rows), "rows": [dict(r) for r in rows]}
 
 
 _SQL_DENY = re.compile(
-    r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|vacuum|replace)\b", re.I)
+    r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|vacuum|replace)\b",
+    re.I,
+)
+# String literals, quoted identifiers, and comments: a denied verb inside
+# `LIKE '%update%'` or `-- drop this` is data, not a statement.
+_SQL_LITERALS = re.compile(
+    r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|`[^`]*`|\[[^\]]*\]|--[^\n]*|/\*.*?\*/",
+    re.S,
+)
+
+
+def sql_without_literals(sql):
+    return _SQL_LITERALS.sub(" ", sql)
 
 
 def query_sql(conn, sql, limit=500):
-    if _SQL_DENY.search(sql) or not re.match(r"\s*(select|with)\b", sql, re.I):
+    bare = sql_without_literals(sql)
+    if _SQL_DENY.search(bare) or not re.match(
+        r"\s*(select|with)\b", bare, re.I
+    ):
         return {"error": "read-only: only SELECT/WITH queries are allowed"}
     cur = conn.execute(sql)
     cols = [c[0] for c in cur.description]
     rows = cur.fetchmany(limit)
-    return {"columns": cols, "row_count": len(rows),
-            "rows": [list(r) for r in rows], "truncated": len(rows) == limit}
+    return {
+        "columns": cols,
+        "row_count": len(rows),
+        "rows": [list(r) for r in rows],
+        "truncated": len(rows) == limit,
+    }
 
 
 def ingest_status(conn):
-    out = {"messages_by_group": {}, "receipts_by_group": {}, "classifications": {}}
-    for r in conn.execute("SELECT grp, classification, COUNT(*) n FROM messages GROUP BY 1, 2"):
-        out["messages_by_group"].setdefault(r["grp"], {})[r["classification"]] = r["n"]
-        out["classifications"][r["classification"]] = \
-            out["classifications"].get(r["classification"], 0) + r["n"]
+    out = {
+        "messages_by_group": {},
+        "receipts_by_group": {},
+        "classifications": {},
+    }
     for r in conn.execute(
-            """SELECT grp, COUNT(*) n,
+        "SELECT grp, classification, COUNT(*) n FROM messages GROUP BY 1, 2"
+    ):
+        out["messages_by_group"].setdefault(r["grp"], {})[
+            r["classification"]
+        ] = r["n"]
+        out["classifications"][r["classification"]] = (
+            out["classifications"].get(r["classification"], 0) + r["n"]
+        )
+    for r in conn.execute(
+        """SELECT grp, COUNT(*) n,
                       SUM(CASE WHEN currency='USD' AND direction='outflow'
                           THEN grand_total_cents ELSE 0 END) t,
                       MIN(date) lo, MAX(date) hi
-               FROM email_receipts WHERE superseded_by IS NULL GROUP BY grp"""):
+               FROM email_receipts WHERE superseded_by IS NULL GROUP BY grp"""
+    ):
         out["receipts_by_group"][r["grp"]] = {
-            "receipts": r["n"], "total": round((r["t"] or 0) / 100, 2),
-            "date_range": f"{r['lo']}..{r['hi']}"}
-    for key in ("paper_receipts", "chase_transactions", "matches", "parse_failures"):
+            "receipts": r["n"],
+            "total": round((r["t"] or 0) / 100, 2),
+            "date_range": f"{r['lo']}..{r['hi']}",
+        }
+    for key in (
+        "paper_receipts",
+        "chase_transactions",
+        "matches",
+        "parse_failures",
+    ):
         out[key] = conn.execute(f"SELECT COUNT(*) FROM {key}").fetchone()[0]
     for r in conn.execute("SELECT key, value FROM meta"):
         out[r["key"]] = r["value"]

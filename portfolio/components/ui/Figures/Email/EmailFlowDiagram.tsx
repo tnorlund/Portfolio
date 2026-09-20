@@ -1,5 +1,8 @@
 import React from "react";
-import { useViewportAnimation } from "../useDiagramOptimizations";
+import {
+  usePrefersReducedMotion,
+  useViewportAnimation,
+} from "../useDiagramOptimizations";
 import {
   BitStream,
   EmailGradients,
@@ -86,7 +89,9 @@ function Rails({
       ? `M${a},${cross}c${13.13 * k},0,${36.16 * k},${-o},${49.29 * k},${-o},${22.71 * k},0,${35.51 * k},${o},${58.21 * k},${o}`
       : `M${cross},${a}c0,${13.13 * k},${-o},${36.16 * k},${-o},${49.29 * k},0,${22.71 * k},${o},${35.51 * k},${o},${58.21 * k}`;
   const straight =
-    axis === "x" ? `M${a},${cross}L${b},${cross}` : `M${cross},${a}L${cross},${b}`;
+    axis === "x"
+      ? `M${a},${cross}L${b},${cross}`
+      : `M${cross},${a}L${cross},${b}`;
   const ds = [straight, c(1.64), c(-1.64), c(3.27), c(-3.27)];
   return (
     <g>
@@ -104,8 +109,16 @@ const EmailFlowDiagram: React.FC<EmailFlowDiagramProps> = ({
   paused = false,
   ariaLabel,
 }) => {
-  const { containerRef, shouldAnimate, springPause } =
-    useViewportAnimation(paused);
+  const {
+    containerRef,
+    shouldAnimate: inViewAndPlaying,
+    springPause,
+  } = useViewportAnimation(paused);
+  // Under prefers-reduced-motion the tiles, rails, and labels still render;
+  // the looping bit streams do not (matching the site's other figures, which
+  // fall back to a static frame instead of auto-playing).
+  const reducedMotion = usePrefersReducedMotion();
+  const shouldAnimate = inViewAndPlaying && !reducedMotion;
   const layout = useBreakpoint(600);
 
   // One rail bundle per adjacent pair, keyed "i-j" with i < j.
@@ -140,7 +153,7 @@ const EmailFlowDiagram: React.FC<EmailFlowDiagramProps> = ({
   const centers = nodes.map((_, i) => PAD + TILE / 2 + i * SPACING);
   const span = PAD * 2 + TILE + (n - 1) * SPACING;
 
-  const bits = (
+  const bits = reducedMotion ? null : (
     <g key={cycle} fontFamily="monospace" fontSize="12">
       {TIMELINE.map((phase, phaseIdx) =>
         phase.paths.map((name) => (
@@ -181,7 +194,14 @@ const EmailFlowDiagram: React.FC<EmailFlowDiagramProps> = ({
         </g>
       ))}
       {railKeys.map((k, i) => (
-        <Rails key={k} refs={PATH_REFS[k]} a={centers[i]} b={centers[i + 1]} cross={100} axis="x" />
+        <Rails
+          key={k}
+          refs={PATH_REFS[k]}
+          a={centers[i]}
+          b={centers[i + 1]}
+          cross={100}
+          axis="x"
+        />
       ))}
       {bits}
     </svg>
@@ -214,7 +234,14 @@ const EmailFlowDiagram: React.FC<EmailFlowDiagramProps> = ({
         </g>
       ))}
       {railKeys.map((k, i) => (
-        <Rails key={k} refs={PATH_REFS[k]} a={centers[i]} b={centers[i + 1]} cross={150} axis="y" />
+        <Rails
+          key={k}
+          refs={PATH_REFS[k]}
+          a={centers[i]}
+          b={centers[i + 1]}
+          cross={150}
+          axis="y"
+        />
       ))}
       {bits}
     </svg>

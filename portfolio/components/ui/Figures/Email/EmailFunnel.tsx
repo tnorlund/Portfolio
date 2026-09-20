@@ -1,6 +1,9 @@
 import { animated, useSprings } from "@react-spring/web";
 import React from "react";
-import { useViewportAnimation } from "../useDiagramOptimizations";
+import {
+  usePrefersReducedMotion,
+  useViewportAnimation,
+} from "../useDiagramOptimizations";
 import { EMAIL_FUNNEL } from "./emailData";
 
 const WIDTH = 520;
@@ -31,6 +34,8 @@ const fmt = (n: number) => n.toLocaleString("en-US");
  */
 const EmailFunnel: React.FC<{ paused?: boolean }> = ({ paused = false }) => {
   const { containerRef, shouldAnimate } = useViewportAnimation(paused);
+  // Reduced motion: bars appear at their final width, no grow-in.
+  const reducedMotion = usePrefersReducedMotion();
   const stages = EMAIL_FUNNEL;
   const maxLog = Math.log10(stages[0].count);
   const minLog = Math.log10(stages[stages.length - 1].count) - 0.35;
@@ -45,10 +50,11 @@ const EmailFunnel: React.FC<{ paused?: boolean }> = ({ paused = false }) => {
     (i) => ({
       from: { w: 0 },
       to: { w: shouldAnimate ? widths[i] : 0 },
-      delay: i * 140,
+      delay: reducedMotion ? 0 : i * 140,
+      immediate: reducedMotion,
       config: { tension: 170, friction: 26 },
     }),
-    [shouldAnimate],
+    [shouldAnimate, reducedMotion],
   );
 
   const height = stages.length * (ROW_H + GAP) - GAP + 4;

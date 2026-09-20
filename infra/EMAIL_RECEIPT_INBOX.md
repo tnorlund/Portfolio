@@ -2,7 +2,7 @@
 
 ```text
 iCloud per-sender rules -> receipts@in.tylernorlund.com -> SES receipt rule
-                        -> s3://email-receipt-inbox-mail-<stack>-<acct>/raw/  (30-day archive)
+                        -> s3://email-receipt-inbox-mail-<stack>-<acct>/raw/  (archive; optional expiry)
 
 Mac (~/receipts-email, the primary)
   emlrec pull-ses    downloads new raw/ objects, applies the SES trust gate,
@@ -11,7 +11,7 @@ Mac (~/receipts-email, the primary)
   emlrec replicate   VACUUM INTO snapshot -> gzip -> s3://.../replica/
                        email_receipts.db.gz + manifest.json
 
-AWS Lambda email-receipt-inbox-mcp (zip, python3.13, stdlib + boto3)
+AWS Lambda email-receipt-inbox-mcp (zip, python3.14, stdlib + boto3)
   cold start: HEAD replica -> download -> gunzip to /tmp -> open read-only
   warm: re-HEAD at most once a minute, swap snapshots when the ETag changes
   -> /email/mcp on the shared Cognito gateway (scope portfolio-mcp/email)
@@ -49,10 +49,40 @@ store rule with scanning, the bucket, its public-access block, encryption,
 versioning, and the bucket policy pinned to the exact receipt-rule ARN.
 
 Added: a `replica/` prefix (with a seven-day noncurrent-version expiry so
-nightly publishes don't accumulate forever), a 30-day `raw/` retention window
-(`raw_retention_days=30`; the Mac holds the durable copy after the nightly
-pull), a read-only MCP Lambda whose role can read `replica/*` and nothing
-else, and an `/email/mcp` route with its own Cognito scope.
+nightly publishes don't accumulate forever), an optional `raw/` retention
+window (see below; off by default), a read-only MCP Lambda whose role can
+read `replica/*` and nothing else, and an `/email/mcp` route with its own
+Cognito scope.
+
+### `raw/` retention is a deliberate switch
+
+`raw/` objects are kept forever unless the stack sets
+
+```
+pulumi config set portfolio:email_receipt_inbox_raw_retention_days 30
+```
+
+which becomes `EmailReceiptInbox(raw_retention_days=...)` and adds an S3
+lifecycle rule expiring `raw/` objects (and their noncurrent versions) after
+that many days. Leave it unset until the Mac's `~/receipts-email/mail/ses/`
+copy has been verified complete against the bucket (`emlrec pull-ses` then
+compare counts); once it is on, S3 is no longer the archive of record for
+anything older than the window.
+
+### What `query_sql` can and cannot read
+
+The MCP Lambda installs a SQLite authorizer for `query_sql`, so raw SQL can
+only read the receipt-scoped tables (`email_receipts`, `receipt_items`,
+`paper_receipts`, `paper_receipt_items`, `chase_transactions`, `matches`,
+`match_overrides`, `txn_tags`, `merchant_canonical`, `parse_failures`,
+`meta`, plus `sqlite_master` for schema discovery). The `messages` table,
+the mailbox index of every sender and subject, is not readable through raw
+SQL from the replica; `get_email_receipt` still returns the one source email
+that belongs to a receipt, and `ingest_status` returns aggregate counts.
+Writes, `PRAGMA`, and `ATTACH` fail at prepare time regardless of the
+keyword denylist. Aggregates never mix currencies: totals are USD with a
+`by_currency` breakdown (`get_email_receipt_summaries`) or an
+`email_other_currencies` bucket per period (`get_spend_summary`).
 
 ## The trust gate moved, it did not disappear
 
@@ -69,9 +99,9 @@ Publish (or refresh) the replica from the Mac:
 
 ```bash
 cd ~/receipts-email
-python3.12 -m emlrec.cli pull-ses --bucket email-receipt-inbox-mail-dev-681647709217
-python3.12 -m emlrec.cli reconcile
-python3.12 -m emlrec.cli replicate --bucket email-receipt-inbox-mail-dev-681647709217
+python3 -m emlrec.cli pull-ses --bucket email-receipt-inbox-mail-dev-681647709217
+python3 -m emlrec.cli reconcile
+python3 -m emlrec.cli replicate --bucket email-receipt-inbox-mail-dev-681647709217
 ```
 
 `scripts/nightly_replica.sh` in that repo chains the three; the launchd

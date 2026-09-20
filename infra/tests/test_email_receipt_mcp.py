@@ -6,11 +6,13 @@ import gzip
 import importlib.util
 import io
 import json
+import os
 import sqlite3
 from pathlib import Path
 
 import boto3
 import pytest
+from botocore.exceptions import ClientError
 
 LAMBDA_DIR = Path(__file__).parents[1] / "email_receipt_inbox" / "lambdas"
 HANDLER_PATH = LAMBDA_DIR / "mcp.py"
@@ -69,17 +71,37 @@ def _build_replica(tmp_path: Path, *, receipts: int = 2) -> bytes:
         mid = f"<msg{i}@doordash.com>"
         conn.execute(
             "INSERT INTO messages VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (mid, f"hash{i}", "ses/key", 0, 10, "no-reply@doordash.com",
-             "doordash.com", "2026-07-0%d" % (i + 1), "Order confirmed",
-             "doordash", "receipt"),
+            (
+                mid,
+                f"hash{i}",
+                "ses/key",
+                0,
+                10,
+                "no-reply@doordash.com",
+                "doordash.com",
+                "2026-07-0%d" % (i + 1),
+                "Order confirmed",
+                "doordash",
+                "receipt",
+            ),
         )
         conn.execute(
             """INSERT INTO email_receipts
                (message_id, grp, merchant_name, merchant_platform, date,
                 order_id, grand_total_cents, tax_cents, tip_cents, item_count)
                VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (mid, "doordash", "Taco Stand", "DoorDash",
-             "2026-07-0%d" % (i + 1), f"dd-{i}", 2599 + i, 150, 300, 1),
+            (
+                mid,
+                "doordash",
+                "Taco Stand",
+                "DoorDash",
+                "2026-07-0%d" % (i + 1),
+                f"dd-{i}",
+                2599 + i,
+                150,
+                300,
+                1,
+            ),
         )
         conn.execute(
             "INSERT INTO receipt_items VALUES (?,?,?,?,?,?,?)",
@@ -87,18 +109,43 @@ def _build_replica(tmp_path: Path, *, receipts: int = 2) -> bytes:
         )
     conn.execute(
         "INSERT INTO chase_transactions VALUES (?,?,?,?,?,?,?,?,?)",
-        ("txn1", "7739", "2026-07-02", "2026-07-01", "DOORDASH TACO STAND",
-         -2599, "Sale", "in-person", 1),
+        (
+            "txn1",
+            "7739",
+            "2026-07-02",
+            "2026-07-01",
+            "DOORDASH TACO STAND",
+            -2599,
+            "Sale",
+            "in-person",
+            1,
+        ),
     )
     conn.execute(
         "INSERT INTO chase_transactions VALUES (?,?,?,?,?,?,?,?,?)",
-        ("txn2", "7739", "2026-07-03", "2026-07-03", "AMAZON.COM",
-         -1000, "Sale", "amazon/aws", 1),
+        (
+            "txn2",
+            "7739",
+            "2026-07-03",
+            "2026-07-03",
+            "AMAZON.COM",
+            -1000,
+            "Sale",
+            "amazon/aws",
+            1,
+        ),
     )
     conn.execute(
         "INSERT INTO matches VALUES (?,?,?,?,?,?,?)",
-        ("txn1", "email", "<msg0@doordash.com>", 0.95, "{}", "one_to_one",
-         "auto"),
+        (
+            "txn1",
+            "email",
+            "<msg0@doordash.com>",
+            0.95,
+            "{}",
+            "one_to_one",
+            "auto",
+        ),
     )
     conn.execute("INSERT INTO meta VALUES ('paper_snapshot_at', '2026-07-18')")
     conn.commit()
@@ -125,8 +172,19 @@ class FakeS3:
     def head_object(self, *, Bucket: str, Key: str):
         self.calls.append(("head", Key))
         if Key not in self.objects:
-            raise self.exceptions.NoSuchKey()
-        return {"ETag": self._etag(Key), "ContentLength": len(self.objects[Key])}
+            # Real S3 reports a missing key on HEAD as a bare 404 ClientError,
+            # not the modelled NoSuchKey that GetObject raises.
+            raise ClientError(
+                {
+                    "Error": {"Code": "404", "Message": "Not Found"},
+                    "ResponseMetadata": {"HTTPStatusCode": 404},
+                },
+                "HeadObject",
+            )
+        return {
+            "ETag": self._etag(Key),
+            "ContentLength": len(self.objects[Key]),
+        }
 
     def get_object(self, *, Bucket: str, Key: str):
         self.calls.append(("get", Key))
@@ -144,7 +202,8 @@ def _load_handler(monkeypatch, tmp_path: Path, objects: dict[str, bytes]):
         boto3,
         "client",
         lambda service, **_kwargs: (
-            fake if service == "s3"
+            fake
+            if service == "s3"
             else pytest.fail(f"unexpected client: {service}")
         ),
     )
@@ -170,7 +229,9 @@ def _event(method: str, request_id=1, params=None) -> dict:
 
 def _call(handler, name: str, arguments: dict | None = None) -> dict:
     response = handler.lambda_handler(
-        _event("tools/call", params={"name": name, "arguments": arguments or {}}),
+        _event(
+            "tools/call", params={"name": name, "arguments": arguments or {}}
+        ),
         None,
     )
     assert response["statusCode"] == 200
@@ -181,8 +242,11 @@ def _call(handler, name: str, arguments: dict | None = None) -> dict:
 def replica(monkeypatch, tmp_path):
     payload = _build_replica(tmp_path)
     manifest = json.dumps(
-        {"published_at": "2026-09-01T07:00:00+00:00", "sha256": "abc",
-         "row_counts": {"email_receipts": 2}}
+        {
+            "published_at": "2026-09-01T07:00:00+00:00",
+            "sha256": "abc",
+            "row_counts": {"email_receipts": 2},
+        }
     ).encode()
     return _load_handler(
         monkeypatch,
@@ -211,26 +275,52 @@ def test_initialize_and_tool_list(replica) -> None:
     names = {tool["name"] for tool in tools}
     # The read subset of receipts-email/server.py, plus replica_status.
     assert names == {
-        "get_email_receipt_summaries", "get_email_receipt",
-        "search_email_receipts", "list_email_merchants", "get_spend_summary",
-        "get_coverage", "get_unmatched", "ingest_status", "replica_status",
+        "get_email_receipt_summaries",
+        "get_email_receipt",
+        "search_email_receipts",
+        "list_email_merchants",
+        "get_spend_summary",
+        "get_coverage",
+        "get_unmatched",
+        "ingest_status",
+        "replica_status",
         "query_sql",
     }
     # No write tool is ever exposed from the replica.
-    for forbidden in ("confirm_match", "reject_match", "mark_transaction",
-                      "reconcile_chase", "import_chase_csv",
-                      "ingest_mbox_index", "refresh_paper_snapshot"):
+    for forbidden in (
+        "confirm_match",
+        "reject_match",
+        "mark_transaction",
+        "reconcile_chase",
+        "import_chase_csv",
+        "ingest_mbox_index",
+        "refresh_paper_snapshot",
+    ):
         assert forbidden not in names
 
 
 def test_summaries_come_from_the_downloaded_snapshot(replica) -> None:
     handler, s3 = replica
-    result = _call(handler, "get_email_receipt_summaries", {"group": "doordash"})
+    result = _call(
+        handler, "get_email_receipt_summaries", {"group": "doordash"}
+    )
     assert result["isError"] is False
     payload = result["structuredContent"]
     assert payload["count"] == 2
+    assert payload["currency"] == "USD"
     assert payload["total_spending"] == 51.99
+    assert payload["by_currency"] == [
+        {
+            "currency": "USD",
+            "count": 2,
+            "total_spending": 51.99,
+            "total_tax": 3.0,
+            "total_tip": 6.0,
+            "average_receipt": 26.0,
+        }
+    ]
     assert payload["summaries"][0]["merchant_name"] == "Taco Stand"
+    assert payload["summaries"][0]["currency"] == "USD"
     # Cold start downloads once; the manifest is read alongside it.
     assert ("get", "replica/email_receipts.db.gz") in s3.calls
     assert ("get", "replica/manifest.json") in s3.calls
@@ -241,11 +331,15 @@ def test_warm_container_reuses_snapshot_until_etag_changes(
 ) -> None:
     handler, s3 = replica
     _call(handler, "ingest_status")
-    downloads = [c for c in s3.calls if c == ("get", "replica/email_receipts.db.gz")]
+    downloads = [
+        c for c in s3.calls if c == ("get", "replica/email_receipts.db.gz")
+    ]
     assert len(downloads) == 1
 
     _call(handler, "ingest_status")
-    downloads = [c for c in s3.calls if c == ("get", "replica/email_receipts.db.gz")]
+    downloads = [
+        c for c in s3.calls if c == ("get", "replica/email_receipts.db.gz")
+    ]
     assert len(downloads) == 1, "same ETag must not re-download"
 
     # Publish a new snapshot with three receipts: the next call sees it.
@@ -253,7 +347,9 @@ def test_warm_container_reuses_snapshot_until_etag_changes(
     s3.objects["replica/email_receipts.db.gz"] = _build_replica(
         tmp_path / "v2", receipts=3
     )
-    payload = _call(handler, "get_email_receipt_summaries")["structuredContent"]
+    payload = _call(handler, "get_email_receipt_summaries")[
+        "structuredContent"
+    ]
     assert payload["count"] == 3
 
 
@@ -274,9 +370,14 @@ def test_coverage_matches_primary_semantics(replica) -> None:
     ]["rows"]
     assert rows == [
         {
-            "period": "2026-07", "account": "7739", "txns": 2,
-            "matched_txns": 1, "spend": 35.99, "matched_spend": 25.99,
-            "coverage_by_count": 0.5, "coverage_by_spend": 0.722,
+            "period": "2026-07",
+            "account": "7739",
+            "txns": 2,
+            "matched_txns": 1,
+            "spend": 35.99,
+            "matched_spend": 25.99,
+            "coverage_by_count": 0.5,
+            "coverage_by_spend": 0.722,
         }
     ]
 
@@ -290,13 +391,162 @@ def test_query_sql_is_read_only(replica) -> None:
     assert denied["isError"] is True
     assert "read-only" in denied["structuredContent"]["error"]
 
+    # A denied verb inside a string literal or comment is data, not a verb.
+    literal = _call(
+        handler,
+        "query_sql",
+        {
+            "sql": "SELECT COUNT(*) FROM email_receipts "
+            "WHERE merchant_name LIKE '%update%' -- drop nothing"
+        },
+    )
+    assert literal["isError"] is False
+    assert literal["structuredContent"]["rows"] == [[0]]
+
     # Even a statement that slips past the deny list cannot write: the
     # connection is opened mode=ro + immutable and query_only is set.
     sneaky = _call(
-        handler, "query_sql",
+        handler,
+        "query_sql",
         {"sql": "WITH x AS (SELECT 1) INSERT INTO meta VALUES ('a','b')"},
     )
     assert sneaky["isError"] is True
+
+
+def test_query_sql_cannot_read_the_mailbox_index(replica) -> None:
+    """The replica boundary is receipt-scoped: `messages` (every sender and
+    subject in the 13-year mailbox) is not readable through raw SQL, directly,
+    via join, subquery, or PRAGMA; the receipt tables still are."""
+    handler, _s3 = replica
+    for sql in (
+        "SELECT subject FROM messages",
+        "SELECT er.message_id FROM email_receipts er "
+        "JOIN messages m ON m.message_id = er.message_id",
+        "SELECT (SELECT COUNT(*) FROM messages)",
+        "WITH m AS (SELECT * FROM messages) SELECT * FROM m",
+        "SELECT * FROM pragma_table_info('messages')",
+    ):
+        denied = _call(handler, "query_sql", {"sql": sql})
+        assert denied["isError"] is True, sql
+        assert "receipt-scoped" in denied["structuredContent"]["error"], sql
+    allowed = _call(
+        handler,
+        "query_sql",
+        {
+            "sql": "WITH t AS (SELECT grand_total_cents c FROM email_receipts) "
+            "SELECT SUM(c) FROM t"
+        },
+    )
+    assert allowed["structuredContent"]["rows"] == [[5199]]
+    # The fixed tool still returns the receipt's own source email.
+    receipt = _call(
+        handler, "get_email_receipt", {"message_id": "<msg0@doordash.com>"}
+    )["structuredContent"]
+    assert receipt["email"]["subject"] == "Order confirmed"
+
+
+def test_query_sql_blobs_and_limits_are_json_safe(replica) -> None:
+    handler, _s3 = replica
+    blob = _call(handler, "query_sql", {"sql": "SELECT x'0001' AS v"})
+    assert blob["structuredContent"]["rows"] == [["AAE="]]
+    assert json.dumps(blob)  # the response-level dumps must not raise
+
+    negative = _call(handler, "query_sql", {"sql": "SELECT 1", "limit": -1})
+    assert negative["isError"] is True
+    assert "limit" in negative["structuredContent"]["error"]
+    clamped = _call(handler, "get_email_receipt_summaries", {"limit": 10**9})
+    assert clamped["isError"] is False
+    assert len(clamped["structuredContent"]["summaries"]) == 2
+    bad = _call(handler, "get_unmatched", {"limit": "many"})
+    assert bad["isError"] is True
+
+
+def test_enums_and_partial_ids_are_validated(replica) -> None:
+    handler, _s3 = replica
+    period = _call(handler, "get_spend_summary", {"period": "monthly"})
+    assert period["isError"] is True
+    kind = _call(handler, "get_unmatched", {"kind": "txn"})
+    assert kind["isError"] is True
+    # "doordash" is a fragment of both receipts' message_ids.
+    ambiguous = _call(handler, "get_email_receipt", {"message_id": "doordash"})
+    assert ambiguous["isError"] is True
+    assert "more than one" in ambiguous["structuredContent"]["error"]
+    exact = _call(handler, "get_email_receipt", {"message_id": "msg1@"})
+    assert exact["structuredContent"]["message_id"] == "<msg1@doordash.com>"
+
+
+def test_summary_average_ignores_unpriced_and_foreign_receipts(
+    monkeypatch, tmp_path
+) -> None:
+    payload_path = tmp_path / "primary.db"
+    conn = sqlite3.connect(payload_path)
+    conn.executescript(SCHEMA)
+    rows = [
+        ("<a@x>", "retail", "A", "2026-07-01", 1000, "USD"),
+        ("<b@x>", "retail", "B", "2026-07-02", None, "USD"),
+        ("<c@x>", "retail", "C", "2026-07-03", 500000, "CRC"),
+    ]
+    for mid, grp, merchant, date, cents, currency in rows:
+        conn.execute(
+            """INSERT INTO email_receipts
+               (message_id, grp, merchant_name, date, grand_total_cents,
+                currency) VALUES (?,?,?,?,?,?)""",
+            (mid, grp, merchant, date, cents, currency),
+        )
+    conn.commit()
+    conn.close()
+    handler, _s3 = _load_handler(
+        monkeypatch,
+        tmp_path,
+        {
+            "replica/email_receipts.db.gz": gzip.compress(
+                payload_path.read_bytes()
+            )
+        },
+    )
+    summary = _call(handler, "get_email_receipt_summaries")[
+        "structuredContent"
+    ]
+    assert summary["count"] == 3
+    assert summary["currency"] == "USD"
+    # 10.00 over the ONE priced USD receipt, not 10.00 / 2 or 5010 / 3.
+    assert summary["total_spending"] == 10.0
+    assert summary["average_receipt"] == 10.0
+    assert {
+        c["currency"]: c["total_spending"] for c in summary["by_currency"]
+    } == {
+        "USD": 10.0,
+        "CRC": 5000.0,
+    }
+    spend = _call(handler, "get_spend_summary", {"period": "month"})[
+        "structuredContent"
+    ]
+    assert spend["currency"] == "USD"
+    assert spend["rows"] == [
+        {
+            "period": "2026-07",
+            "email_receipts": {"n": 1, "total": 10.0},
+            "paper_receipts": {"n": 0, "total": 0},
+            "chase_card_spend": {"n": 0, "total": 0},
+            "email_other_currencies": {"CRC": {"n": 1, "total": 5000.0}},
+        }
+    ]
+
+
+def test_manifest_refreshes_independently_of_the_database(
+    replica,
+) -> None:
+    handler, s3 = replica
+    before = _call(handler, "replica_status")["structuredContent"]
+    assert before["manifest"]["sha256"] == "abc"
+    # replicate uploads the database first and the manifest second; a
+    # manifest-only change must be visible without a new database ETag.
+    s3.objects["replica/manifest.json"] = json.dumps(
+        {"published_at": "2026-09-02T07:00:00+00:00", "sha256": "def"}
+    ).encode()
+    after = _call(handler, "replica_status")["structuredContent"]
+    assert after["manifest"]["sha256"] == "def"
+    assert after["etag"] == before["etag"]
 
 
 def test_missing_replica_is_a_clear_tool_error(monkeypatch, tmp_path) -> None:
@@ -306,10 +556,21 @@ def test_missing_replica_is_a_clear_tool_error(monkeypatch, tmp_path) -> None:
     assert "emlrec replicate" in result["structuredContent"]["error"]
 
 
+def test_malformed_initialize_params_are_a_jsonrpc_error(replica) -> None:
+    handler, _s3 = replica
+    response = handler.lambda_handler(
+        _event("initialize", params="unexpected"), None
+    )
+    assert response["statusCode"] == 200
+    assert json.loads(response["body"])["error"]["code"] == -32602
+
+
 def test_unknown_tool_and_non_post_are_rejected(replica) -> None:
     handler, _s3 = replica
     unknown = handler.lambda_handler(
-        _event("tools/call", params={"name": "confirm_match", "arguments": {}}),
+        _event(
+            "tools/call", params={"name": "confirm_match", "arguments": {}}
+        ),
         None,
     )
     assert json.loads(unknown["body"])["error"]["code"] == -32602
@@ -332,13 +593,35 @@ def test_origin_is_validated_when_browser_supplies_it(
     assert handler.lambda_handler(blocked, None)["statusCode"] == 403
 
 
-def test_vendored_queries_match_the_primary_when_available() -> None:
-    """Drift guard: if the receipts-email checkout is present on this
-    machine, the vendored read module must be byte-identical below the
-    header. CI machines without the checkout skip."""
-    primary = Path.home() / "receipts-email" / "emlrec" / "queries.py"
+def _primary_queries_path() -> Path:
+    """Where the receipts-email checkout lives. ``RECEIPTS_EMAIL_DIR`` lets a
+    CI job that checks the primary out beside this repo point at it."""
+    root = Path(
+        os.environ.get("RECEIPTS_EMAIL_DIR") or Path.home() / "receipts-email"
+    )
+    return root / "emlrec" / "queries.py"
+
+
+def test_vendored_queries_match_the_primary() -> None:
+    """Drift guard: the vendored read module must be byte-identical to the
+    primary below the docstring header. Skips only when no receipts-email
+    checkout is available, and says so."""
+    primary = _primary_queries_path()
     if not primary.exists():
-        pytest.skip("receipts-email checkout not present")
+        pytest.skip(
+            f"receipts-email checkout not found at {primary.parent.parent}; "
+            "set RECEIPTS_EMAIL_DIR to run the vendored-query drift guard"
+        )
     vendored = (LAMBDA_DIR / "queries.py").read_text().split('"""', 2)[2]
     source = primary.read_text().split('"""', 2)[2]
-    assert vendored == source
+    assert vendored == source, (
+        "infra/email_receipt_inbox/lambdas/queries.py drifted from "
+        f"{primary}; re-vendor it (see its docstring)"
+    )
+
+
+def test_vendored_queries_drift_guard_uses_the_env_override(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setenv("RECEIPTS_EMAIL_DIR", str(tmp_path))
+    assert _primary_queries_path() == tmp_path / "emlrec" / "queries.py"
