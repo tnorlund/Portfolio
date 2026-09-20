@@ -38,6 +38,13 @@ updates:
       # (Sep 2026). Drop this once both plugins list eslint ^10.
       - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
+      # typescript 6/7 is blocked until @typescript-eslint/* (peers
+      # typescript >=4.8.4 <6.1.0, also pulled in by eslint-config-next)
+      # widens its ceiling; `npm ci` fails with ERESOLVE before tsc runs.
+      # Closed as #1692 (Sep 2026). Drop this once typescript-eslint peers
+      # typescript ^7.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "chore"
       include: "scope"
