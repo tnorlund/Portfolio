@@ -46,6 +46,26 @@ def test_absent_rules_return_none():
     assert compile_rules({"rules": []}) is None
 
 
+def test_roastrice_stylemap_declares_restaurant_rules():
+    assert rules_for_font("roastrice"), "roastrice stylemap must carry rules"
+    assert (
+        stylescan._classify("Roast and Rice Kitchen", False, "roastrice")
+        == "store_header"
+    )
+    assert stylescan._classify("Table# A8 Guest: 2", False, "roastrice") == (
+        "table"
+    )
+    assert stylescan._classify("Server: Jan", False, "roastrice") == "server"
+    assert stylescan._classify("Gratuity Suggestion", False, "roastrice") == (
+        "tip"
+    )
+    assert stylescan._classify("18.00% = $19.95", True, "roastrice") == "tip"
+    assert stylescan._classify("Total Due $110.85", True, "roastrice") == (
+        "total_line"
+    )
+    assert "roastrice" not in stylescan._MERCHANT_RULES
+
+
 def test_speedway_stylemap_declares_rules_used_by_stylescan():
     assert rules_for_font("speedway"), "speedway stylemap must carry rules"
     assert (

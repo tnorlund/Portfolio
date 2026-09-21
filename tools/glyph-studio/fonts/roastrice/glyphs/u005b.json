@@ -1,0 +1,190 @@
+{
+ "version": 1,
+ "char": "[",
+ "codepoint": 91,
+ "provenance": "edited",
+ "width": 304.5,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 256.0,
+     "y": 938.2,
+     "type": "corner",
+     "hOut": {
+      "x": 202.6,
+      "y": 909.7
+     }
+    },
+    {
+     "x": 100.5,
+     "y": 925.9,
+     "type": "smooth",
+     "hIn": {
+      "x": 155.2,
+      "y": 925.9
+     },
+     "hOut": {
+      "x": 84.9,
+      "y": 920.9
+     }
+    },
+    {
+     "x": 86.6,
+     "y": 938.2,
+     "type": "corner",
+     "hIn": {
+      "x": 89.3,
+      "y": 901.5
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 250.5,
+     "y": -168.5,
+     "type": "corner"
+    },
+    {
+     "x": 248.6,
+     "y": -152.3,
+     "type": "corner",
+     "hOut": {
+      "x": 234.4,
+      "y": -131.7
+     }
+    },
+    {
+     "x": 194.9,
+     "y": -155.0,
+     "type": "corner",
+     "hIn": {
+      "x": 211.0,
+      "y": -143.9
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 86.6,
+     "y": 938.2,
+     "type": "corner",
+     "hOut": {
+      "x": 56.3,
+      "y": 741.4
+     }
+    },
+    {
+     "x": 69.9,
+     "y": 451.5,
+     "type": "corner",
+     "hIn": {
+      "x": 99.7,
+      "y": 596.1
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 69.9,
+     "y": 451.5,
+     "type": "corner",
+     "hOut": {
+      "x": 61.1,
+      "y": 408.6
+     }
+    },
+    {
+     "x": 72.7,
+     "y": 316.7,
+     "type": "smooth",
+     "hIn": {
+      "x": 72.7,
+      "y": 360.8
+     },
+     "hOut": {
+      "x": 72.7,
+      "y": 162.2
+     }
+    },
+    {
+     "x": 86.6,
+     "y": -165.8,
+     "type": "corner",
+     "hIn": {
+      "x": 48.5,
+      "y": -18.1
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 194.9,
+     "y": -155.0,
+     "type": "corner",
+     "hOut": {
+      "x": 176.1,
+      "y": -168.1
+     }
+    },
+    {
+     "x": 144.9,
+     "y": -171.3,
+     "type": "corner",
+     "hIn": {
+      "x": 166.1,
+      "y": -167.1
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 86.6,
+     "y": -165.8,
+     "type": "corner"
+    },
+    {
+     "x": 86.6,
+     "y": -165.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 86.6,
+     "y": -165.8,
+     "type": "corner"
+    },
+    {
+     "x": 144.9,
+     "y": -171.3,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "thestand",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the thestand face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(33..967) -> (47..953)"
+}

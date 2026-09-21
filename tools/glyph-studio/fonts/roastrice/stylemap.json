@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "source": {
+    "merchant": "roastrice",
+    "receipts": 4,
+    "scan_dir": "/tmp/gridfix/roastrice_studio/scans",
+    "lines_measured": 107,
+    "date": "2026-09-20",
+    "notes": "Roast & Rice Asian Fusion / Roast and Rice Kitchen (same restaurant POS, 15 pooled receipts). Guest checks print Table# / Server / items / Total Due / Gratuity Suggestion; card slips print Amount / Gratuity / Total plus the EMV block. The ROAST AND RICE KITCHEN wordmark is plain thermal text (no logo graphic). Rules shared by stylescan and the renderer."
+  },
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "^Roast\\s+(and|&)\\s+Rice"
+    },
+    {
+      "section": "address",
+      "pattern": "Russell Ranch|Westlake Village|Unit A|\\(818\\)\\s*699|^CA\\s+91362"
+    },
+    {
+      "section": "table",
+      "pattern": "Table#|^Dining\\b|Chk#|Guest:"
+    },
+    {
+      "section": "server",
+      "pattern": "^Server:"
+    },
+    {
+      "section": "total_line",
+      "pattern": "^Total(\\s+Due)?:?\\s*\\$?[\\d.]*$"
+    },
+    {
+      "section": "summary",
+      "pattern": "Sub Total|^Sales Tax|^Amount:"
+    },
+    {
+      "section": "tip",
+      "pattern": "Gratuity Suggestion|^\\d{2}\\.\\d{2}\\s*%|Gratuity:"
+    },
+    {
+      "section": "payment",
+      "pattern": "Card Type|Card #|Card Holder|Card Entry|Trans Type|Auth Code|^AID\\s*:|^ATC\\s*:|^TC\\s*:|^TVR\\s*:|^TSI\\s*:|APP LABEL|\\bVISA\\b|MASTERCARD|Contactless|^Chip$|^SALE$"
+    },
+    {
+      "section": "agreement",
+      "pattern": "AGREE TO PAY|CARD ISSUER AGREEMENT"
+    },
+    {
+      "section": "transaction",
+      "pattern": "^Date:?|Check#|Transaction #|Ref\\. Number"
+    },
+    {
+      "section": "footer",
+      "pattern": "THANK YOU|SIGNATURE"
+    }
+  ],
+  "sections": {
+    "address": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=12: cap_rel med 1.412, stroke_rel med 0.982, underline 0.00. || Street / city / phone under the wordmark, body weight. cap_rel ~1.2 is OCR box padding, not a larger face."
+    },
+    "agreement": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=4: cap_rel med 1.125, stroke_rel med 0.921, underline 0.00. || AUTO-DRAFT confirmed against the guest-check and card-slip strips: body."
+    },
+    "footer": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=4: cap_rel med 1.000, stroke_rel med 1.000, underline 0.00. || AUTO-DRAFT confirmed against the guest-check and card-slip strips: body."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=9: cap_rel med 1.024, stroke_rel med 1.001, underline 0.00. || AUTO-DRAFT confirmed against the guest-check and card-slip strips: body."
+    },
+    "other": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=6: cap_rel med 1.013, stroke_rel med 0.984, underline 0.00. || AUTO-DRAFT confirmed against the guest-check and card-slip strips: body."
+    },
+    "payment": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=23: cap_rel med 1.125, stroke_rel med 0.924, underline 0.00. || AUTO-DRAFT confirmed against the guest-check and card-slip strips: body."
+    },
+    "server": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=4: cap_rel med 1.219, stroke_rel med 0.987, underline 0.00. || Server: name (+ timestamp on guest checks) is body."
+    },
+    "store_header": {
+      "sizeScale": 1.0,
+      "weight": "bold",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=4: cap_rel med 1.500, stroke_rel med 1.494, underline 0.00. || ROAST AND RICE KITCHEN wordmark prints heavier than body (stroke_rel med >= 1.39); render bold. Address lines stay body."
+    },
+    "summary": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=6: cap_rel med 1.098, stroke_rel med 1.184, underline 0.00. || Sub Total / Sales Tax / Amount: are body. Sub Total stroke ~1.26 is a short-line artifact, not a second face."
+    },
+    "table": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=5: cap_rel med 1.120, stroke_rel med 1.047, underline 0.00. || Dining / Chk# / Table# / Guest header metadata is body. Short-line stroke spikes are scan artifacts."
+    },
+    "tip": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=18: cap_rel med 1.040, stroke_rel med 0.934, underline 0.00. || Gratuity Suggestion + 18/20/22% lines and the card-slip Gratuity: write-in are body weight."
+    },
+    "total_line": {
+      "sizeScale": 1.0,
+      "weight": "bold",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=4: cap_rel med 1.235, stroke_rel med 1.516, underline 0.00. || Total Due / Total: rows print bold (stroke_rel med >= 1.40)."
+    },
+    "transaction": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=8: cap_rel med 1.265, stroke_rel med 0.939, underline 0.00. || AUTO-DRAFT confirmed against the guest-check and card-slip strips: body."
+    }
+  }
+}

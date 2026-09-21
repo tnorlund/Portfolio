@@ -1,0 +1,47 @@
+{
+ "version": 1,
+ "char": "1",
+ "codepoint": 49,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "roastrice.refined.npz",
+  "samples": 30,
+  "consensusHash": "68bd087d10e8",
+  "date": "2026-09-20"
+ },
+ "width": 366.9,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 296.7,
+     "y": 46.9,
+     "type": "corner"
+    },
+    {
+     "x": 305.0,
+     "y": 953.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 289.7,
+     "y": 822.2,
+     "type": "corner"
+    },
+    {
+     "x": 52.2,
+     "y": 727.8,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}
