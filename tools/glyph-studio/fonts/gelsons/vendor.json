@@ -1,0 +1,27 @@
+{
+  "merchant": "Gelson's Westlake Village",
+  "slug": "gelsons",
+  "portfolio_slug": "gelsons",
+  "hero": "G",
+  "label": "Gelson's",
+  "bold_callout": "the measured department heading weight",
+  "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+      "max_count": 0
+    }
+  },
+  "studio_dir": "/tmp/gridfix/gelsons_studio",
+  "donor": "vons",
+  "gold_receipt": {
+    "image_id": "659623a5-5989-4e61-b153-9cda1331cc8e",
+    "receipt_id": 2
+  },
+  "logo": "synthesis_loop/logo_masters/gelsons_logo.png",
+  "logo_phrases": [
+    "GELSON'S",
+    "GELSONS",
+    "Gelson's"
+  ],
+  "owns_profile": true
+}
