@@ -93,30 +93,27 @@
   padding: 1rem 0;
 }
 
-/* Desktop legend - shown by default, hidden on mobile */
-.legendDesktop {
-  display: contents;
-}
-
-/* Mobile legend - hidden by default, shown on mobile */
-.legendMobile {
-  display: none;
-  grid-template-columns: repeat(3, auto);
-  justify-content: center;
-  gap: 0.5rem 1.5rem;
+.legendItems {
+  display: grid;
+  gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .legendItem {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  opacity: 0.3;
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  margin: 0;
+  padding: 0;
+  line-height: inherit;
+  opacity: 0.5;
+  transition: opacity 180ms ease;
 }
 
 .legendItem.revealed {
   opacity: 1;
-  transform: scale(1.05);
 }
 
 .legendDot {
@@ -130,6 +127,7 @@
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text-color);
+  white-space: nowrap;
 }
 
 /* Inference Time - Part of Legend */
@@ -140,7 +138,12 @@
   margin-top: 1.5rem;
   padding-top: 1rem;
   border-top: 1px solid var(--text-color);
-  opacity: 0.2;
+  opacity: 0.5;
+  transition: opacity 180ms ease;
+}
+
+.inferenceTime.revealed {
+  opacity: 1;
 }
 
 .inferenceLabel {
@@ -158,6 +161,7 @@
   color: var(--text-color);
   font-family: "Monaco", "Menlo", "Consolas", monospace;
   font-variant-numeric: tabular-nums;
+  line-height: 1.5;
 }
 
 /* Loading / Error states */
@@ -213,13 +217,10 @@
     padding: 0;
   }
 
-  /* Show mobile legend, hide desktop legend */
-  .legendDesktop {
-    display: none;
-  }
-
-  .legendMobile {
-    display: grid;
+  .legendItems {
+    grid-template-columns: repeat(3, auto);
+    justify-content: center;
+    gap: 0.5rem 1.5rem;
   }
 
   .inferenceTime {
@@ -249,6 +250,14 @@
     gap: 0.5rem;
   }
 
+  .legendItems {
+    gap: 0.5rem 0.75rem;
+  }
+
+  .legendItem {
+    gap: 0.5rem;
+  }
+
   .legendDot {
     width: 12px;
     height: 12px;
@@ -256,5 +265,22 @@
 
   .legendLabel {
     font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .legendItems {
+    column-gap: 0.5rem;
+  }
+
+  .legendItem {
+    gap: 0.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legendItem,
+  .inferenceTime {
+    transition: none;
   }
 }

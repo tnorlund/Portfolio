@@ -1,5 +1,4 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
-import { animated, useSpring } from "@react-spring/web";
 import { useInView } from "react-intersection-observer";
 import Image from "next/image";
 import { api } from "../../../../services/api";
@@ -30,16 +29,8 @@ import sharedStyles from "../labelBoxOverlay.module.css";
 
 const emptyStringSet = new Set<string>();
 
-// Normalize ADDRESS_LINE to ADDRESS for display purposes
-const normalizeLabel = (label: string): string => {
-  // Keep granular labels as-is (LABEL_COLORS covers both ADDRESS and
-  // ADDRESS_LINE, the currency roles, QUANTITY, etc.).
-  return label;
-};
-
-// Legend groups — taxonomy families. `title` (hover) carries the breakdown so
-// the labels stay short.
-const MOBILE_LEGEND_GROUPS = [
+// Keep the same label families and order at every viewport size.
+const LEGEND_GROUPS = [
   { color: "var(--color-yellow)", label: "Merchant", title: "Merchant name", types: ["MERCHANT_NAME"] },
   { color: "var(--color-blue)", label: "Date / Time", title: "Date · Time", types: ["DATE", "TIME"] },
   {
@@ -333,55 +324,35 @@ const EntityLegend: React.FC<EntityLegendProps> = ({
   inferenceTimeMs,
   showInferenceTime,
 }) => {
-  const inferenceSpring = useSpring({
-    opacity: showInferenceTime ? 1 : 0.2,
-    config: { tension: 280, friction: 24 },
-  });
-
   return (
     <div className={styles.entityLegend}>
-      {/* Desktop: taxonomy-family legend (hidden on mobile via CSS) — 9 groups
-          instead of one row per granular label. */}
-      <div className={styles.legendDesktop}>
-        {MOBILE_LEGEND_GROUPS.map((group) => {
+      <ul className={styles.legendItems} aria-label="Label families">
+        {LEGEND_GROUPS.map((group) => {
           const isRevealed = group.types.some((t) =>
             revealedEntityTypes.has(t)
           );
           return (
-            <div
+            <li
               key={group.label}
               title={group.title}
               className={`${styles.legendItem} ${isRevealed ? styles.revealed : ""}`}
             >
               <div
+                aria-hidden="true"
                 className={styles.legendDot}
                 style={{ backgroundColor: group.color }}
               />
               <span className={styles.legendLabel}>{group.label}</span>
-            </div>
+            </li>
           );
         })}
-      </div>
-      {/* Mobile: grouped legend (hidden on desktop via CSS) */}
-      <div className={styles.legendMobile}>
-        {MOBILE_LEGEND_GROUPS.map((group) => {
-          const isRevealed = group.types.some((t) => revealedEntityTypes.has(t));
-          return (
-            <div
-              key={group.label}
-              title={group.title}
-              className={`${styles.legendItem} ${isRevealed ? styles.revealed : ""}`}
-            >
-              <div className={styles.legendDot} style={{ backgroundColor: group.color }} />
-              <span className={styles.legendLabel}>{group.label}</span>
-            </div>
-          );
-        })}
-      </div>
-      <animated.div className={styles.inferenceTime} style={inferenceSpring}>
+      </ul>
+      <div className={`${styles.inferenceTime} ${showInferenceTime ? styles.revealed : ""}`}>
         <span className={styles.inferenceLabel}>Inference Time</span>
-        <span className={styles.inferenceValue}>{inferenceTimeMs.toFixed(0)}ms</span>
-      </animated.div>
+        <span className={styles.inferenceValue}>
+          {showInferenceTime ? `${inferenceTimeMs.toFixed(0)} ms` : "—"}
+        </span>
+      </div>
     </div>
   );
 };
@@ -418,7 +389,7 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
   // Get predictions with non-O labels that are revealed
   const visiblePredictions = useMemo(() => {
     return predictions.filter((pred) => {
-      if (normalizeLabel(pred.predicted_label_base) === "O") return false;
+      if (pred.predicted_label_base === "O") return false;
       const key = `${pred.line_id}_${pred.word_id}`;
       return revealedWordIds.has(key);
     });
@@ -456,7 +427,7 @@ const ActiveReceiptViewer: React.FC<ActiveReceiptViewerProps> = ({
 
               const { bounding_box } = word;
               const color =
-                LABEL_COLORS[normalizeLabel(pred.predicted_label_base)] ||
+                LABEL_COLORS[pred.predicted_label_base] ||
                 LABEL_COLORS.O;
 
               // Convert normalized bounding box to pixel coordinates
@@ -539,7 +510,7 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
     if (!receipt) return new Map<string, string>();
     const map = new Map<string, string>();
     for (const pred of receipt.original.predictions) {
-      const label = normalizeLabel(pred.predicted_label_base);
+      const label = pred.predicted_label_base;
       if (label !== "O") {
         map.set(`${pred.line_id}_${pred.word_id}`, label);
       }
@@ -724,14 +695,6 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
     [motionScale],
   );
 
-  const nextLegend = isTransitioning && nextReceipt ? (
-    <EntityLegend
-      revealedEntityTypes={emptyStringSet}
-      inferenceTimeMs={nextReceipt.inference_time_ms}
-      showInferenceTime={false}
-    />
-  ) : null;
-
   return (
     <div ref={observerRef} className={styles.container}>
       <ReceiptFlowShell
@@ -760,19 +723,18 @@ const LayoutLMBatchInner: React.FC<LayoutLMBatchInnerProps> = ({
           isTransitioning && nextReceipt ? (
             <ActiveReceiptViewer
               receipt={nextReceipt}
-              revealedWordIds={new Set()}
+              revealedWordIds={emptyStringSet}
               formatSupport={formatSupport}
             />
           ) : null
         }
         legend={
           <EntityLegend
-            revealedEntityTypes={revealedEntityTypes}
+            revealedEntityTypes={isTransitioning ? emptyStringSet : revealedEntityTypes}
             inferenceTimeMs={currentReceipt.inference_time_ms}
-            showInferenceTime={showInferenceTime}
+            showInferenceTime={showInferenceTime && !isTransitioning}
           />
         }
-        nextLegend={nextLegend}
         stabilizeLegend
       />
     </div>
