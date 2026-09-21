@@ -49,12 +49,23 @@ class _StubExporter:
     def check_receipt(self, merchant, image_id, rid):
         return SimpleNamespace(width=760, height=1200)
 
-    def render_final(self, merchant, image_id, rid, *, width, height, out_png):
+    def render_final(
+        self,
+        merchant,
+        image_id,
+        rid,
+        *,
+        width,
+        height,
+        out_png,
+        label_key=None,
+    ):
         Image.new("RGB", (width, height), "white").save(out_png)
         labels = {
             "tokens": ["TOTAL"],
             "bboxes": [[0, 0, 10, 10]],
             "ner_tags": ["O"],
+            "receipt_key": label_key or f"{image_id}#{rid}",
         }
         return {
             "labels": labels,
@@ -310,10 +321,13 @@ def test_export_uses_pinned_canvas_not_live_receipt_height(
     seen = {}
     original_render = exporter.render_final
 
-    def render_final(merchant, image_id, rid, *, width, height, out_png):
+    def render_final(
+        merchant, image_id, rid, *, width, height, out_png, label_key=None
+    ):
         seen["image_id"] = image_id
         seen["rid"] = rid
         seen["height"] = height
+        seen["label_key"] = label_key
         return original_render(
             merchant,
             image_id,
@@ -321,6 +335,7 @@ def test_export_uses_pinned_canvas_not_live_receipt_height(
             width=width,
             height=height,
             out_png=out_png,
+            label_key=label_key,
         )
 
     exporter.check_receipt = lambda merchant, image_id, rid: SimpleNamespace(
@@ -338,7 +353,7 @@ def test_export_uses_pinned_canvas_not_live_receipt_height(
     spec = {
         "merchant": "Stub",
         "font": "missing-font",
-        "receipt": {"image_id": "manifest-img", "receipt_id": 9},
+        "receipt": {"image_id": "geo-img", "receipt_id": 1},
     }
 
     summary = epa.export_merchant(
@@ -356,6 +371,13 @@ def test_export_uses_pinned_canvas_not_live_receipt_height(
     assert seen["height"] == snap["canvas"]["h"]
     assert seen["image_id"] == "geo-img"
     assert seen["rid"] == 1
+    assert seen["label_key"] == "label-img#2"
+    labels = json.loads(
+        (tmp_path / "out" / "stub" / "final.labels.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert labels["receipt_key"] == "label-img#2"
 
 
 def test_export_refuses_live_scan_that_does_not_match_the_pin(
@@ -379,8 +401,12 @@ def test_export_refuses_live_scan_that_does_not_match_the_pin(
     spec = {
         "merchant": "Stub",
         "font": "missing-font",
-        "receipt": {"image_id": "manifest-img", "receipt_id": 9},
+        "receipt": {"image_id": "geo-img", "receipt_id": 1},
     }
+    card = tmp_path / "out" / "stub"
+    card.mkdir(parents=True)
+    (card / "final.webp").write_bytes(b"prior-finale")
+    (card / "real.webp").write_bytes(b"prior-real")
 
     with pytest.raises(RuntimeError, match="live scan sha256"):
         epa.export_merchant(
@@ -393,6 +419,55 @@ def test_export_refuses_live_scan_that_does_not_match_the_pin(
             logo_override=None,
             commit="abc",
         )
+
+    assert (card / "final.webp").read_bytes() == b"prior-finale"
+    assert (card / "real.webp").read_bytes() == b"prior-real"
+    assert not (card / "final.labels.json").exists()
+    assert not (card / "compose_steps.json").exists()
+
+
+def test_export_rejects_a_snapshot_whose_manifest_receipt_changed(
+    tmp_path, monkeypatch
+):
+    snaps, directory, _snap = _pinned_card(tmp_path)
+    monkeypatch.setattr(snaps, "SNAPSHOT_DIR", str(directory))
+    exporter = _StubExporter(tmp_path)
+    called = {"render": 0, "scan": 0}
+    original_render = exporter.render_final
+
+    def render_final(*args, **kwargs):
+        called["render"] += 1
+        return original_render(*args, **kwargs)
+
+    exporter.render_final = render_final
+    monkeypatch.setattr(
+        epa,
+        "load_real_scan",
+        lambda _s3, _r: called.__setitem__("scan", called["scan"] + 1),
+    )
+    spec = {
+        "merchant": "Stub",
+        "font": "missing-font",
+        "receipt": {"image_id": "manifest-img", "receipt_id": 9},
+    }
+    card = tmp_path / "out" / "stub"
+    card.mkdir(parents=True)
+    (card / "final.webp").write_bytes(b"prior-finale")
+
+    with pytest.raises(RuntimeError, match="refusing a stale pin"):
+        epa.export_merchant(
+            "stub",
+            spec,
+            exporter,
+            out_root=str(tmp_path / "out"),
+            finale_only=True,
+            corpus_path=None,
+            logo_override=None,
+            commit="abc",
+        )
+
+    assert called == {"render": 0, "scan": 0}
+    assert (card / "final.webp").read_bytes() == b"prior-finale"
 
 
 def test_cached_payload_ignores_live_dynamo_and_disk_cache(
@@ -435,3 +510,18 @@ def test_cached_payload_ignores_live_dynamo_and_disk_cache(
     assert doc["words"][0]["text"] == "PINNED"
     assert doc["height"] == 2471
     assert doc["receipt_id"] == 1
+
+    def _live(*_args, **_kwargs):
+        return 10, 20, [{"text": "LIVE"}], []
+
+    monkeypatch.setattr("render_merchant_gold._load_receipt_payload", _live)
+    other = _cached_payload(
+        str(cache),
+        "ReceiptsTable-dc5be22",
+        "us-test-1",
+        "Other",
+        "label-img",
+        2,
+    )
+    assert other["words"][0]["text"] == "LIVE"
+    assert other["receipt_id"] == 2

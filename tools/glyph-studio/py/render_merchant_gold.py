@@ -246,7 +246,9 @@ def _cached_payload(cache_dir, table, region, merchant, image_id, receipt_id):
     cached after the first pull. The cache key includes the table so a run
     against a different environment cannot reuse another table's payload.
     """
-    pinned = resolve_pinned_payload(image_id, int(receipt_id))
+    pinned = resolve_pinned_payload(
+        image_id, int(receipt_id), merchant=merchant
+    )
     if pinned is not None:
         return pinned
     os.makedirs(cache_dir, exist_ok=True)

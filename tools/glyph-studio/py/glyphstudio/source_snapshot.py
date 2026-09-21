@@ -8,7 +8,9 @@ the committed ``final.labels.json``. ``manifest_receipt`` is the id in
 ``geometry_receipt`` is the row whose words were actually pinned.
 
 The closed path does not follow a later Dynamo geometry. A live payload that
-disagrees with the pin is refused.
+disagrees with the pin is refused. Label and manifest ids alias the geometry
+row only for that snapshot's merchant, so a reused receipt id cannot return
+another merchant's words.
 """
 
 from __future__ import annotations
@@ -176,16 +178,33 @@ def resolve_pinned_payload(
     image_id: str,
     receipt_id: int,
     directory: str | None = None,
+    *,
+    merchant: str | None = None,
 ) -> dict[str, Any] | None:
-    """Pinned payload when ``image_id``/``receipt_id`` is any id on a pin.
+    """Pinned payload when ``image_id``/``receipt_id`` is on a same-merchant pin.
 
-    Label and manifest ids resolve to ``geometry_receipt``'s words so a
-    reused label id cannot pull a different merchant's live row.
+    ``label_receipt`` and ``manifest_receipt`` alias ``geometry_receipt``.
+    That alias overrides the live row only for the snapshot's own merchant.
+    A reused id (Vons label ``#1`` now belongs to someone else) stays on the
+    live payload, and a pin for the new owner does not collide with the old
+    alias. A geometry id is likewise merchant-scoped when ``merchant`` is set.
     """
     wanted = (image_id, int(receipt_id))
-    matches = [
-        snap for snap in iter_snapshots(directory) if wanted in _keys(snap)
-    ]
+    matches: list[dict[str, Any]] = []
+    for snap in iter_snapshots(directory):
+        if wanted not in _keys(snap):
+            continue
+        geometry = (
+            snap["geometry_receipt"]["image_id"],
+            int(snap["geometry_receipt"]["receipt_id"]),
+        )
+        alias = wanted != geometry
+        if alias:
+            if merchant is None or snap["merchant"] != merchant:
+                continue
+        elif merchant is not None and snap["merchant"] != merchant:
+            continue
+        matches.append(snap)
     if not matches:
         return None
     if len(matches) > 1:

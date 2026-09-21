@@ -89,12 +89,66 @@ def test_canvas_must_be_the_height_the_source_size_produces():
 
 def test_label_id_resolves_to_geometry_words_not_a_second_payload(tmp_path):
     write_snapshot(_snap(), str(tmp_path))
-    by_label = resolve_pinned_payload(_LABEL, 2, str(tmp_path))
-    by_manifest = resolve_pinned_payload(_MANIFEST, 1, str(tmp_path))
+    merchant = "Sprouts Farmers Market"
+    by_label = resolve_pinned_payload(
+        _LABEL, 2, str(tmp_path), merchant=merchant
+    )
+    by_manifest = resolve_pinned_payload(
+        _MANIFEST, 1, str(tmp_path), merchant=merchant
+    )
     assert by_label is not None and by_manifest is not None
     assert by_label["words"] == by_manifest["words"]
     assert by_label["receipt_id"] == 1
     assert resolve_pinned_payload("missing", 1, str(tmp_path)) is None
+
+
+def test_alias_override_is_same_merchant_only(tmp_path):
+    """A reused label id must not return another merchant's pinned words."""
+    image = "678a7c94-4948-4ebf-b8e9-9a17c13051ec"
+    write_snapshot(
+        _snap(
+            slug="vons",
+            merchant="Vons",
+            label_receipt={"image_id": image, "receipt_id": 1},
+            manifest_receipt={"image_id": image, "receipt_id": 2},
+            geometry_receipt={"image_id": image, "receipt_id": 2},
+            words=[_word("VONS")],
+        ),
+        str(tmp_path),
+    )
+    assert (
+        resolve_pinned_payload(image, 1, str(tmp_path), merchant="Other")
+        is None
+    )
+    vons = resolve_pinned_payload(image, 1, str(tmp_path), merchant="Vons")
+    assert vons is not None
+    assert vons["words"][0]["text"] == "VONS"
+    assert vons["receipt_id"] == 2
+    assert (
+        resolve_pinned_payload(image, 2, str(tmp_path), merchant="Other")
+        is None
+    )
+
+    write_snapshot(
+        _snap(
+            slug="other",
+            merchant="Other",
+            label_receipt={"image_id": image, "receipt_id": 1},
+            manifest_receipt={"image_id": image, "receipt_id": 1},
+            geometry_receipt={"image_id": image, "receipt_id": 1},
+            words=[_word("OTHER")],
+        ),
+        str(tmp_path),
+    )
+    other = resolve_pinned_payload(image, 1, str(tmp_path), merchant="Other")
+    assert other is not None
+    assert other["words"][0]["text"] == "OTHER"
+    assert other["receipt_id"] == 1
+    still_vons = resolve_pinned_payload(
+        image, 1, str(tmp_path), merchant="Vons"
+    )
+    assert still_vons is not None
+    assert still_vons["words"][0]["text"] == "VONS"
 
 
 def test_refuse_live_geometry_and_scan_bytes():
