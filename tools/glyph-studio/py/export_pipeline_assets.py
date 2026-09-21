@@ -31,10 +31,15 @@ Inputs and where they come from:
 
 * ``tools/glyph-studio/fixtures/pipeline_merchants.json`` names the source
   receipt, canonical merchant, font dir and hero character per slug.
-* Receipt words/labels/barcodes, the ReceiptPlace check, receipt dims and
-  the CDN scan come from the DEV table ``ReceiptsTable-dc5be22`` and its
-  buckets (read-only). The receipt payload is cached under ``--cache-dir``
-  after the first pull (same cache as ``render_merchant_gold.py``).
+* When ``fixtures/source_snapshots/<slug>.json`` exists, words, boxes,
+  labels, and the canvas size come from that pin, and only when its
+  ``manifest_receipt`` is still the manifest's receipt (``new_vendor.py
+  export`` rewrites that entry before this tool runs). Label metadata keeps
+  ``label_receipt``; words and the scan use ``geometry_receipt``. A live
+  scan whose bytes do not match ``image_sha256`` is refused before any card
+  file is written. Otherwise receipt words, the ReceiptPlace check, receipt
+  dims and the CDN scan come from the DEV table ``ReceiptsTable-dc5be22``
+  (read-only), cached under ``--cache-dir``.
 * Fonts, logo and stylemap resolve through the ACTIVE merchant-truth bundle
   exactly as production renders do (``scripts/render_synthetic_receipts``).
 * The letterform corpus is ``merchant_fonts/<font>/corpus.npz`` in the font
@@ -95,6 +100,12 @@ from glyphstudio.provenance import (  # noqa: E402
     write_manifest_provenance,
 )
 from glyphstudio.schema import glyph_filename, load_font  # noqa: E402
+from glyphstudio.source_snapshot import (  # noqa: E402
+    assert_image_bytes,
+    canvas_size,
+    geometry_ids,
+    load_snapshot,
+)
 from glyphstudio.stylescan import _classify, line_has_price  # noqa: E402
 from glyphstudio.vendor_package import resolve_gold_inputs  # noqa: E402
 from PIL import Image  # noqa: E402
@@ -158,28 +169,43 @@ def _same_merchant(place_name: str, merchant: str) -> bool:
         return False
 
 
-def _load_s3_image(s3: S3Client, bucket: str | None, key: str | None):
+def _load_s3_bytes(
+    s3: S3Client, bucket: str | None, key: str | None
+) -> bytes | None:
     if not bucket or not key:
         return None
     try:
         body = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
     except Exception:  # noqa: BLE001 - fall through to the next copy
         return None
-    return Image.open(BytesIO(body)).convert("RGB")
+    return body
 
 
-def load_real_scan(s3: S3Client, receipt: Any) -> Image.Image:
-    """The receipt crop: CDN derivative first, raw upload as fallback."""
+def _scan_bytes(s3: S3Client, receipt: Any) -> bytes:
+    """The receipt crop bytes: CDN derivative first, raw upload as fallback."""
     for bucket, key in (
         (receipt.cdn_s3_bucket, receipt.cdn_s3_key),
         (receipt.raw_s3_bucket, receipt.raw_s3_key),
     ):
-        image = _load_s3_image(s3, bucket, key)
-        if image is not None:
-            return image
+        data = _load_s3_bytes(s3, bucket, key)
+        if data:
+            return data
     raise RuntimeError(
         f"no scan for {receipt.image_id}#{receipt.receipt_id} in S3"
     )
+
+
+def load_real_scan(s3: S3Client, receipt: Any) -> Image.Image:
+    """The receipt crop: CDN derivative first, raw upload as fallback."""
+    return Image.open(BytesIO(_scan_bytes(s3, receipt))).convert("RGB")
+
+
+def load_real_scan_bytes(
+    s3: S3Client, receipt: Any
+) -> tuple[bytes, Image.Image]:
+    """Scan bytes plus the decoded image, so a pin can hash the bytes."""
+    data = _scan_bytes(s3, receipt)
+    return data, Image.open(BytesIO(data)).convert("RGB")
 
 
 class Exporter:
@@ -238,8 +264,14 @@ class Exporter:
         width: int,
         height: int,
         out_png: str,
+        label_key: str | None = None,
     ) -> dict[str, Any]:
-        """Production render + render-true labels (glyph_review recipe)."""
+        """Production render + render-true labels (glyph_review recipe).
+
+        ``image_id``/``rid`` select words and the scan (the geometry row).
+        ``label_key`` is the committed ``final.labels.json`` id when that
+        differs from the geometry row.
+        """
         doc = _cached_payload(
             self.cache_dir, self.table, self.region, merchant, image_id, rid
         )
@@ -292,7 +324,7 @@ class Exporter:
                 width=width,
                 height=height,
                 merchant=merchant,
-                receipt_key=f"{image_id}#{rid}",
+                receipt_key=label_key or f"{image_id}#{rid}",
             ),
             "payload": doc,
             "bitmap_font_paths": list((typ.get("bitmap_font") or {}).values()),
@@ -358,6 +390,38 @@ class Exporter:
         return picked
 
 
+def _reject_stale_snapshot(snap: dict[str, Any], spec: dict[str, Any]) -> None:
+    """Refuse a pin whose manifest receipt is not the one this export asked for.
+
+    Selecting a snapshot by slug alone ignores a manifest edit. ``new_vendor.py
+    export`` rewrites the manifest entry and then invokes this exporter, so
+    the receipt in ``spec`` is the one that must match ``manifest_receipt``.
+    """
+    pinned = snap["manifest_receipt"]
+    requested = spec.get("receipt") or {}
+    pinned_key = (pinned["image_id"], int(pinned["receipt_id"]))
+    try:
+        requested_key = (
+            requested.get("image_id"),
+            int(requested["receipt_id"]),
+        )
+    except (KeyError, TypeError, ValueError):
+        requested_key = None
+    if requested_key != pinned_key:
+        image_id, receipt_id = requested_key or ("?", "?")
+        raise RuntimeError(
+            f"{snap['slug']}: snapshot manifest_receipt "
+            f"{pinned_key[0]}#{pinned_key[1]} does not match requested "
+            f"{image_id}#{receipt_id}; refusing a stale pin"
+        )
+
+
+def _label_key(snap: dict[str, Any]) -> str:
+    """Committed label id. Words and the scan stay on the geometry row."""
+    label = snap["label_receipt"]
+    return f"{label['image_id']}#{int(label['receipt_id'])}"
+
+
 def export_merchant(
     slug: str,
     spec: dict[str, Any],
@@ -374,22 +438,51 @@ def export_merchant(
     merchant = spec["merchant"]
     font = spec["font"]
     hero = spec.get("hero", "A")
-    image_id = spec["receipt"]["image_id"]
-    rid = int(spec["receipt"]["receipt_id"])
-    out_dir = os.path.join(out_root, slug)
-    os.makedirs(out_dir, exist_ok=True)
+    snap = load_snapshot(slug)
+    label_key = None
+    if snap is not None:
+        # A slug hit is not enough: the manifest receipt this export was
+        # asked to render has to be the one the pin recorded.
+        _reject_stale_snapshot(snap, spec)
+        # Geometry row for words and the scan. Label metadata keeps the
+        # committed final.labels.json id when re-OCR reused that key.
+        image_id, rid = geometry_ids(snap)
+        label_key = _label_key(snap)
+        width, height = canvas_size(snap)
+    else:
+        image_id = spec["receipt"]["image_id"]
+        rid = int(spec["receipt"]["receipt_id"])
+        width = pa.RECEIPT_WIDTH
+        height = None
     summary: dict[str, Any] = {"slug": slug, "merchant": merchant}
 
     receipt = exporter.check_receipt(merchant, image_id, rid)
-    width = pa.RECEIPT_WIDTH
-    height = pa.receipt_height(receipt.width, receipt.height, width)
+    if height is None:
+        height = pa.receipt_height(receipt.width, receipt.height, width)
     summary["dims"] = {"w": width, "h": height}
+
+    # Hash the pinned scan before any card file is written. A mismatch must
+    # leave an existing staging tree untouched.
+    if snap is not None and snap.get("image_sha256"):
+        scan_bytes, scan = load_real_scan_bytes(exporter.s3, receipt)
+        assert_image_bytes(snap, scan_bytes)
+    else:
+        scan = load_real_scan(exporter.s3, receipt)
+
+    out_dir = os.path.join(out_root, slug)
+    os.makedirs(out_dir, exist_ok=True)
 
     # Finale pair: final.webp + labels, real.webp, logo, compose steps.
     with tempfile.TemporaryDirectory(prefix="pipeline-final-") as tmp:
         png = os.path.join(tmp, "final.png")
         rendered = exporter.render_final(
-            merchant, image_id, rid, width=width, height=height, out_png=png
+            merchant,
+            image_id,
+            rid,
+            width=width,
+            height=height,
+            out_png=png,
+            label_key=label_key,
         )
         labels = rendered["labels"]
         payload = rendered["payload"]
@@ -401,7 +494,6 @@ def export_merchant(
     summary["tokens"] = len(labels["tokens"])
     summary["labelled"] = sum(1 for t in labels["ner_tags"] if t != "O")
 
-    scan = load_real_scan(exporter.s3, receipt)
     _save_webp(
         pa.normalize_real(scan, width=width, height=height),
         os.path.join(out_dir, "real.webp"),

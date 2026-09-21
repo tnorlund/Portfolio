@@ -1244,6 +1244,9 @@ def cmd_export(args) -> int:
         label=v["label"],
         bold_callout=v["bold_callout"],
     )
+    # The exporter reads this manifest next. A source snapshot whose
+    # manifest_receipt is not the receipt just written is rejected there
+    # instead of silently rendering the old pin.
     out_root = os.path.join(studio, "pipeline_export")
     cmd = [
         sys.executable,
