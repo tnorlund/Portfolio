@@ -22,6 +22,11 @@ from glyphstudio.provenance import (  # noqa: E402
     sha256_files,
     sha256_json,
 )
+from glyphstudio.source_snapshot import (  # noqa: E402
+    canvas_height_for_source,
+    sha256_bytes,
+    write_snapshot,
+)
 from PIL import Image  # noqa: E402
 
 
@@ -258,3 +263,175 @@ def test_export_still_refuses_a_dirty_tree_before_any_write(
         )
 
     assert manifest.read_text(encoding="utf-8") == before
+
+
+def _pinned_card(tmp_path, *, image_sha=None, source=(760, 2471)):
+    from glyphstudio import source_snapshot as snaps
+
+    width, height = source
+    snap = {
+        "version": 1,
+        "slug": "stub",
+        "merchant": "Stub",
+        "label_receipt": {"image_id": "label-img", "receipt_id": 2},
+        "manifest_receipt": {"image_id": "geo-img", "receipt_id": 1},
+        "geometry_receipt": {"image_id": "geo-img", "receipt_id": 1},
+        "canvas": {
+            "w": 760,
+            "h": canvas_height_for_source(width, height),
+        },
+        "source_size": {"width": width, "height": height},
+        "image_sha256": image_sha,
+        "image_type": "SCAN",
+        "words": [
+            {
+                "text": "PINNED",
+                "line_id": 1,
+                "word_id": 1,
+                "bbox": [1, 2, 3, 4],
+                "labels": ["B-MERCHANT_NAME"],
+            }
+        ],
+        "barcodes": [],
+    }
+    directory = tmp_path / "snaps"
+    write_snapshot(snap, str(directory))
+    monkey_dir = directory
+
+    return snaps, monkey_dir, snap
+
+
+def test_export_uses_pinned_canvas_not_live_receipt_height(
+    tmp_path, monkeypatch
+):
+    snaps, directory, snap = _pinned_card(tmp_path)
+    monkeypatch.setattr(snaps, "SNAPSHOT_DIR", str(directory))
+    exporter = _StubExporter(tmp_path)
+    seen = {}
+    original_render = exporter.render_final
+
+    def render_final(merchant, image_id, rid, *, width, height, out_png):
+        seen["image_id"] = image_id
+        seen["rid"] = rid
+        seen["height"] = height
+        return original_render(
+            merchant,
+            image_id,
+            rid,
+            width=width,
+            height=height,
+            out_png=out_png,
+        )
+
+    exporter.check_receipt = lambda merchant, image_id, rid: SimpleNamespace(
+        width=794, height=2609, image_id=image_id, receipt_id=rid
+    )
+    exporter.render_final = render_final
+    monkeypatch.setattr(
+        epa, "load_real_scan", lambda _s3, _r: Image.new("RGB", (76, 120))
+    )
+    monkeypatch.setattr(epa.rsr, "_merchant_logo", lambda _m: None)
+    monkeypatch.setattr(epa.pa, "compose_steps", lambda _labels: [])
+    monkeypatch.setattr(
+        epa, "exporter_commit", lambda _root, allow_dirty=False: "abc"
+    )
+    spec = {
+        "merchant": "Stub",
+        "font": "missing-font",
+        "receipt": {"image_id": "manifest-img", "receipt_id": 9},
+    }
+
+    summary = epa.export_merchant(
+        "stub",
+        spec,
+        exporter,
+        out_root=str(tmp_path / "out"),
+        finale_only=True,
+        corpus_path=None,
+        logo_override=None,
+        commit="abc",
+    )
+
+    assert summary["dims"] == {"w": 760, "h": snap["canvas"]["h"]}
+    assert seen["height"] == snap["canvas"]["h"]
+    assert seen["image_id"] == "geo-img"
+    assert seen["rid"] == 1
+
+
+def test_export_refuses_live_scan_that_does_not_match_the_pin(
+    tmp_path, monkeypatch
+):
+    snaps, directory, _snap = _pinned_card(
+        tmp_path, image_sha=sha256_bytes(b"pinned-scan")
+    )
+    monkeypatch.setattr(snaps, "SNAPSHOT_DIR", str(directory))
+    exporter = _StubExporter(tmp_path)
+    exporter.check_receipt = lambda merchant, image_id, rid: SimpleNamespace(
+        width=100, height=100, image_id=image_id, receipt_id=rid
+    )
+    monkeypatch.setattr(
+        epa,
+        "load_real_scan_bytes",
+        lambda _s3, _r: (b"other-scan", Image.new("RGB", (10, 10))),
+    )
+    monkeypatch.setattr(epa.rsr, "_merchant_logo", lambda _m: None)
+    monkeypatch.setattr(epa.pa, "compose_steps", lambda _labels: [])
+    spec = {
+        "merchant": "Stub",
+        "font": "missing-font",
+        "receipt": {"image_id": "manifest-img", "receipt_id": 9},
+    }
+
+    with pytest.raises(RuntimeError, match="live scan sha256"):
+        epa.export_merchant(
+            "stub",
+            spec,
+            exporter,
+            out_root=str(tmp_path / "out"),
+            finale_only=True,
+            corpus_path=None,
+            logo_override=None,
+            commit="abc",
+        )
+
+
+def test_cached_payload_ignores_live_dynamo_and_disk_cache(
+    tmp_path, monkeypatch
+):
+    snaps, directory, _snap = _pinned_card(tmp_path)
+    monkeypatch.setattr(snaps, "SNAPSHOT_DIR", str(directory))
+    from render_merchant_gold import _cached_payload
+
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    stale = cache / "payload_ReceiptsTable-dc5be22_geo-img_1.json"
+    stale.write_text(
+        json.dumps(
+            {
+                "merchant": "Stub",
+                "image_id": "geo-img",
+                "receipt_id": 1,
+                "width": 794,
+                "height": 2609,
+                "words": [{"text": "LIVE"}],
+                "barcodes": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("live Dynamo payload was read")
+
+    monkeypatch.setattr("render_merchant_gold._load_receipt_payload", _boom)
+    doc = _cached_payload(
+        str(cache),
+        "ReceiptsTable-dc5be22",
+        "us-test-1",
+        "Stub",
+        "label-img",
+        2,
+    )
+    assert doc["words"][0]["text"] == "PINNED"
+    assert doc["height"] == 2471
+    assert doc["receipt_id"] == 1

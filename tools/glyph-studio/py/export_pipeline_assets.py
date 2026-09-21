@@ -31,10 +31,11 @@ Inputs and where they come from:
 
 * ``tools/glyph-studio/fixtures/pipeline_merchants.json`` names the source
   receipt, canonical merchant, font dir and hero character per slug.
-* Receipt words/labels/barcodes, the ReceiptPlace check, receipt dims and
-  the CDN scan come from the DEV table ``ReceiptsTable-dc5be22`` and its
-  buckets (read-only). The receipt payload is cached under ``--cache-dir``
-  after the first pull (same cache as ``render_merchant_gold.py``).
+* When ``fixtures/source_snapshots/<slug>.json`` exists, words, boxes,
+  labels, and the canvas size come from that pin. A live scan whose bytes
+  do not match ``image_sha256`` is refused. Otherwise receipt words, the
+  ReceiptPlace check, receipt dims and the CDN scan come from the DEV table
+  ``ReceiptsTable-dc5be22`` (read-only), cached under ``--cache-dir``.
 * Fonts, logo and stylemap resolve through the ACTIVE merchant-truth bundle
   exactly as production renders do (``scripts/render_synthetic_receipts``).
 * The letterform corpus is ``merchant_fonts/<font>/corpus.npz`` in the font
@@ -95,6 +96,12 @@ from glyphstudio.provenance import (  # noqa: E402
     write_manifest_provenance,
 )
 from glyphstudio.schema import glyph_filename, load_font  # noqa: E402
+from glyphstudio.source_snapshot import (  # noqa: E402
+    assert_image_bytes,
+    canvas_size,
+    geometry_ids,
+    load_snapshot,
+)
 from glyphstudio.stylescan import _classify, line_has_price  # noqa: E402
 from glyphstudio.vendor_package import resolve_gold_inputs  # noqa: E402
 from PIL import Image  # noqa: E402
@@ -158,28 +165,43 @@ def _same_merchant(place_name: str, merchant: str) -> bool:
         return False
 
 
-def _load_s3_image(s3: S3Client, bucket: str | None, key: str | None):
+def _load_s3_bytes(
+    s3: S3Client, bucket: str | None, key: str | None
+) -> bytes | None:
     if not bucket or not key:
         return None
     try:
         body = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
     except Exception:  # noqa: BLE001 - fall through to the next copy
         return None
-    return Image.open(BytesIO(body)).convert("RGB")
+    return body
 
 
-def load_real_scan(s3: S3Client, receipt: Any) -> Image.Image:
-    """The receipt crop: CDN derivative first, raw upload as fallback."""
+def _scan_bytes(s3: S3Client, receipt: Any) -> bytes:
+    """The receipt crop bytes: CDN derivative first, raw upload as fallback."""
     for bucket, key in (
         (receipt.cdn_s3_bucket, receipt.cdn_s3_key),
         (receipt.raw_s3_bucket, receipt.raw_s3_key),
     ):
-        image = _load_s3_image(s3, bucket, key)
-        if image is not None:
-            return image
+        data = _load_s3_bytes(s3, bucket, key)
+        if data:
+            return data
     raise RuntimeError(
         f"no scan for {receipt.image_id}#{receipt.receipt_id} in S3"
     )
+
+
+def load_real_scan(s3: S3Client, receipt: Any) -> Image.Image:
+    """The receipt crop: CDN derivative first, raw upload as fallback."""
+    return Image.open(BytesIO(_scan_bytes(s3, receipt))).convert("RGB")
+
+
+def load_real_scan_bytes(
+    s3: S3Client, receipt: Any
+) -> tuple[bytes, Image.Image]:
+    """Scan bytes plus the decoded image, so a pin can hash the bytes."""
+    data = _scan_bytes(s3, receipt)
+    return data, Image.open(BytesIO(data)).convert("RGB")
 
 
 class Exporter:
@@ -374,15 +396,24 @@ def export_merchant(
     merchant = spec["merchant"]
     font = spec["font"]
     hero = spec.get("hero", "A")
-    image_id = spec["receipt"]["image_id"]
-    rid = int(spec["receipt"]["receipt_id"])
+    snap = load_snapshot(slug)
+    if snap is not None:
+        # Committed canvas and the receipt the pin was captured from. Do not
+        # recompute height from whatever the dev table says today.
+        image_id, rid = geometry_ids(snap)
+        width, height = canvas_size(snap)
+    else:
+        image_id = spec["receipt"]["image_id"]
+        rid = int(spec["receipt"]["receipt_id"])
+        width = pa.RECEIPT_WIDTH
+        height = None
     out_dir = os.path.join(out_root, slug)
     os.makedirs(out_dir, exist_ok=True)
     summary: dict[str, Any] = {"slug": slug, "merchant": merchant}
 
     receipt = exporter.check_receipt(merchant, image_id, rid)
-    width = pa.RECEIPT_WIDTH
-    height = pa.receipt_height(receipt.width, receipt.height, width)
+    if height is None:
+        height = pa.receipt_height(receipt.width, receipt.height, width)
     summary["dims"] = {"w": width, "h": height}
 
     # Finale pair: final.webp + labels, real.webp, logo, compose steps.
@@ -401,7 +432,11 @@ def export_merchant(
     summary["tokens"] = len(labels["tokens"])
     summary["labelled"] = sum(1 for t in labels["ner_tags"] if t != "O")
 
-    scan = load_real_scan(exporter.s3, receipt)
+    if snap is not None and snap.get("image_sha256"):
+        scan_bytes, scan = load_real_scan_bytes(exporter.s3, receipt)
+        assert_image_bytes(snap, scan_bytes)
+    else:
+        scan = load_real_scan(exporter.s3, receipt)
     _save_webp(
         pa.normalize_real(scan, width=width, height=height),
         os.path.join(out_dir, "real.webp"),

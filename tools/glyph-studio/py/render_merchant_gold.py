@@ -54,6 +54,7 @@ for _p in (
         sys.path.insert(0, _p)
 
 import render_synthetic_receipts as rsr  # noqa: E402
+from glyphstudio.source_snapshot import resolve_pinned_payload  # noqa: E402
 from glyphstudio.vendor_package import (  # noqa: E402
     GOLD_CANVAS_MARGIN,
     closed_font_height,
@@ -238,9 +239,16 @@ def _load_receipt_payload(table, region, image_id, receipt_id):
 
 
 def _cached_payload(cache_dir, table, region, merchant, image_id, receipt_id):
-    """Gold receipt payload, cached to disk after the first Dynamo pull. The
-    cache key includes the table so a run against a different environment
-    cannot silently reuse another table's payload."""
+    """Gold receipt payload.
+
+    A pinned source snapshot wins over the disk cache and over Dynamo, so a
+    re-render does not follow live geometry. Without a pin, the payload is
+    cached after the first pull. The cache key includes the table so a run
+    against a different environment cannot reuse another table's payload.
+    """
+    pinned = resolve_pinned_payload(image_id, int(receipt_id))
+    if pinned is not None:
+        return pinned
     os.makedirs(cache_dir, exist_ok=True)
     path = os.path.join(
         cache_dir, f"payload_{table}_{image_id}_{receipt_id}.json"
