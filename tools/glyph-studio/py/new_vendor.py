@@ -42,6 +42,8 @@ import sys
 import tempfile
 from typing import Any
 
+from glyphstudio.provenance import exporter_commit
+
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _STUDIO = os.path.abspath(os.path.join(_HERE, ".."))
 _ROOT = os.path.abspath(os.path.join(_STUDIO, "..", ".."))
@@ -1226,6 +1228,9 @@ def cmd_export(args) -> int:
     from glyphstudio import portfolio_wiring as pw
 
     v = load_vendor(args.slug)
+    # set_entry writes the tracked manifest, so a check inside the exporter
+    # would see a dirty tree on a clean export. Validate once, first.
+    commit = exporter_commit(_ROOT)
     studio = _studio(v)
     image_id, rid = _gold(v)
     pslug = v["portfolio_slug"]
@@ -1259,6 +1264,8 @@ def cmd_export(args) -> int:
     card_logo = v.get("card_logo") or v.get("logo")
     if card_logo:
         cmd += ["--logo", os.path.join(_ROOT, card_logo)]
+    if commit is not None:
+        cmd += ["--exporter-commit", commit]
     _clear_render_cache(v)
     text = _run(cmd, env=_sub_env(_truth_env(v, args.truth)), capture=True)
     sys.stdout.write(text)

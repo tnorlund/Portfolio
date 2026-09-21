@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 
 import pytest
@@ -215,6 +216,130 @@ def test_export_passes_card_logo_over_logo_to_the_exporter(
         assert "--logo" not in cmd
     else:
         assert cmd[cmd.index("--logo") + 1] == os.path.join("/repo", expected)
+
+
+def _git(repo, *args, env=None):
+    subprocess.check_call(
+        ["git", "-C", str(repo), *args],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env,
+    )
+
+
+def test_cmd_export_captures_commit_before_set_entry(tmp_path, monkeypatch):
+    """set_entry dirties the manifest; the exporter must still see a clean SHA."""
+    from glyphstudio import portfolio_wiring as pw
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "t")
+    _git(repo, "config", "commit.gpgsign", "false")
+    tracked = repo / "tracked.txt"
+    tracked.write_text("clean\n", encoding="utf-8")
+    _git(repo, "add", "tracked.txt")
+    _git(
+        repo,
+        "commit",
+        "-m",
+        "i",
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.com",
+        },
+    )
+    head = subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+    ).strip()
+    v = {
+        "merchant": "Test Mart",
+        "slug": "testmart",
+        "gold_receipt": {"image_id": "img", "receipt_id": 1},
+        "studio_dir": str(tmp_path / "studio"),
+    }
+    _seed_vendor(tmp_path / "fonts", monkeypatch, v)
+    monkeypatch.setattr(nv, "_ROOT", str(repo))
+    monkeypatch.setattr(nv, "PIPELINE_PUBLIC", str(tmp_path / "public"))
+    monkeypatch.setattr(nv, "FINALE_FILES", ())
+    monkeypatch.setattr(nv, "_truth_env", lambda v, t: {})
+    monkeypatch.setattr(nv, "_clear_render_cache", lambda v: None)
+    monkeypatch.setattr(pw, "set_dims", lambda *a, **k: None)
+    order = []
+
+    def dirty_set_entry(*_a, **_k):
+        order.append("set_entry")
+        tracked.write_text("dirty\n", encoding="utf-8")
+
+    def fake_run(cmd, env=None, capture=False):
+        order.append("run")
+        from glyphstudio.provenance import exporter_commit
+
+        if "--exporter-commit" not in cmd:
+            exporter_commit(str(repo))
+        seen["cmd"] = cmd
+        return "  testmart: { w: 760, h: 2308 }\n"
+
+    seen = {}
+    monkeypatch.setattr(pw, "set_entry", dirty_set_entry)
+    monkeypatch.setattr(nv, "_run", fake_run)
+    rc = nv.cmd_export(
+        argparse.Namespace(slug="testmart", hero_assets=False, truth=None)
+    )
+    assert rc == 0
+    assert order == ["set_entry", "run"]
+    cmd = seen["cmd"]
+    assert cmd[cmd.index("--exporter-commit") + 1] == head
+
+
+def test_cmd_export_refuses_dirty_head_before_set_entry(tmp_path, monkeypatch):
+    from glyphstudio import portfolio_wiring as pw
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "t")
+    _git(repo, "config", "commit.gpgsign", "false")
+    (repo / "tracked.txt").write_text("clean\n", encoding="utf-8")
+    _git(repo, "add", "tracked.txt")
+    _git(
+        repo,
+        "commit",
+        "-m",
+        "i",
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.com",
+        },
+    )
+    (repo / "tracked.txt").write_text("already dirty\n", encoding="utf-8")
+    v = {
+        "merchant": "Test Mart",
+        "slug": "testmart",
+        "gold_receipt": {"image_id": "img", "receipt_id": 1},
+        "studio_dir": str(tmp_path / "studio"),
+    }
+    _seed_vendor(tmp_path / "fonts", monkeypatch, v)
+    monkeypatch.setattr(nv, "_ROOT", str(repo))
+    called = {"set_entry": False}
+
+    def boom(*_a, **_k):
+        called["set_entry"] = True
+
+    monkeypatch.setattr(pw, "set_entry", boom)
+    with pytest.raises(RuntimeError, match="refusing dirty HEAD"):
+        nv.cmd_export(
+            argparse.Namespace(slug="testmart", hero_assets=False, truth=None)
+        )
+    assert called["set_entry"] is False
 
 
 # --- profile: section_scale passthrough and --force ---

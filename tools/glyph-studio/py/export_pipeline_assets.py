@@ -369,6 +369,7 @@ def export_merchant(
     logo_override: str | None,
     manifest_path: str | None = None,
     allow_dirty: bool = False,
+    commit: str | None = None,
 ) -> dict[str, Any]:
     merchant = spec["merchant"]
     font = spec["font"]
@@ -432,7 +433,11 @@ def export_merchant(
         logo_used=logo_used,
         final_webp_path=os.path.join(out_dir, "final.webp"),
         image_type=image_type,
-        commit=exporter_commit(_ROOT, allow_dirty=allow_dirty),
+        commit=(
+            commit
+            if commit is not None
+            else exporter_commit(_ROOT, allow_dirty=allow_dirty)
+        ),
     )
     summary["provenance"] = provenance
     if manifest_path:
@@ -597,6 +602,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="record {sha}-dirty in provenance instead of refusing a dirty HEAD",
     )
+    ap.add_argument(
+        "--exporter-commit",
+        default=None,
+        help=(
+            "provenance SHA already validated by the caller; "
+            "do not recheck the worktree"
+        ),
+    )
     args = ap.parse_args(argv)
 
     manifest = load_manifest(args.manifest)
@@ -608,6 +621,15 @@ def main(argv: list[str] | None = None) -> int:
         ap.error(f"unknown slug(s) {unknown}; known: {sorted(manifest)}")
     if len(slugs) > 1 and (args.corpus or args.logo):
         ap.error("--corpus/--logo apply to a single slug")
+
+    # One check for the whole run. Writing provenance into the tracked
+    # manifest dirties HEAD, so a per-merchant recheck fails the next slug
+    # in --all / a multi-slug argv. Callers that already validated (new_vendor
+    # export, before set_entry) pass --exporter-commit.
+    if args.exporter_commit is not None:
+        commit = args.exporter_commit
+    else:
+        commit = exporter_commit(_ROOT, allow_dirty=args.allow_dirty)
 
     exporter = Exporter(
         table=args.table,
@@ -627,7 +649,7 @@ def main(argv: list[str] | None = None) -> int:
             corpus_path=args.corpus,
             logo_override=args.logo,
             manifest_path=args.manifest,
-            allow_dirty=args.allow_dirty,
+            commit=commit,
         )
         summaries.append(summary)
         print(f"[export] {slug}: {json.dumps(summary, sort_keys=True)}")

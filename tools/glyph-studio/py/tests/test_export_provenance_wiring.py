@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from types import SimpleNamespace
 
@@ -107,3 +108,153 @@ def test_export_merchant_hashes_rendered_faces_and_skips_stale_logo(
     assert prov["image_type"] == "SCAN"
     saved = json.loads(manifest.read_text(encoding="utf-8"))
     assert saved["merchants"]["stub"]["provenance"] == prov
+
+
+def _git(repo, *args, env=None):
+    subprocess.check_call(
+        ["git", "-C", str(repo), *args],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        env=env,
+    )
+
+
+def _init_repo(repo):
+    repo.mkdir()
+    _git(repo, "init", "-b", "main")
+    _git(repo, "config", "user.email", "t@example.com")
+    _git(repo, "config", "user.name", "t")
+    _git(repo, "config", "commit.gpgsign", "false")
+
+
+def _commit_all(repo, message):
+    _git(repo, "add", "-A")
+    _git(
+        repo,
+        "commit",
+        "-m",
+        message,
+        env={
+            **os.environ,
+            "GIT_AUTHOR_NAME": "t",
+            "GIT_AUTHOR_EMAIL": "t@example.com",
+            "GIT_COMMITTER_NAME": "t",
+            "GIT_COMMITTER_EMAIL": "t@example.com",
+        },
+    )
+
+
+def _head(repo) -> str:
+    return subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+    ).strip()
+
+
+def _two_merchant_manifest(path):
+    path.write_text(
+        json.dumps(
+            {
+                "merchants": {
+                    "alpha": {
+                        "merchant": "Alpha",
+                        "font": "missing-font",
+                        "receipt": {"image_id": "img-a", "receipt_id": 1},
+                    },
+                    "beta": {
+                        "merchant": "Beta",
+                        "font": "missing-font",
+                        "receipt": {"image_id": "img-b", "receipt_id": 1},
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _stub_finale_io(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        epa, "Exporter", lambda **_kwargs: _StubExporter(tmp_path)
+    )
+    monkeypatch.setattr(
+        epa, "load_real_scan", lambda _s3, _r: Image.new("RGB", (76, 120))
+    )
+    monkeypatch.setattr(epa.rsr, "_merchant_logo", lambda _m: None)
+    monkeypatch.setattr(epa.pa, "compose_steps", lambda _labels: [])
+
+
+@pytest.mark.parametrize("selector", [["alpha", "beta"], ["--all"]])
+def test_multi_merchant_export_checks_head_once(
+    tmp_path, monkeypatch, selector
+):
+    """Provenance writes must not make the next slug look like a dirty HEAD."""
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    manifest = repo / "pipeline_merchants.json"
+    _two_merchant_manifest(manifest)
+    _commit_all(repo, "manifest")
+    head = _head(repo)
+    monkeypatch.setattr(epa, "_ROOT", str(repo))
+    checks = {"n": 0}
+    real_commit = epa.exporter_commit
+
+    def _counting(root, allow_dirty=False):
+        checks["n"] += 1
+        return real_commit(root, allow_dirty=allow_dirty)
+
+    monkeypatch.setattr(epa, "exporter_commit", _counting)
+    _stub_finale_io(monkeypatch, tmp_path)
+    out = tmp_path / "out"
+
+    rc = epa.main(
+        [
+            *selector,
+            "--out-dir",
+            str(out),
+            "--manifest",
+            str(manifest),
+            "--finale-only",
+            "--cache-dir",
+            str(tmp_path / "cache"),
+        ]
+    )
+
+    assert rc == 0
+    assert checks["n"] == 1
+    saved = json.loads(manifest.read_text(encoding="utf-8"))
+    for slug in ("alpha", "beta"):
+        assert (
+            saved["merchants"][slug]["provenance"]["exporter_commit"] == head
+        )
+
+
+def test_export_still_refuses_a_dirty_tree_before_any_write(
+    tmp_path, monkeypatch
+):
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    manifest = repo / "pipeline_merchants.json"
+    _two_merchant_manifest(manifest)
+    _commit_all(repo, "manifest")
+    (repo / "pipeline_merchants.json").write_text(
+        manifest.read_text(encoding="utf-8") + "\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(epa, "_ROOT", str(repo))
+    _stub_finale_io(monkeypatch, tmp_path)
+    before = manifest.read_text(encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="refusing dirty HEAD"):
+        epa.main(
+            [
+                "--all",
+                "--out-dir",
+                str(tmp_path / "out"),
+                "--manifest",
+                str(manifest),
+                "--finale-only",
+                "--cache-dir",
+                str(tmp_path / "cache"),
+            ]
+        )
+
+    assert manifest.read_text(encoding="utf-8") == before
