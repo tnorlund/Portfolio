@@ -8,7 +8,6 @@ import os
 import random
 
 import pytest
-
 from glyphstudio import label_role_audit as audit
 from glyphstudio import stylescan
 from glyphstudio.source_snapshot import SNAPSHOT_DIR
