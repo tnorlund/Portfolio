@@ -384,14 +384,22 @@ def test_gate_incomplete_blocks_pass_on_partial_truth():
     assert any(
         "1 truth record(s) matched no audited line" in r for r in reasons
     )
-    # Only unmatched truth (no stale text) still blocks a PASS.
-    del truth[("snapshot", "a10")]
+    assert any("1 disagreeing line(s) have no truth" in r for r in reasons)
+    assert sc.unadjudicated == ["untruthed"]
+    # Re-adjudicating the stale line leaves the other two gaps blocking.
+    truth[("snapshot", "a10")]["text"] = "a10"
     [sc], _, _ = audit.score_audits(audits, truth)
     assert sc.stale_text == [] and sc.unmatched == ["zz"]
     assert sc.gate()[0] == "INCOMPLETE"
-    # With every truth record matched and fresh, the gate is decided.
+    # Dropping the orphaned record still leaves an unadjudicated line.
     del truth[("snapshot", "zz")]
     [sc], _, _ = audit.score_audits(audits, truth)
+    assert sc.unmatched == [] and sc.unadjudicated == ["untruthed"]
+    assert sc.gate()[0] == "INCOMPLETE"
+    # With every disagreement adjudicated, matched and fresh, it decides.
+    truth[("snapshot", "untruthed")] = _rec("untruthed", "item")
+    [sc], _, _ = audit.score_audits(audits, truth)
+    assert sc.unadjudicated == []
     assert sc.gate()[0] in ("PASS", "FAIL")
 
 

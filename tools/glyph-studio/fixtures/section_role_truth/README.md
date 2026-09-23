@@ -2,8 +2,9 @@
 
 Hand-adjudicated section roles for printed receipt lines. The label-role
 audit (`python -m glyphstudio.label_role_audit`) scores its two classifiers
-against these records instead of against each other. Stage S3 of
-`docs/plans/SYNTHESIS_UNIFIED_PLAN_2026-09-23.md` retires a merchant's regex
+against these records instead of against each other. Stage S3 of the
+unified synthesis plan (`docs/plans/SYNTHESIS_UNIFIED_PLAN_2026-09-23.md`,
+added by PR #1722 and not yet on `main`) retires a merchant's regex
 rules only when the label classifier (with regex fallback) matches this
 truth at least as well as the regexes do.
 
@@ -64,12 +65,21 @@ A merchant's gate reads `INCOMPLETE` rather than PASS or FAIL when any of
 its truth was not scored: a record whose text no longer matches the audited
 line (stale; it is reported, never scored), or one no audited line matched
 (a narrower `--source` or `--snapshot-grouping` than the truth covers, or a
-stale `line_key`). Only a full run decides the gate.
+stale `line_key`), or a line where the classifiers currently disagree
+that has no truth record yet (re-run `adjudicate-template` and fill it).
+Only a full run over complete truth decides the gate.
 
 The template holds only lines where the two classifiers disagree. Wherever
 they agree, both score the same, so the comparison between them (and the S3
 gate) is unaffected. Absolute percentages therefore describe the contested
 lines, not the whole receipt.
+
+Unlabeled lines (no role-bearing word label) are left out on purpose: there
+label+fallback *is* the regex role, so both score identically and the gate
+comparison cannot move. The flip side is that the S3 gate says nothing about
+those lines once the regexes are gone. Whatever replaces the regex there
+(the shared geometric fallbacks for footer, separator and barcode) needs
+its own evaluation before a merchant's rules are retired.
 
 ## Adjudication rules
 

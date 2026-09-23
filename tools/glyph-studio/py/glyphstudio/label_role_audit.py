@@ -131,6 +131,7 @@ TRUTH_FIELDS = (
     "date",
 )
 # S3 regex-retirement gate, PROPOSED in SYNTHESIS_UNIFIED_PLAN section 6.2
+# (docs/plans/SYNTHESIS_UNIFIED_PLAN_2026-09-23.md, added by PR #1722)
 # (the owner still holds the decision): label-with-fallback agreement at or
 # above regex agreement on the same adjudicated truth, and no truth role on
 # which label-with-fallback gets more than this many fewer lines right.
@@ -605,6 +606,8 @@ class TruthScore:
     stale_text: list[str] = field(default_factory=list)
     # Truth line_keys for this merchant that no audited line matched.
     unmatched: list[str] = field(default_factory=list)
+    # Currently disagreeing lines with no truth record at all.
+    unadjudicated: list[str] = field(default_factory=list)
 
     def add(self, truth: str, predicted: dict[str, str]) -> None:
         self.scored += 1
@@ -619,6 +622,7 @@ class TruthScore:
         self.null += other.null
         self.stale_text += other.stale_text
         self.unmatched += other.unmatched
+        self.unadjudicated += other.unadjudicated
         for c in CLASSIFIERS:
             self.correct[c] += other.correct[c]
             for truth, cols in other.confusion[c].items():
@@ -640,9 +644,10 @@ class TruthScore:
     def gate(self) -> tuple[str, list[str]]:
         """Proposed S3 gate: ``(PASS|FAIL|INCOMPLETE|NO TRUTH, reasons)``.
 
-        INCOMPLETE whenever some of this merchant's truth was not scored
-        (stale text, or a key no audited line matched): a PASS on a subset
-        must not read as authorization to retire the merchant's regexes.
+        INCOMPLETE whenever the truth does not cover this merchant's audit:
+        stale text, a truth key no audited line matched, or a currently
+        disagreeing line with no truth record. A PASS on a subset must not
+        read as authorization to retire the merchant's regexes.
         """
         incomplete = []
         if self.stale_text:
@@ -653,6 +658,11 @@ class TruthScore:
             incomplete.append(
                 f"{len(self.unmatched)} truth record(s) matched no audited "
                 "line; load every source and grouping the truth covers"
+            )
+        if self.unadjudicated:
+            incomplete.append(
+                f"{len(self.unadjudicated)} disagreeing line(s) have no "
+                "truth record; re-run adjudicate-template and fill them"
             )
         if incomplete:
             return "INCOMPLETE", incomplete
@@ -684,6 +694,7 @@ class TruthScore:
             "gate": {"status": status, "reasons": reasons},
             "stale_text": self.stale_text,
             "unmatched": self.unmatched,
+            "unadjudicated": self.unadjudicated,
         }
 
 
@@ -701,6 +712,14 @@ def score_audits(
             key = (truth_source(a.source), row["line_key"])
             rec = truth.get(key)
             if rec is None or rec["merchant"] != a.merchant:
+                # A disagreement nobody has adjudicated (new since the
+                # template ran, or a label/regex change) must not let the
+                # merchant PASS on the older subset.
+                if (
+                    row["verdict"] in ("label_wins", "regex_wins")
+                    and row["line_key"] is not None
+                ):
+                    sc.unadjudicated.append(row["line_key"])
                 continue
             matched.add(key)
             if rec["text"] != row["text"]:
