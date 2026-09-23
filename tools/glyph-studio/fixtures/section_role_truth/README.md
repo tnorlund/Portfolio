@@ -126,6 +126,10 @@ regex output are not evidence: they are what is being scored.
   when printed inside the card slip, footer when printed after it.
 - *footer boilerplate above the items* (a returns policy printed under the
   store address): header, because it belongs to the header block.
+- *deposits vs tax*: `CORE_LABELS` files a bottle deposit under TAX (a
+  *word* label). The *role* follows the block. A CRV/deposit row printed
+  inline under its item is `item`. A deposit total printed with the tax
+  lines is `summary`.
 - *loyalty*: a member-id line takes the role of the block it prints in. It
   is `savings` only when it carries a reduction amount. This deliberately
   does not pre-decide plan section 6.3 (`LOYALTY_ID -> savings`).
