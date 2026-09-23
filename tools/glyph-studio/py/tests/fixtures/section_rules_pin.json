@@ -1,0 +1,129 @@
+{
+ "sprouts": [
+  ["store_hours", "Store Hours|MON-SUN|7AM-10PM", "i"],
+  ["address", "(BLVD|AVE\\b|STREET|\\bRD\\b|WESTLAKE|,\\s*CA\\s+\\d{5}|\\(\\d{3}\\)\\s*\\d{3})", "i"],
+  ["total_line", "^Total:", "i"],
+  ["summary", "BALANCE DUE|CHANGE\\b|CREDIT\\b|SUBTOTAL|^TAX\\b|DEBIT\\s*$", "i"],
+  ["payment", "AUTH|AID:|TVR:|TSI:|ARC:|IAD:|TC:|MID:|TID:|SEQ|Entry Method|APPROVED|CARD\\s*#|Cntctless|MASTERCARD|US DEBIT|PURCHASE|Issuer|Verified|X{6,}", "i"],
+  ["survey", "survey|feedback|WIN\\b|Winners|gift card|Go to", "i"],
+  ["footer", "Cashier|POS:|Transaction|Save money|weekly ad|sprouts\\.com|original receipt|returns|receipt\\.|Limits apply", "i"]
+ ],
+ "gelsons": [
+  ["store_header", "Gelson'?s$|TOWNSGATE|WESTLAKE VILLAGE|\\(805\\)", "i"],
+  ["section_header", "^(GROCERY|PRODUCE|MEAT|SEAFOOD|REG DELI|SERVICE DELI|DELI|BAKERY|DAIRY|FROZEN|LIQUOR|FLORAL|SUSHI)\\s*:?$", "i"],
+  ["total_line", "^BALANCE DUE|^USD\\$", "i"],
+  ["summary", "CREDIT CARD|CHANGE\\b|Auth#|Ref#", "i"],
+  ["payment", "MASTERCARD|VISA|CARD #|AUTH CODE|Mode:|AID:|TVR:|IAD:|TSI:|TC:|MID:|TID:|ARC:|RRN:|Entry Method|XXXX|APPROVED|Issuer|^PURCHASE$", "i"],
+  ["footer", "Save up to|Rewards program|gelsons\\.com|Cashier:|POS:|Transaction:|^\\*{5,}$", "i"]
+ ],
+ "costco": [
+  ["self_checkout", "SELF-CHECKOUT", "i"],
+  ["member", "^Member|^\\d{12}$|Bottom of Basket|BOB Count", "i"],
+  ["warehouse_header", "WHOLESALE|Costco|#\\s?\\d{3,4}", "i"],
+  ["items_sold", "ITEMS SOLD|TOTAL NUMBER", "i"],
+  ["total_line", "^\\**\\s*TOTAL\\b", "i"],
+  ["summary", "SUBTOTAL|^TAX\\b|^\\s*\\d+\\s*%\\s*TAX", "i"],
+  ["savings", "INSTANT SAVINGS|/\\d+$", "i"],
+  ["payment", "AID:|Seq#|APPROVED|XXXX|CHIP|Visa|Mastercard|EFT|AMOUNT:|Purchase|AUTH|CASH|CHANGE", "i"],
+  ["footer", "OP#|Name:|Whse:|Trm:|Trn:|thank you|Please Come Again", "i"]
+ ],
+ "vons": [
+  ["store_header", "VONS|Safeway|Store\\s?#|Main Street", "i"],
+  ["savings", "SAVINGS|Club Savings|YOU PAY|Price You Pay|Member Savings", "i"],
+  ["section_header", "^(GROCERY|PRODUCE|MEAT|SEAFOOD|DELI|BAKERY|DAIRY|FROZEN|LIQUOR|GEN MERCHANDISE|REFRIG/FROZEN)\\b", "i"],
+  ["total_line", "^\\**\\s*BALANCE\\b|^TOTAL\\b", "i"],
+  ["summary", "SUBTOTAL|^TAX\\b|CHANGE\\b|CASH\\b|CREDIT\\b", "i"],
+  ["payment", "REF:|AUTH:|APPROVED|XXXX|DEBIT|VISA|MASTERCARD|EFT|PAYMENT AMOUNT", "i"],
+  ["points", "POINTS|REWARDS|GAS REWARD|fuel", "i"],
+  ["footer", "Thank You|vons\\.com|Your Cashier|survey|TWICE THE DIFFERENCE", "i"]
+ ],
+ "traderjoes": [
+  ["store_header", "TRADER JOE'?S|Store\\s?#\\s?\\d|OPEN 8:00AM|THANK YOU FOR SHOPPING|traderjoes\\.com", "i"],
+  ["address", "(BLVD|AVE\\b|STREET|\\bRD\\b|Parkway|Henderson|,\\s*(CA|NV)\\s+\\d{5}|^\\d{5}$|\\d{3}[- ]\\d{3}[- ]?\\d{4})", "i"],
+  ["qty_line", "^\\d+\\s*@\\s*\\$\\d", ""],
+  ["total_line", "TOTAL PURCHASE|Balance to pay", "i"],
+  ["summary", "Items in Transaction|^TAX\\b|SUBTOTAL", "i"],
+  ["payment", "SALE TRANSACTION|PAYMENT CARD|US DEBIT|VISA|MASTERCARD|Auth Code|TID:|TVR|Cardholder|PIN Verified|\\*{4,}|CUSTOMER COPY|TRANS\\.|TILL", "i"],
+  ["footer", "Please retain|records|DATE\\b|STORE\\b|TIME\\b", "i"]
+ ],
+ "cvs": [
+  ["store_header", "CVS\\s*pharmacy|•CVS", "i"],
+  ["reg_line", "REG#\\d+|TRN#\\d+|CSHR#|STR#", "i"],
+  ["extracare", "ExtraCare|ExtraBucks|Reward|Earn\\b", "i"],
+  ["pharmacy", "RX\\s?#|vaccin|pharmacist|prescription|shingles|Tdap|RSV|insurance", "i"],
+  ["fsa", "FSA|FLEXIBLE SPENDING|Eligible Total", "i"],
+  ["total_line", "^\\s*TOTAL\\b|^CHARGE\\b", "i"],
+  ["summary", "SUBTOTAL|^TAX\\b|\\d+\\.\\d{2}N\\s*$", "i"],
+  ["payment", "AID:|TVR|TSI|CVM:|TC:|REF#|MASTERCARD|VISA|DEBIT|PIN VERIFIED|TRAN TYPE|\\*{4,}|CHIP|TERMINAL", "i"],
+  ["footer", "THANK YOU|Return Policy|Returns\\b|with receipt|State law|Scan the QR|CVS\\.\\s?COM|Helped by|Subject to", "i"]
+ ],
+ "innout": [
+  ["store_header", "IN-N-OUT|WESTLAKE|VILLAGE|^\\s*\\d{3}\\s*$", "i"],
+  ["transaction", "Cashier|ORDERTAKER|Check\\s*:|TRANS\\s*#|Ticket|Station", "i"],
+  ["note", "^NOTE\\b|^tes$", "i"],
+  ["total_line", "Amount Due|AUTH\\s+AMT", "i"],
+  ["summary", "DRIVE-?Take Out|^TAX\\b|Tender\\b|Change\\b", "i"],
+  ["payment", "CHARGE\\s+DETAIL|Card Type|Account:|Capture:|Contactless|PIN:|Auth Code|Auth Ref|AID:|Trans\\s*#|MasterCard|VISA|\\*{4,}", "i"],
+  ["footer", "THANK YOU|Questions/Comments|Call\\s+800|^\\d{4}-\\d{2}-\\d{2}\\b", "i"]
+ ],
+ "target": [
+  ["store_header", "TARGET|Westlake Village|Las Vegas|Simi Valley|Woodland Hills|Henderson|Grand Canyon|Russell Ranch|Tierra Rejada|Ventura Blvd|\\d{3}[- ]\\d{3}[- ]?\\d{4}", "i"],
+  ["section_header", "^(GROCERY|HEALTH AND BEAUTY|HOME|KITCHEN|APPAREL|ELECTRONICS|LAUNDRY CLEANING AND CLOSET|PATIO & OUTDOOR DECOR|ENTERTAINMENT-ELECTRONICS)\\b", "i"],
+  ["total_line", "^\\s*TOTAL\\b|DEBIT TOTAL PAYMENT", "i"],
+  ["summary", "SUBTOTAL|^T\\s*=|^TAX\\b|CA TAX|NV TAX", "i"],
+  ["payment", "AID:|AUTH CODE|MASTERCARD|VISA|DEBIT|CARD ENTRY|APPROVED|\\*{4,}|RETURN|Target Circle Card", "i"],
+  ["footer", "RETURN POLICY|WHEN YOU RETURN|Target Circle|TARGET\\.COM|Guest Copy|Survey", "i"]
+ ],
+ "wildfork": [
+  ["store_header", "^WF$|Thousand Oaks CA|Wild Fork|wildforkfoods", "i"],
+  ["address", "(Westlake|Blvd\\.?|,\\s*CA\\s+\\d{5}|^\\d{3}\\s*S\\.|1-833-300-9453)", "i"],
+  ["policy", "FEFO|returns|refunds|exchanges", "i"],
+  ["transaction", "Ticket\\s?#|Station:|Sales Rep|User:|^\\d{1,2}/\\d{1,2}/\\d{4}", "i"],
+  ["item_header", "^(Item|Description)\\b|Qty|Uty|Price", "i"],
+  ["total_line", "^\\s*Total\\b(?! Tax)|^\\s*Subtotal\\b", "i"],
+  ["summary", "Total Tax|quantity purchased|items purchased", "i"],
+  ["payment", "Tender:|VISA|MASTERCARD|DEBIT|Batch:|Auth:|Entry Method|AID:|TVR:|AC:|CVM:|Authorization Mode|X{6,}", "i"],
+  ["footer", "CAREERS|Forkies|Nourish Better Lives|Visit Link|Scan QR|pages/careers|gettingmymail", "i"]
+ ],
+ "homedepot": [
+  ["store_header", "How doers|get more done|HOMEDEPOT\\.COM|@\\s*HOMEDEPOT\\.COM", "i"],
+  ["address", "(BLVD|AVE\\b|STREET|\\bRD\\b|TELLER|VICTORY|WEST HILLS|CA\\.?\\s*\\d{5}|\\(\\d{3}\\)\\s*\\d{3}|\\d{3}[- ]?\\d{3}[- ]?\\d{4}|STR MGR)", "i"],
+  ["transaction", "\\bSALE\\b|CASHIER|^\\d{4}\\s+\\d{5}\\s+\\d{3}\\b", "i"],
+  ["discount", "Pro\\s*Xtra(?!\\s+(MEMBER|[#*]))|Preferred Pricing|MAX REFUND|REFUND\\s+VALUE", "i"],
+  ["total_line", "^\\s*TOTAL\\b|USD\\$", "i"],
+  ["summary", "SUBTOTAL|SALES TAX|^TAX\\b|BALANCE DUE", "i"],
+  ["payment", "AID|AUTH|APPROVED|DEBIT|CREDIT|VISA|MASTERCARD|PIN|Chip|Verified|XXXXXXXX|NON-DISCO", "i"],
+  ["footer", "PRO XTRA MEMBER|PRO XTRA .*SUMMARY|PO/JOB|SPEND|CREDIT LINE|Perks|Apply and SAVE|homedepot\\.com/credit", "i"]
+ ],
+ "speedway": [
+  ["store_header", "^SPEE?D\\s?WAY\\b|^SPEFDWAY|STORE\\s?#?:|^Ph(one)?:|THANKS FOR SHOPPING|FRONT STREET|TRAVERSE CITY|KANAN RD|HEATHERCLI|Agoura|MALIBU|^\\d{5}(-\\d{4})?$|^\\(\\d{3}\\)", "i"],
+  ["sale_header", "^SALE$|CUSTOMER COPY|Sale Receipt", "i"],
+  ["tender_line", "^(DEBIT|CREDIT|CASH|MASTERCARD|VISA)\\s*\\$?\\s*[\\d.,]*\\s*$", "i"],
+  ["summary", "^SUB\\.?\\s?TOTAL|^SALES TAX|^TAX:?$|^TOTAL( DUE)?:?$|^Change\\b|FUEL TOTAL|^Sales tax|^CECET", "i"],
+  ["fuel", "PUMP\\b|^GRADE|GALLONS|PRICE/GAL|/Gal\\b|Prepay|Diesel|REGULAR|Speedy\\s?Rewards|Rollback", "i"],
+  ["payment", "ACCT#|APPROVAL#|AUTH\\b|TERM#|REF#?:|APP ?NAME|AID:|ENTRY\\s?:|^APPROVED|PIN VERIFIED|CRYPTO|ARQC|^TC\\s?:|COMPLETION|^US DEBIT|Batch:|Seq:|TID:|Stan:|Resp Code|Reference:|Acct/Card|Receipt #:|Trans#|TRAN#|\\*{4,}|Reg:\\s?\\d", "i"],
+  ["items_sold", "#\\s?ITEMS SOLD", "i"],
+  ["agreement", "CUSTOMER AGREES|TOTAL AMOUNT ACCORDING|HOLDERS AGREEMENT", "i"],
+  ["footer", "THANKS? (YOU )?FOR|YOUR BUSINESS|DON'T FORGET|DRIVE SAFE|Now Hiring|Apply at|speedway\\.com|text SPEEDWAY|COME AGAIN|CHOOSING|^T#\\d+|CSH:|SITE ID", "i"],
+  ["column_header", "^(Description|Qty|Amount)$", "i"]
+ ],
+ "wholefoods": [
+  ["store_header", "^WHOLE FOODS( MARKET)?$|^MARKET$|^(Tenaya|Henderson|Las Vegas) [A-Z]{3}\\b|\\d{3}-\\d{3}-\\d{4}|Lake Mead|Green Valley|Las Vegas Blvd|,\\s*NV\\s+\\d{5}|^\\d{5}( \\d{4})?$", "i"],
+  ["total_line", "^Total\\s*:?\\s*\\$?[\\d.]*$", "i"],
+  ["summary", "^Subtotal|^Net Sales|^Tax:?|^Sold Items|^Paid:?|^\\d{1,2}\\.\\d{2}%$", "i"],
+  ["payment", "^VISA\\b|^MASTERCARD|^AMEX|^DEBIT|^\\*\\d{4}$|^Change", "i"],
+  ["policy", "^RETURNS:|of purchase|purchased after|original form of payment|additional information|wfm\\.com/returns", "i"],
+  ["promo", "Earn \\d+% back|Prime (Visa|membership)|amazon\\.\\s?com|eligible Prime", "i"],
+  ["survey", "SHOPPING EXPERIENCE|wfm\\.com/feedback|CHANCE TO WIN|GIFT CARD|^Go to:", "i"],
+  ["transaction", "^\\d{3} \\d{5} \\d{2}/\\d{2}/\\d{4}", "i"]
+ ],
+ "unknown-merchant": [
+  ["store_hours", "Store Hours|MON-SUN|7AM-10PM", "i"],
+  ["address", "(BLVD|AVE\\b|STREET|\\bRD\\b|WESTLAKE|,\\s*CA\\s+\\d{5}|\\(\\d{3}\\)\\s*\\d{3})", "i"],
+  ["total_line", "^Total:", "i"],
+  ["summary", "BALANCE DUE|CHANGE\\b|CREDIT\\b|SUBTOTAL|^TAX\\b|DEBIT\\s*$", "i"],
+  ["payment", "AUTH|AID:|TVR:|TSI:|ARC:|IAD:|TC:|MID:|TID:|SEQ|Entry Method|APPROVED|CARD\\s*#|Cntctless|MASTERCARD|US DEBIT|PURCHASE|Issuer|Verified|X{6,}", "i"],
+  ["survey", "survey|feedback|WIN\\b|Winners|gift card|Go to", "i"],
+  ["footer", "Cashier|POS:|Transaction|Save money|weekly ad|sprouts\\.com|original receipt|returns|receipt\\.|Limits apply", "i"]
+ ]
+}

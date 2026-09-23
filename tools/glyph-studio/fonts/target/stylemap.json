@@ -1,6 +1,32 @@
 {
  "receipts_used": 33,
  "files_scanned": 33,
+ "rules": [
+  {
+   "section": "store_header",
+   "pattern": "TARGET|Westlake Village|Las Vegas|Simi Valley|Woodland Hills|Henderson|Grand Canyon|Russell Ranch|Tierra Rejada|Ventura Blvd|\\d{3}[- ]\\d{3}[- ]?\\d{4}"
+  },
+  {
+   "section": "section_header",
+   "pattern": "^(GROCERY|HEALTH AND BEAUTY|HOME|KITCHEN|APPAREL|ELECTRONICS|LAUNDRY CLEANING AND CLOSET|PATIO & OUTDOOR DECOR|ENTERTAINMENT-ELECTRONICS)\\b"
+  },
+  {
+   "section": "total_line",
+   "pattern": "^\\s*TOTAL\\b|DEBIT TOTAL PAYMENT"
+  },
+  {
+   "section": "summary",
+   "pattern": "SUBTOTAL|^T\\s*=|^TAX\\b|CA TAX|NV TAX"
+  },
+  {
+   "section": "payment",
+   "pattern": "AID:|AUTH CODE|MASTERCARD|VISA|DEBIT|CARD ENTRY|APPROVED|\\*{4,}|RETURN|Target Circle Card"
+  },
+  {
+   "section": "footer",
+   "pattern": "RETURN POLICY|WHEN YOU RETURN|Target Circle|TARGET\\.COM|Guest Copy|Survey"
+  }
+ ],
  "sections": {
   "footer": {
    "lines": 60,

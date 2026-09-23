@@ -6,6 +6,44 @@
   "scan_dir": "tools/glyph-studio/.out/stylescan-costco",
   "normalization": "per-receipt: cap_px/body_cap_px, stroke_med/body_stroke_px; medians reported"
  },
+ "rules": [
+  {
+   "section": "self_checkout",
+   "pattern": "SELF-CHECKOUT"
+  },
+  {
+   "section": "member",
+   "pattern": "^Member|^\\d{12}$|Bottom of Basket|BOB Count"
+  },
+  {
+   "section": "warehouse_header",
+   "pattern": "WHOLESALE|Costco|#\\s?\\d{3,4}"
+  },
+  {
+   "section": "items_sold",
+   "pattern": "ITEMS SOLD|TOTAL NUMBER"
+  },
+  {
+   "section": "total_line",
+   "pattern": "^\\**\\s*TOTAL\\b"
+  },
+  {
+   "section": "summary",
+   "pattern": "SUBTOTAL|^TAX\\b|^\\s*\\d+\\s*%\\s*TAX"
+  },
+  {
+   "section": "savings",
+   "pattern": "INSTANT SAVINGS|/\\d+$"
+  },
+  {
+   "section": "payment",
+   "pattern": "AID:|Seq#|APPROVED|XXXX|CHIP|Visa|Mastercard|EFT|AMOUNT:|Purchase|AUTH|CASH|CHANGE"
+  },
+  {
+   "section": "footer",
+   "pattern": "OP#|Name:|Whse:|Trm:|Trn:|thank you|Please Come Again"
+  }
+ ],
  "sections": {
   "warehouse_header": {
    "sizeScale": 1.233,

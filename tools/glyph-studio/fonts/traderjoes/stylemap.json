@@ -6,6 +6,37 @@
     "lines_measured": 652,
     "date": "2026-07-07"
   },
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "TRADER JOE'?S|Store\\s?#\\s?\\d|OPEN 8:00AM|THANK YOU FOR SHOPPING|traderjoes\\.com"
+    },
+    {
+      "section": "address",
+      "pattern": "(BLVD|AVE\\b|STREET|\\bRD\\b|Parkway|Henderson|,\\s*(CA|NV)\\s+\\d{5}|^\\d{5}$|\\d{3}[- ]\\d{3}[- ]?\\d{4})"
+    },
+    {
+      "section": "qty_line",
+      "pattern": "^\\d+\\s*@\\s*\\$\\d",
+      "flags": ""
+    },
+    {
+      "section": "total_line",
+      "pattern": "TOTAL PURCHASE|Balance to pay"
+    },
+    {
+      "section": "summary",
+      "pattern": "Items in Transaction|^TAX\\b|SUBTOTAL"
+    },
+    {
+      "section": "payment",
+      "pattern": "SALE TRANSACTION|PAYMENT CARD|US DEBIT|VISA|MASTERCARD|Auth Code|TID:|TVR|Cardholder|PIN Verified|\\*{4,}|CUSTOMER COPY|TRANS\\.|TILL"
+    },
+    {
+      "section": "footer",
+      "pattern": "Please retain|records|DATE\\b|STORE\\b|TIME\\b"
+    }
+  ],
   "sections": {
     "store_header": {
       "sizeScale": 1.05,
