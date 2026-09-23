@@ -43,6 +43,7 @@ test("single-image difference is zero for a flat image and preserves grayscale",
   const stage = grayscaleAndDifference(source, 5, 3, 2);
 
   expect(new Set(stage.gray)).toEqual(new Set([36]));
+  expect(Array.from(stage.blurred)).toEqual(new Array(15).fill(36));
   expect(Array.from(stage.difference)).toEqual(new Array(15).fill(0));
 });
 
@@ -54,6 +55,7 @@ test("single-image blur and difference match the exact edge fixture", () => {
   const stage = grayscaleAndDifference(source, 3, 1, 1);
 
   expect(Array.from(stage.gray)).toEqual([0, 100, 200]);
+  expect(Array.from(stage.blurred)).toEqual([50, 100, 150]);
   expect(Array.from(stage.difference)).toEqual([50, 0, 50]);
 });
 
