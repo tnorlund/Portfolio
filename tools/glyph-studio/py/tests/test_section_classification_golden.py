@@ -8,7 +8,6 @@ say so in the PR; a refactor of where rules live must pass unchanged.
 import json
 
 import pytest
-
 import section_classification_golden as golden
 from glyphstudio import stylescan
 
