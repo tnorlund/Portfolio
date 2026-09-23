@@ -628,10 +628,19 @@ LABEL_ROLE_PRIORITY: tuple[str, ...] = (
 )
 # Returned for a line none of whose words carries a role-bearing label.
 LABEL_ROLE_UNLABELED = "unlabeled"
+# Lossless legacy aliases, mirroring receipt_dynamo's NON_CORE_LABEL_ALIASES
+# (a test pins the two equal); older label files still carry these names.
+LABEL_ALIASES: dict[str, str] = {
+    "ADDRESS": "ADDRESS_LINE",
+    "BUSINESS_NAME": "MERCHANT_NAME",
+    "CARD_NUMBER": "PAYMENT_METHOD",
+    "PAYMENT_TYPE": "PAYMENT_METHOD",
+}
 
 
 def _word_core_labels(word: dict) -> list[str]:
-    """CORE label names on one word, BIO prefixes and ``O`` stripped.
+    """CORE label names on one word, BIO prefixes and ``O`` stripped and
+    legacy aliases (``LABEL_ALIASES``) mapped to their CORE target.
 
     Accepts snapshot words (``labels`` list) and single-tag words
     (``label``/``ner_tag`` string, e.g. ``B-PRODUCT_NAME``).
@@ -647,7 +656,7 @@ def _word_core_labels(word: dict) -> list[str]:
         if tag[:2] in ("B-", "I-"):
             tag = tag[2:]
         if tag and tag != "O":
-            out.append(tag)
+            out.append(LABEL_ALIASES.get(tag, tag))
     return out
 
 

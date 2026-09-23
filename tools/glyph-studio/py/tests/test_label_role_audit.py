@@ -13,7 +13,7 @@ from glyphstudio import label_role_audit as audit
 from glyphstudio import stylescan
 from glyphstudio.source_snapshot import SNAPSHOT_DIR
 
-from receipt_dynamo.constants import CORE_LABELS
+from receipt_dynamo.constants import CORE_LABELS, NON_CORE_LABEL_ALIASES
 
 UNLABELED = stylescan.LABEL_ROLE_UNLABELED
 
@@ -55,6 +55,19 @@ def test_role_table_keys_are_core_labels():
     # Everything CORE_LABELS has that the table skips is deliberate.
     skipped = set(CORE_LABELS) - set(stylescan.CORE_LABEL_ROLE)
     assert skipped == {"DATE", "TIME", "TIP", "REFUND"}
+
+
+def test_label_aliases_mirror_receipt_dynamo():
+    assert stylescan.LABEL_ALIASES == NON_CORE_LABEL_ALIASES
+
+
+def test_legacy_alias_votes_as_its_core_label():
+    line = [{"text": "CVS", "ner_tag": "B-BUSINESS_NAME"}]
+    assert stylescan._word_core_labels(line[0]) == ["MERCHANT_NAME"]
+    assert stylescan._classify_from_labels(line) == "header"
+    assert stylescan._classify_from_labels([_w("VISA", "card_number")]) == (
+        "payment"
+    )
 
 
 def test_priority_covers_every_role():
