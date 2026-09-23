@@ -58,6 +58,7 @@ from .stylescan import (
     _classify,
     _classify_from_labels,
     _word_core_labels,
+    group_visual_lines,
     label_role_votes,
     line_has_price,
 )
@@ -112,8 +113,6 @@ ROLE_ORDER = (
     "other",
     LABEL_ROLE_UNLABELED,
 )
-# Vertical overlap (fraction of the shorter box) that joins two tokens.
-_LINE_OVERLAP = 0.5
 # Roles a truth record may carry (``None`` = undecidable). ``other`` and
 # ``unlabeled`` are classifier outputs, never truth: every printed line
 # belongs to some block.
@@ -181,43 +180,24 @@ def _y_span(bbox) -> tuple[float, float]:
     return min(y0, y1), max(y0, y1)
 
 
-def _overlap_frac(a: tuple[float, float], b: tuple[float, float]) -> float:
-    inter = min(a[1], b[1]) - max(a[0], b[0])
-    shorter = min(a[1] - a[0], b[1] - b[0])
-    if shorter <= 0:
-        return 1.0 if inter >= 0 else 0.0
-    return max(0.0, inter) / shorter
+def group_words_by_overlap(words: list[dict]) -> list[list[dict]]:
+    """Words with a ``bbox`` -> visual lines, grouped exactly as production.
 
-
-def group_words_by_overlap(
-    words: list[dict], min_overlap: float = _LINE_OVERLAP
-) -> list[list[dict]]:
-    """Words with a ``bbox`` -> visual lines by bbox vertical overlap.
-
-    A word joins the existing line whose median y-band it overlaps most
-    (at least ``min_overlap`` of the shorter height); otherwise it starts a
-    new line. Works for y-up and y-down boxes. Lines keep reading order
-    (first word's input position); words within a line sort left to right.
+    Delegates to ``stylescan.group_visual_lines`` (y-center distance under
+    0.6 of the word's height) so the audit classifies the same line text and
+    label votes as ``stylescan.measure``. Works for y-up and y-down boxes.
+    Lines keep reading order (first word's input position); words within a
+    line sort left to right.
     """
-    lines: list[list[dict]] = []
-    bands: list[tuple[float, float]] = []
-    for word in words:
-        span = _y_span(word["bbox"])
-        best, best_frac = None, min_overlap
-        for li, band in enumerate(bands):
-            frac = _overlap_frac(span, band)
-            if frac >= best_frac:
-                best, best_frac = li, frac
-        if best is None:
-            lines.append([word])
-            bands.append(span)
-            continue
-        lines[best].append(word)
-        spans = [_y_span(w["bbox"]) for w in lines[best]]
-        bands[best] = (
-            median(s[0] for s in spans),
-            median(s[1] for s in spans),
-        )
+    staged = []
+    for pos, word in enumerate(words):
+        y0, y1 = _y_span(word["bbox"])
+        staged.append({"cy": (y0 + y1) / 2, "h": y1 - y0, "pos": pos})
+    grouped = sorted(
+        group_visual_lines(staged),
+        key=lambda line: min(s["pos"] for s in line),
+    )
+    lines = [[words[s["pos"]] for s in line] for line in grouped]
     for line in lines:
         line.sort(key=lambda w: float(min(w["bbox"][0], w["bbox"][2])))
     return lines
@@ -227,7 +207,6 @@ def group_tokens_by_overlap(
     tokens: list[str],
     bboxes: list,
     ner_tags: list[str],
-    min_overlap: float = _LINE_OVERLAP,
 ) -> list[list[dict]]:
     """Parallel ``final.labels.json`` lists -> visual lines of words."""
     if not (len(tokens) == len(bboxes) == len(ner_tags)):
@@ -241,7 +220,7 @@ def group_tokens_by_overlap(
         }
         for idx, (text, bbox, tag) in enumerate(zip(tokens, bboxes, ner_tags))
     ]
-    return group_words_by_overlap(words, min_overlap)
+    return group_words_by_overlap(words)
 
 
 def snapshot_rows(snapshot: dict) -> list[list[dict]]:
@@ -308,6 +287,12 @@ def line_key(line: list[dict]) -> str | None:
     return None
 
 
+def _line_receipt(line: list[dict]) -> str | None:
+    """The one receipt every word of ``line`` came from, or None."""
+    receipts = {w.get("receipt") for w in line}
+    return receipts.pop() if len(receipts) == 1 else None
+
+
 def truth_source(source: str) -> str:
     """Audit source name -> truth ``source`` (``snapshot-rows`` and
     ``corpus-rows`` are regroupings of ``snapshot`` / ``corpus`` words)."""
@@ -365,6 +350,7 @@ def classify_line(line: list[dict], merchant: str) -> dict:
         "regex_role": rrole,
         "verdict": verdict(lrole, rrole, votes),
         "line_key": line_key(line),
+        "receipt": _line_receipt(line),
     }
 
 
@@ -498,8 +484,18 @@ def load_truth(truth_dir: str) -> dict[tuple[str, str], dict]:
 
 def _template_record(audit: MerchantAudit, i: int) -> dict:
     row = audit.rows[i]
-    prev_text = audit.rows[i - 1]["text"] if i > 0 else None
-    next_text = audit.rows[i + 1]["text"] if i + 1 < len(audit.rows) else None
+
+    def neighbour(j: int) -> str | None:
+        # A corpus audit concatenates receipts; never borrow context across
+        # a receipt boundary.
+        if not 0 <= j < len(audit.rows):
+            return None
+        other = audit.rows[j]
+        if other.get("receipt") != row.get("receipt"):
+            return None
+        return other["text"]
+
+    prev_text, next_text = neighbour(i - 1), neighbour(i + 1)
     return {
         "source": truth_source(audit.source),
         "merchant": audit.merchant,
@@ -607,6 +603,8 @@ class TruthScore:
         default_factory=lambda: {c: {} for c in CLASSIFIERS}
     )
     stale_text: list[str] = field(default_factory=list)
+    # Truth line_keys for this merchant that no audited line matched.
+    unmatched: list[str] = field(default_factory=list)
 
     def add(self, truth: str, predicted: dict[str, str]) -> None:
         self.scored += 1
@@ -620,6 +618,7 @@ class TruthScore:
         self.scored += other.scored
         self.null += other.null
         self.stale_text += other.stale_text
+        self.unmatched += other.unmatched
         for c in CLASSIFIERS:
             self.correct[c] += other.correct[c]
             for truth, cols in other.confusion[c].items():
@@ -639,7 +638,24 @@ class TruthScore:
         }
 
     def gate(self) -> tuple[str, list[str]]:
-        """Proposed S3 gate: ``(PASS|FAIL|NO TRUTH, reasons)``."""
+        """Proposed S3 gate: ``(PASS|FAIL|INCOMPLETE|NO TRUTH, reasons)``.
+
+        INCOMPLETE whenever some of this merchant's truth was not scored
+        (stale text, or a key no audited line matched): a PASS on a subset
+        must not read as authorization to retire the merchant's regexes.
+        """
+        incomplete = []
+        if self.stale_text:
+            incomplete.append(
+                f"{len(self.stale_text)} stale truth record(s); re-adjudicate"
+            )
+        if self.unmatched:
+            incomplete.append(
+                f"{len(self.unmatched)} truth record(s) matched no audited "
+                "line; load every source and grouping the truth covers"
+            )
+        if incomplete:
+            return "INCOMPLETE", incomplete
         if not self.scored:
             return "NO TRUTH", ["no adjudicated lines"]
         reasons = []
@@ -667,6 +683,7 @@ class TruthScore:
             "confusion": self.confusion,
             "gate": {"status": status, "reasons": reasons},
             "stale_text": self.stale_text,
+            "unmatched": self.unmatched,
         }
 
 
@@ -687,7 +704,10 @@ def score_audits(
                 continue
             matched.add(key)
             if rec["text"] != row["text"]:
+                # OCR changed under a stable key: the old role no longer
+                # describes this line, so it is reported, never scored.
                 sc.stale_text.append(row["line_key"])
+                continue
             if rec["role"] is None:
                 sc.null += 1
                 continue
@@ -701,16 +721,15 @@ def score_audits(
                     ),
                 },
             )
+    for k, rec in truth.items():
+        if k not in matched and rec["merchant"] in scores:
+            scores[rec["merchant"]].unmatched.append(k[1])
     overall = TruthScore("all")
     per_merchant = [scores[m] for m in sorted(scores)]
     for sc in per_merchant:
+        sc.unmatched.sort()
         overall.merge(sc)
-    unmatched = sorted(
-        k[1]
-        for k, rec in truth.items()
-        if k not in matched and rec["merchant"] in scores
-    )
-    return per_merchant, overall, unmatched
+    return per_merchant, overall, sorted(overall.unmatched)
 
 
 # --- report ---------------------------------------------------------------
@@ -785,8 +804,10 @@ def disagreement_patterns(
 
 
 def sample_disagreements(rows: list[dict], n: int) -> list[dict]:
-    """Up to ``n`` rows, round-robin over (label, regex) patterns so each
-    distinct disagreement shows up before any repeats."""
+    """Up to ``n`` rows (``n <= 0``: all), round-robin over (label, regex)
+    patterns so each distinct disagreement shows up before any repeats."""
+    if n <= 0:
+        n = len(rows)
     buckets: dict[tuple[str, str], list[dict]] = {}
     for row in rows:
         buckets.setdefault((row["label_role"], row["regex_role"]), []).append(
@@ -836,8 +857,13 @@ def render_markdown(audits: list[MerchantAudit], samples: int = 8) -> str:
             continue
         out += [
             "",
-            f"Disagreeing lines ({len(a.disagreements)}; first "
-            f"{min(samples, len(a.disagreements))}):",
+            f"Disagreeing lines ({len(a.disagreements)}; "
+            + (
+                "all"
+                if samples <= 0
+                else f"first {min(samples, len(a.disagreements))}"
+            )
+            + "):",
             "",
             "| text | labels | label role | regex (raw) | verdict |",
             "|---|---|---|---|---|",
@@ -1121,7 +1147,7 @@ def main(argv=None) -> int:
         "--samples",
         type=int,
         default=8,
-        help="disagreeing lines shown per merchant",
+        help="disagreeing lines shown per merchant; 0 = all",
     )
     args = ap.parse_args(argv)
     audits = _audits_from_args(args)

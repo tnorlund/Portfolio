@@ -170,6 +170,21 @@ def test_template_orders_by_pattern_frequency_and_caps():
     audit.validate_truth_record(first)
 
 
+def test_template_context_stops_at_receipt_boundary():
+    rows = [
+        dict(_row("r1-last", "header", "other"), receipt="img#1"),
+        dict(_row("r2-first", "item", "other"), receipt="img#2"),
+        dict(
+            _row("r2-second", "item", "item", verdict="agree"), receipt="img#2"
+        ),
+    ]
+    a = _audit(rows, source="corpus")
+    recs = {r["line_key"]: r for r in audit.template_records([a], 0)["acme"]}
+    # Neither line borrows the other receipt's text as a neighbour.
+    assert recs["r1-last"]["context"] == {"prev": None, "next": None}
+    assert recs["r2-first"]["context"] == {"prev": None, "next": "r2-second"}
+
+
 def test_write_templates_preserves_adjudications(tmp_path):
     audits = _template_audits()
     [(path, new, kept)] = audit.write_templates(audits, str(tmp_path), 0)
@@ -231,7 +246,7 @@ def _scoring_fixture():
     a7   header     footer    footer    -      ok     -
     a8   total_line payment   payment   -      ok     -
     a9   summary    summary   summary   ok     ok     ok
-    a10  header     other     header    ok     -      ok
+    a10  header     other     header    (stale text: reported, not scored)
     a11  item       other     null
     """
     rows = [
@@ -271,15 +286,16 @@ def _scoring_fixture():
 def test_scorer_counts():
     audits, truth = _scoring_fixture()
     [sc], overall, unmatched = audit.score_audits(audits, truth)
-    assert (sc.scored, sc.null) == (10, 1)
-    assert sc.correct == {"label": 4, "regex": 6, "fallback": 5}
-    assert sc.rate("label") == 0.4
-    assert sc.rate("regex") == 0.6
-    assert sc.rate("fallback") == 0.5
+    assert (sc.scored, sc.null) == (9, 1)
+    assert sc.correct == {"label": 3, "regex": 6, "fallback": 4}
+    assert sc.rate("label") == 0.3333
+    assert sc.rate("regex") == 0.6667
+    assert sc.rate("fallback") == 0.4444
     assert sc.stale_text == ["a10"]
     # Unmatched truth is reported only for merchants that were audited.
     assert unmatched == ["zz"]
-    assert overall.scored == 10 and overall.correct == sc.correct
+    assert sc.unmatched == ["zz"]
+    assert overall.scored == 9 and overall.correct == sc.correct
 
 
 def test_scorer_confusion_per_classifier():
@@ -298,10 +314,9 @@ def test_scorer_confusion_per_classifier():
         "footer": 2,
         "summary": 1,
         "payment": 1,
-        "header": 0,
     }
     for c in audit.CLASSIFIERS:
-        assert sum(sum(v.values()) for v in sc.confusion[c].values()) == 10
+        assert sum(sum(v.values()) for v in sc.confusion[c].values()) == 9
 
 
 def test_scorer_ignores_other_merchant_and_source():
@@ -360,6 +375,26 @@ def test_gate_role_deficit_boundary():
     assert reasons == ["footer: label+fallback 6 lines worse (> 5)"]
 
 
+def test_gate_incomplete_blocks_pass_on_partial_truth():
+    audits, truth = _scoring_fixture()
+    [sc], _, _ = audit.score_audits(audits, truth)
+    status, reasons = sc.gate()
+    assert status == "INCOMPLETE"
+    assert any("1 stale" in r for r in reasons)
+    assert any(
+        "1 truth record(s) matched no audited line" in r for r in reasons
+    )
+    # Only unmatched truth (no stale text) still blocks a PASS.
+    del truth[("snapshot", "a10")]
+    [sc], _, _ = audit.score_audits(audits, truth)
+    assert sc.stale_text == [] and sc.unmatched == ["zz"]
+    assert sc.gate()[0] == "INCOMPLETE"
+    # With every truth record matched and fresh, the gate is decided.
+    del truth[("snapshot", "zz")]
+    [sc], _, _ = audit.score_audits(audits, truth)
+    assert sc.gate()[0] in ("PASS", "FAIL")
+
+
 def test_gate_no_truth():
     assert audit.TruthScore("acme").gate()[0] == "NO TRUTH"
 
@@ -370,14 +405,14 @@ def test_score_report_prints_threshold_and_gate(tmp_path):
     md, md_path, json_path = audit.write_score_report(
         scores, overall, unmatched, str(tmp_path)
     )
-    assert "| acme | 10 | 1 | 4 (40%) | 6 (60%) | 5 (50%) | FAIL |" in md
+    assert "| acme | 9 | 1 | 3 (33%) | 6 (67%) | 4 (44%) | INCOMPLETE |" in md
     assert "max role deficit 5 [PROPOSED" in md
-    assert "S3 gate acme: FAIL" in md
+    assert "S3 gate acme: INCOMPLETE" in md
     assert "truth \\ fallback" in md
     with open(json_path) as fh:
         data = json.load(fh)
     assert data["gate"]["max_role_deficit"] == 5
-    assert data["merchants"][0]["gate"]["status"] == "FAIL"
+    assert data["merchants"][0]["gate"]["status"] == "INCOMPLETE"
     assert data["unmatched"] == ["zz"]
     assert os.path.exists(md_path)
 

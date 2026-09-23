@@ -297,6 +297,31 @@ def test_sample_disagreements_round_robins_patterns():
     assert {r["label_role"] for r in picked} == {"item", "header"}
 
 
+def test_sample_zero_means_all():
+    rows = [{"label_role": "item", "regex_role": "other"}] * 5
+    assert len(audit.sample_disagreements(rows, 0)) == 5
+    md = audit.render_markdown(
+        audit.run_audit(audit.load_sources(merchants={"costco"})), samples=0
+    )
+    assert "; all):" in md
+
+
+def test_overlap_grouping_matches_production_grouper():
+    # A short token inside a taller neighbour's band: production splits on
+    # y-center distance vs the word's own height, and so must the audit.
+    tall = {"text": "TALL", "bbox": [0, 0, 50, 40]}
+    short = {"text": "short", "bbox": [60, 30, 90, 38]}
+    lines = audit.group_words_by_overlap([tall, short])
+    staged = [
+        {"cy": 20.0, "h": 40.0, "text": "TALL"},
+        {"cy": 34.0, "h": 8.0, "text": "short"},
+    ]
+    prod = stylescan.group_visual_lines(staged)
+    assert [[w["text"] for w in ln] for ln in lines] == [
+        [w["text"] for w in ln] for ln in prod
+    ]
+
+
 def test_cli_writes_report(tmp_path, capsys):
     rc = audit.main(
         [

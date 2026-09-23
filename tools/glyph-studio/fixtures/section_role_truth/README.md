@@ -60,6 +60,12 @@ end of the file. Both subcommands take the audit's source flags (`--source`,
 `--merchant`, `--snapshot-grouping`, `--corpus-dir DIR` for
 `DIR/<slug>/*.json` corpus snapshots).
 
+A merchant's gate reads `INCOMPLETE` rather than PASS or FAIL when any of
+its truth was not scored: a record whose text no longer matches the audited
+line (stale; it is reported, never scored), or one no audited line matched
+(a narrower `--source` or `--snapshot-grouping` than the truth covers, or a
+stale `line_key`). Only a full run decides the gate.
+
 The template holds only lines where the two classifiers disagree. Wherever
 they agree, both score the same, so the comparison between them (and the S3
 gate) is unaffected. Absolute percentages therefore describe the contested
