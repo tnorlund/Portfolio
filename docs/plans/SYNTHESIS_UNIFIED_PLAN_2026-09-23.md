@@ -24,7 +24,7 @@ Much of #1188 landed in July. The v2 epic has one pilot PR. Nothing else has sta
 | Full-fidelity metric layer (7 metrics, validated) | #1188 P1 | **Done** | #1192, `synthesis_loop/full_fidelity_eval.py`, `METRIC_VALIDATION.md` |
 | Layout-template measurement (columnscan riders, profile writer) | #1188 P1b + P2 | **Done** | #1192, `layout_template` in 18 files |
 | Merchant truth bundle in DynamoDB (versioned, hashed, ACTIVE flip, gate records) | #1188 P4 | **Done** | #1193–#1219 series, `MerchantTruthLoader`, `evidence/ACTIVE_FLEET.json` (v1 for the active fleet) |
-| Engine adoption: `resolve_columns` + fabrication guard, generic composer, dispatch registry, rules→data, literal purge | #1188 P3 | **Open** | no `resolve_columns` on main; 7 price-token regex definitions remain; only Speedway and Whole Foods carry `stylemap.json` rules, the other 10 rule sets are still in-code `_<SLUG>_RULES` blocks in `stylescan.py` |
+| Engine adoption: `resolve_columns` + fabrication guard, generic composer, dispatch registry, rules→data, literal purge | #1188 P3 | **Open** | no `resolve_columns` on main; only Speedway and Whole Foods carry `stylemap.json` rules, the other 9 merchant rule sets plus the Sprouts default are still in-code `_<SLUG>_RULES` blocks in `stylescan.py` (the rules→data move launched as the first S2 cloud job on 2026-09-23) |
 | Fleet re-baseline (Costco, Gelson's, then the rest) | #1188 P5 | **Partial** | two evidence campaigns under `evidence/`; no fleet-wide scorecard committed |
 | Label-driven section roles + regex agreement audit | v2 M1 | **Pilot** | #1721: classifier + audit CLI over 15 gold receipts, 731 lines; no regex deleted |
 | Statistical layout priors | v2 M2 | Not started | |
@@ -158,8 +158,13 @@ label-quality issues, not worked around in the classifier.
 - Stylemap rules move from `_<SLUG>_RULES` in `stylescan.py` into each merchant's
   `stylemap.json` `rules`, read through `rules_for_font` (the path Speedway and Whole
   Foods already use). This is a *move*, not a deletion; behavior is byte-identical.
-- One price-token predicate (`is_price_token`) replacing the seven regex definitions;
-  one y-band line grouper.
+- Price-token and y-band dedupe are **already done** for the render path (#1188 P1b:
+  `price_tokens.py` declares each historical pattern once with tests pinning them;
+  `row_bands.py` consolidates the greedy groupers and documents why the two remaining
+  variants stay distinct). The other price regexes on main live in `receipt_upload`,
+  `receipt_dynamo`, `receipt_embeddings`, and `scripts`, accept different token
+  languages, and sit behind the layering rule that `receipt_dynamo` imports no
+  sibling; they are out of scope for S2.
 - Generic composer with a dispatch registry; Dollar Tree becomes a registry entry and
   its OCR-repair reconcilers become a library parameterized by template geometry.
 *Gate.* `render_regression_guard compare` byte-identical (MAD 0.0000) for every pinned
