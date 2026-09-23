@@ -62,10 +62,30 @@ def load_stylemap(
         return json.load(fh)
 
 
+# path -> ((mtime_ns, size), compiled rules). stylescan classifies every
+# line through rules_for_font, so reparsing the stylemap and recompiling its
+# regexes per line is avoided; a changed file (mtime or size) reloads.
+_RULES_CACHE: dict[
+    str, tuple[tuple[int, int], list[tuple[str, re.Pattern]] | None]
+] = {}
+
+
 def rules_for_font(
     font_dir_name: str, fonts_dir: str = FONTS_DIR
 ) -> list[tuple[str, re.Pattern]] | None:
-    return compile_rules(load_stylemap(font_dir_name, fonts_dir))
+    path = os.path.join(fonts_dir, font_dir_name, "stylemap.json")
+    try:
+        st = os.stat(path)
+    except OSError:
+        _RULES_CACHE.pop(path, None)
+        return None
+    key = (st.st_mtime_ns, st.st_size)
+    cached = _RULES_CACHE.get(path)
+    if cached is None or cached[0] != key:
+        rules = compile_rules(load_stylemap(font_dir_name, fonts_dir))
+        cached = (key, rules)
+        _RULES_CACHE[path] = cached
+    return None if cached[1] is None else list(cached[1])
 
 
 def rule_sections(stylemap: Mapping[str, Any] | None) -> set[str]:

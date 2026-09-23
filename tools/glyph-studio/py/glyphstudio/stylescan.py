@@ -206,7 +206,10 @@ _MERCHANT_RULES = {
 
 # Merchants whose section rules moved from this module into their
 # ``fonts/<slug>/stylemap.json`` ``rules`` (S2). Listed so the set of slugs
-# stylescan reports as known stays what it was before the move.
+# stylescan reports as known stays what it was before the move. A merchant
+# onboarded with stylemap ``rules`` must be added here too (ADD_MERCHANT.md
+# step 6); test_stylerules fails on a rule-bearing stylemap missing from
+# ``known_rule_slugs`` unless it is one of ``_UNREGISTERED_RULE_SLUGS``.
 _STYLEMAP_RULE_SLUGS = (
     "gelsons",
     "costco",
@@ -218,6 +221,13 @@ _STYLEMAP_RULE_SLUGS = (
     "wildfork",
     "homedepot",
 )
+
+
+# Stylemap-declared merchants that predate this registry and were never
+# known slugs (section_seeds rejects them; face_map_v2_cli measures them with
+# the Sprouts rules). Registering them changes that behavior, so it is left
+# to a follow-up rather than this move.
+_UNREGISTERED_RULE_SLUGS = ("speedway", "wholefoods")
 
 
 def known_rule_slugs() -> frozenset[str]:

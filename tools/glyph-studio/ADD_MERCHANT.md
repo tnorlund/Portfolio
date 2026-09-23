@@ -23,7 +23,8 @@ python new_vendor.py font wholefoods                    # mint -> specimen + str
 python new_vendor.py font wholefoods --fix "DGHMWbcde"  # triage feedback (repeat)
 python new_vendor.py pitch wholefoods                   # pitchRatioTarget / weight / condense
 python new_vendor.py style wholefoods                   # stylescan+agg -> stylemap.json draft + lines_*.txt
-#   author `rules` in fonts/<slug>/stylemap.json, rerun `style`
+#   author `rules` in fonts/<slug>/stylemap.json, register the slug in
+#   stylescan._STYLEMAP_RULE_SLUGS, rerun `style`
 python new_vendor.py profile wholefoods                 # merchant_profiles.json + env.mjs
 python new_vendor.py fixture wholefoods                 # faces -> $BITMATRIX_DIR, local truth fixture
 python new_vendor.py calibrate wholefoods               # render, solve ocr_cap_height_ratio, re-render
@@ -153,7 +154,10 @@ python -m glyphstudio.styleagg /tmp/gridfix/<slug>_studio/scans stylemap-agg.jso
   (schema in `glyphstudio/stylerules.py`; copy the vons/cvs pattern;
   classify store_header/items/payment/footer/etc from a line-text dump of 2
   receipts). Do not add rule lists to `stylescan.py`; merchants without
-  `rules` fall back to the Sprouts rules.
+  `rules` fall back to the Sprouts rules. Do add the slug to
+  `_STYLEMAP_RULE_SLUGS` in `stylescan.py` so `known_rule_slugs()` (used by
+  `section_seeds` and `face_map_v2_cli`) accepts it; `test_stylerules.py`
+  fails until you do.
 - Write `fonts/<slug>/stylemap.json` from the aggregate (sizeScale / weight /
   underline per section, with `notes`). Bold = `stroke_rel med ≳ 1.12`.
 - Set `metrics.pitchRatioTarget` (the fleet median) and `preview.condense =
