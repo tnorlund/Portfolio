@@ -44,7 +44,6 @@ for _p in (
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from m3_acceptance import ocr_overlap_score  # noqa: E402
 from glyphstudio.face_map_v2 import (  # noqa: E402
     LineFace,
     aggregate_cell,
@@ -53,6 +52,7 @@ from glyphstudio.face_map_v2 import (  # noqa: E402
     line_face,
 )
 from glyphstudio.section_seeds import merchant_slug  # noqa: E402
+from m3_acceptance import ocr_overlap_score  # noqa: E402
 
 _LOCAL = threading.local()
 
@@ -139,9 +139,11 @@ def load_corpus(table: str):
     return by_receipt, merchant_of, Counter(s.model_source for s in valid)
 
 
-def process_receipt(table: str, image_id: str, receipt_id: int, slug: str, sections):
+def process_receipt(
+    table: str, image_id: str, receipt_id: int, slug: str, sections
+):
     """Vet -> measure -> join -> per-line faces for ONE receipt."""
-    from glyphstudio.stylescan import _MERCHANT_RULES, measure
+    from glyphstudio.stylescan import known_rule_slugs, measure
 
     client = _client(table)
     words = client.list_receipt_words_from_receipt(image_id, receipt_id)
@@ -163,7 +165,7 @@ def process_receipt(table: str, image_id: str, receipt_id: int, slug: str, secti
     # stylescan's rule slug only steers its own body fallback / section names
     # (which v2 ignores in favor of the QA'd join); unknown merchants use the
     # generic rules.
-    rule_slug = slug if slug in _MERCHANT_RULES else "sprouts"
+    rule_slug = slug if slug in known_rule_slugs() else "sprouts"
     measurement = measure(image_id, receipt_id, merchant=rule_slug)
 
     sec_dicts = [
@@ -211,7 +213,9 @@ def main(argv=None) -> int:
         help="M3 OCR vetting: skip receipts with more x-overlapping pairs",
     )
     ap.add_argument("--workers", type=int, default=8)
-    ap.add_argument("--limit", type=int, default=None, help="debug: first N receipts")
+    ap.add_argument(
+        "--limit", type=int, default=None, help="debug: first N receipts"
+    )
     ap.add_argument(
         "--merchant-slug",
         action="append",

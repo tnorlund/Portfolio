@@ -149,9 +149,11 @@ python -m glyphstudio.stylescan <image_id> <receipt_id> out.json --merchant <slu
 python -m glyphstudio.styleagg /tmp/gridfix/<slug>_studio/scans stylemap-agg.json
 ```
 
-- Add a `_<SLUG>_RULES` section-classifier list in `stylescan.py` (copy the
-  vons/cvs pattern; classify store_header/items/payment/footer/etc from a
-  line-text dump of 2 receipts).
+- Author the section-classifier `rules` list in `fonts/<slug>/stylemap.json`
+  (schema in `glyphstudio/stylerules.py`; copy the vons/cvs pattern;
+  classify store_header/items/payment/footer/etc from a line-text dump of 2
+  receipts). Do not add rule lists to `stylescan.py`; merchants without
+  `rules` fall back to the Sprouts rules.
 - Write `fonts/<slug>/stylemap.json` from the aggregate (sizeScale / weight /
   underline per section, with `notes`). Bold = `stroke_rel med ≳ 1.12`.
 - Set `metrics.pitchRatioTarget` (the fleet median) and `preview.condense =
@@ -288,8 +290,8 @@ scorecard is not reviewable and will be bounced.
 
 Re-run step 7 once from a cold cache (proves vault resolution), then commit
 the font sources (`fonts/<slug>/` — skeleton JSONs + font.json + stylemap
-are the source of truth; compiled npz and samples npz stay OUT of git),
-the stylescan rules, and the profile.
+are the source of truth, including the stylemap `rules`; compiled npz and
+samples npz stay OUT of git), and the profile.
 
 Optional: showcase finale assets (`final.webp`/`real.webp`/labels) — add
 the merchant to `fixtures/pipeline_merchants.json` and run

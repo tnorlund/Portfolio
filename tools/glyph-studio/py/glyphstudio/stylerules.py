@@ -11,8 +11,9 @@ source instead of two hand-synchronised regex lists in code::
     ]
 
 ``flags`` defaults to ``"i"`` (case-insensitive); ``""`` makes a rule
-case-sensitive. Rules are tried in order; the first match wins. Merchants
-without ``rules`` keep their legacy in-code rule lists.
+case-sensitive. Rules are tried in order; the first match wins. Every
+merchant-specific rule list lives here; merchants without ``rules`` fall back
+to stylescan's in-code Sprouts rules (``stylescan._RULES``).
 """
 
 from __future__ import annotations
