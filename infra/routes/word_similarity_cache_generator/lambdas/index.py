@@ -12,16 +12,24 @@ import os
 import re
 import statistics
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import boto3
 from receipt_dynamo import DynamoClient
 from receipt_embeddings.keys import line_canonical_key
+
+if TYPE_CHECKING:
+    from receipt_dynamo.entities import (
+        ReceiptLineItem,
+        ReceiptWord,
+        ReceiptWordLabel,
+    )
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -406,88 +414,163 @@ def assemble_visual_lines(words, labels):
     return visual_lines
 
 
-def find_price_on_visual_line(target_line_id, words, labels):
-    """Find LINE_TOTAL or UNIT_PRICE on the same visual line.
+@dataclass(frozen=True)
+class PriceMatch:
+    """A price or an explicit reason not to use a weaker fallback."""
 
-    Two-pass: first uses `assemble_visual_lines` to group words by
-    y-centroid into rows, then scans the row containing the target
-    line_id for price labels. If that fast path returns nothing, falls
-    back to a wider y-proximity scan over all words.
+    price: str | None
+    source: str
 
-    The fallback exists because `assemble_visual_lines` uses a tolerance
-    of `max(0.01, median(heights) * 0.75)`, and on receipts with many
-    tight header/payment-info lines the median word height shrinks
-    enough to pull the tolerance below the actual gap between a product
-    line and its price line — splitting a logical row across multiple
-    visual groups and stranding the product line without its price.
+
+def normalize_price(value: str | float | Decimal | None) -> str | None:
+    """Return a finite, nonnegative money amount, including free items."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        amount = Decimal(str(value).strip().removeprefix("$").replace(",", ""))
+    except InvalidOperation:
+        return None
+    if not amount.is_finite() or amount < 0:
+        return None
+    return f"{amount:.2f}"
+
+
+def find_price_on_visual_line(
+    target_line_id: int,
+    words: list["ReceiptWord"],
+    labels: list["ReceiptWordLabel"],
+    *,
+    same_line_only: bool = False,
+) -> PriceMatch:
+    """Resolve legacy labels without choosing the first nearby price.
+
+    A price on the actual OCR line takes precedence. Split OCR rows can use
+    the visual group or the historical 0.025 y tolerance only when there is
+    one numeric price and no competing product line. Returning ambiguity
+    explicitly prevents the row-text fallback from guessing afterward.
     """
     visual_lines = assemble_visual_lines(words, labels)
+    contexts = [ctx for line in visual_lines for ctx in line]
+    target = [ctx for ctx in contexts if ctx["word"].line_id == target_line_id]
+    if not target:
+        return PriceMatch(None, "missing")
 
-    # Pass 1: visual-line lookup (fast path)
-    target_visual_line = None
-    for vl in visual_lines:
-        for ctx in vl:
-            if ctx["word"].line_id == target_line_id:
-                target_visual_line = vl
-                break
-        if target_visual_line:
-            break
+    def price_contexts(candidates: list[dict]) -> list[dict]:
+        return [
+            ctx
+            for ctx in candidates
+            if ctx["label"] is not None
+            and ctx["label"].label in {"LINE_TOTAL", "UNIT_PRICE"}
+            and re.fullmatch(
+                r"\$?\d+(?:,\d{3})*\.\d{2}", ctx["word"].text.strip()
+            )
+            and normalize_price(ctx["word"].text) is not None
+        ]
 
-    line_total = None
-    unit_price = None
+    # A same-line LINE_TOTAL is stronger than UNIT_PRICE (quantity may be >1).
+    same_line_prices = price_contexts(target)
+    for role in ("LINE_TOTAL", "UNIT_PRICE"):
+        candidates = [
+            ctx for ctx in same_line_prices if ctx["label"].label == role
+        ]
+        if len(candidates) > 1:
+            return PriceMatch(None, "ambiguous")
+        if candidates:
+            return PriceMatch(
+                normalize_price(candidates[0]["word"].text), "labels"
+            )
 
-    if target_visual_line:
-        for ctx in target_visual_line:
-            if ctx["label"]:
-                if ctx["label"].label == "LINE_TOTAL" and line_total is None:
-                    line_total = ctx["word"].text
-                elif ctx["label"].label == "UNIT_PRICE" and unit_price is None:
-                    # First-found wins — avoids California food-code letters
-                    # (e.g. "F", "T") that appear after the price and share the
-                    # UNIT_PRICE label but contain no numeric value.
-                    unit_price = ctx["word"].text
+    if same_line_only:
+        return PriceMatch(None, "missing")
 
-        if line_total or unit_price:
-            return line_total, unit_price
+    target_y = statistics.mean(ctx["y"] for ctx in target)
+    grouped_keys = {
+        (ctx["word"].line_id, ctx["word"].word_id)
+        for line in visual_lines
+        if any(ctx["word"].line_id == target_line_id for ctx in line)
+        for ctx in line
+    }
+    nearby = [
+        ctx
+        for ctx in contexts
+        if (ctx["word"].line_id, ctx["word"].word_id) in grouped_keys
+        or abs(ctx["y"] - target_y) <= 0.025
+    ]
+    if any(
+        ctx["word"].line_id != target_line_id
+        and ctx["label"] is not None
+        and ctx["label"].label == "PRODUCT_NAME"
+        for ctx in nearby
+    ):
+        return PriceMatch(None, "ambiguous")
+    candidates = price_contexts(nearby)
+    if len(candidates) > 1:
+        return PriceMatch(None, "ambiguous")
+    if candidates:
+        return PriceMatch(
+            normalize_price(candidates[0]["word"].text), "labels"
+        )
+    return PriceMatch(None, "missing")
 
-    # Pass 2: y-centroid proximity fallback. Find the target word's
-    # y-centroid, then sweep ALL words within ~2x the standard tolerance
-    # for a VALID LINE_TOTAL or UNIT_PRICE label.
-    target_y = None
-    for word in words:
-        if word.line_id == target_line_id:
-            target_y = word.calculate_centroid()[1]
-            break
-    if target_y is None:
-        return None, None
 
-    labels_by_word = defaultdict(list)
-    for label in labels:
-        labels_by_word[(label.line_id, label.word_id)].append(label)
+def find_milk_price(
+    target_line_id: int,
+    words: list["ReceiptWord"],
+    labels: list["ReceiptWordLabel"],
+    line_items: list["ReceiptLineItem"],
+    row_text: str,
+) -> PriceMatch:
+    """Prefer the canonical item linked to the milk OCR line.
 
-    def latest_valid_label(line_id, word_id):
-        history = labels_by_word.get((line_id, word_id), [])
-        valid = [lbl for lbl in history if lbl.validation_status == "VALID"]
-        if not valid:
-            return None
-        valid.sort(key=lambda lbl: str(lbl.timestamp_added), reverse=True)
-        return valid[0]
+    Ambiguous or untrusted canonical matches cannot use weaker fallbacks.
+    A partially extracted receipt with no linked item may still use a price
+    labeled on the milk OCR line itself. Only receipts without any line items
+    use legacy geometry or row text.
+    """
+    if line_items:
+        matches = [
+            item for item in line_items if target_line_id in item.line_ids
+        ]
+        if not matches:
+            same_line = find_price_on_visual_line(
+                target_line_id, words, labels, same_line_only=True
+            )
+            if same_line.source != "missing":
+                return same_line
+            return PriceMatch(None, "unmatched")
+        if len(matches) > 1:
+            return PriceMatch(None, "ambiguous")
+        item = matches[0]
+        name = item.name.upper()
+        if (
+            TARGET_WORD not in name
+            or any(term in name for term in DAIRY_EXCLUDE_TERMS)
+            or "VOID" in name
+            or item.name_quality != "ok"
+            or item.is_discount
+            or item.collapsed_banding
+            or item.source_section_status not in {"VALID", "PENDING"}
+            or item.reconciliation_status not in {"match", "near"}
+        ):
+            return PriceMatch(None, "untrusted")
+        price = normalize_price(item.price)
+        return PriceMatch(
+            price, "line_item" if price is not None else "untrusted"
+        )
 
-    # pylint: disable-next=invalid-name
-    Y_FALLBACK_TOLERANCE = 0.025  # ~2x typical tolerance
-    for word in words:
-        cy = word.calculate_centroid()[1]
-        if abs(cy - target_y) > Y_FALLBACK_TOLERANCE:
-            continue
-        lbl = latest_valid_label(word.line_id, word.word_id)
-        if lbl is None:
-            continue
-        if lbl.label == "LINE_TOTAL" and line_total is None:
-            line_total = word.text
-        elif lbl.label == "UNIT_PRICE" and unit_price is None:
-            unit_price = word.text
-
-    return line_total, unit_price
+    result = find_price_on_visual_line(target_line_id, words, labels)
+    if result.source != "missing":
+        return result
+    # Some legacy receipts have no price labels but print one price at the
+    # end of the embedding row. Multiple amounts cannot identify the item.
+    tokens = list(
+        re.finditer(r"(?<!\S)\$?\d+(?:,\d{3})*\.\d{2}(?!\S)", row_text)
+    )
+    if len(tokens) > 1:
+        return PriceMatch(None, "ambiguous")
+    if tokens and tokens[0].end() == len(row_text.rstrip()):
+        return PriceMatch(normalize_price(tokens[0].group()), "row_text")
+    return PriceMatch(None, "missing")
 
 
 def calculate_product_bbox(target_line_id, words, labels):
@@ -776,6 +859,9 @@ def handler(_event, _context):
                     receipt_id,
                     add_line_context(row_line_ids),
                 )
+                line_items = dynamo_client.get_receipt_line_items_from_receipt(
+                    image_id, receipt_id
+                )
                 timings["details"] = time.time() - t0
                 timings["items"] = (
                     1
@@ -783,6 +869,7 @@ def handler(_event, _context):
                     + len(details.lines)
                     + len(details.words)
                     + len(details.labels)
+                    + len(line_items)
                 )
 
                 # Find the specific OCR line containing "MILK"
@@ -802,8 +889,12 @@ def handler(_event, _context):
                 t0 = time.time()
                 # Use the actual milk line_id for the price lookup
                 # (not the row's primary line)
-                line_total, unit_price = find_price_on_visual_line(
-                    milk_line_id, details.words, details.labels
+                price_match = find_milk_price(
+                    milk_line_id,
+                    details.words,
+                    details.labels,
+                    line_items,
+                    row_text,
                 )
                 # Calculate bounding box for visual cropping
                 bbox = calculate_product_bbox(
@@ -816,17 +907,14 @@ def handler(_event, _context):
                     if details.place
                     else row_merchant_name or "Unknown"
                 )
-                price = line_total or unit_price
-                if not price:
-                    # Some receipts (e.g. Target) print the price at the end
-                    # of the visual row. Use the combined row text because
-                    # the focused DynamoDB response may hold the product and
-                    # price in non-contiguous ReceiptLine entities.
-                    m = re.search(r"\s+\$?(\d{1,3}\.\d{2})\s*$", row_text)
-                    if m:
-                        price = m.group(1)
-                        if product_text == row_text:
-                            product_text = product_text[: m.start()].rstrip()
+                price = price_match.price
+                if (
+                    price_match.source == "row_text"
+                    and product_text == row_text
+                ):
+                    product_text = re.sub(
+                        r"\s+\$?\d+(?:,\d{3})*\.\d{2}\s*$", "", product_text
+                    ).rstrip()
                 product_text = strip_upc_prefix(product_text)
                 size = infer_size(product_text, price)
 
@@ -841,6 +929,7 @@ def handler(_event, _context):
                     "product": product_text,
                     "merchant": merchant,
                     "price": price,
+                    "price_source": price_match.source,
                     "size": size,
                     "line_id": milk_line_id,
                     # Receipt header (image_id, dimensions, CDN keys) — used
@@ -895,6 +984,15 @@ def handler(_event, _context):
             timing.dynamo_fetch_total,
         )
 
+        price_sources = dict(Counter(r["price_source"] for r in results))
+        priced_receipts = sum(r["price"] is not None for r in results)
+        price_coverage = {
+            "priced_receipts": priced_receipts,
+            "unpriced_receipts": len(results) - priced_receipts,
+            "sources": price_sources,
+        }
+        logger.info("Milk price coverage: %s", price_coverage)
+
         # Step 5: Build summary table
         summary = defaultdict(
             lambda: {"count": 0, "prices": [], "receipts": []}
@@ -933,8 +1031,10 @@ def handler(_event, _context):
                     "product": product,
                     "size": size,
                     "count": data["count"],
-                    "avg_price": round(avg_price, 2) if avg_price else None,
-                    "total": round(total, 2) if total else None,
+                    "avg_price": (
+                        round(avg_price, 2) if avg_price is not None else None
+                    ),
+                    "total": round(total, 2) if total is not None else None,
                     "receipts": data["receipts"],
                 }
             )
@@ -969,6 +1069,7 @@ def handler(_event, _context):
             "total_items": len(matching_lines),
             "summary_table": summary_table,
             "receipts": results,
+            "price_coverage": price_coverage,
             "cached_at": datetime.now(timezone.utc).isoformat(),
             "timing": timing.to_dict(),
             "grand_total": round(grand_total, 2),
