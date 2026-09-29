@@ -14,6 +14,7 @@ MAX_CONTEXT_BYTES = 80_000
 MAX_SUMMARY_ROWS = 20
 MAX_MONTH_ROWS = 60
 MAX_EVIDENCE_BYTES = 12_000
+MAX_TOOL_LIST_BYTES = 3_000
 
 
 class QAContextBudgetExceeded(ValueError):
@@ -55,6 +56,13 @@ def _decimal(value: Any) -> Decimal | None:
 
 def _money(amount: Decimal) -> float:
     return float(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def sum_amounts(amounts: list[Any]) -> float:
+    """Sum valid amounts using decimal arithmetic before rounding to cents."""
+    return _money(
+        sum((_decimal(amount) or Decimal(0) for amount in amounts), Decimal(0))
+    )
 
 
 def _totals(rows: list[dict]) -> dict:
@@ -199,6 +207,99 @@ def aggregate_view(aggregate: dict, month_offset: int = 0) -> dict:
     return result
 
 
+def bounded_rows(
+    rows: list, *, limit: int = MAX_SUMMARY_ROWS, offset: int = 0
+) -> tuple:
+    """Sample whole records, preserving complete records outside the prompt."""
+    selected = []
+    used = 0
+    for row in rows[offset : offset + limit]:
+        size = len(json.dumps(row, default=str).encode("utf-8"))
+        if used + size > MAX_TOOL_LIST_BYTES:
+            if not selected:
+                # Advance past a whole oversized record only with an explicit
+                # placeholder. Never cut an amount, identifier or JSON string.
+                selected.append(
+                    {
+                        "record_omitted": True,
+                        "source_offset": offset,
+                        "reason": (
+                            "This single record exceeds the evidence page "
+                            "budget. Its complete contents remain in state."
+                        ),
+                    }
+                )
+            break
+        selected.append(row)
+        used += size
+    return selected, {
+        "total_count": len(rows),
+        "returned_count": len(selected),
+        "offset": offset,
+        "next_offset": (
+            offset + len(selected)
+            if offset + len(selected) < len(rows)
+            else None
+        ),
+        "note": (
+            "Rows are sampled; the complete result is retained for synthesis. "
+            "Do not infer totals or exhaustive coverage from this sample."
+        ),
+    }
+
+
+def tool_result_view(
+    result: dict, *, compact: bool = False, offset: int = 0
+) -> dict:
+    """Bound detail, search and discovery outputs, retaining exact metadata."""
+    view = {}
+    coverage = {}
+    for key, value in result.items():
+        if key == "words_by_line":
+            continue  # Raw coordinates/labels stay in retained receipt state.
+        if key == "formatted_receipt":
+            lines, coverage[key] = bounded_rows(
+                value.splitlines(),
+                limit=0 if compact else MAX_SUMMARY_ROWS,
+                offset=offset,
+            )
+            view[key] = "\n".join(
+                line if isinstance(line, str) else json.dumps(line)
+                for line in lines
+            )
+        elif isinstance(value, list):
+            view[key], coverage[key] = bounded_rows(
+                value, limit=0 if compact else MAX_SUMMARY_ROWS, offset=offset
+            )
+        else:
+            view[key] = value
+    if coverage:
+        view["result_coverage"] = coverage
+    return view
+
+
+def amount_aggregate_view(aggregate: dict) -> dict:
+    """Retain the exact filtered amount result with a bounded audit sample."""
+    result = {
+        key: value
+        for key, value in aggregate.items()
+        if key not in ("breakdown", "excluded_outliers", "source_receipts")
+    }
+    breakdown = aggregate.get("breakdown", [])
+    sample, _ = bounded_rows(breakdown, limit=5)
+    result["breakdown"] = sample
+    result["breakdown_coverage"] = {
+        "total_count": len(breakdown),
+        "returned_count": len(sample),
+        "note": (
+            "Only the audit rows are sampled. The filtered total and count "
+            "include every matching amount in the retrieved receipt scope. "
+            "Whole-receipt totals must not substitute for this item total."
+        ),
+    }
+    return result
+
+
 def receipt_evidence_view(
     rows: list[dict], *, offset: int = 0, limit: int = MAX_SUMMARY_ROWS
 ) -> dict:
@@ -233,6 +334,18 @@ def receipt_evidence_view(
             compact["line_items_omitted"] = len(row.get("line_items", []))
             size = len(json.dumps(compact, default=str).encode("utf-8"))
         if used + size > MAX_EVIDENCE_BYTES:
+            if not selected:
+                selected.append(
+                    {
+                        "record_omitted": True,
+                        "source_offset": offset,
+                        "reason": (
+                            "This receipt's metadata exceeds the evidence "
+                            "page budget. All financial fields remain in "
+                            "state and in the complete aggregates."
+                        ),
+                    }
+                )
             break
         selected.append(compact)
         used += size

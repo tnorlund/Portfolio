@@ -15,11 +15,13 @@ The agent uses these tools in a ReAct loop, then stops calling tools
 when it has enough information. A synthesize node formats the final answer.
 """
 
+import json
 import logging
 import re
 import statistics
 from collections import defaultdict
 from datetime import datetime
+from threading import Lock
 from typing import Any, Callable, Optional
 
 from langchain_core.tools import tool
@@ -32,7 +34,10 @@ from receipt_agent.agents.question_answering.context import (
     MAX_SUMMARY_ROWS,
     aggregate_receipts,
     aggregate_view,
+    amount_aggregate_view,
     receipt_evidence_view,
+    sum_amounts,
+    tool_result_view,
 )
 
 logger = logging.getLogger(__name__)
@@ -226,7 +231,40 @@ def create_qa_tools(
         "_summary_keys": set(),  # Dedup keys for summary_receipts
         "fetched_receipt_keys": set(),  # (image_id, receipt_id) to avoid re-fetching
         "aggregates": [],  # Pre-computed aggregates from get_receipt_summaries
+        "amount_aggregates": [],  # Exact label/text-filtered calculations
+        "tool_results": {},  # Complete search/discovery results by scope
     }
+    aggregate_lock = Lock()
+
+    def _store_aggregate(
+        collection: str, result: dict, scope_fields: tuple[str, ...]
+    ) -> None:
+        # ToolNode can execute comparison tools concurrently. Refresh each
+        # scope atomically so one completed comparison cannot erase another.
+        with aggregate_lock:
+            aggregates = state_holder[collection]
+            for index, previous in enumerate(aggregates):
+                if all(previous[key] == result[key] for key in scope_fields):
+                    aggregates[index] = result
+                    break
+            else:
+                aggregates.append(result)
+
+    def _record_result(name: str, result: dict, offset: int = 0) -> dict:
+        """Keep full evidence out of model history without losing its scope."""
+        if offset < 0:
+            return {"error": "offset must be nonnegative"}
+        key = json.dumps(
+            [
+                name,
+                result.get("query"),
+                result.get("merchant"),
+                result.get("image_id"),
+                result.get("receipt_id"),
+            ]
+        )
+        state_holder["tool_results"][key] = {"tool": name, "result": result}
+        return tool_result_view(result, offset=offset)
 
     def _get_effective_label(
         labels: list,
@@ -452,6 +490,7 @@ def create_qa_tools(
         search_type: str = "text",
         limit: int = 20,
         auto_fetch: int = 5,
+        offset: int = 0,
     ) -> dict:
         """Search for receipts by text content, label type, or semantic similarity.
 
@@ -469,6 +508,7 @@ def create_qa_tools(
                 - "semantic": Semantic similarity search using embeddings
             limit: Maximum results to return
             auto_fetch: Number of top results to auto-fetch full details for (default 5)
+            offset: Evidence page offset within the retrieved result set
 
         Returns:
             Dict with matching receipts (image_id, receipt_id, preview text)
@@ -564,14 +604,14 @@ def create_qa_tools(
                     fetched_count,
                 )
 
-            return search_result
+            return _record_result("search_receipts", search_result, offset)
 
         except Exception as e:
             logger.error("Search error: %s", e)
             return {"error": str(e), "results": []}
 
     @tool
-    def get_receipt(image_id: str, receipt_id: int) -> dict:
+    def get_receipt(image_id: str, receipt_id: int, offset: int = 0) -> dict:
         """Get full receipt with formatted text showing all words and labels.
 
         The receipt text shows each line with words and their labels inline:
@@ -588,6 +628,8 @@ def create_qa_tools(
         Args:
             image_id: The image ID from search results
             receipt_id: The receipt ID from search results
+            offset: Page offset for formatted lines and amounts; follow the
+                corresponding result_coverage.next_offset to inspect more
 
         Returns:
             Dict with merchant, formatted receipt text, and amounts summary
@@ -597,13 +639,14 @@ def create_qa_tools(
             return {
                 "error": f"Failed to fetch receipt {image_id}:{receipt_id}"
             }
-        return result
+        return _record_result("get_receipt", result, offset)
 
     @tool
     def semantic_search(
         query: str,
         limit: int = 20,
         min_similarity: float = 0.3,
+        offset: int = 0,
     ) -> dict:
         """Perform semantic similarity search using embeddings.
 
@@ -616,6 +659,7 @@ def create_qa_tools(
             query: Natural language query (e.g., "coffee purchases", "dairy products")
             limit: Maximum results to return
             min_similarity: Minimum similarity threshold (0-1, default 0.3)
+            offset: Evidence page offset within the retrieved result set
 
         Returns:
             Dict with matching receipts sorted by similarity score
@@ -698,7 +742,7 @@ def create_qa_tools(
                     "Results have low confidence - consider refining your query"
                 )
 
-            return {
+            result = {
                 "search_type": "semantic",
                 "query": query,
                 "total_matches": len(sorted_results),
@@ -706,6 +750,7 @@ def create_qa_tools(
                 "results": sorted_results,
                 "suggestions": suggestions if suggestions else None,
             }
+            return _record_result("semantic_search", result, offset)
 
         except Exception as e:
             logger.error("Semantic search error: %s", e)
@@ -734,7 +779,7 @@ def create_qa_tools(
             aggregate_amounts("LINE_TOTAL", filter_text="COFFEE")
             # Returns: {"total": 23.98, "count": 2, "breakdown": [...]}
         """
-        retrieved = state_holder.get("retrieved_receipts", [])
+        retrieved = list(state_holder.get("retrieved_receipts", []))
         if not retrieved:
             return {
                 "error": "No receipts retrieved yet",
@@ -826,26 +871,51 @@ def create_qa_tools(
             breakdown, ceiling=ceiling
         )
 
-        total = sum(item["amount"] for item in breakdown)
+        total = sum_amounts([item["amount"] for item in breakdown])
 
         result = {
+            "source": "aggregate_amounts",
             "label_type": label_type,
             "filter_text": filter_text,
-            "total": round(total, 2),
+            "total": total,
             "count": len(breakdown),
             "breakdown": breakdown,
+            "receipt_count": len(
+                {(row["image_id"], row["receipt_id"]) for row in breakdown}
+            ),
+            "retrieved_receipt_count": len(retrieved),
+            "source_receipts": [
+                {"image_id": row["image_id"], "receipt_id": row["receipt_id"]}
+                for row in retrieved
+            ],
+            "scope_note": (
+                "Amounts with this label and line-text filter across all "
+                "detail receipts retrieved so far. This is not an exhaustive "
+                "corpus search or an independently date-filtered scope. "
+                "Different filter results can overlap; do not add them "
+                "without checking their scopes."
+            ),
         }
         if outliers:
             result["excluded_outliers"] = summarize_ocr_outliers(outliers)
             result["excluded_outlier_count"] = len(outliers)
-        return result
+        # Preserve each comparison scope for synthesis even when the final
+        # AI message omits the number. Repeating a scope refreshes its result
+        # after additional retrieval instead of duplicating old totals.
+        _store_aggregate(
+            "amount_aggregates", result, ("label_type", "filter_text")
+        )
+        return amount_aggregate_view(result)
 
     @tool
-    def list_merchants() -> dict:
+    def list_merchants(offset: int = 0) -> dict:
         """List all merchants with receipt counts.
 
         Returns merchants sorted by receipt count (descending).
         Use this to see which stores appear most frequently in receipts.
+
+        Args:
+            offset: Merchant page offset; follow result_coverage.next_offset
 
         Returns:
             Dict with total_merchants count and list of {merchant, receipt_count}
@@ -875,30 +945,31 @@ def create_qa_tools(
 
             sorted_merchants = sorted(
                 merchant_counts.items(),
-                key=lambda x: x[1],
-                reverse=True,
+                key=lambda x: (-x[1], x[0]),
             )
 
-            return {
+            result = {
                 "total_merchants": len(sorted_merchants),
                 "merchants": [
                     {"merchant": name, "receipt_count": count}
                     for name, count in sorted_merchants
                 ],
             }
+            return _record_result("list_merchants", result, offset)
 
         except Exception as e:
             logger.error("Error listing merchants: %s", e)
             return {"error": str(e)}
 
     @tool
-    def get_receipts_by_merchant(merchant_name: str) -> dict:
+    def get_receipts_by_merchant(merchant_name: str, offset: int = 0) -> dict:
         """Get all receipt IDs for a specific merchant.
 
         Use this after list_merchants to drill down into a specific store.
 
         Args:
             merchant_name: Exact merchant name from list_merchants
+            offset: Receipt page offset; all IDs remain retained for synthesis
 
         Returns:
             Dict with merchant, count, and list of [image_id, receipt_id] pairs
@@ -927,12 +998,14 @@ def create_qa_tools(
             receipts = [
                 [place.image_id, place.receipt_id] for place in all_places
             ]
+            receipts.sort()
 
-            return {
+            result = {
                 "merchant": merchant_name,
                 "count": len(receipts),
                 "receipts": receipts,
             }
+            return _record_result("get_receipts_by_merchant", result, offset)
 
         except Exception as e:
             logger.error("Error getting receipts by merchant: %s", e)
@@ -943,6 +1016,7 @@ def create_qa_tools(
         query: str,
         search_type: str = "text",
         limit: int = 100,
+        offset: int = 0,
     ) -> dict:
         """Search for product lines and return prices for spending analysis.
 
@@ -951,7 +1025,9 @@ def create_qa_tools(
         Args:
             query: Product term or natural language description
             search_type: "text" for exact match, "semantic" for meaning-based
-            limit: Maximum results to return
+            limit: Maximum candidates to retrieve
+            offset: Candidate page offset; raw_total covers every candidate
+                and requires relevance review before claiming spending
 
         Returns:
             Dict with items containing text, price, merchant, and receipt IDs
@@ -1090,7 +1166,7 @@ def create_qa_tools(
                         f"{max_sim:.2f}); they are likely irrelevant. "
                         "Do not sum or cite these prices."
                     )
-                return result
+                return _record_result("search_product_lines", result, offset)
 
             else:
                 # Text search (substring scan) has no DynamoDB
@@ -1327,12 +1403,9 @@ def create_qa_tools(
                 result["excluded_outlier_count"] = len(outliers)
             # Keep exact aggregates and coverage for every distinct scope,
             # without duplicating them when the model requests another page.
-            state_holder["aggregates"] = [
-                agg
-                for agg in state_holder["aggregates"]
-                if agg["source"] != source
-            ]
-            state_holder["aggregates"].append({"source": source, **result})
+            _store_aggregate(
+                "aggregates", {"source": source, **result}, ("source",)
+            )
             state_holder.setdefault("excluded_summary_outliers", {})[
                 source
             ] = outliers
@@ -1346,11 +1419,14 @@ def create_qa_tools(
             return {"error": str(e)}
 
     @tool
-    def list_categories() -> dict:
+    def list_categories(offset: int = 0) -> dict:
         """List all merchant categories with receipt counts.
 
         Returns categories from Google Places data, sorted by receipt count.
         Use this to discover available categories for filtering.
+
+        Args:
+            offset: Category page offset; follow result_coverage.next_offset
 
         Returns:
             Dict with categories like grocery_store, restaurant, gas_station
@@ -1396,11 +1472,10 @@ def create_qa_tools(
 
             sorted_categories = sorted(
                 category_counts.items(),
-                key=lambda x: x[1],
-                reverse=True,
+                key=lambda x: (-x[1], x[0]),
             )
 
-            return {
+            result = {
                 "total_categories": len(sorted_categories),
                 "total_receipts": total_receipts,
                 "uncategorized_receipts": max(total_receipts - categorized, 0),
@@ -1413,6 +1488,7 @@ def create_qa_tools(
                     for cat, count in sorted_categories
                 ],
             }
+            return _record_result("list_categories", result, offset)
 
         except Exception as e:
             logger.error("Error listing categories: %s", e)
