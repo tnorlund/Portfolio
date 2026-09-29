@@ -26,10 +26,15 @@ import {
 import type { ImageFormatSupport } from "../ReceiptFlow/types";
 import { useFlyingReceipt } from "../ReceiptFlow/useFlyingReceipt";
 import { useImageFormatSupport } from "../ReceiptFlow/useImageFormatSupport";
+import {
+  CHECK_ORDER,
+  loadReceiptHealthExamples,
+  preferredCheckIdForReceipt,
+  type ReceiptHealthExample,
+} from "./scenarios";
 import styles from "./ReceiptHealthExplorer.module.css";
 
 type CheckId = ReceiptHealthCheck["id"];
-type DetailId = CheckId | "issues" | "ledger" | "automation";
 
 interface EvidenceWord {
   key: string;
@@ -39,8 +44,6 @@ interface EvidenceWord {
   bbox: { x: number; y: number; width: number; height: number };
 }
 
-const BATCH_SIZE = 12;
-const INITIAL_SEED = 29;
 const AUTO_ROTATE_MS = 5200;
 const MANUAL_ROTATE_PAUSE_MS = 8000;
 const TRANSITION_DURATION_MS = 600;
@@ -56,7 +59,7 @@ const FLOW_LAYOUT_VARS = {
   "--rf-legend-stage-height": "280px",
   "--rf-mobile-center-height": "400px",
   "--rf-mobile-center-height-sm": "320px",
-  "--rf-mobile-legend-height": "212px",
+  "--rf-mobile-legend-height": "auto",
   "--rf-mobile-shell-height": "628px",
   "--rf-mobile-shell-height-sm": "548px",
   "--rf-gap": "1.5rem",
@@ -134,56 +137,6 @@ function preloadReceiptImageForTransition(
   });
 }
 
-const FLOW_MOCK_SCENARIOS: Array<{
-  label: string;
-  imageId: string;
-  receiptId: number;
-  focus: DetailId;
-}> = [
-  {
-    label: "Clean",
-    imageId: "9afeb902-28ff-436a-b69a-e0f5204eefa8",
-    receiptId: 2,
-    focus: "merchant_identity",
-  },
-  {
-    label: "Merchant",
-    imageId: "7d76a4bf-0deb-433b-9cc1-4561aa818061",
-    receiptId: 1,
-    focus: "merchant_identity",
-  },
-  {
-    label: "Format",
-    imageId: "ac5fd741-29f2-4e05-bf69-9c216ec8a56a",
-    receiptId: 2,
-    focus: "receipt_format",
-  },
-  {
-    label: "Math",
-    imageId: "946ba856-ae61-4428-bbc1-78ba268d6f0e",
-    receiptId: 1,
-    focus: "financial_math",
-  },
-  {
-    label: "OCR gap",
-    imageId: "6539deb9-52cc-49a0-81a0-3a64989bee49",
-    receiptId: 4,
-    focus: "automation",
-  },
-  {
-    label: "Consistent",
-    imageId: "129ee4aa-2053-4cd7-8534-a9817f8a3402",
-    receiptId: 2,
-    focus: "automation",
-  },
-];
-
-const CHECK_ORDER: CheckId[] = [
-  "merchant_identity",
-  "receipt_format",
-  "financial_math",
-];
-
 const CHECK_LABELS: Record<CheckId, string> = {
   merchant_identity: "Merchant",
   receipt_format: "Format",
@@ -246,39 +199,6 @@ const ROOT_CAUSE_LABELS: Record<string, string> = {
 
 function receiptKey(receipt: ReceiptHealthReceipt): string {
   return `${receipt.image_id}-${receipt.receipt_id}`;
-}
-
-function isCheckId(detailId: DetailId): detailId is CheckId {
-  return CHECK_ORDER.includes(detailId as CheckId);
-}
-
-function scenarioForReceipt(
-  receipt: ReceiptHealthReceipt | null,
-): (typeof FLOW_MOCK_SCENARIOS)[number] | undefined {
-  if (!receipt) return undefined;
-  return FLOW_MOCK_SCENARIOS.find(
-    (scenario) =>
-      scenario.imageId === receipt.image_id &&
-      scenario.receiptId === receipt.receipt_id,
-  );
-}
-
-function preferredCheckIdForReceipt(
-  receipt: ReceiptHealthReceipt | null | undefined,
-): CheckId | null {
-  const scenario = scenarioForReceipt(receipt ?? null);
-  if (scenario) {
-    if (isCheckId(scenario.focus)) return scenario.focus;
-    if (receipt?.checks.some((check) => check.id === "financial_math")) {
-      return "financial_math";
-    }
-  }
-
-  return (
-    CHECK_ORDER.find((id) =>
-      receipt?.checks.some((check) => check.id === id),
-    ) ?? null
-  );
 }
 
 function receiptDisplaySize(receipt: ReceiptHealthReceipt): {
@@ -930,6 +850,7 @@ function ValidationChecks({
             onClick={() => onSelectCheck(check.id)}
             title={`${CHECK_LABELS[check.id]}: ${validationOutcomeLabel(check.status)}`}
             aria-label={`${CHECK_LABELS[check.id]} ${validationOutcomeLabel(check.status)}`}
+            aria-pressed={activeCheck.id === check.id}
           >
             <span className={styles.validationLabel}>{CHECK_LABELS[check.id]}</span>
             <ValidationStatusIcon status={check.status} />
@@ -1049,22 +970,13 @@ function ScenarioExamples({
   currentIndex,
   onSelectReceipt,
 }: {
-  receipts: ReceiptHealthReceipt[];
+  receipts: ReceiptHealthExample[];
   currentIndex: number;
   onSelectReceipt: (index: number) => void;
 }) {
-  const examples = FLOW_MOCK_SCENARIOS.map((scenario) => {
-    const index = receipts.findIndex(
-      (receipt) =>
-        receipt.image_id === scenario.imageId &&
-        receipt.receipt_id === scenario.receiptId,
-    );
-    if (index < 0) return null;
-    return { ...scenario, index, receipt: receipts[index] };
-  }).filter((example): example is (typeof FLOW_MOCK_SCENARIOS)[number] & {
-    index: number;
-    receipt: ReceiptHealthReceipt;
-  } => Boolean(example));
+  const examples = receipts.flatMap((receipt, index) =>
+    receipt.scenario ? [{ ...receipt.scenario, index, receipt }] : [],
+  );
 
   if (examples.length === 0) return null;
 
@@ -1074,11 +986,12 @@ function ScenarioExamples({
       <div className={styles.stateExampleButtons}>
         {examples.map((example) => (
           <button
-            key={`${example.imageId}-${example.receiptId}`}
+            key={example.id}
             type="button"
             className={`${styles.stateExampleButton} ${example.index === currentIndex ? styles.stateExampleActive : ""}`}
             onClick={() => onSelectReceipt(example.index)}
             aria-label={example.label}
+            aria-pressed={example.index === currentIndex}
             title={example.label}
           >
             <span className={`${styles.stateExampleDot} ${statusToneClass(example.receipt.overall_status)}`} />
@@ -1110,7 +1023,7 @@ function DiagnosisRail({
   ledgerIssues: ReceiptHealthLedgerIssue[];
   ledgerSummary: ReceiptHealthLedgerSummary | null;
   loadingLedgerIssues: boolean;
-  receipts: ReceiptHealthReceipt[];
+  receipts: ReceiptHealthExample[];
   currentIndex: number;
   muteExplanations?: boolean;
   onSelectCheck: (checkId: CheckId) => void;
@@ -1188,7 +1101,7 @@ function ReceiptHealthFlowQueue({
   transitionTargetIndex,
   onSelect,
 }: {
-  receipts: ReceiptHealthReceipt[];
+  receipts: ReceiptHealthExample[];
   currentIndex: number;
   formatSupport: ImageFormatSupport | null;
   isTransitioning: boolean;
@@ -1421,7 +1334,7 @@ function ReceiptHealthFlowLegend({
   ledgerIssues: ReceiptHealthLedgerIssue[];
   ledgerSummary: ReceiptHealthLedgerSummary | null;
   loadingLedgerIssues: boolean;
-  receipts: ReceiptHealthReceipt[];
+  receipts: ReceiptHealthExample[];
   currentIndex: number;
   muteExplanations?: boolean;
   suppressIntro?: boolean;
@@ -1473,7 +1386,7 @@ export default function ReceiptHealthExplorer() {
     [activeRef, lazyRef],
   );
 
-  const [receipts, setReceipts] = useState<ReceiptHealthReceipt[]>([]);
+  const [receipts, setReceipts] = useState<ReceiptHealthExample[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [activeCheckId, setActiveCheckId] = useState<CheckId>("merchant_identity");
   const [loading, setLoading] = useState(true);
@@ -1488,7 +1401,7 @@ export default function ReceiptHealthExplorer() {
   const [unavailableImageKeys, setUnavailableImageKeys] = useState<Set<string>>(
     () => new Set(),
   );
-  const fetchedInitial = useRef(false);
+  const initialRequestRef = useRef<Promise<ReceiptHealthExample[]> | null>(null);
   const ledgerContextCacheRef = useRef<Map<string, LedgerContext>>(new Map());
   const ledgerContextRequestCacheRef = useRef<Map<string, Promise<LedgerContext>>>(new Map());
   const lastManualSelectionRef = useRef(0);
@@ -1504,43 +1417,6 @@ export default function ReceiptHealthExplorer() {
     receipts,
     formatSupport,
   );
-
-  const loadScenarioReceipts = useCallback(async () => {
-    const scenarioResults = await Promise.all(
-      FLOW_MOCK_SCENARIOS.map(async (scenario) => {
-        try {
-          const response = await api.fetchReceiptHealth(
-            BATCH_SIZE,
-            INITIAL_SEED,
-            0,
-            { imageId: scenario.imageId },
-          );
-          return response.receipts.find(
-            (receipt) => receipt.receipt_id === scenario.receiptId,
-          ) ?? null;
-        } catch (err) {
-          console.warn(
-            `Skipping unavailable receipt health scenario ${scenario.label}:`,
-            err,
-          );
-          return null;
-        }
-      }),
-    );
-
-    const scenarioReceipts = scenarioResults.filter(
-      (receipt): receipt is ReceiptHealthReceipt => Boolean(receipt),
-    );
-
-    if (scenarioReceipts.length === 0) {
-      const response = await api.fetchReceiptHealth(BATCH_SIZE, INITIAL_SEED, 0);
-      setReceipts(response.receipts);
-      return response.receipts;
-    }
-
-    setReceipts(scenarioReceipts);
-    return scenarioReceipts;
-  }, []);
 
   const fetchLedgerContext = useCallback(async (
     receipt: ReceiptHealthReceipt,
@@ -1573,12 +1449,18 @@ export default function ReceiptHealthExplorer() {
   }, []);
 
   useEffect(() => {
-    if (!nearViewport || fetchedInitial.current) return;
-    fetchedInitial.current = true;
+    if (!nearViewport) return;
 
     let cancelled = false;
     setLoading(true);
-    loadScenarioReceipts()
+    initialRequestRef.current ??= loadReceiptHealthExamples();
+    initialRequestRef.current
+      .then((examples) => {
+        if (cancelled) return;
+        setReceipts(examples);
+        const checkId = preferredCheckIdForReceipt(examples[0]);
+        if (checkId) setActiveCheckId(checkId);
+      })
       .catch((err) => {
         if (!cancelled) {
           console.error("Failed to fetch receipt health data:", err);
@@ -1594,7 +1476,7 @@ export default function ReceiptHealthExplorer() {
     return () => {
       cancelled = true;
     };
-  }, [loadScenarioReceipts, nearViewport]);
+  }, [nearViewport]);
 
   const currentReceipt = receipts[currentIndex] ?? null;
 
@@ -1682,7 +1564,7 @@ export default function ReceiptHealthExplorer() {
     }
   }, [activeCheck, orderedChecks]);
 
-  const focusReceiptCheck = useCallback((receipt: ReceiptHealthReceipt | null | undefined) => {
+  const focusReceiptCheck = useCallback((receipt: ReceiptHealthExample | null | undefined) => {
     const nextCheck = preferredCheckIdForReceipt(receipt);
     if (nextCheck) {
       setActiveCheckId(nextCheck);

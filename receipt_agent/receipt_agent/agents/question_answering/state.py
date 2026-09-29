@@ -195,6 +195,11 @@ class QAState(BaseModel):
     )
 
     # Workflow control
+    evidence_coverage: dict = Field(
+        default_factory=dict,
+        description="Complete receipt count and bounded citation coverage",
+    )
+
     current_phase: Literal[
         "plan",
         "retrieve",

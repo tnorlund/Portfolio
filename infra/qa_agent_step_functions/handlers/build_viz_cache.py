@@ -32,6 +32,7 @@ def _evidence(
         receipts.append(
             {
                 "imageId": image_id,
+                "receiptId": receipt_id,
                 "merchant": entry.get("merchant", ""),
                 "item": entry.get("item", ""),
                 "amount": entry.get("amount", 0),
@@ -99,6 +100,11 @@ def build_question(
         "trace": trace,
         "success": result.get("success", False),
         "error": result.get("error"),
+        **(
+            {"evidenceCoverage": result["evidenceCoverage"]}
+            if result.get("evidenceCoverage")
+            else {}
+        ),
         "stats": {
             "llmCalls": result.get("llmCalls", 0),
             "toolInvocations": result.get("toolInvocations", 0),

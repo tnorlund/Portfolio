@@ -210,8 +210,83 @@ def test_cache_preserves_contract_and_actual_timing(batch: tuple) -> None:
     assert step["durationMs"] == 50
     assert step["startOffsetMs"] == 1000
     assert step["receipts"][0]["thumbnailKey"] == "image.webp"
+    assert step["receipts"][0]["receiptId"] == 1
+    assert "evidenceCoverage" not in question
     assert metadata["total_cost"] == 0.02
     assert json.loads(s3.objects["metadata.json"]) == metadata
+
+
+def test_citation_coverage_survives_runner_cache_and_api(
+    runner: Any, batch: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def answer(*args: Any, callbacks: list) -> dict:
+        trace = callbacks[1]
+        run_id = uuid4()
+        trace.on_chain_start(
+            {},
+            {},
+            run_id=run_id,
+            metadata={"langgraph_node": "synthesize"},
+            name="synthesize",
+        )
+        trace.on_chain_end({}, run_id=run_id)
+        return {
+            "answer": "Recorded receipt total: $25,050",
+            "receipt_count": 2505,
+            "evidence": [
+                {"image_id": "image", "receipt_id": receipt_id, "amount": 10}
+                for receipt_id in (1, 2)
+            ],
+            "evidence_coverage": {
+                "total_receipts": 2505,
+                "cited_receipts": 2,
+                "returned_rows": 2,
+                "max_rows": 200,
+            },
+        }
+
+    result = asyncio.run(
+        runner._run_question(
+            asyncio.Semaphore(1),
+            answer,
+            lambda **kw: (None, {}),
+            None,
+            None,
+            "Receipt spending?",
+            0,
+        )
+    )
+    expected = {
+        "totalReceipts": 2505,
+        "citedReceipts": 2,
+        "returnedRows": 2,
+        "maxRows": 200,
+    }
+    assert result["evidenceCoverage"] == expected
+    s3, event = batch
+    s3.objects[event["results_ndjson_key"]] = json.dumps(result).encode()
+    lookup = json.loads(s3.objects["qa-runs/run/receipts.json"])
+    lookup["image_2"] = lookup["image_1"]
+    s3.objects["qa-runs/run/receipts.json"] = json.dumps(lookup).encode()
+    builder.handler(event, None)
+    monkeypatch.setenv("S3_CACHE_BUCKET", "qa-cache")
+    api = load("routes/qa_viz_cache/lambdas/index.py")
+    response = json.loads(
+        api.handler(
+            {
+                "requestContext": {"http": {"method": "GET"}},
+                "queryStringParameters": {"index": "0"},
+            },
+            None,
+        )["body"]
+    )
+    question = response["questions"][0]
+    assert question["evidenceCoverage"] == expected
+    assert question["stats"]["receiptsProcessed"] == 2505
+    assert [row["receiptId"] for row in question["trace"][0]["receipts"]] == [
+        1,
+        2,
+    ]
 
 
 def test_failed_write_keeps_previous_cache_visible(batch: tuple) -> None:

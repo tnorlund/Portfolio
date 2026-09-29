@@ -19,6 +19,7 @@ for receipt data to answer questions like:
 
 import asyncio
 import calendar
+import json
 import logging
 from datetime import date, datetime
 from typing import Any, Callable, Optional
@@ -28,6 +29,15 @@ from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 from receipt_embeddings.vector_client import VectorSearchClient
 
+from receipt_agent.agents.question_answering.context import (
+    QAContextBudgetExceeded,
+    aggregate_receipts,
+    aggregate_view,
+    amount_aggregate_view,
+    ensure_context_budget,
+    receipt_evidence_view,
+    tool_result_view,
+)
 from receipt_agent.agents.question_answering.state import (
     AmountItem,
     AnswerWithEvidence,
@@ -108,6 +118,12 @@ You have been given:
 7. If the agent found nothing relevant, say so clearly.
 8. **If outliers were excluded**, say so in one short sentence — the totals
    already omit them, so do not add them back.
+9. Evidence and citations are bounded samples. Aggregates cover the complete
+   matching population; never infer totals from the evidence page. State the
+   date coverage and monthly denominator, including empty or partial months.
+10. For product/item spending, use the matching filtered amount_aggregations
+    and Agent Analysis. Whole-receipt totals are not product spending. Keep
+    separate comparison filters separate; they may overlap.
 
 ## Evidence Format
 Include evidence array with:
@@ -200,6 +216,7 @@ def create_plan_node(llm: Any) -> Callable:
             HumanMessage(content=f"Classify this question: {question}"),
         ]
 
+        ensure_context_budget(messages)
         try:
             classification = classification_llm.invoke(messages)
             logger.info(
@@ -280,6 +297,22 @@ def create_agent_node(
                 )
 
         # Retry up to 3 times if we get an empty response
+        try:
+            ensure_context_budget(messages)
+        except QAContextBudgetExceeded:
+            if not any(
+                state_holder.get(key)
+                for key in (
+                    "retrieved_receipts",
+                    "summary_receipts",
+                    "tool_results",
+                )
+            ):
+                raise
+            # The evidence is already retained outside conversation history.
+            # Stop accumulating tool turns and synthesize from bounded views.
+            state_holder["retrieval_complete"] = True
+            return {"current_phase": "shape"}
         max_retries = 3
         for attempt in range(max_retries):
             response = llm_with_tools.invoke(messages)
@@ -482,9 +515,18 @@ def create_shape_node(state_holder: dict) -> Callable:
                 ReceiptSummary(
                     image_id=receipt.get("image_id", ""),
                     receipt_id=receipt.get("receipt_id", 0),
-                    merchant=receipt.get("merchant", "Unknown"),
-                    grand_total=grand_total,
-                    tax=tax,
+                    merchant=summary_data.get("merchant_name")
+                    or receipt.get("merchant", "Unknown"),
+                    grand_total=(
+                        summary_data.get("grand_total")
+                        if summary_data.get("grand_total") is not None
+                        else grand_total
+                    ),
+                    tax=(
+                        summary_data.get("tax")
+                        if summary_data.get("tax") is not None
+                        else tax
+                    ),
                     tip=summary_data.get("tip"),
                     date=summary_data.get("effective_date")
                     or summary_data.get("date"),
@@ -518,26 +560,24 @@ def create_shape_node(state_holder: dict) -> Callable:
                 )
             )
 
-        # Limit to reasonable number — summaries are ~100 chars each
-        MAX_RECEIPTS = 200
-        limited_summaries = summaries[:MAX_RECEIPTS]
-
-        total_line_items = sum(len(s.line_items) for s in limited_summaries)
-        detail_count = sum(1 for s in limited_summaries if s.line_items)
-        summary_only_count = len(limited_summaries) - detail_count
+        # Preserve the entire population. Only the provider-facing evidence
+        # view is bounded; complete totals and date coverage stay available.
+        total_line_items = sum(len(s.line_items) for s in summaries)
+        detail_count = sum(1 for s in summaries if s.line_items)
+        summary_only_count = len(summaries) - detail_count
         logger.info(
             "Shaped to %d receipts (%d detail, %d summary-only, %d line items)",
-            len(limited_summaries),
+            len(summaries),
             detail_count,
             summary_only_count,
             total_line_items,
         )
 
-        if not limited_summaries and (retrieved_receipts or summary_receipts):
+        if not summaries and (retrieved_receipts or summary_receipts):
             logger.warning("No summaries after shaping, may need retry")
 
         return {
-            "shaped_summaries": limited_summaries,
+            "shaped_summaries": summaries,
             "current_phase": "synthesize",
         }
 
@@ -625,6 +665,20 @@ def build_evidence(summaries: list[ReceiptSummary]) -> list[dict]:
     return evidence
 
 
+def _synthesis_tool_evidence(entry: dict, *, compact: bool = False) -> dict:
+    """Keep unreviewed search-candidate sums out of confirmed spending."""
+    result = tool_result_view(entry["result"], compact=compact)
+    if entry["tool"] == "search_product_lines":
+        result.pop("raw_total", None)
+        result["candidate_spending_note"] = (
+            "Search candidates require relevance review before their prices "
+            "can support product spending. Their unreviewed sum is omitted. "
+            "Use matching exact amount_aggregations and the agent's reviewed "
+            "analysis; do not infer spending from a candidate sample."
+        )
+    return {"tool": entry["tool"], "result": result}
+
+
 def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
     """Create the answer synthesis node.
 
@@ -640,108 +694,123 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
 
         # Extract agent's reasoning from the last AIMessage
         agent_reasoning = ""
+        completed_agent_answer = ""
         for msg in reversed(state.messages):
             if isinstance(msg, AIMessage) and msg.content:
-                content = str(msg.content)
-                # Truncate to avoid blowing up the context
-                if len(content) > 3000:
-                    content = content[:3000] + "\n[... truncated]"
-                agent_reasoning = content
+                agent_reasoning = str(msg.content)
+                if not msg.tool_calls:
+                    completed_agent_answer = agent_reasoning
                 break
 
-        # Build structured context for the LLM
-        context_parts = []
-        for i, summary in enumerate(summaries):
-            # Format line items compactly
-            items_str = ""
-            if summary.line_items:
-                items = [
-                    (
-                        f"  - {item.item_text}: ${item.amount:.2f}"
-                        if item.item_text
-                        else f"  - ${item.amount:.2f}"
-                    )
-                    for item in summary.line_items
-                ]
-                items_str = "\n" + "\n".join(items)
-
-            # Build receipt summary
-            receipt_info = (
-                f"Receipt {i + 1}: {summary.merchant}\n"
-                f"  ID: {summary.image_id}:{summary.receipt_id}"
-            )
-            if summary.date:
-                receipt_info += f"\n  Date: {summary.date}"
-                if summary.date_source == "bank":
-                    receipt_info += " (from the matched card transaction)"
-            if summary.grand_total is not None:
-                receipt_info += f"\n  Total: ${summary.grand_total:.2f}"
-            if summary.tax is not None:
-                receipt_info += f"\n  Tax: ${summary.tax:.2f}"
-            if summary.tip is not None and summary.tip > 0:
-                receipt_info += f"\n  Tip: ${summary.tip:.2f}"
-            if summary.item_count is not None and not summary.line_items:
-                receipt_info += f"\n  Items: {summary.item_count}"
-            if items_str:
-                receipt_info += f"\n  Items:{items_str}"
-
-            context_parts.append(receipt_info)
-
-        context_str = (
-            "\n\n".join(context_parts)
-            if context_parts
-            else "(No receipts found)"
-        )
-
-        # Check for pre-computed aggregation
+        # All summaries reach synthesis, but only a bounded evidence page
+        # reaches the provider. Complete scope aggregates remain available;
+        # the union aggregate must not be summed with overlapping tool scopes.
+        rows = [summary.model_dump() for summary in summaries]
         aggregated = state_holder.get("aggregated_amount")
-        if aggregated:
-            context_str += (
-                f"\n\nPre-computed Total: ${aggregated.get('total', 0):.2f}"
+        context = {
+            "receipt_evidence": receipt_evidence_view(rows),
+            "precomputed_aggregates": [
+                aggregate_view(aggregate)
+                for aggregate in state_holder.get("aggregates", [])
+            ],
+            "amount_aggregation": aggregated,
+            "amount_aggregations": [
+                amount_aggregate_view(aggregate)
+                for aggregate in state_holder.get("amount_aggregates", [])
+            ],
+            "tool_evidence": [
+                _synthesis_tool_evidence(entry)
+                for entry in state_holder.get("tool_results", {}).values()
+            ],
+            "coverage_note": (
+                "Prefer the precomputed tool scope matching the question. "
+                "Do not add overlapping "
+                "scopes together. Receipt evidence and final citations are "
+                "bounded samples. Report missing dates, "
+                "missing totals, exclusions, and partial date coverage."
+            ),
+        }
+        if (
+            state.classification
+            and state.classification.question_type
+            in ("aggregation", "time_based")
+            and not context["precomputed_aggregates"]
+            and not context["amount_aggregations"]
+        ):
+            context["retained_basket_totals"] = {
+                **aggregate_view(aggregate_receipts(rows)),
+                "scope_note": (
+                    "Whole baskets of retrieved receipts only. These totals "
+                    "are not product spending or an exhaustive corpus scan."
+                ),
+            }
+            context["coverage_note"] += (
+                " retained_basket_totals covers the deduplicated union of "
+                "retrieved baskets, not necessarily the question's scope."
             )
-
-        # Append pre-computed aggregates from tool calls
-        aggregates = state_holder.get("aggregates", [])
-        if aggregates:
-            agg_parts = ["\n\nPre-computed Aggregates:"]
-            for agg in aggregates:
-                avg_str = (
-                    f", avg=${agg['average_receipt']:.2f}"
-                    if agg.get("average_receipt")
-                    else ""
-                )
-                excluded = agg.get("excluded_outlier_count") or 0
-                outlier_str = (
-                    f", {excluded} OCR outlier(s) excluded" if excluded else ""
-                )
-                agg_parts.append(
-                    f"  {agg['source']}: {agg['count']} receipts, "
-                    f"total=${agg['total_spending']:.2f}{avg_str}"
-                    f"{outlier_str}"
-                )
-            context_str += "\n".join(agg_parts)
 
         # Build synthesis prompt
         agent_section = ""
         if agent_reasoning:
             agent_section = f"Agent Analysis:\n{agent_reasoning}\n\n"
 
-        messages = [
-            SystemMessage(
-                content=SYNTHESIZE_SYSTEM_PROMPT + build_date_context()
-            ),
-            HumanMessage(
-                content=f"Question: {state.question}\n\n"
-                f"{agent_section}"
-                f"Receipt Data:\n{context_str}\n\n"
-                f"Generate a clear answer with specific amounts and evidence."
-            ),
-        ]
+        def synthesis_messages() -> list:
+            context_str = json.dumps(context, ensure_ascii=False, default=str)
+            return [
+                SystemMessage(
+                    content=SYNTHESIZE_SYSTEM_PROMPT + build_date_context()
+                ),
+                HumanMessage(
+                    content=f"Question: {state.question}\n\n"
+                    f"{agent_section}"
+                    f"Receipt Data:\n{context_str}\n\n"
+                    "Generate a clear answer with specific amounts and evidence."
+                ),
+            ]
 
-        response = llm.invoke(messages)
-        answer_text = (
-            response.content if hasattr(response, "content") else str(response)
-        )
+        messages = synthesis_messages()
+        try:
+            ensure_context_budget(messages)
+        except QAContextBudgetExceeded:
+            # Preserve totals/filters for EVERY scope. Only optional audit
+            # rows and period breakdowns are removed, with explicit coverage.
+            context["receipt_evidence"] = receipt_evidence_view(rows, limit=0)
+            for aggregate in context["precomputed_aggregates"]:
+                aggregate["monthly_spending"] = []
+                aggregate["weekday_spending"] = []
+                aggregate["month_coverage"]["returned_groups"] = 0
+                aggregate["breakdown_note"] = (
+                    "Period rows omitted to fit context. Exact totals, "
+                    "averages, filters and date coverage remain complete."
+                )
+            for aggregate in context["amount_aggregations"]:
+                aggregate["breakdown"] = []
+                aggregate["breakdown_coverage"]["returned_count"] = 0
+            context["tool_evidence"] = [
+                _synthesis_tool_evidence(entry, compact=True)
+                for entry in state_holder.get("tool_results", {}).values()
+            ]
+            messages = synthesis_messages()
+
+        try:
+            ensure_context_budget(messages)
+        except QAContextBudgetExceeded:
+            # Do not turn an already completed agent answer into an error.
+            # When there is no completed answer, disclose the remaining limit
+            # rather than selecting an arbitrary scope or misreporting totals.
+            answer_text = completed_agent_answer or (
+                f"I retrieved evidence for {len(summaries)} receipts, but "
+                "the question still spans too much evidence for one answer. "
+                "Please narrow the merchant, product, or date range. "
+                "No complete spending total is asserted."
+            )
+        else:
+            response = llm.invoke(messages)
+            answer_text = (
+                response.content
+                if hasattr(response, "content")
+                else str(response)
+            )
 
         # Extract amount from aggregation if available
         total_amount = None
@@ -750,6 +819,14 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
 
         # Build evidence from structured summaries
         evidence = build_evidence(summaries)
+        evidence_coverage = {
+            "total_receipts": len(summaries),
+            "cited_receipts": len(
+                {(row["image_id"], row["receipt_id"]) for row in evidence}
+            ),
+            "returned_rows": len(evidence),
+            "max_rows": MAX_EVIDENCE_ITEMS,
+        }
         logger.info(
             "Captured %d evidence rows from %d receipt summaries",
             len(evidence),
@@ -762,6 +839,7 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
             "total_amount": total_amount,
             "receipt_count": len(summaries),
             "evidence": evidence,
+            "evidence_coverage": evidence_coverage,
         }
 
         # Also store classification for the caller
@@ -778,6 +856,7 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
             "total_amount": total_amount,
             "receipt_count": len(summaries),
             "evidence": evidence,
+            "evidence_coverage": evidence_coverage,
             "current_phase": "complete",
         }
 
@@ -996,6 +1075,10 @@ async def answer_question(
     state_holder["summary_receipts"] = []
     state_holder["_summary_keys"] = set()
     state_holder["aggregates"] = []
+    state_holder["amount_aggregates"] = []
+    state_holder["tool_results"] = {}
+    state_holder["excluded_summary_outliers"] = {}
+    state_holder["aggregated_amount"] = None
     state_holder["searches"] = []
     state_holder["fetched_receipt_keys"] = set()
 
