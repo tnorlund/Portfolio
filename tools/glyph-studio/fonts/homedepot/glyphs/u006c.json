@@ -3,7 +3,7 @@
  "char": "l",
  "codepoint": 108,
  "provenance": "edited",
- "width": 200.0,
+ "width": 220.0,
  "baselineNudgePx": 0,
  "overrides": {},
  "strokes": [
@@ -11,12 +11,32 @@
    "closed": false,
    "nodes": [
     {
-     "x": 100.0,
+     "x": 110.0,
      "y": 950.0,
      "type": "corner"
     },
     {
-     "x": 100.0,
+     "x": 110.0,
+     "y": 500.0,
+     "type": "corner"
+    },
+    {
+     "x": 110.0,
+     "y": 50.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50.0,
+     "y": 50.0,
+     "type": "corner"
+    },
+    {
+     "x": 170.0,
      "y": 50.0,
      "type": "corner"
     }

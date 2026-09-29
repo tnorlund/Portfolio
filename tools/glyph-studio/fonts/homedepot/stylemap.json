@@ -1,81 +1,128 @@
 {
   "version": 1,
   "source": {
-    "receipts": 15,
+    "receipts": 7,
     "scan_dir": "/tmp/gridfix/homedepot_studio/scans",
-    "lines_measured": 865,
-    "date": "2026-07-07"
+    "lines_measured": 414,
+    "date": "2026-09-20",
+    "notes": "The Home Depot (D1-class thermal): body is single-width. The tilted-square THE HOME DEPOT wordmark + 'How doers get more done.' slogan is a printed logo graphic (logo band, never scaled body text). Rules shared by stylescan and the renderer; ported from the legacy _HOMEDEPOT_RULES plus survey/return-policy lines from the 2026-09-20 dumps.",
+    "merchant": "homedepot"
   },
-  "sections": {
-    "store_header": {
-      "sizeScale": 1.0,
-      "weight": "normal",
-      "underline": false,
-      "underlineRate": 0.0,
-      "notes": "n=44. cap_rel med 1.125 is the tilted-square THE HOME DEPOT wordmark + slogan, rendered from the logo overlay, not scaled body text. Non-logo header lines are body size."
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "^How doers|^get more done"
     },
+    {
+      "section": "address",
+      "pattern": "BLVD|AVE\\b|STREET|\\bRD\\b|TELLER|VICTORY|WEST HILLS|CA\\.?\\s*\\d{5}|\\(\\d{3}\\)\\s*\\d{3}|\\d{3}[- ]?\\d{3}[- ]?\\d{4}|STR MGR"
+    },
+    {
+      "section": "survey",
+      "pattern": "NAIL IT|short survey|GIFT CARD|homedepot\\.com/survey|User ID|PASSWORD|Opine en|No purchase necessary|Entries must"
+    },
+    {
+      "section": "footer",
+      "pattern": "PRO XTRA MEMBER|PRO XTRA .*SUMMARY|PO/JOB|PRO XTRA SPEND|CREDIT LINE|Perks|Apply and SAVE|homedepot\\.com/credit|RETURN POLICY|POLICY ID|POLICY EXPIRES|Pro Xtra, register|Learn more at"
+    },
+    {
+      "section": "transaction",
+      "pattern": "\\bSALE\\b|CASHIER|SELF CHECKOUT|^\\d{4}\\s+\\d{5}\\s+\\d{3}\\b"
+    },
+    {
+      "section": "discount",
+      "pattern": "Pro\\s*Xtra(?!\\s+(MEMBER|[#*]))|Preferred Pricing|MAX REFUND|REFUND\\s+VALUE"
+    },
+    {
+      "section": "total_line",
+      "pattern": "^\\s*TOTAL\\b|USD\\$"
+    },
+    {
+      "section": "summary",
+      "pattern": "SUBTOTAL|SALES TAX|^TAX\\b|TOTAL TAX|BALANCE DUE"
+    },
+    {
+      "section": "payment",
+      "pattern": "AID|AUTH|APPROVED|\\bDEBIT\\b|\\bCREDIT\\b|VISA|MASTERCARD|\\bPIN\\b|Chip|Verified|XXXXXXXX|NON-DISCO|^CASH\\b|CHANGE DUE"
+    }
+  ],
+  "sections": {
     "address": {
       "sizeScale": 1.0,
       "weight": "normal",
       "underline": false,
       "underlineRate": 0.0,
-      "notes": "n=176. Store/address lines body-sized, normal weight (cap_rel med 1.025, stroke_rel med 0.989)."
-    },
-    "transaction": {
-      "sizeScale": 1.0,
-      "weight": "normal",
-      "underline": false,
-      "underlineRate": 0.0,
-      "notes": "n=17. SALE/CASHIER/register lines body-sized, slightly light (cap_rel med 0.974, stroke_rel med 0.966)."
-    },
-    "item": {
-      "sizeScale": 1.0,
-      "weight": "normal",
-      "underline": false,
-      "underlineRate": 0.0,
-      "notes": "n=82. Item lines are the body baseline (cap_rel med 1.0, stroke_rel med 1.03)."
+      "notes": "n=90: cap_rel med 1.011, stroke_rel med 0.990, underline 0.00. || Store/address lines body-sized, normal weight."
     },
     "discount": {
       "sizeScale": 1.0,
       "weight": "normal",
       "underline": false,
       "underlineRate": 0.0,
-      "notes": "n=127. Pro Xtra / MAX REFUND lines body-sized, normal weight (cap_rel med 1.0, stroke_rel med 1.0)."
-    },
-    "summary": {
-      "sizeScale": 0.93,
-      "weight": "normal",
-      "underline": false,
-      "underlineRate": 0.0,
-      "notes": "n=24. SUBTOTAL/SALES TAX print slightly smaller (cap_rel med 0.925), normal stroke."
-    },
-    "total_line": {
-      "sizeScale": 0.93,
-      "weight": "normal",
-      "underline": false,
-      "underlineRate": 0.0,
-      "notes": "n=21. TOTAL/USD block prints slightly smaller than body (cap_rel med 0.937), normal weight."
-    },
-    "payment": {
-      "sizeScale": 1.0,
-      "weight": "normal",
-      "underline": false,
-      "underlineRate": 0.0,
-      "notes": "n=49. Card/auth block body-sized, a touch light (cap_rel med 1.0, stroke_rel med 0.98)."
+      "notes": "n=66: cap_rel med 1.000, stroke_rel med 0.993, underline 0.00. || Pro Xtra / MAX REFUND lines body-sized, normal weight."
     },
     "footer": {
       "sizeScale": 1.0,
       "weight": "normal",
       "underline": false,
       "underlineRate": 0.0,
-      "notes": "n=46. Pro Xtra footer / credit copy body-sized, normal weight (cap_rel med 0.977, stroke_rel med 0.96)."
+      "notes": "n=32: cap_rel med 0.976, stroke_rel med 0.960, underline 0.00. || Pro Xtra footer / credit copy body-sized, normal weight."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=39: cap_rel med 1.024, stroke_rel med 1.028, underline 0.00. || Item lines are the body baseline."
     },
     "other": {
       "sizeScale": 1.0,
       "weight": "normal",
       "underline": false,
       "underlineRate": 0.007,
-      "notes": "n=276. Body fallback."
+      "notes": "n=114: cap_rel med 1.000, stroke_rel med 1.002, underline 0.03. || Body fallback."
+    },
+    "payment": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=17: cap_rel med 0.989, stroke_rel med 0.945, underline 0.00. || Card/auth/CASH/CHANGE block body-sized, a touch light."
+    },
+    "store_header": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=18: cap_rel med 1.077, stroke_rel med 0.978, underline 0.00. || cap_rel is the tilted-square THE HOME DEPOT wordmark + slogan, rendered from the logo overlay, not scaled body text. Non-logo header lines are body size."
+    },
+    "summary": {
+      "sizeScale": 0.93,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=10: cap_rel med 0.952, stroke_rel med 1.062, underline 0.00. || SUBTOTAL/SALES TAX print slightly smaller; keep sizeScale 0.93."
+    },
+    "survey": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=13: cap_rel med 1.024, stroke_rel med 1.030, underline 0.00. || DID WE NAIL IT? survey block is body (stroke_rel 1.03)."
+    },
+    "total_line": {
+      "sizeScale": 0.93,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=8: cap_rel med 0.975, stroke_rel med 1.037, underline 0.00. || TOTAL/USD block prints slightly smaller than body; keep sizeScale 0.93."
+    },
+    "transaction": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=7: cap_rel med 0.952, stroke_rel med 0.959, underline 0.00. || SALE/CASHIER/register lines body-sized, slightly light."
     }
   }
 }
