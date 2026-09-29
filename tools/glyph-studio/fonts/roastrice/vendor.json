@@ -1,0 +1,28 @@
+{
+  "merchant": "Roast & Rice Asian Fusion",
+  "slug": "roastrice",
+  "portfolio_slug": "roastrice",
+  "aliases": [
+    "Roast and Rice Kitchen"
+  ],
+  "hero": "R",
+  "label": "Roast & Rice",
+  "bold_callout": "the measured Total Due weight",
+  "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+      "max_count": 0
+    }
+  },
+  "studio_dir": "/tmp/gridfix/roastrice_studio",
+  "donor": "thestand",
+  "donor_for": {
+    "vons": ")@,r/St"
+  },
+  "logo": "synthesis_loop/logo_masters/roastrice_logo.png",
+  "gold_receipt": {
+    "image_id": "d84d4101-8a2f-4b6f-9c4e-4d89af1850f5",
+    "receipt_id": 1
+  },
+  "owns_profile": true
+}

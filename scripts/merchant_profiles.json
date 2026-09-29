@@ -1206,6 +1206,33 @@
      "max_count": 0
     }
    }
+  },
+  "Roast & Rice Asian Fusion": {
+   "_comment": "Minted by new_vendor.py from Roast & Rice Asian Fusion's dev receipts (font roastrice). Edit typography knobs here; `new_vendor.py calibrate` solves ocr_cap_height_ratio.",
+   "aliases": [
+    "Roast and Rice Kitchen"
+   ],
+   "typography": {
+    "font": "PTMONO",
+    "bitmap_font": {
+     "regular": "roastrice.glyphs.npz",
+     "heavy": "roastrice-heavy.glyphs.npz"
+    },
+    "condense": 0.992,
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "bitmap_thin": 0.0,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.845,
+    "stylemap": "roastrice.stylemap.json",
+    "pitch_ratio": 0.715
+   },
+   "graphics": {
+    "footer_codes": false,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
   }
  }
 }

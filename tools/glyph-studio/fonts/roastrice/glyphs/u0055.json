@@ -1,0 +1,250 @@
+{
+ "version": 1,
+ "char": "U",
+ "codepoint": 85,
+ "provenance": "edited",
+ "width": 810.6,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 640.0,
+     "y": 46.2,
+     "type": "corner"
+    },
+    {
+     "x": 640.0,
+     "y": 142.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 370.9,
+     "y": 136.3,
+     "type": "corner"
+    },
+    {
+     "x": 370.9,
+     "y": 46.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 420.9,
+     "y": 136.3,
+     "type": "corner"
+    },
+    {
+     "x": 420.9,
+     "y": 46.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 304.2,
+     "y": 120.5,
+     "type": "corner"
+    },
+    {
+     "x": 290.4,
+     "y": 46.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 98.7,
+     "y": 649.1,
+     "type": "corner"
+    },
+    {
+     "x": 81.60242279683115,
+     "y": 649.1,
+     "type": "corner"
+    },
+    {
+     "x": 50.1,
+     "y": 649.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 782.0,
+     "y": 649.1,
+     "type": "corner"
+    },
+    {
+     "x": 727.9,
+     "y": 649.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 715.4,
+     "y": 934.4,
+     "type": "corner"
+    },
+    {
+     "x": 735.0,
+     "y": 934.4,
+     "type": "corner"
+    },
+    {
+     "x": 735.0,
+     "y": 934.4,
+     "type": "corner",
+     "hOut": {
+      "x": 730.6896251310365,
+      "y": 944.6
+     }
+    },
+    {
+     "x": 744.0883312347103,
+     "y": 822.5,
+     "type": "smooth",
+     "hIn": {
+      "x": 744.9488039938798,
+      "y": 850.0
+     },
+     "hOut": {
+      "x": 740.8125199342094,
+      "y": 739.7
+     }
+    },
+    {
+     "x": 727.0325335273603,
+     "y": 576.8,
+     "type": "smooth",
+     "hIn": {
+      "x": 724.7982248061389,
+      "y": 660.7
+     },
+     "hOut": {
+      "x": 730.8074619827178,
+      "y": 435.1
+     }
+    },
+    {
+     "x": 672.5950188836457,
+     "y": 160.5,
+     "type": "smooth",
+     "hIn": {
+      "x": 773.0627562414393,
+      "y": 283.3
+     },
+     "hOut": {
+      "x": 607.3678580652166,
+      "y": 109.0
+     }
+    },
+    {
+     "x": 519.8000000000001,
+     "y": 46.2,
+     "type": "corner",
+     "hIn": {
+      "x": 568.211596542241,
+      "y": 125.0
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 91.5,
+     "y": 154.8,
+     "type": "corner"
+    },
+    {
+     "x": 91.5,
+     "y": 202.1,
+     "type": "corner",
+     "hOut": {
+      "x": 52.57085275419506,
+      "y": 424.4
+     }
+    },
+    {
+     "x": 54.199999999999974,
+     "y": 934.4,
+     "type": "corner",
+     "hIn": {
+      "x": 2.3508710285908094,
+      "y": 694.8
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 90.4,
+     "y": 157.5,
+     "type": "corner"
+    },
+    {
+     "x": 138.97426617059187,
+     "y": 157.5,
+     "type": "corner",
+     "hOut": {
+      "x": 144.19222799365872,
+      "y": 162.0
+     }
+    },
+    {
+     "x": 287.37736364925405,
+     "y": 46.2,
+     "type": "smooth",
+     "hIn": {
+      "x": 269.99541583718906,
+      "y": 60.3
+     },
+     "hOut": {
+      "x": 334.8077039472654,
+      "y": 21.8
+     }
+    },
+    {
+     "x": 507.0,
+     "y": 46.2,
+     "type": "corner",
+     "hIn": {
+      "x": 452.33330982887264,
+      "y": 46.2
+     }
+    }
+   ]
+  }
+ ],
+ "donor": "thestand",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the thestand face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(33..967) -> (47..953)"
+}

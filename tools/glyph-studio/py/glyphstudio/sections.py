@@ -183,6 +183,10 @@ STYLESCAN_TO_SECTION: dict[str, Optional[str]] = {
     "agreement": "footer",  # card-holder agreement lines
     # Whole Foods Market
     "promo": "footer",  # Prime Visa / amazon.com promo block
+    # Roast & Rice (restaurant POS: guest check + card slip)
+    "table": "footer",  # Table# / Guest / Dining / Chk# header metadata
+    "server": "footer",  # Server: name
+    "tip": "summary",  # Gratuity Suggestion + percent lines + Gratuity:
 }
 
 

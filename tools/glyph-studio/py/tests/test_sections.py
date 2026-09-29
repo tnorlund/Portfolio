@@ -117,6 +117,9 @@ def test_projection_spot_checks():
     assert sections.normalize_stylescan_section("warehouse_header") == (
         "storefront"
     )
+    assert sections.normalize_stylescan_section("tip") == "summary"
+    assert sections.normalize_stylescan_section("table") == "footer"
+    assert sections.normalize_stylescan_section("server") == "footer"
     assert sections.normalize_stylescan_section("extracare") == "footer"
     assert sections.normalize_stylescan_section("separator") is None
     assert sections.normalize_stylescan_section("nope") is None
