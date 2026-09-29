@@ -153,6 +153,7 @@ def _word(
         top_left={"x": x, "y": y + height / 2},
         top_right={"x": x + 0.1, "y": y + height / 2},
         bottom_left={"x": x, "y": y - height / 2},
+        bottom_right={"x": x + 0.1, "y": y - height / 2},
         calculate_centroid=lambda: (x, y),
     )
 
@@ -247,14 +248,12 @@ def test_canonical_milk_price_ignores_adjacent_coffee(
         {"name": "COFFEE COLD BREW"},
     ],
 )
-def test_untrusted_canonical_item_does_not_fall_back(
+def test_untrusted_canonical_item_without_row_evidence_stays_unknown(
     monkeypatch: pytest.MonkeyPatch, overrides: dict
 ) -> None:
     handler = _load_handler(monkeypatch)
-    words, labels = _adjacent_prices()
-
     result = handler.find_milk_price(
-        9, words, labels, [_milk_item(**overrides)], "MILK 5.49"
+        9, [], [], [_milk_item(**overrides)], "MILK 5.49"
     )
 
     assert result.price is None
@@ -286,7 +285,7 @@ def test_incomplete_canonical_items_do_not_fall_back(
     assert result.source == "unmatched"
 
 
-def test_legacy_adjacent_prices_do_not_use_row_text_fallback(
+def test_adjacent_prices_use_owned_row_instead_of_embedding_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     handler = _load_handler(monkeypatch)
@@ -294,11 +293,11 @@ def test_legacy_adjacent_prices_do_not_use_row_text_fallback(
 
     result = handler.find_milk_price(9, words, labels, [], "MILK 5.49")
 
-    assert result.price is None
-    assert result.source == "ambiguous"
+    assert result.price == "4.29"
+    assert result.source == "row_geometry"
 
 
-def test_legacy_competing_prices_without_product_labels_are_ambiguous(
+def test_product_text_supplies_ownership_when_product_labels_are_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     handler = _load_handler(monkeypatch)
@@ -306,25 +305,25 @@ def test_legacy_competing_prices_without_product_labels_are_ambiguous(
 
     result = handler.find_milk_price(9, words, labels[2:], [], "MILK 5.49")
 
-    assert result.price is None
-    assert result.source == "ambiguous"
+    assert result.price == "4.29"
+    assert result.source == "row_geometry"
 
 
-def test_legacy_split_row_keeps_unambiguous_proximity_fallback(
+def test_split_price_column_ignores_food_code_letter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     handler = _load_handler(monkeypatch)
     words = [
         _word(9, "MILK", 0.50, height=0.008),
-        _word(11, "4.29", 0.52, x=0.8, height=0.008),
-        _word(11, "F", 0.52, x=0.95, height=0.008, word_id=2),
+        _word(11, "4.29", 0.501, x=0.8, height=0.008),
+        _word(11, "F", 0.501, x=0.95, height=0.008, word_id=2),
     ]
     labels = [_label(11, "UNIT_PRICE"), _label(11, "UNIT_PRICE", word_id=2)]
 
     result = handler.find_milk_price(9, words, labels, [], "MILK")
 
     assert result.price == "4.29"
-    assert result.source == "labels"
+    assert result.source == "row_geometry"
 
 
 def test_legacy_same_line_total_wins_over_unit_and_neighbor_price(
@@ -375,14 +374,20 @@ def test_legacy_row_text_requires_one_price(
 
 
 @pytest.mark.parametrize("price", ["4.29", "0.00", None])
+@pytest.mark.parametrize("canonical_error", [False, True])
 def test_handler_fetches_canonical_items_and_aggregates_price(
-    monkeypatch: pytest.MonkeyPatch, price: str | None
+    monkeypatch: pytest.MonkeyPatch, price: str | None, canonical_error: bool
 ) -> None:
     handler = _load_handler(monkeypatch)
     monkeypatch.setattr(handler, "LOCAL_CACHE_OUTPUT", None)
     words, labels = _adjacent_prices()
+    if price is None:
+        words = [words[1]]
+        labels = []
+    else:
+        words[-1].text = price
     client = MagicMock()
-    client.get_receipt_details_for_lines.return_value = SimpleNamespace(
+    client.get_receipt_details.return_value = SimpleNamespace(
         receipt=SimpleNamespace(),
         place=SimpleNamespace(merchant_name="Example Market"),
         lines=[SimpleNamespace(line_id=9, text="MILK ORGANIC HALF GALLON")],
@@ -394,6 +399,10 @@ def test_handler_fetches_canonical_items_and_aggregates_price(
         if price is not None
         else [_milk_item(), _milk_item(price="5.49")]
     )
+    if canonical_error:
+        client.get_receipt_line_items_from_receipt.side_effect = RuntimeError(
+            "read failed"
+        )
     handler.DynamoClient.return_value = client
     monkeypatch.setattr(handler, "receipt_to_dict", lambda receipt: {})
     monkeypatch.setattr(
@@ -413,6 +422,14 @@ def test_handler_fetches_canonical_items_and_aggregates_price(
         },
     )
 
+    if canonical_error and price is None:
+        with pytest.raises(
+            RuntimeError, match="Preserving previous milk cache"
+        ):
+            handler.handler({}, None)
+        handler.s3_client.put_object.assert_not_called()
+        return
+
     response = handler.handler({}, None)
 
     assert response["statusCode"] == 200
@@ -421,11 +438,18 @@ def test_handler_fetches_canonical_items_and_aggregates_price(
     )
     cache = json.loads(handler.s3_client.put_object.call_args.kwargs["Body"])
     assert cache["receipts"][0]["price"] == price
-    source = "line_item" if price is not None else "ambiguous"
+    source = (
+        ("row_geometry" if price is not None else "line_items_unavailable")
+        if canonical_error
+        else ("line_item" if price is not None else "ambiguous")
+    )
     assert cache["receipts"][0]["price_source"] == source
     assert cache["price_coverage"] == {
         "priced_receipts": int(price is not None),
         "unpriced_receipts": int(price is None),
+        "canonical_read_failures": int(canonical_error),
+        "failed_receipts": 0,
+        "excluded_receipts": 0,
         "sources": {source: 1},
     }
     numeric_price = float(price) if price is not None else None
@@ -434,7 +458,7 @@ def test_handler_fetches_canonical_items_and_aggregates_price(
     assert cache["grand_total"] == (numeric_price or 0)
 
 
-def test_legacy_split_product_name_does_not_guess_price(
+def test_split_product_name_retains_clearly_aligned_price(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     handler = _load_handler(monkeypatch)
@@ -451,11 +475,11 @@ def test_legacy_split_product_name_does_not_guess_price(
 
     result = handler.find_milk_price(9, words, labels, [], "MILK 4.29")
 
-    assert result.price is None
-    assert result.source == "ambiguous"
+    assert result.price == "4.29"
+    assert result.source == "row_geometry"
 
 
-def test_partial_canonical_extraction_allows_only_same_line_price(
+def test_partial_canonical_extraction_allows_direct_row_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     handler = _load_handler(monkeypatch)
@@ -469,10 +493,460 @@ def test_partial_canonical_extraction_allows_only_same_line_price(
 
     assert result.price == "4.29"
     assert result.source == "labels"
-    words[1].line_id = 11
+    words[1] = _word(11, "4.29", 0.50, x=0.8)
     labels[0].line_id = 11
+    labels[0].word_id = 1
     result = handler.find_milk_price(
         9, words, labels, [other_item], "MILK 5.49"
     )
+    assert result.price == "4.29"
+    assert result.source == "row_geometry"
+
+
+@pytest.mark.parametrize(
+    "items",
+    [
+        [_milk_item(reconciliation_status="mismatch")],
+        [_milk_item(name="BANANA EACH", price="5.49")],
+        [_milk_item(line_ids=[40, 50])],
+        [_milk_item(), _milk_item(price="5.49")],
+    ],
+)
+def test_owned_row_price_survives_stale_canonical_evidence(
+    monkeypatch: pytest.MonkeyPatch, items: list
+) -> None:
+    handler = _load_handler(monkeypatch)
+    words, labels = _adjacent_prices()
+
+    result = handler.find_milk_price(9, words, labels, items, "MILK 5.49")
+
+    assert result.price == "4.29"
+    assert result.source == "row_geometry"
+
+
+def test_reconciled_canonical_swap_requires_row_corroboration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    words, labels = _adjacent_prices()
+
+    result = handler.find_milk_price(
+        9, words, labels, [_milk_item(price="5.49")], "MILK 5.49"
+    )
+
+    assert result.price == "4.29"
+    assert result.source == "row_geometry"
+    assert (
+        handler.find_milk_price(9, [], [], [_milk_item()], "MILK 4.29").price
+        is None
+    )
+
+
+def test_equally_aligned_products_remain_ambiguous(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    words = [
+        _word(8, "COFFEE COLD BREW", 0.50),
+        _word(9, "ORGANIC MILK", 0.50),
+        _word(11, "4.29", 0.50, x=0.8),
+    ]
+    labels = [_label(11, "LINE_TOTAL")]
+
+    result = handler.find_milk_price(
+        9, words, labels, [_milk_item()], "MILK 4.29"
+    )
+
     assert result.price is None
-    assert result.source == "unmatched"
+    assert result.source == "ambiguous"
+
+
+def test_skewed_product_baseline_owns_its_price(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    words = [
+        _word(9, "WHOLE", 0.50, x=0.1),
+        _word(9, "MILK", 0.51, x=0.3, word_id=2),
+        _word(10, "NEXT PRODUCT", 0.48, x=0.1),
+        _word(11, "4.29", 0.535, x=0.8),
+        _word(12, "5.49", 0.515, x=0.8),
+    ]
+    labels = [_label(11, "LINE_TOTAL"), _label(12, "LINE_TOTAL")]
+
+    result = handler.find_milk_price(9, words, labels, [], "MILK")
+
+    assert result.price == "4.29"
+
+
+def test_oversized_price_box_uses_bottom_edge_not_center(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    words = [
+        _word(8, "RAW CREAM", 0.52),
+        _word(9, "RAW MILK", 0.50),
+        _word(11, "4.29", 0.51, x=0.8, height=0.04),
+    ]
+
+    result = handler.find_milk_price(
+        9, words, [_label(11, "UNIT_PRICE")], [], "MILK"
+    )
+
+    assert result.price == "4.29"
+
+
+def test_truncated_ocr_price_needs_corrected_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    words = [_word(9, "WHOLE MILK", 0.50), _word(11, "11,4", 0.50, x=0.8)]
+    labels = [_label(11, "LINE_TOTAL")]
+
+    assert (
+        handler.find_milk_price(9, words, labels, [], "MILK 11,4").price
+        is None
+    )
+    words[1].text = "11.49"
+    assert (
+        handler.find_milk_price(9, words, labels, [], "MILK 11.49").price
+        == "11.49"
+    )
+
+
+def test_void_pair_cancels_matching_amount_and_keeps_other_milk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    lines = [
+        SimpleNamespace(line_id=10, text="WHOLE MILK"),
+        SimpleNamespace(line_id=11, text="WHOLE MILK"),
+        SimpleNamespace(line_id=12, text="Voided Item"),
+        SimpleNamespace(line_id=13, text="WHOLE MILK"),
+    ]
+    words = [
+        _word(10, "WHOLE MILK", 0.55),
+        _word(11, "WHOLE MILK", 0.52),
+        _word(13, "WHOLE MILK", 0.46),
+        _word(20, "8.99", 0.55, x=0.8),
+        _word(21, "6.29", 0.52, x=0.8),
+        _word(22, "-8.99", 0.46, x=0.8),
+    ]
+    labels = [_label(20, "LINE_TOTAL"), _label(21, "LINE_TOTAL")]
+
+    assert handler.find_milk_line(lines, words=words, labels=labels) == (
+        "WHOLE MILK",
+        11,
+    )
+    assert (
+        handler.find_milk_price(13, words, labels, [], "MILK 8.99").source
+        == "void"
+    )
+    assert (
+        handler.find_milk_line(
+            [lines[0], lines[2], lines[3]], words=words, labels=labels
+        )
+        is None
+    )
+
+
+def test_receipt_fingerprint_and_dedup_keep_distinct_transactions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    receipt = SimpleNamespace(width=300, height=500, sha256=None)
+    lines = [_word(i, f"PRODUCT {i}", 0.9 - i * 0.03) for i in range(10)]
+    words = [
+        _word(i, f"WORD {j}", 0.9 - i * 0.03, word_id=j, x=j * 0.1)
+        for i in range(10)
+        for j in range(4)
+    ]
+    fingerprint = handler.receipt_fingerprint(receipt, lines, words)
+    assert fingerprint is not None
+    assert fingerprint == handler.receipt_fingerprint(
+        receipt, list(reversed(lines)), list(reversed(words))
+    )
+    lines[-1].text = "DIFFERENT TRANSACTION"
+    assert fingerprint != handler.receipt_fingerprint(receipt, lines, words)
+    assert handler.receipt_fingerprint(receipt, lines[:2], words[:3]) is None
+    results = [
+        {
+            "image_id": "second",
+            "receipt_id": 1,
+            "price": "4.29",
+            "_fingerprint": fingerprint,
+        },
+        {
+            "image_id": "first",
+            "receipt_id": 2,
+            "price": "4.29",
+            "_fingerprint": fingerprint,
+        },
+        {
+            "image_id": "first",
+            "receipt_id": 3,
+            "price": "5.49",
+            "_fingerprint": None,
+        },
+    ]
+    unique, duplicates = handler.deduplicate_receipts(results)
+    assert [(r["image_id"], r["receipt_id"]) for r in unique] == [
+        ("first", 2),
+        ("first", 3),
+    ]
+    assert duplicates == [
+        {
+            "image_id": "second",
+            "receipt_id": 1,
+            "kept_image_id": "first",
+            "kept_receipt_id": 2,
+        }
+    ]
+
+
+def test_rotated_receipt_can_have_prices_left_of_product(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    words = [
+        _word(8, "RAW CREAM", 0.48, x=0.7),
+        _word(9, "RAW WHOLE MILK", 0.50, x=0.7),
+        _word(11, "13.99", 0.48, x=0.1),
+        _word(12, "10.99", 0.50, x=0.1),
+    ]
+    labels = [_label(11, "LINE_TOTAL"), _label(12, "LINE_TOTAL")]
+
+    result = handler.find_milk_price(
+        9, words, labels, [], "10.99 RAW WHOLE MILK"
+    )
+
+    assert result.price == "10.99"
+    assert result.source == "row_geometry"
+
+
+@pytest.mark.parametrize("second_region", ["purchase", "void", "error"])
+def test_handler_keeps_receipt_regions_separate_and_uses_full_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    second_region: str,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    monkeypatch.setattr(handler, "LOCAL_CACHE_OUTPUT", None)
+    words = [
+        _word(10, "WHOLE MILK", 0.55),
+        _word(11, "WHOLE MILK", 0.52),
+        _word(13, "WHOLE MILK", 0.46),
+        _word(20, "8.99", 0.55, x=0.8),
+        _word(21, "6.29", 0.52, x=0.8),
+        _word(22, "-8.99", 0.46, x=0.8),
+    ]
+    lines = [
+        SimpleNamespace(line_id=i, text="WHOLE MILK") for i in (10, 11, 13)
+    ]
+    lines.append(SimpleNamespace(line_id=12, text="Voided Item"))
+    client = MagicMock()
+
+    def receipt_details(
+        image_id: str, receipt_id: int, **kwargs: object
+    ) -> SimpleNamespace:
+        if receipt_id == 2 and second_region == "error":
+            raise RuntimeError("primary read failed")
+        selected_lines = lines
+        if receipt_id == 2 and second_region == "void":
+            selected_lines = [line for line in lines if line.line_id != 11]
+        return SimpleNamespace(
+            receipt=SimpleNamespace(),
+            place=None,
+            lines=selected_lines,
+            words=words,
+            labels=[],
+        )
+
+    client.get_receipt_details.side_effect = receipt_details
+    client.get_receipt_line_items_from_receipt.return_value = []
+    handler.DynamoClient.return_value = client
+    monkeypatch.setattr(handler, "receipt_to_dict", lambda receipt: {})
+    # Stale embeddings contain only the reversed row. Full receipt reads must
+    # still find the purchased row, separately in both physical receipt regions.
+    monkeypatch.setattr(
+        handler,
+        "_fetch_lines_from_dynamo",
+        lambda *args: {
+            "ids": ["one", "two"],
+            "metadatas": [
+                {
+                    "image_id": "3f2a1b0c-4d5e-4f70-8192-a3b4c5d6e7f8",
+                    "receipt_id": rid,
+                    "line_id": 13,
+                    "row_line_ids": [13, 22],
+                    "text": "WHOLE MILK -8.99 CHOCOLATE OAT MILK",
+                }
+                for rid in (1, 2)
+            ],
+        },
+    )
+
+    if second_region == "error":
+        with pytest.raises(
+            RuntimeError, match="Preserving previous milk cache"
+        ):
+            handler.handler({}, None)
+        assert client.get_receipt_details.call_count == 2
+        handler.s3_client.put_object.assert_not_called()
+        return
+
+    assert handler.handler({}, None)["statusCode"] == 200
+
+    assert client.get_receipt_details.call_count == 2
+    assert all(
+        call.kwargs == {"consistent_read": True}
+        for call in client.get_receipt_details.call_args_list
+    )
+    client.get_receipt_details_for_lines.assert_not_called()
+    cache = json.loads(handler.s3_client.put_object.call_args.kwargs["Body"])
+    assert [
+        (r["receipt_id"], r["line_id"], r["price"]) for r in cache["receipts"]
+    ] == (
+        [(1, 11, "6.29"), (2, 11, "6.29")]
+        if second_region == "purchase"
+        else [(1, 11, "6.29")]
+    )
+    assert cache["grand_total"] == (
+        12.58 if second_region == "purchase" else 6.29
+    )
+    assert cache["price_coverage"]["failed_receipts"] == 0
+    assert cache["price_coverage"]["excluded_receipts"] == int(
+        second_region == "void"
+    )
+    if second_region == "void":
+        assert cache["excluded_receipts"][0]["reason"] == "no_purchased_milk"
+
+
+def test_all_receipt_reads_failing_preserves_previous_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    monkeypatch.setattr(handler, "LOCAL_CACHE_OUTPUT", None)
+    client = MagicMock()
+    client.get_receipt_details.side_effect = RuntimeError(
+        "primary read failed"
+    )
+    handler.DynamoClient.return_value = client
+    monkeypatch.setattr(
+        handler,
+        "_fetch_lines_from_dynamo",
+        lambda *args: {
+            "ids": ["one"],
+            "metadatas": [
+                {
+                    "image_id": "example",
+                    "receipt_id": 1,
+                    "line_id": 9,
+                    "text": "WHOLE MILK 4.29",
+                }
+            ],
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="Preserving previous milk cache"):
+        handler.handler({}, None)
+    handler.s3_client.put_object.assert_not_called()
+
+
+def test_tax_marker_price_and_independently_priced_deposit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    words = [
+        _word(7, "WHOLE MILK", 0.52),
+        _word(8, "BOTTLE DEPOSIT", 0.50),
+        _word(8, "$2.00", 0.50, x=0.05, word_id=2),
+        _word(20, "5.19*", 0.509, x=0.8),
+        _word(21, "2.00", 0.50, x=0.8),
+    ]
+    labels = [_label(20, "LINE_TOTAL"), _label(21, "LINE_TOTAL")]
+
+    assert (
+        handler.find_milk_price(7, words, labels, [], "MILK").price == "5.19"
+    )
+    # Without an independently confirmed deposit total, the competing rows
+    # are genuinely ambiguous; the asterisk must not authorize a row guess.
+    assert (
+        handler.find_milk_price(7, words[:-1], labels, [], "MILK").price
+        is None
+    )
+
+
+@pytest.mark.parametrize("cents_layout", ["adjacent", "distant", "ambiguous"])
+def test_split_dollars_cents_requires_unique_adjacent_pair(
+    monkeypatch: pytest.MonkeyPatch,
+    cents_layout: str,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    words = [
+        _word(7, "ORGANIC WHOLE MILK", 0.50),
+        _word(20, "$5", 0.50, x=0.75),
+        _word(21, "99", 0.50 if cents_layout != "distant" else 0.46, x=0.85),
+    ]
+    if cents_layout == "ambiguous":
+        words.append(_word(22, "49", 0.50, x=0.855))
+
+    result = handler.find_milk_price(7, words, [], [], "MILK $5 99")
+
+    assert result.price == ("5.99" if cents_layout == "adjacent" else None)
+
+
+@pytest.mark.parametrize(
+    "text,continuation,reason",
+    [
+        ("Hot CupCake Latte, Whole Milk", None, "prepared_drink"),
+        ("Strawberry Milk Matcha", None, "prepared_drink"),
+        ("Hot Strawberry Milk", "Matcha Latte", "prepared_drink"),
+        ("Splash of Whole Milk", None, "milk_modifier"),
+    ],
+)
+def test_prepared_drinks_and_explicit_milk_options_are_excluded(
+    monkeypatch: pytest.MonkeyPatch,
+    text: str,
+    continuation: str | None,
+    reason: str,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    lines = [SimpleNamespace(line_id=7, text=text)]
+    if continuation:
+        lines.append(SimpleNamespace(line_id=8, text=continuation))
+
+    assert (
+        handler.milk_line_exclusion_reason(lines[0], lines, [], []) == reason
+    )
+    assert handler.find_milk_line(lines) is None
+
+
+@pytest.mark.parametrize("milk_price", [None, "4.29"])
+@pytest.mark.parametrize("size_line", [False, True])
+def test_indented_unpriced_milk_is_drink_modifier_but_paid_milk_is_purchase(
+    monkeypatch: pytest.MonkeyPatch,
+    milk_price: str | None,
+    size_line: bool,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    lines = [
+        SimpleNamespace(line_id=7, text="ICED LATTE"),
+        SimpleNamespace(line_id=9 if size_line else 8, text="WHOLE MILK"),
+    ]
+    words = [
+        _word(7, "ICED LATTE", 0.56, x=0.1),
+        _word(20, "6.25", 0.56, x=0.8),
+        _word(lines[1].line_id, "WHOLE MILK", 0.50, x=0.15),
+    ]
+    if size_line:
+        lines.append(SimpleNamespace(line_id=8, text="Regular"))
+        words.append(_word(8, "Regular", 0.53, x=0.15))
+    if milk_price:
+        words.append(_word(21, milk_price, 0.50, x=0.8))
+
+    assert handler.find_milk_line(lines, words=words, labels=[]) == (
+        ("WHOLE MILK", 9 if size_line else 8) if milk_price else None
+    )
+    assert handler.milk_line_exclusion_reason(lines[1], lines, words, []) == (
+        None if milk_price else "milk_modifier"
+    )
