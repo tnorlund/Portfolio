@@ -665,6 +665,20 @@ def build_evidence(summaries: list[ReceiptSummary]) -> list[dict]:
     return evidence
 
 
+def _synthesis_tool_evidence(entry: dict, *, compact: bool = False) -> dict:
+    """Keep unreviewed search-candidate sums out of confirmed spending."""
+    result = tool_result_view(entry["result"], compact=compact)
+    if entry["tool"] == "search_product_lines":
+        result.pop("raw_total", None)
+        result["candidate_spending_note"] = (
+            "Search candidates require relevance review before their prices "
+            "can support product spending. Their unreviewed sum is omitted. "
+            "Use matching exact amount_aggregations and the agent's reviewed "
+            "analysis; do not infer spending from a candidate sample."
+        )
+    return {"tool": entry["tool"], "result": result}
+
+
 def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
     """Create the answer synthesis node.
 
@@ -705,16 +719,12 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
                 for aggregate in state_holder.get("amount_aggregates", [])
             ],
             "tool_evidence": [
-                {
-                    "tool": entry["tool"],
-                    "result": tool_result_view(entry["result"]),
-                }
+                _synthesis_tool_evidence(entry)
                 for entry in state_holder.get("tool_results", {}).values()
             ],
             "coverage_note": (
-                "The retained-receipt aggregate is the deduplicated union of "
-                "retrievals, not necessarily the question's scope. Prefer "
-                "the matching precomputed tool scope. Do not add overlapping "
+                "Prefer the precomputed tool scope matching the question. "
+                "Do not add overlapping "
                 "scopes together. Receipt evidence and final citations are "
                 "bounded samples. Report missing dates, "
                 "missing totals, exclusions, and partial date coverage."
@@ -734,6 +744,10 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
                     "are not product spending or an exhaustive corpus scan."
                 ),
             }
+            context["coverage_note"] += (
+                " retained_basket_totals covers the deduplicated union of "
+                "retrieved baskets, not necessarily the question's scope."
+            )
 
         # Build synthesis prompt
         agent_section = ""
@@ -773,10 +787,7 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
                 aggregate["breakdown"] = []
                 aggregate["breakdown_coverage"]["returned_count"] = 0
             context["tool_evidence"] = [
-                {
-                    "tool": entry["tool"],
-                    "result": tool_result_view(entry["result"], compact=True),
-                }
+                _synthesis_tool_evidence(entry, compact=True)
                 for entry in state_holder.get("tool_results", {}).values()
             ]
             messages = synthesis_messages()

@@ -222,6 +222,62 @@ def test_repeated_product_calculations_keep_history_bounded() -> None:
     assert len(holder["amount_aggregates"]) == 1
 
 
+@pytest.mark.parametrize("compact", [False, True])
+def test_synthesis_does_not_promote_unreviewed_candidate_spending(
+    compact: bool,
+) -> None:
+    tools, holder = create_qa_tools(
+        MagicMock(),
+        lambda texts: [[1.0] for _ in texts],
+        vector_client=FakeVectorIndex([]),
+    )
+    holder["retrieved_receipts"] = [_details(0)]
+    tool = next(tool for tool in tools if tool.name == "aggregate_amounts")
+    tool.invoke({"filter_text": "COFFEE"})
+    holder["tool_results"]["candidate-search"] = {
+        "tool": "search_product_lines",
+        "result": {
+            "query": "coffee",
+            "items": [
+                {"text": "COFFEE", "price": 1.0},
+                {"text": "MILK", "price": 2.0},
+            ],
+            "raw_total": 3.0,
+        },
+    }
+    if compact:
+        rows = [
+            _row(
+                i,
+                effective_date=f"{2000 + i // 12}-{1 + i % 12:02d}-01",
+            )
+            for i in range(120)
+        ]
+        holder["aggregates"] = [
+            {"source": f"scope-{i}", **aggregate_receipts(rows)}
+            for i in range(20)
+        ]
+    provider = MagicMock()
+    provider.invoke.return_value = AIMessage(content="Coffee totals $1.")
+    qa_graph.create_synthesize_node(provider, holder)(
+        QAState(question="How much did I spend on coffee?")
+    )
+    context = _captured_context(provider)
+    candidates = context["tool_evidence"][0]["result"]
+    assert "raw_total" not in candidates
+    assert "relevance review" in candidates["candidate_spending_note"]
+    assert context["amount_aggregations"][0]["filter_text"] == "COFFEE"
+    assert context["amount_aggregations"][0]["total"] == 1.0
+    assert "retained_basket_totals" not in context["coverage_note"]
+    # The retrieval agent's tool contract and retained source are unchanged.
+    assert (
+        holder["tool_results"]["candidate-search"]["result"]["raw_total"]
+        == 3.0
+    )
+    if compact:
+        assert context["precomputed_aggregates"][0]["monthly_spending"] == []
+
+
 def test_three_large_receipts_keep_raw_words_out_of_provider_history() -> None:
     tools, holder = create_qa_tools(
         MagicMock(),
