@@ -21,6 +21,7 @@ import {
   getActiveTimelineStepIndices,
   getTimelineRevealPercent,
 } from "./qaTimeline";
+import { stripEvidenceAppendix } from "./qaAnswer";
 
 interface QAAgentFlowProps {
   /** Whether to auto-play the animation */
@@ -719,11 +720,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
   const rawAnswer = questionData?.error
     ? `Unable to answer: ${questionData.error}`
     : (synthesizeStep?.content ?? "");
-  const answerText =
-    rawAnswer
-      .replace(/\n*#{0,3}\s*\*{0,2}Evidence\*{0,2}:?\**\s*[\s\S]*$/i, "")
-      .replace(/\n*```(?:json)?\s*\[\s*[\s\S]*$/, "")
-      .trim() || undefined;
+  const answerText = stripEvidenceAppendix(rawAnswer) || undefined;
   const answerSummary = answerText
     ? getAnswerSummaryMarkdown(answerText)
     : undefined;

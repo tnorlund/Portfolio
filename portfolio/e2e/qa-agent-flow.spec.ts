@@ -476,6 +476,48 @@ test.describe("QAAgentFlow", () => {
     expect(Math.abs(afterExpand.scrollY - beforeExpandScrollY)).toBeLessThan(2);
   });
 
+  test("preserves the full answer table when a column is named Evidence", async ({ page }, testInfo) => {
+    const tableQuestion = {
+      ...mockQAQuestions[0],
+      trace: mockQAQuestions[0].trace.map((step) => step.type === "synthesize" ? {
+        ...step,
+        content: [
+          "**Receipts with items over $50**", "",
+          "| Merchant | Item | Price | Evidence |",
+          "| --- | --- | ---: | --- |",
+          "| Harbor Market | Kitchen set | $75.00 | Receipt A |",
+          "| Bicycle Shop | Helmet | $65.00 | Receipt B |", "",
+          "The evidence supports both purchases over $50.", "",
+          "**Evidence**", "", "```json", "[]", "```",
+        ].join("\n"),
+      } : step),
+    };
+    await page.route("**/qa/visualization*", async (route) => {
+      await route.fulfill({
+        status: 200, contentType: "application/json",
+        body: JSON.stringify(new URL(route.request().url()).searchParams.has("index")
+          ? { questions: [tableQuestion] }
+          : { metadata: { total_questions: 1 }, questions: [] }),
+      });
+    });
+    await page.goto("/receipt?receiptMotionScale=0.2");
+    await page.locator("h1:visible", { hasText: "So Now What?" }).scrollIntoViewIfNeeded();
+    const frame = page.getByTestId("qa-result-frame");
+    await frame.scrollIntoViewIfNeeded();
+    await frame.getByRole("button", { name: "View full answer" }).click({ timeout: 30_000 });
+    const answer = frame.getByTestId("qa-answer-summary");
+    await expect(answer.getByRole("columnheader", { name: "Evidence" })).toBeVisible();
+    await expect(answer.getByRole("row")).toHaveCount(3);
+    await expect(answer.getByRole("cell", { name: "$75.00", exact: true })).toBeVisible();
+    await expect(answer.getByRole("cell", { name: "$65.00", exact: true })).toBeVisible();
+    await expect(answer).toContainText("The evidence supports both purchases over $50.");
+    await expect(answer.locator("pre")).toHaveCount(0);
+    await expect(frame.getByRole("region", { name: "Receipt evidence" })).toBeVisible();
+    await testInfo.attach("synthetic-evidence-table-full-answer", {
+      body: await frame.screenshot(), contentType: "image/png",
+    });
+  });
+
   test("renders concurrent tool calls on parallel timeline lanes", async ({
     page,
   }) => {
