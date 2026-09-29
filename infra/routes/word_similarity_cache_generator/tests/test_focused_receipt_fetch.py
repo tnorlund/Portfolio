@@ -1018,3 +1018,103 @@ def test_single_word_competitor_follows_local_receipt_skew(
     ]
 
     assert handler.find_price_on_visual_line(9, words, []).price == expected
+
+
+@pytest.mark.parametrize(
+    "section_status,product_evidence,expected_price",
+    [
+        ("VALID", False, "10.99"),
+        ("PENDING", False, None),
+        (None, False, None),
+        ("VALID", True, None),
+    ],
+)
+def test_handler_excludes_only_validated_headers_from_price_competitors(
+    monkeypatch: pytest.MonkeyPatch,
+    section_status: str | None,
+    product_evidence: bool,
+    expected_price: str | None,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    monkeypatch.setattr(handler, "LOCAL_CACHE_OUTPUT", None)
+    words = [
+        _word(8, "BANANAS" if product_evidence else "DAIRY", 0.508),
+        _word(9, "WHOLE MILK", 0.50),
+        _word(20, "10.99", 0.507, x=0.8),
+    ]
+    labels = [_label(8, "PRODUCT_NAME")] if product_evidence else []
+    sections = (
+        [
+            SimpleNamespace(
+                section_type="SECTION_HEADER",
+                validation_status=section_status,
+                line_ids=[8],
+            )
+        ]
+        if section_status
+        else []
+    )
+    client = MagicMock()
+    client.get_receipt_details.return_value = SimpleNamespace(
+        receipt=SimpleNamespace(),
+        place=None,
+        lines=[SimpleNamespace(line_id=9, text="WHOLE MILK")],
+        words=words,
+        labels=labels,
+        sections=sections,
+    )
+    client.get_receipt_line_items_from_receipt.return_value = []
+    handler.DynamoClient.return_value = client
+    monkeypatch.setattr(handler, "receipt_to_dict", lambda receipt: {})
+    bbox = MagicMock(return_value=None)
+    monkeypatch.setattr(handler, "calculate_product_bbox", bbox)
+    monkeypatch.setattr(
+        handler,
+        "_fetch_lines_from_dynamo",
+        lambda *args: {
+            "ids": ["row"],
+            "metadatas": [
+                {
+                    "image_id": "example",
+                    "receipt_id": 1,
+                    "line_id": 9,
+                    "text": "WHOLE MILK",
+                }
+            ],
+        },
+    )
+
+    assert handler.handler({}, None)["statusCode"] == 200
+
+    cache = json.loads(handler.s3_client.put_object.call_args.kwargs["Body"])
+    assert cache["receipts"][0]["price"] == expected_price
+    assert cache["receipts"][0]["price_source"] == (
+        "row_geometry" if expected_price else "ambiguous"
+    )
+    # Header handling is limited to ownership; crops retain the full words.
+    assert bbox.call_args.args[1] is words
+    assert len(words) == 3
+
+
+def test_validated_milk_header_cannot_be_selected_or_own_a_price(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    handler = _load_handler(monkeypatch)
+    lines = [SimpleNamespace(line_id=9, text="MILK")]
+    words = [_word(9, "MILK", 0.50), _word(20, "4.29", 0.50, x=0.8)]
+    non_product_line_ids = {9}
+
+    assert (
+        handler.find_milk_line(
+            lines,
+            words=words,
+            labels=[],
+            non_product_line_ids=non_product_line_ids,
+        )
+        is None
+    )
+    result = handler.find_price_on_visual_line(
+        9, words, [], non_product_line_ids=non_product_line_ids
+    )
+    assert result.price is None
+    assert result.source == "missing"

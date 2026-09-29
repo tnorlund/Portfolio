@@ -28,6 +28,7 @@ from receipt_embeddings.keys import line_canonical_key
 if TYPE_CHECKING:
     from receipt_dynamo.entities import (
         Receipt,
+        ReceiptDetails,
         ReceiptLine,
         ReceiptLineItem,
         ReceiptWord,
@@ -75,6 +76,8 @@ def milk_line_exclusion_reason(
     lines: list["ReceiptLine"],
     words: list["ReceiptWord"],
     labels: list["ReceiptWordLabel"],
+    *,
+    non_product_line_ids: set[int] | None = None,
 ) -> str | None:
     """Distinguish a dairy purchase from prepared drinks and milk options."""
     text = line.text.upper()
@@ -94,7 +97,12 @@ def milk_line_exclusion_reason(
     ):
         return "prepared_drink"
     if (
-        find_price_on_visual_line(line.line_id, words, labels).price
+        find_price_on_visual_line(
+            line.line_id,
+            words,
+            labels,
+            non_product_line_ids=non_product_line_ids,
+        ).price
         is not None
     ):
         return None
@@ -120,13 +128,32 @@ def milk_line_exclusion_reason(
                 and min(w.top_left["x"] for w in milk_words)
                 > min(w.top_left["x"] for w in drink_words)
                 and find_price_on_visual_line(
-                    other.line_id, words, labels
+                    other.line_id,
+                    words,
+                    labels,
+                    non_product_line_ids=non_product_line_ids,
                 ).price
                 is not None
             ):
                 return "milk_modifier"
         break
     return None
+
+
+def valid_section_header_line_ids(details: "ReceiptDetails") -> set[int]:
+    """Validated headers cannot own prices; product evidence takes precedence."""
+    product_lines = {
+        label.line_id
+        for label in details.labels
+        if label.validation_status == "VALID" and label.label == "PRODUCT_NAME"
+    }
+    return {
+        line_id
+        for section in (getattr(details, "sections", None) or [])
+        if section.validation_status == "VALID"
+        and section.section_type == "SECTION_HEADER"
+        for line_id in section.line_ids
+    } - product_lines
 
 
 def find_milk_line(
@@ -136,6 +163,7 @@ def find_milk_line(
     *,
     words: list["ReceiptWord"] | None = None,
     labels: list["ReceiptWordLabel"] | None = None,
+    non_product_line_ids: set[int] | None = None,
 ) -> tuple[str, int] | None:
     """Choose purchased milk, pairing a negative row with its exact purchase.
 
@@ -147,13 +175,24 @@ def find_milk_line(
         line
         for line in sorted(lines, key=lambda line: line.line_id)
         if target_word in line.text.upper()
+        and line.line_id not in (non_product_line_ids or set())
         and "VOID" not in line.text.upper()
-        and milk_line_exclusion_reason(line, lines, words or [], labels or [])
+        and milk_line_exclusion_reason(
+            line,
+            lines,
+            words or [],
+            labels or [],
+            non_product_line_ids=non_product_line_ids,
+        )
         is None
     ]
     amounts = {
         line.line_id: find_price_on_visual_line(
-            line.line_id, words or [], labels or [], allow_negative=True
+            line.line_id,
+            words or [],
+            labels or [],
+            allow_negative=True,
+            non_product_line_ids=non_product_line_ids,
         ).price
         for line in candidates
     }
@@ -191,7 +230,11 @@ def find_milk_line(
         # product happened to print immediately before the heading.
         following_amounts = [
             find_price_on_visual_line(
-                line.line_id, words or [], labels or [], allow_negative=True
+                line.line_id,
+                words or [],
+                labels or [],
+                allow_negative=True,
+                non_product_line_ids=non_product_line_ids,
             ).price
             for line in lines
             if 0 < line.line_id - marker.line_id <= 2
@@ -640,6 +683,7 @@ def find_price_on_visual_line(
     *,
     same_line_only: bool = False,
     allow_negative: bool = False,
+    non_product_line_ids: set[int] | None = None,
 ) -> PriceMatch:
     """Associate a printed amount with its product, not a broad visual band.
 
@@ -649,6 +693,8 @@ def find_price_on_visual_line(
     borrowing a nearby row's price. Negative amounts remain visible to void
     pairing but are never returned as purchased milk prices.
     """
+    if target_line_id in (non_product_line_ids or set()):
+        return PriceMatch(None, "missing")
     contexts = [
         ctx for row in assemble_visual_lines(words, labels) for ctx in row
     ]
@@ -699,8 +745,9 @@ def find_price_on_visual_line(
     target_baseline = _row_baseline(target)
     product_rows = {}
     for line_id, row in by_line.items():
-        if line_id != target_line_id and any(
-            "VOID" in ctx["word"].text.upper() for ctx in row
+        if line_id != target_line_id and (
+            line_id in (non_product_line_ids or set())
+            or any("VOID" in ctx["word"].text.upper() for ctx in row)
         ):
             continue
         x, y, slope, height = _row_baseline(row)
@@ -787,6 +834,7 @@ def find_milk_price(
     line_items: list["ReceiptLineItem"],
     *,
     line_items_available: bool = True,
+    non_product_line_ids: set[int] | None = None,
 ) -> PriceMatch:
     """Require direct row evidence, including for reconciled canonical items.
 
@@ -794,7 +842,12 @@ def find_milk_price(
     prices therefore need corroboration from the milk row; unrelated receipt
     mismatches or bad item grouping cannot veto uniquely owned row evidence.
     """
-    result = find_price_on_visual_line(target_line_id, words, labels)
+    result = find_price_on_visual_line(
+        target_line_id,
+        words,
+        labels,
+        non_product_line_ids=non_product_line_ids,
+    )
     matches = [item for item in line_items if target_line_id in item.line_ids]
     if result.price is not None:
         if len(matches) == 1:
@@ -1213,6 +1266,7 @@ def handler(_event, _context):
                 )
 
                 stage = "receipt_processing"
+                non_product_line_ids = valid_section_header_line_ids(details)
                 # Find the specific OCR line containing "MILK"
                 # This returns both text and line_id for accurate price lookup
                 milk_line = find_milk_line(
@@ -1220,6 +1274,7 @@ def handler(_event, _context):
                     TARGET_WORD,
                     words=details.words,
                     labels=details.labels,
+                    non_product_line_ids=non_product_line_ids,
                 )
                 if milk_line:
                     product_text, milk_line_id = milk_line
@@ -1227,7 +1282,11 @@ def handler(_event, _context):
                     # Do not resurrect a voided item from stale embedding text.
                     reasons = {
                         milk_line_exclusion_reason(
-                            line, details.lines, details.words, details.labels
+                            line,
+                            details.lines,
+                            details.words,
+                            details.labels,
+                            non_product_line_ids=non_product_line_ids,
                         )
                         for line in details.lines
                         if TARGET_WORD in line.text.upper()
@@ -1260,6 +1319,7 @@ def handler(_event, _context):
                     details.labels,
                     line_items,
                     line_items_available=line_items_available,
+                    non_product_line_ids=non_product_line_ids,
                 )
                 if not line_items_available and price_match.price is None:
                     return {
