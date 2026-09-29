@@ -28,6 +28,13 @@ from receipt_embeddings.section_labels import NON_ITEM_SECTION_LABELS
 from receipt_embeddings.service_limits import LINE_INDEX, MAX_SEARCH_RESULTS
 from receipt_embeddings.vector_client import VectorSearchClient
 
+from receipt_agent.agents.question_answering.context import (
+    MAX_SUMMARY_ROWS,
+    aggregate_receipts,
+    aggregate_view,
+    receipt_evidence_view,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -1101,7 +1108,9 @@ def create_qa_tools(
         category_filter: Optional[str] = None,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        limit: int = 1000,
+        limit: int = MAX_SUMMARY_ROWS,
+        offset: int = 0,
+        month_offset: int = 0,
     ) -> dict:
         """Get pre-computed summaries for receipts with totals, tax, dates.
 
@@ -1116,13 +1125,18 @@ def create_qa_tools(
             category_filter: Filter by category (grocery, restaurant, gas_station)
             start_date: Filter receipts on/after this date (YYYY-MM-DD)
             end_date: Filter receipts on/before this date (YYYY-MM-DD)
-            limit: Maximum receipts to return
+            limit: Evidence rows per page (at most 20); never limits totals
+            offset: Evidence page offset in stable receipt identity order;
+                fresh scans are not snapshots if receipts change between calls
+            month_offset: Monthly breakdown page offset (60 groups per page)
 
         Returns:
             Dict with aggregates (total_spending, total_tax, average_receipt)
             and individual receipt summaries
         """
         try:
+            if limit < 1 or offset < 0 or month_offset < 0:
+                return {"error": "limit must be positive; offsets nonnegative"}
             start_dt = None
             end_dt = None
             if start_date:
@@ -1131,14 +1145,16 @@ def create_qa_tools(
                         start_date.replace("Z", "+00:00")
                     )
                 except ValueError:
-                    pass
+                    return {"error": "Invalid start_date; use YYYY-MM-DD"}
             if end_date:
                 try:
                     end_dt = datetime.fromisoformat(
                         end_date.replace("Z", "+00:00")
                     )
                 except ValueError:
-                    pass
+                    return {"error": "Invalid end_date; use YYYY-MM-DD"}
+            if start_dt and end_dt and start_dt.date() > end_dt.date():
+                return {"error": "start_date must not follow end_date"}
 
             all_summaries = []
             last_key = None
@@ -1235,9 +1251,6 @@ def create_qa_tools(
                 summary_dict["merchant_category"] = merchant_category
                 filtered.append(summary_dict)
 
-                if len(filtered) >= limit:
-                    break
-
             # Drop receipts whose totals are OCR misreads before they can
             # skew the aggregate or reach the synthesizer as evidence.
             filtered, outliers = partition_ocr_outliers(
@@ -1245,6 +1258,11 @@ def create_qa_tools(
                 amount_key="grand_total",
                 ceiling=OCR_MAX_RECEIPT_TOTAL,
             )
+            # DynamoDB scan order is unspecified. Offset pages must use the
+            # same identity order across calls for an unchanged population.
+            # A fresh scan is not a snapshot: concurrent inserts/deletes can
+            # still move page boundaries.
+            filtered.sort(key=lambda row: (row["image_id"], row["receipt_id"]))
 
             # Store all summary dicts for the shape node
             for s in filtered:
@@ -1253,35 +1271,13 @@ def create_qa_tools(
                     state_holder["_summary_keys"].add(key)
                     state_holder["summary_receipts"].append(s)
 
-            total_spending = sum(s["grand_total"] or 0 for s in filtered)
-            total_tax = sum(s["tax"] or 0 for s in filtered)
-            total_tip = sum(s["tip"] or 0 for s in filtered)
-            receipts_with_totals = sum(1 for s in filtered if s["grand_total"])
-
-            # Store aggregates for synthesizer
-            state_holder["aggregates"].append(
-                {
-                    "source": (
-                        f"get_receipt_summaries("
-                        f"merchant={merchant_filter}, "
-                        f"category={category_filter}, "
-                        f"start={start_date}, "
-                        f"end={end_date})"
-                    ),
-                    "count": len(filtered),
-                    "total_spending": round(total_spending, 2),
-                    "total_tax": round(total_tax, 2),
-                    "total_tip": round(total_tip, 2),
-                    "receipts_with_totals": receipts_with_totals,
-                    "average_receipt": (
-                        round(total_spending / receipts_with_totals, 2)
-                        if receipts_with_totals > 0
-                        else None
-                    ),
-                    "excluded_outlier_count": len(outliers),
-                    "undated_excluded": undated_excluded,
-                    "uncategorized_excluded": uncategorized_excluded,
-                }
+            aggregate = aggregate_receipts(
+                filtered, start_date=start_date, end_date=end_date
+            )
+            source = (
+                f"get_receipt_summaries(merchant={merchant_filter}, "
+                f"category={category_filter}, start={start_date}, "
+                f"end={end_date})"
             )
 
             # Auto-fetch a few sample receipts
@@ -1295,23 +1291,14 @@ def create_qa_tools(
                         fetched_count += 1
 
             result = {
-                "count": len(filtered),
-                "total_spending": round(total_spending, 2),
-                "total_tax": round(total_tax, 2),
-                "total_tip": round(total_tip, 2),
-                "receipts_with_totals": receipts_with_totals,
-                "average_receipt": (
-                    round(total_spending / receipts_with_totals, 2)
-                    if receipts_with_totals > 0
-                    else None
-                ),
+                **aggregate,
+                "aggregation_complete": True,
                 "filters": {
                     "merchant": merchant_filter,
                     "category": category_filter,
                     "start_date": start_date,
                     "end_date": end_date,
                 },
-                "summaries": filtered,
                 "auto_fetched": fetched_count,
             }
             if undated_excluded:
@@ -1335,9 +1322,24 @@ def create_qa_tools(
                     ),
                 }
             if outliers:
-                result["excluded_outliers"] = summarize_ocr_outliers(outliers)
+                # Full exclusions stay in state; provider receives counts so
+                # bad OCR cannot flood the context.
                 result["excluded_outlier_count"] = len(outliers)
-            return result
+            # Keep exact aggregates and coverage for every distinct scope,
+            # without duplicating them when the model requests another page.
+            state_holder["aggregates"] = [
+                agg
+                for agg in state_holder["aggregates"]
+                if agg["source"] != source
+            ]
+            state_holder["aggregates"].append({"source": source, **result})
+            state_holder.setdefault("excluded_summary_outliers", {})[
+                source
+            ] = outliers
+            return {
+                **aggregate_view(result, month_offset),
+                **receipt_evidence_view(filtered, offset=offset, limit=limit),
+            }
 
         except Exception as e:
             logger.error("Error getting receipt summaries: %s", e)
@@ -1481,6 +1483,13 @@ A separate step will format your answer with supporting receipt details.
 
 **For merchant/date aggregation**:
 - Use get_receipt_summaries (pre-computed, fast)
+- It computes exact monthly and weekday totals across ALL matching receipts.
+- Use date_coverage averages with their stated denominators: requested months
+  when both date filters are given, otherwise calendar months from first to last
+  recorded date. State partial boundary months and undated/missing-total coverage.
+- Summary rows are only a paged evidence sample. Never sum that sample or fetch
+  every page to calculate totals. Use month_offset only for additional monthly
+  breakdown rows; complete totals and averages already include all months.
 
 **For merchant totals** ("total at Costco", "gas stations"):
 - Merchant names have case and suffix variants ("Speedway"/"SPEEDWAY",
