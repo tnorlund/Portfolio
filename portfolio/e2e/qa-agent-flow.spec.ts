@@ -320,6 +320,47 @@ test.describe("QAAgentFlow", () => {
     await expect(page.getByText("$6.49")).toBeVisible();
   });
 
+  test("distinguishes citation coverage from the visible thumbnail sample", async ({ page }) => {
+    const sampledQuestion = {
+      ...mockQAQuestions[0],
+      evidenceCoverage: {
+        totalReceipts: 2505, citedReceipts: 200, returnedRows: 200, maxRows: 200,
+      },
+      trace: mockQAQuestions[0].trace.map((step) => step.type === "synthesize" ? {
+        ...step,
+        receipts: Array.from({ length: 200 }, (_, index) => ({
+          imageId: `sample-image-${Math.floor(index / 2)}`,
+          receiptId: (index % 2) + 1,
+          merchant: `Receipt ${index}`,
+          item: "Receipt total",
+          amount: 10,
+          thumbnailKey: "assets/evidence-receipt-a.webp",
+          width: 300,
+          height: 900,
+        })),
+      } : step),
+    };
+    await page.route("**/qa/visualization*", async (route) => {
+      const url = new URL(route.request().url());
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(url.searchParams.has("index")
+          ? { questions: [sampledQuestion] }
+          : { metadata: { total_questions: 1 }, questions: [] }),
+      });
+    });
+    await page.goto("/receipt");
+    await page.locator("h1:visible", { hasText: "So Now What?" }).scrollIntoViewIfNeeded();
+    const evidence = page.getByRole("region", { name: "Receipt evidence" });
+    await expect(evidence.getByText("200 of 2,505 receipts cited", { exact: true }))
+      .toBeVisible({ timeout: 30_000 });
+    await expect(evidence.getByText(/showing 8/)).toBeVisible();
+    await expect(evidence.locator("img")).toHaveCount(8);
+    // The second receipt from the same image must not be deduplicated away.
+    await expect(evidence.getByAltText("Receipt 1 receipt")).toBeVisible();
+  });
+
   test("keeps the result frame stable while revealing and expanding the answer", async ({
     page,
   }) => {

@@ -6,6 +6,7 @@ import { useSpring, animated } from "@react-spring/web";
 import { getReceiptMotionScale } from "./ReceiptFlow/receiptFlowUtils";
 import type {
   QAQuestionData,
+  QAEvidenceCoverage,
   ReceiptEvidence,
   StepType,
   TraceStep,
@@ -107,15 +108,16 @@ const formatTimelineBarDuration = (ms: number): string => {
 };
 
 const deduplicateReceiptEvidence = (trace: TraceStep[]): ReceiptEvidence[] => {
-  const seenImageIds = new Set<string>();
+  const seenReceiptKeys = new Set<string>();
   const receipts: ReceiptEvidence[] = [];
 
   for (const step of trace) {
     for (const receipt of step.receipts ?? []) {
       if (!receipt.imageId || !receipt.thumbnailKey) continue;
-      if (seenImageIds.has(receipt.imageId)) continue;
+      const key = `${receipt.imageId}:${receipt.receiptId ?? "legacy"}`;
+      if (seenReceiptKeys.has(key)) continue;
 
-      seenImageIds.add(receipt.imageId);
+      seenReceiptKeys.add(key);
       receipts.push(receipt);
     }
   }
@@ -251,11 +253,13 @@ const ReceiptEvidenceThumbnail: React.FC<ReceiptEvidenceThumbnailProps> = ({
 
 interface ReceiptEvidenceStackProps {
   receipts: ReceiptEvidence[];
+  coverage?: QAEvidenceCoverage;
   isVisible: boolean;
 }
 
 const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
   receipts,
+  coverage,
   isVisible,
 }) => {
   const listRef = React.useRef<HTMLDivElement>(null);
@@ -279,7 +283,7 @@ const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
     return () => observer.disconnect();
   }, []);
 
-  if (receipts.length === 0) return null;
+  if (receipts.length === 0 && !coverage?.totalReceipts) return null;
 
   const visibleReceipts = receipts.slice(0, MAX_EVIDENCE_THUMBNAILS);
   const hiddenCount = receipts.length - visibleReceipts.length;
@@ -352,6 +356,9 @@ const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
   const receiptLabel = `${receipts.length} ${
     receipts.length === 1 ? "receipt" : "receipts"
   }`;
+  const coverageLabel = coverage
+    ? `${coverage.citedReceipts.toLocaleString("en-US")} of ${coverage.totalReceipts.toLocaleString("en-US")} receipts cited`
+    : receiptLabel;
 
   return (
     <section
@@ -380,10 +387,12 @@ const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
             fontFamily: "var(--font-mono, monospace)",
             fontSize: "0.68rem",
             opacity: 0.65,
+            textAlign: "right",
           }}
         >
-          <span>{receiptLabel}</span>
-          {hiddenCount > 0 ? ` · showing ${visibleReceipts.length}` : null}
+          <span>{coverageLabel}</span>
+          {hiddenCount > 0 || (coverage && coverage.citedReceipts > visibleReceipts.length)
+            ? ` · showing ${visibleReceipts.length}` : null}
         </span>
       </div>
 
@@ -394,14 +403,14 @@ const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
         data-available-width={availableWidth}
         data-overlap-ratio={overlapRatio}
         data-thumbnail-height={thumbnailHeight}
-        aria-label={`${receiptLabel} used as evidence`}
+        aria-label={`${visibleReceipts.length} receipt thumbnails shown`}
         style={{
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
           width: "100%",
           maxWidth: "390px",
-          height: "166px",
+          height: visibleReceipts.length > 0 ? "166px" : "auto",
           margin: "0 auto",
           padding: "0.35rem 0.8rem 0.65rem",
           boxSizing: "border-box",
@@ -419,7 +428,7 @@ const ReceiptEvidenceStack: React.FC<ReceiptEvidenceStackProps> = ({
         >
           {visibleReceipts.map((receipt, index) => (
             <ReceiptEvidenceThumbnail
-              key={receipt.imageId}
+              key={`${receipt.imageId}:${receipt.receiptId ?? "legacy"}`}
               receipt={receipt}
               index={index}
               isVisible={isVisible}
@@ -1574,6 +1583,7 @@ const QAAgentFlow: React.FC<QAAgentFlowProps> = ({
                     ) : null}
                     <ReceiptEvidenceStack
                       receipts={evidenceReceipts}
+                      coverage={questionData?.evidenceCoverage}
                       isVisible={isVisible}
                     />
                   </div>

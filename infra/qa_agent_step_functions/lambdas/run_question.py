@@ -326,6 +326,7 @@ async def _run_question(
             )
             duration = time.time() - start_time
             stats = cost_callback.get_stats()
+            coverage = result.get("evidence_coverage")
 
             return {
                 "schemaVersion": 1,
@@ -337,6 +338,18 @@ async def _run_question(
                 "totalAmount": result.get("total_amount"),
                 "receiptCount": result.get("receipt_count", 0),
                 "evidence": result.get("evidence", []),
+                **(
+                    {
+                        "evidenceCoverage": {
+                            "totalReceipts": coverage["total_receipts"],
+                            "citedReceipts": coverage["cited_receipts"],
+                            "returnedRows": coverage["returned_rows"],
+                            "maxRows": coverage["max_rows"],
+                        }
+                    }
+                    if coverage
+                    else {}
+                ),
                 "cost": stats["total_cost"],
                 "llmCalls": stats["llm_calls"],
                 "tokens": {
