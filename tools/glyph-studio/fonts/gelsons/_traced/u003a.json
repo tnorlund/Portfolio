@@ -1,0 +1,91 @@
+{
+ "version": 1,
+ "char": ":",
+ "codepoint": 58,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "gelsons.refined.npz",
+  "samples": 5,
+  "consensusHash": "2b87de2a8d64",
+  "date": "2026-09-20"
+ },
+ "width": 163.5,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 100.6,
+     "y": 533.3,
+     "type": "corner"
+    },
+    {
+     "x": 106.1,
+     "y": 533.3,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50.6,
+     "y": 161.1,
+     "type": "corner",
+     "hOut": {
+      "x": 50.6,
+      "y": 138.0
+     }
+    },
+    {
+     "x": 83.9,
+     "y": 111.1,
+     "type": "smooth",
+     "hIn": {
+      "x": 68.5,
+      "y": 126.5
+     },
+     "hOut": {
+      "x": 93.8,
+      "y": 101.2
+     }
+    },
+    {
+     "x": 112.9,
+     "y": 50.6,
+     "type": "corner",
+     "hIn": {
+      "x": 100.2,
+      "y": 105.5
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 112.9,
+     "y": 50.6,
+     "type": "corner",
+     "hOut": {
+      "x": 112.9,
+      "y": 109.9
+     }
+    },
+    {
+     "x": 112.9,
+     "y": 50.6,
+     "type": "corner",
+     "hIn": {
+      "x": 112.9,
+      "y": 109.9
+     }
+    }
+   ]
+  }
+ ]
+}

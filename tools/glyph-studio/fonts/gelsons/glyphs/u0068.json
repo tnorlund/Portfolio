@@ -3,7 +3,7 @@
  "char": "h",
  "codepoint": 104,
  "provenance": "edited",
- "width": 700.0,
+ "width": 612.8,
  "baselineNudgePx": 0,
  "overrides": {},
  "strokes": [
@@ -35,33 +35,34 @@
      }
     },
     {
-     "x": 350.0,
+     "x": 301.4,
      "y": 650.0,
      "type": "smooth",
      "hIn": {
-      "x": 240.0,
+      "x": 209.2,
       "y": 650.0
      },
      "hOut": {
-      "x": 460.0,
+      "x": 393.6,
       "y": 650.0
      }
     },
     {
-     "x": 650.0,
+     "x": 552.8,
      "y": 420,
      "type": "corner",
      "hIn": {
-      "x": 650.0,
+      "x": 552.8,
       "y": 570
      }
     },
     {
-     "x": 650.0,
+     "x": 552.8,
      "y": 50.0,
      "type": "corner"
     }
    ]
   }
- ]
+ ],
+ "normalized": "x 600 -> 503"
 }
