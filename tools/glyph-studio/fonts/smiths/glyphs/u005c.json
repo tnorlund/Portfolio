@@ -1,0 +1,29 @@
+{
+ "version": 1,
+ "char": "\\",
+ "codepoint": 92,
+ "provenance": "edited",
+ "width": 461.4,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 105,
+     "y": 965.3,
+     "type": "corner"
+    },
+    {
+     "x": 440,
+     "y": -3.0,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "vons",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the vons face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(100..935) -> (51..949)"
+}

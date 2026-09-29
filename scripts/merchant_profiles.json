@@ -442,16 +442,50 @@
    }
   },
   "Smith's": {
-   "_comment": "receiptfont.com pixCrog/bitMatrix-C1 (Kroger) -> VT323, heavier thermal print (stroke 1).",
+   "_comment": "Minted by new_vendor.py from Smith's pooled dev receipts (font smiths; donor vons). Replaces the VT323 / pixCrog placeholder. Edit typography knobs here; `new_vendor.py calibrate` solves ocr_cap_height_ratio.",
    "section_scale": {
     "HEADER": 0.8
    },
    "typography": {
-    "font": "VT323",
-    "condense": 0.92,
-    "stroke": 1
+    "font": "PTMONO",
+    "condense": 1.01,
+    "stroke": 1,
+    "bitmap_font": {
+     "regular": "smiths.glyphs.npz",
+     "heavy": "smiths-heavy.glyphs.npz"
+    },
+    "mixed_layout": true,
+    "bitmap_cap_ratio": 0.66,
+    "bitmap_thin": 0.0,
+    "ocr_font_sizing": true,
+    "ocr_cap_height_ratio": 0.72,
+    "stylemap": "smiths.stylemap.json",
+    "pitch_ratio": 0.522
    },
-   "logo": "smiths_logo.png"
+   "logo": "smiths_logo.png",
+   "aliases": [
+    "Smith's Marketplace",
+    "Smith's Fresh for Everyone",
+    "Smiths"
+   ],
+   "logo_anchor": {
+    "phrases": [
+     "SMITH'S",
+     "SMITHS",
+     "FRESH FOR EVERYONE",
+     "FRESH",
+     "FOR",
+     "EVERYONE"
+    ],
+    "extend_left": false,
+    "center": true
+   },
+   "graphics": {
+    "footer_codes": true,
+    "inbody_barcode": {
+     "max_count": 0
+    }
+   }
   },
   "Gelson's Westlake Village": {
    "_comment": "Minted atlas (fonts/gelsons, 2026-07-19) replaces the B612 TTF fallback; pitch/cap 0.5255 measured over the 6 dev receipts.",

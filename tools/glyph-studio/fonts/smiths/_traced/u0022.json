@@ -1,0 +1,32 @@
+{
+ "version": 1,
+ "char": "\"",
+ "codepoint": 34,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "smiths.refined.npz",
+  "samples": 1,
+  "consensusHash": "d44c802cabc1",
+  "date": "2026-09-20"
+ },
+ "width": 102.3,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 51.1,
+     "y": 861.1,
+     "type": "corner"
+    },
+    {
+     "x": 51.1,
+     "y": 500.0,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}
