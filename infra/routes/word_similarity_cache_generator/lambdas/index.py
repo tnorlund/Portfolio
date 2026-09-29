@@ -189,8 +189,17 @@ def find_milk_line(
             continue
         # The heading describes the following negative line, not whichever
         # product happened to print immediately before the heading.
+        following_amounts = [
+            find_price_on_visual_line(
+                line.line_id, words or [], labels or [], allow_negative=True
+            ).price
+            for line in lines
+            if 0 < line.line_id - marker.line_id <= 2
+            and "VOID" not in line.text.upper()
+        ]
         if any(
-            0 < line.line_id - marker.line_id <= 2 for line in negative_rows
+            amount is not None and Decimal(amount) < 0
+            for amount in following_amounts
         ):
             continue
         excluded.update(
@@ -685,27 +694,21 @@ def find_price_on_visual_line(
     if same_line_only:
         return PriceMatch(None, "missing")
 
-    # Multiword text also supplies competing rows when product labels are
-    # missing. Single-word section headings and food-code letters do not.
-    product_rows = {
-        line_id: _row_baseline(row)
-        for line_id, row in by_line.items()
-        if line_id == target_line_id
-        or (
-            not any("VOID" in ctx["word"].text.upper() for ctx in row)
-            and (
-                sum(
-                    len(re.findall(r"[A-Za-z]{2,}", ctx["word"].text))
-                    for ctx in row
-                )
-                >= 2
-                or any(
-                    ctx["label"] and ctx["label"].label == "PRODUCT_NAME"
-                    for ctx in row
-                )
-            )
-        )
-    }
+    # Unlabeled single-word products such as BANANAS still own their prices.
+    # by_line excludes one-letter food codes; VOID headings cannot own prices.
+    target_baseline = _row_baseline(target)
+    product_rows = {}
+    for line_id, row in by_line.items():
+        if line_id != target_line_id and any(
+            "VOID" in ctx["word"].text.upper() for ctx in row
+        ):
+            continue
+        x, y, slope, height = _row_baseline(row)
+        if len(row) == 1:
+            # One word cannot establish a row's slope. Project it using the
+            # target's local skew instead of assuming a horizontal receipt.
+            slope = target_baseline[2]
+        product_rows[line_id] = (x, y, slope, height)
     target_x, target_y, target_slope, target_height = product_rows[
         target_line_id
     ]
@@ -782,7 +785,6 @@ def find_milk_price(
     words: list["ReceiptWord"],
     labels: list["ReceiptWordLabel"],
     line_items: list["ReceiptLineItem"],
-    row_text: str,
     *,
     line_items_available: bool = True,
 ) -> PriceMatch:
@@ -822,15 +824,8 @@ def find_milk_price(
             else ("untrusted" if matches else "unmatched")
         )
         return PriceMatch(None, source)
-    # A legacy row can retain an explicit trailing price only when there is
-    # no competing geometric evidence and exactly one complete money token.
-    tokens = list(
-        re.finditer(r"(?<!\S)\$?\d+(?:,\d{3})*\.\d{2}(?!\S)", row_text)
-    )
-    if len(tokens) > 1:
-        return PriceMatch(None, "ambiguous")
-    if tokens and tokens[0].end() == len(row_text.rstrip()):
-        return PriceMatch(normalize_price(tokens[0].group()), "row_text")
+    # Full OCR words are loaded. Embedding text is candidate-search metadata,
+    # never price evidence: it can be stale or combine unrelated products.
     return PriceMatch(None, "missing")
 
 
@@ -1264,7 +1259,6 @@ def handler(_event, _context):
                     details.words,
                     details.labels,
                     line_items,
-                    row_text,
                     line_items_available=line_items_available,
                 )
                 if not line_items_available and price_match.price is None:
@@ -1287,13 +1281,6 @@ def handler(_event, _context):
                     else row_merchant_name or "Unknown"
                 )
                 price = price_match.price
-                if (
-                    price_match.source == "row_text"
-                    and product_text == row_text
-                ):
-                    product_text = re.sub(
-                        r"\s+\$?\d+(?:,\d{3})*\.\d{2}\s*$", "", product_text
-                    ).rstrip()
                 product_text = strip_upc_prefix(product_text)
                 size = infer_size(product_text, price)
 
