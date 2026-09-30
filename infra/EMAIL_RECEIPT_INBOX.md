@@ -168,10 +168,13 @@ record bounds, not a mailbox coverage guarantee. A recently published
 projection can still contain only selected or old source mail.
 
 Hosted receipt discovery, fetching, parsing, and persistence are not implemented
-by this MCP. The source-email provenance and bearer URLs belong in the local
+by this MCP. For a user-supplied Clover receipt link, the separate
+[local read-only receipt-link MCP](../docs/clover-receipt-links.md) retrieves
+structured evidence without changing the hosted projection or dataset.
+The source-email provenance and bearer URLs belong in the local
 `receipts-email` ingestion plane, where the MIME source and sender trust checks
-are available. Extending that plane requires a real source email/link and a
-provider-specific retrieval test. Preserve source provenance, fetch status,
+are available. Extending that plane requires source-email provenance and
+provider-specific retrieval tests. Preserve source provenance, fetch status,
 timestamp, content hash, and deduplication there; publish only approved parsed
 receipt fields through the existing projection. Do not expand this Lambda's
 permissions to the primary, full replica, or raw mail to bridge the gap. A link

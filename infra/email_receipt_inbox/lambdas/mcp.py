@@ -136,7 +136,9 @@ LOOKUP_EVIDENCE = {
         "ranges. If the receipt is still missing, ask for the exact source "
         "email or view-receipt link (or sender, subject, and date). Follow "
         "that evidence through an authorized local email/browser workflow; "
-        "this MCP cannot retrieve it. Do not copy the primary or full "
+        "the separate local get_clover_receipt tool can read a supplied "
+        "Clover link when configured. This hosted MCP cannot retrieve it. "
+        "Do not copy the primary or full "
         "replica to work around this boundary. Finding a link alone does "
         "not recover an itemized receipt."
     ),
