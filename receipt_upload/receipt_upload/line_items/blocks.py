@@ -864,6 +864,21 @@ def decode_band_blocks(
             )
 
     def _sku_dominated(name: str) -> bool:
+        # Numeric SKU + model codes with internal digit/letter transitions
+        # can look descriptive to the alpha-run counter (e.g. AB-C2DE34).
+        # Require every trailing token to have that shape; sizes/brands
+        # such as "WD-40 12OZ" must not lose their printed product name.
+        tokens = (name or "").split()
+        if (
+            len(tokens) >= 2
+            and re.fullmatch(r"\d{4,}", tokens[0])
+            and all(
+                re.fullmatch(r"[A-Za-z][A-Za-z0-9-]*", token)
+                and re.search(r"\d[A-Za-z]", token)
+                for token in tokens[1:]
+            )
+        ):
+            return True
         stripped = re.sub(r"\d{4,}", " ", name or "")
         return len(re.findall(r"[A-Za-z]{2,}", stripped)) < 2
 

@@ -300,6 +300,22 @@ def build_guard_cases() -> list[dict]:
                 "items": [dump_item(i) for i in items],
             }
         )
+    # Real item-zone OCR exercises numeric SKU + alphanumeric model codes.
+    fixture = json.loads(
+        (
+            REPO_ROOT
+            / "receipt_upload/tests/fixtures/stacked_model_code_names.json"
+        ).read_text(encoding="utf-8")
+    )
+    items, _ = extract_items(fixture["words"], set(fixture["items_line_ids"]))
+    cases.append(
+        {
+            "case": "stacked_model_code_names",
+            "words": fixture["words"],
+            "items_line_ids": fixture["items_line_ids"],
+            "items": [dump_item(item) for item in items],
+        }
+    )
     return cases
 
 
