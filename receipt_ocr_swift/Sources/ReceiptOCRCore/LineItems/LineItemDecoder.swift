@@ -175,6 +175,9 @@ enum LineItemRegex {
     static let whitespaceRun = Rx("\\s+")
     static let digitRun = Rx("\\d+")
     static let digits4Plus = Rx("\\d{4,}")
+    static let numericSKU = Rx("^\\d{4,}$")
+    static let modelToken = Rx("^[A-Za-z][A-Za-z0-9-]*$")
+    static let internalDigitLetter = Rx("\\d[A-Za-z]")
     /// Standalone taxability flag word (fullmatch in parse_band)
     static let taxFlagWord = Rx("[TFNOAB]X?")
     /// Alpha runs of a de-amounted row (`re.findall(r"[A-Za-z]+", bare)`)
@@ -464,6 +467,17 @@ func isForDealAnnotation(_ text: String) -> Bool {
 
 /// Port of `blocks._sku_dominated` (decode_band_blocks variant).
 func skuDominated(_ name: String) -> Bool {
+    // Match only numeric SKU + codes with internal digit/letter transitions.
+    // Size/brand names like "WD-40 12OZ" must retain their product name.
+    let tokens = name.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+    if tokens.count >= 2,
+       LineItemRegex.numericSKU.search(tokens[0]) != nil,
+       tokens.dropFirst().allSatisfy({
+           LineItemRegex.modelToken.search($0) != nil
+               && LineItemRegex.internalDigitLetter.search($0) != nil
+       }) {
+        return true
+    }
     let stripped = LineItemRegex.digits4Plus.sub(name, with: " ")
     return LineItemRegex.alpha2.findAll(stripped).count < 2
 }
