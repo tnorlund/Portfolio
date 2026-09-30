@@ -1,0 +1,71 @@
+{
+  "experiment_source_sha256": "def08fe85ee4f03b9ee585d56565c7dd0f4fc4eaafab53f57625f96fb1b88557",
+  "hyperparameters": {
+    "epochs": 400,
+    "learning_rate": 0.5,
+    "l2": 0.02,
+    "gated_threshold": 0.9,
+    "diagnostic_threshold": 0.5,
+    "bootstrap_seed": 20260930,
+    "bootstrap_samples": 2000
+  },
+  "evaluation_split_sha256": {
+    "AMAZON FRESH": "8dec05d770e430ad641f46dd9602e836f8a1fcf5204f79252377b2498e918d83",
+    "COSTCO WHOLESALE": "8c660cb3bddaadf2e65f132e25d7d8347ca76edb7c07ae658c86249245a51a02",
+    "GELSON S WESTLAKE VILLAGE": "ea447309c4e0edf1e04264530219753dbf28259a5b6f6d422ada877e3ce69127",
+    "IN N OUT BURGER": "130df3a3be9d030264673f0fd29eed86f1b559e2bee11d30354d768f8bcb6c34",
+    "REGAL GREEN VALLEY": "e3cc6ef0d3db6f5e369cf7bb3b8d6b57e17ae5a1e6867ce191870ff7094f36b6",
+    "ROAST RICE ASIAN FUSION": "908881dd4112889d65f33a8d72ec199b8ec986203fde8dcaf7c079b4f2984709",
+    "SMITH S": "3be93c313ffb1a04a2570a8909fa2fe44f0d2baec0e38bc0ebb91812d2104dc3",
+    "SPROUTS FARMERS MARKET": "bdd76ac11a6fa9c880ac64a7b31989f1943ec137edd30ec3413495cfc5123c38",
+    "TARGET": "5bd7131bd7beef886f018048d0b3c8645c45543033e6b02117b9fc1b1e451a2f",
+    "THE COFFEE PRESS": "a73081756c31f540ccddd19bbf905f5874fa925ad45a1cb26b9e7cc6f6f6fe68",
+    "THE HOME DEPOT": "2a9d185e129e8a737e81f38e8cc70d11f34d28b5eae16e6581c5cc014aa807a6",
+    "THE STAND AMERICAN CLASSICS REDEFINED": "4198b62aff65ba34e963c4a62a51d2797398bcc91b465e67bdb733cd1c106794",
+    "TRADER JOE S": "d7fe2dabd3e710f67b031d3c2449bc173e974ac34cf596eae0bef28ce30c9252",
+    "TROPICAL SMOOTHIE CAFE": "4848d0d1ff20af3983fd742a7a82e2e59804f7056be5f3881b056fb80877d0ec",
+    "TWIN PEAKS": "e7ff157aa23a0b523c77e7e35860fdf88a3d9f21a2777b539167ffabf6d2c484",
+    "VONS": "52bfbc510bb1d71890f274159efd923b396800735997fe306bbbf7391a537f8e",
+    "WHOLE FOODS MARKET": "eb37bc061d542d69eb2b6ec52ec427eb864ebb293d78538a34aa46d6d203b623",
+    "WILD FORK": "dc5aa51fcc589ebc6910be9110b47ed8aff85cc9534bbcf5bdca18142c27eee9"
+  },
+  "exclude_uncertain": false,
+  "experimental_only": true,
+  "enabled_by_default": false,
+  "features": [
+    "alpha_fraction",
+    "digit_fraction",
+    "space_fraction",
+    "punct_fraction",
+    "word_count",
+    "alpha_word_count",
+    "mixed_word_fraction",
+    "long_numeric_fraction",
+    "max_alpha_run",
+    "character_count",
+    "leading_numeric",
+    "baseline_candidate"
+  ],
+  "weights": [
+    0.7086500517972336,
+    -0.8063677448393314,
+    0.34571028515008445,
+    -0.24799259210798594,
+    1.1661619353125634,
+    0.9405226665256285,
+    0.029266679881379598,
+    -0.6504548734407845,
+    1.2147959597487037,
+    0.7639272143978904,
+    -1.117784663993039,
+    0.8356521109333247
+  ],
+  "pairwise_score_threshold": 0.9,
+  "training_pairs": 168,
+  "training_receipts": 38,
+  "warning": "Uncalibrated pairwise score. All-data model is NOT the heldout evaluation model.",
+  "fixture_sha256": {
+    "line_items_golden.json": "e6f4b780517b2c74fed70e3bb3d524d9d77fa2c805664a109fcff2cb37c3d7fb",
+    "line_items_golden_ocr.json": "b638fa048ef2b7583b6357718f33dec0dea57c001cb61200cc911759acad0c7a"
+  }
+}
