@@ -52,14 +52,20 @@ const BASELINE_BODY: FocusGeometry["body"] = [
   [0.26, 0.72],
 ];
 
+/** Current production homepage pass — periocular, already on main. */
 const BASELINE_OPTIONS: Partial<RotoscopeOptions> = {
-  blurRadius: 6,
+  blurRadius: 3,
   markerBudget: 1600,
-  quotas: { face: 0.7, body: 0.22, background: 0.08 },
+  quotas: { face: 0.3, body: 0.64, background: 0.06 },
   spacing: { face: 1, body: 4, background: 8 },
   focus: {
-    face: { ...HEAD_FACE },
-    body: BASELINE_BODY,
+    face: {
+      centerX: 0.4112,
+      centerY: 0.5218,
+      radiusX: 0.085,
+      radiusY: 0.055,
+    },
+    body: HEAD_BODY,
   },
 };
 
@@ -367,12 +373,12 @@ const periocular = (
   radiusY: number,
   extras: Partial<RotoscopeOptions> = {},
 ): Candidate => {
-  const quotas = extras.quotas ?? { face: 0.24, body: 0.68, background: 0.08 };
+  const quotas = extras.quotas ?? { face: 0.3, body: 0.64, background: 0.06 };
   return {
     name,
     size: { width: 960, height: 720 },
     options: {
-      blurRadius: extras.blurRadius ?? 6,
+      blurRadius: extras.blurRadius ?? 3,
       markerBudget: extras.markerBudget ?? 1600,
       quotas,
       spacing: extras.spacing ?? { face: 1, body: 4, background: 8 },
@@ -446,43 +452,41 @@ const main = async (): Promise<void> => {
     );
   }
 
+  // Coordinate descent vs current periocular production. Keep spacing.face = 1.
   const ellipseRows = [
-    await run(periocular("01-ellipse-tight", 0.078, 0.045), baseline),
-    await run(periocular("02-ellipse-lids", 0.085, 0.055), baseline),
-    await run(periocular("03-ellipse-brow", 0.095, 0.07), baseline),
-    await run(periocular("04-ellipse-bridge", 0.095, 0.055), baseline),
-    await run(periocular("05-ellipse-wide", 0.105, 0.07), baseline),
-    await run(periocular("06-ellipse-tall", 0.085, 0.08), baseline),
+    await run(periocular("01-ellipse-075-050", 0.075, 0.05), baseline),
+    await run(periocular("01-ellipse-080-050", 0.08, 0.05), baseline),
+    await run(periocular("01-ellipse-085-050", 0.085, 0.05), baseline),
+    await run(periocular("01-ellipse-085-055", 0.085, 0.055), baseline),
+    await run(periocular("01-ellipse-090-055", 0.09, 0.055), baseline),
+    await run(periocular("01-ellipse-090-060", 0.09, 0.06), baseline),
+    await run(periocular("01-ellipse-095-055", 0.095, 0.055), baseline),
+    await run(periocular("01-ellipse-080-060", 0.08, 0.06), baseline),
   ];
-  let winner = bestOf(ellipseRows);
+  let winner = bestOf([baseline, ...ellipseRows]);
   let best = byName.get(winner.name) as Candidate;
-  const radiusX = best.options.focus?.face.radiusX ?? 0.095;
-  const radiusY = best.options.focus?.face.radiusY ?? 0.07;
+  const radiusX = best.options.focus?.face.radiusX ?? 0.085;
+  const radiusY = best.options.focus?.face.radiusY ?? 0.055;
 
   const takeIfBetter = (row: Scores): void => {
     if (row.skipped) return;
-    if (row.score > winner.score) {
+    if (row.score > winner.score + 1e-6) {
+      winner = row;
+      best = byName.get(row.name) as Candidate;
+    } else if (
+      Math.abs(row.score - winner.score) <= 1e-6 &&
+      row.width * row.height < winner.width * winner.height
+    ) {
       winner = row;
       best = byName.get(row.name) as Candidate;
     }
   };
 
-  for (const face of [0.12, 0.18, 0.24, 0.3]) {
+  for (const face of [0.24, 0.3, 0.36]) {
+    const background = best.options.quotas?.background ?? 0.06;
     takeIfBetter(
       await run(
-        periocular(`07-quota-f${face.toFixed(2)}`, radiusX, radiusY, {
-          quotas: { face, body: 1 - face - 0.08, background: 0.08 },
-        }),
-        baseline,
-      ),
-    );
-  }
-
-  const face = best.options.quotas?.face ?? 0.24;
-  for (const background of [0.06, 0.08, 0.1]) {
-    takeIfBetter(
-      await run(
-        periocular(`08-bg-${background.toFixed(2)}`, radiusX, radiusY, {
+        periocular(`02-quota-f${face.toFixed(2)}`, radiusX, radiusY, {
           ...best.options,
           quotas: { face, body: 1 - face - background, background },
         }),
@@ -491,10 +495,23 @@ const main = async (): Promise<void> => {
     );
   }
 
-  for (const blurRadius of [3, 4, 5, 6]) {
+  const face = best.options.quotas?.face ?? 0.3;
+  for (const background of [0.05, 0.06, 0.08]) {
     takeIfBetter(
       await run(
-        periocular(`09-blur-${blurRadius}`, radiusX, radiusY, {
+        periocular(`03-bg-${background.toFixed(2)}`, radiusX, radiusY, {
+          ...best.options,
+          quotas: { face, body: 1 - face - background, background },
+        }),
+        baseline,
+      ),
+    );
+  }
+
+  for (const blurRadius of [2, 3, 4]) {
+    takeIfBetter(
+      await run(
+        periocular(`04-blur-${blurRadius}`, radiusX, radiusY, {
           ...best.options,
           blurRadius,
         }),
@@ -503,24 +520,29 @@ const main = async (): Promise<void> => {
     );
   }
 
-  for (const markerBudget of [1400, 1600, 2000]) {
-    takeIfBetter(
-      await run(
-        periocular(`10-budget-${markerBudget}`, radiusX, radiusY, {
-          ...best.options,
-          markerBudget,
-        }),
-        baseline,
-      ),
+  for (const markerBudget of [1600, 1800]) {
+    const row = await run(
+      periocular(`05-budget-${markerBudget}`, radiusX, radiusY, {
+        ...best.options,
+        markerBudget,
+      }),
+      baseline,
     );
+    if (markerBudget === 1800 && row.shatter > 0) {
+      process.stdout.write(
+        `${row.name} REJECT head basins exploded vs baseline (shatter=${row.shatter.toFixed(3)})\n`,
+      );
+      continue;
+    }
+    takeIfBetter(row);
   }
 
-  for (const body of [2, 3, 4]) {
+  for (const body of [3, 4]) {
     takeIfBetter(
       await run(
-        periocular(`11-body-space-${body}`, radiusX, radiusY, {
+        periocular(`06-body-space-${body}`, radiusX, radiusY, {
           ...best.options,
-          spacing: { face: 1, body, background: 8 },
+          spacing: { face: 1, body, background: best.options.spacing?.background ?? 8 },
         }),
         baseline,
       ),
@@ -529,26 +551,49 @@ const main = async (): Promise<void> => {
 
   const locked = best.options;
   for (const [name, nextRx, nextRy] of [
-    ["12-ellipse2-tight", 0.078, 0.045],
-    ["12-ellipse2-lids", 0.085, 0.055],
-    ["12-ellipse2-brow", 0.095, 0.07],
-    ["12-ellipse2-bridge", 0.095, 0.055],
-    ["12-ellipse2-wide", 0.105, 0.07],
+    ["07-ellipse2-075-050", 0.075, 0.05],
+    ["07-ellipse2-080-050", 0.08, 0.05],
+    ["07-ellipse2-085-055", 0.085, 0.055],
+    ["07-ellipse2-090-055", 0.09, 0.055],
+    ["07-ellipse2-090-060", 0.09, 0.06],
+    ["07-ellipse2-095-055", 0.095, 0.055],
   ] as const) {
-    takeIfBetter(
-      await run(periocular(name, nextRx, nextRy, { ...locked }), baseline),
-    );
+    takeIfBetter(await run(periocular(name, nextRx, nextRy, { ...locked }), baseline));
   }
+
+  const irisBasins = (row: Scores): number => row.leftEyeBasins + row.rightEyeBasins;
+  const irisImproved = irisBasins(winner) > irisBasins(baseline);
 
   const ranked = all.filter((row) => !row.skipped).sort((a, b) => b.score - a.score);
   const top = ranked.slice(0, 8);
   await fs.writeFile(
     path.join(OUT_DIR, "scores.json"),
-    `${JSON.stringify({ baseline, winner, options: best.options, top, all }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        baseline,
+        winner,
+        options: best.options,
+        irisImproved,
+        baselineIrisBasins: irisBasins(baseline),
+        winnerIrisBasins: irisBasins(winner),
+        top,
+        all,
+      },
+      null,
+      2,
+    )}\n`,
   );
   process.stdout.write(
     `\nWINNER ${winner.name} score=${winner.score.toFixed(4)} ssim=${winner.eyeSsim.toFixed(4)} vs baseline ssim=${baseline.eyeSsim.toFixed(4)}\n`,
   );
+  process.stdout.write(
+    `iris basins winner=${irisBasins(winner)} baseline=${irisBasins(baseline)} improved=${irisImproved}\n`,
+  );
+  if (!irisImproved) {
+    process.stdout.write(
+      "STOP: 3-tier remap cannot put more iris markers than the current periocular baseline.\n",
+    );
+  }
   process.stdout.write(`${JSON.stringify(best.options, null, 2)}\n`);
   process.stdout.write(`stills ${OUT_DIR}\n`);
 };
