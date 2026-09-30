@@ -120,6 +120,32 @@ GRAIN_NOTE = (
     "row carries its currency (NULL = unknown, never assume USD), so "
     "aggregate per currency."
 )
+LOOKUP_EVIDENCE = {
+    "scope": "published spend/txn projection only",
+    "mailbox_coverage": "unknown",
+    "raw_email_available": False,
+    "receipt_links_available": False,
+    "hosted_receipt_retrieval_available": False,
+    "empty_result_meaning": (
+        "An empty result means only that no projected rows matched this "
+        "query. This does not establish that an email, purchase, or hosted "
+        "receipt does not exist."
+    ),
+    "next_step": (
+        "Check replica_status for publication freshness and recorded date "
+        "ranges. If the receipt is still missing, ask for the exact source "
+        "email or view-receipt link (or sender, subject, and date). Follow "
+        "that evidence through an authorized local email/browser workflow; "
+        "this MCP cannot retrieve it. Do not copy the primary or full "
+        "replica to work around this boundary. Finding a link alone does "
+        "not recover an itemized receipt."
+    ),
+    "purchase_context": (
+        "Keep merchant, payment processor, ordering channel, and "
+        "dine-in/pickup/delivery separate. A processor or bank transaction "
+        "alone does not establish online ordering or fulfillment mode."
+    ),
+}
 
 s3 = boto3.client("s3")
 
@@ -336,6 +362,37 @@ def _connection() -> sqlite3.Connection:
     return conn
 
 
+def _recorded_date_ranges(conn: sqlite3.Connection) -> dict:
+    """Describe projected records, never claim complete mailbox coverage."""
+    ranges = {}
+    for name, table, column, predicate in (
+        ("email_items", "spend", "date", "source = 'email'"),
+        ("paper_items", "spend", "date", "source = 'paper'"),
+        ("transactions", "txn", "txn_date", "1 = 1"),
+    ):
+        # These identifiers and predicates are constants, not tool arguments.
+        row = conn.execute(
+            f"SELECT COUNT(*), MIN(NULLIF({column}, '')), "
+            f"MAX(NULLIF({column}, '')), "
+            f"COUNT(*) - COUNT(NULLIF({column}, '')) "
+            f"FROM {table} WHERE {predicate}"
+        ).fetchone()
+        ranges[name] = {
+            "row_count": row[0],
+            "oldest_recorded_date": row[1],
+            "newest_recorded_date": row[2],
+            "undated_row_count": row[3],
+        }
+    return {
+        "meaning": (
+            "Date bounds of records in this projection, not mailbox "
+            "coverage or proof that all dates between them are represented. "
+            "Publication freshness does not establish source completeness."
+        ),
+        "ranges": ranges,
+    }
+
+
 def _replica_status(conn: sqlite3.Connection) -> dict:
     manifest = _state["manifest"] or {}
     published_at = manifest.get("published_at")
@@ -380,6 +437,8 @@ def _replica_status(conn: sqlite3.Connection) -> dict:
         "row_counts": counts,
         "currencies": currencies,
         "grain": GRAIN_NOTE,
+        "recorded_dates": _recorded_date_ranges(conn),
+        "lookup_evidence": LOOKUP_EVIDENCE,
         "writes": "not available here; ingest, reconciliation, and match "
         "decisions run on the primary and land with the next publish",
     }
@@ -499,6 +558,7 @@ def query_sql(conn: sqlite3.Connection, sql: str, limit: int) -> dict:
         "row_count": len(out_rows),
         "rows": out_rows,
         "truncated": truncated,
+        "lookup_evidence": LOOKUP_EVIDENCE,
     }
 
 
@@ -538,7 +598,12 @@ TOOLS = [
             "charge), merchant/category NULL when unmapped. "
             + GRAIN_NOTE
             + " No other table exists here: no message index, no receipt "
-            "identifiers, no card numbers, no raw descriptors."
+            "identifiers, no card numbers, no raw descriptors. No raw "
+            "email or hosted receipt links are available here. Empty "
+            "results do not prove a receipt is unavailable: check "
+            "replica_status and request the source email/view-receipt "
+            "link for an authorized local lookup. A payment processor "
+            "does not establish the ordering channel or fulfillment mode."
         ),
         "inputSchema": {
             "type": "object",
@@ -560,7 +625,9 @@ TOOLS = [
             "How fresh the projection is: manifest (published_at, sha256, "
             "row counts, currencies), S3 ETag, age in seconds, the schema "
             "the two tables carry, and which operations are only available "
-            "on the primary."
+            "on the primary. Reports recorded date ranges separately for "
+            "email items, paper items, and transactions. These ranges and "
+            "publication freshness do not establish mailbox completeness."
         ),
         "inputSchema": {"type": "object", "properties": {}},
     },

@@ -153,6 +153,45 @@ the Mac, along with every write.
 
 ## Limits
 
+### Missing and email-linked receipts
+
+`query_sql` returns `lookup_evidence` alongside successful results, including
+empty results. It describes the evidence boundary and the next step: check
+`replica_status`, then request the source email or view-receipt link (or its
+sender, subject, and date) for an authorized local lookup. A missing projected
+row cannot prove a receipt or email is unavailable. A payment processor or
+bank transaction cannot establish online ordering, dine-in, pickup, or delivery.
+
+`replica_status.recorded_dates` separates the observed date ranges of email
+items, paper items, and transactions, including undated counts. These are
+record bounds, not a mailbox coverage guarantee. A recently published
+projection can still contain only selected or old source mail.
+
+Hosted receipt discovery, fetching, parsing, and persistence are not implemented
+by this MCP. The source-email provenance and bearer URLs belong in the local
+`receipts-email` ingestion plane, where the MIME source and sender trust checks
+are available. Extending that plane requires a real source email/link and a
+provider-specific retrieval test. Preserve source provenance, fetch status,
+timestamp, content hash, and deduplication there; publish only approved parsed
+receipt fields through the existing projection. Do not expand this Lambda's
+permissions to the primary, full replica, or raw mail to bridge the gap. A link
+or successful page fetch alone is not evidence of recovered itemized details.
+
+The opt-in tests in `tests/test_email_lookup_evidence.py` load an authorized
+real projection from `RECEIPT_LOOKUP_PROJECTION_PATH`. Keep that file outside
+the checkout. The tests open it read-only, validate the projection contract,
+compare returned receipt rows without printing them, check observed date
+ranges, and verify that empty results retain guidance and raw mail stays
+inaccessible. No dataset is committed or downloaded by the tests. Without
+the environment variable, the four dataset checks skip explicitly; the two
+tool-contract checks still run. Passing these tests validates lookup evidence
+reporting, not recovery of a hosted receipt.
+
+```bash
+RECEIPT_LOOKUP_PROJECTION_PATH=/absolute/private/path/spend.db \
+  python -m pytest tests/test_email_lookup_evidence.py -q --tb=no
+```
+
 - Projection lag is however often `publish-projection` runs (nightly).
 - The gateway integration window is 29 s; the function times out at 25 s.
 - Reserved concurrency is 5. Each container holds one snapshot in `/tmp`.
