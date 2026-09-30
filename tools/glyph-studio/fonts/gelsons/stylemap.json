@@ -6,6 +6,32 @@
   "date": "2026-07-19",
   "notes": "All 6 dev Gelson's Westlake Village receipts. Department headers (GROCERY/PRODUCE/REG DELI/BAKERY) measured bold (header ink density med 0.193 vs body 0.114, ~1.7x) and underlined 13/13 (dot-matrix dashed rule just below the baseline; stylescan's box-interior detector misses it -- measured with a below-box band detector). Cap height equals body. Payment/summary/footer measured body-normal, so only section_header is styled."
  },
+ "rules": [
+  {
+   "section": "store_header",
+   "pattern": "Gelson'?s$|TOWNSGATE|WESTLAKE VILLAGE|\\(805\\)"
+  },
+  {
+   "section": "section_header",
+   "pattern": "^(GROCERY|PRODUCE|MEAT|SEAFOOD|REG DELI|SERVICE DELI|DELI|BAKERY|DAIRY|FROZEN|LIQUOR|FLORAL|SUSHI)\\s*:?$"
+  },
+  {
+   "section": "total_line",
+   "pattern": "^BALANCE DUE|^USD\\$"
+  },
+  {
+   "section": "summary",
+   "pattern": "CREDIT CARD|CHANGE\\b|Auth#|Ref#"
+  },
+  {
+   "section": "payment",
+   "pattern": "MASTERCARD|VISA|CARD #|AUTH CODE|Mode:|AID:|TVR:|IAD:|TSI:|TC:|MID:|TID:|ARC:|RRN:|Entry Method|XXXX|APPROVED|Issuer|^PURCHASE$"
+  },
+  {
+   "section": "footer",
+   "pattern": "Save up to|Rewards program|gelsons\\.com|Cashier:|POS:|Transaction:|^\\*{5,}$"
+  }
+ ],
  "sections": {
   "section_header": {
    "sizeScale": 1.0,

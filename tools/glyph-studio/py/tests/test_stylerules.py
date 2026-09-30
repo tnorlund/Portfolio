@@ -89,3 +89,46 @@ def test_all_stylemap_rules_compile(font):
         pytest.skip("no stylemap")
     with open(path, encoding="utf-8") as fh:
         compile_rules(json.load(fh))
+
+
+def test_every_rule_bearing_stylemap_is_a_known_slug():
+    """Onboarding a merchant with stylemap rules must register its slug."""
+    import glob
+
+    declared = {
+        os.path.basename(os.path.dirname(path))
+        for path in glob.glob(os.path.join(FONTS_DIR, "*", "stylemap.json"))
+        if rules_for_font(os.path.basename(os.path.dirname(path)))
+    }
+    unregistered = set(stylescan._UNREGISTERED_RULE_SLUGS)
+    missing = declared - stylescan.known_rule_slugs() - unregistered
+    assert (
+        not missing
+    ), f"add {sorted(missing)} to stylescan._STYLEMAP_RULE_SLUGS"
+    assert not unregistered & stylescan.known_rule_slugs()
+
+
+def test_rules_for_font_caches_until_the_file_changes(tmp_path, monkeypatch):
+    from glyphstudio import stylerules
+
+    font = tmp_path / "m"
+    font.mkdir()
+    path = font / "stylemap.json"
+    path.write_text(json.dumps({"rules": [{"section": "a", "pattern": "x"}]}))
+    calls = []
+    real = stylerules.compile_rules
+    monkeypatch.setattr(
+        stylerules,
+        "compile_rules",
+        lambda sm: calls.append(1) or real(sm),
+    )
+    first = rules_for_font("m", str(tmp_path))
+    assert rules_for_font("m", str(tmp_path)) == first
+    assert len(calls) == 1
+    path.write_text(
+        json.dumps({"rules": [{"section": "bb", "pattern": "yy"}]})
+    )
+    assert [s for s, _ in rules_for_font("m", str(tmp_path))] == ["bb"]
+    assert len(calls) == 2
+    path.unlink()
+    assert rules_for_font("m", str(tmp_path)) is None

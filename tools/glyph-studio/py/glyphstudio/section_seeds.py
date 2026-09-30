@@ -55,10 +55,10 @@ def merchant_slug(merchant_name: str) -> Optional[str]:
 
 
 def known_stylescan_slugs() -> frozenset[str]:
-    """The slugs stylescan has rules for (keys of ``_MERCHANT_RULES``)."""
-    from .stylescan import _MERCHANT_RULES
+    """The slugs stylescan has rules for (``stylescan.known_rule_slugs``)."""
+    from .stylescan import known_rule_slugs
 
-    return frozenset(_MERCHANT_RULES)
+    return known_rule_slugs()
 
 
 @dataclass(frozen=True)

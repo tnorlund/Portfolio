@@ -7,6 +7,44 @@
   "date": "2026-07-07",
   "notes": "Wild Fork corpus has 12 merchant-index receipts, but 1356d23f-b0ce-4abe-989b-e123d82b67f0 #2 fails the production receipt loader. The merchant list, summary index, and detail index also disagree at 14/13/12 records."
  },
+ "rules": [
+  {
+   "section": "store_header",
+   "pattern": "^WF$|Thousand Oaks CA|Wild Fork|wildforkfoods"
+  },
+  {
+   "section": "address",
+   "pattern": "(Westlake|Blvd\\.?|,\\s*CA\\s+\\d{5}|^\\d{3}\\s*S\\.|1-833-300-9453)"
+  },
+  {
+   "section": "policy",
+   "pattern": "FEFO|returns|refunds|exchanges"
+  },
+  {
+   "section": "transaction",
+   "pattern": "Ticket\\s?#|Station:|Sales Rep|User:|^\\d{1,2}/\\d{1,2}/\\d{4}"
+  },
+  {
+   "section": "item_header",
+   "pattern": "^(Item|Description)\\b|Qty|Uty|Price"
+  },
+  {
+   "section": "total_line",
+   "pattern": "^\\s*Total\\b(?! Tax)|^\\s*Subtotal\\b"
+  },
+  {
+   "section": "summary",
+   "pattern": "Total Tax|quantity purchased|items purchased"
+  },
+  {
+   "section": "payment",
+   "pattern": "Tender:|VISA|MASTERCARD|DEBIT|Batch:|Auth:|Entry Method|AID:|TVR:|AC:|CVM:|Authorization Mode|X{6,}"
+  },
+  {
+   "section": "footer",
+   "pattern": "CAREERS|Forkies|Nourish Better Lives|Visit Link|Scan QR|pages/careers|gettingmymail"
+  }
+ ],
  "sections": {
   "store_header": {
    "sizeScale": 1.7,
