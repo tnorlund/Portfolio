@@ -25,6 +25,7 @@ from PIL import Image as PIL_Image
 from PIL import UnidentifiedImageError
 from PIL.Image import Resampling, Transform
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.amounts import looks_like_receipt_amount
 from receipt_dynamo.constants import (
     ImageType,
     OCRJobType,
@@ -646,9 +647,54 @@ class OCRProcessor:
         new_words: list[ReceiptWord],
         candidate_words: list[ReceiptWord],
     ) -> list[tuple[ReceiptWord, ReceiptWord]]:
-        """Greedy y-overlap matching between re-OCR words and existing words."""
+        """Return only spatially and lexically compatible one-to-one pairs."""
+        matches, _ = self._regional_match_plan(new_words, candidate_words)
+        return matches
+
+    @staticmethod
+    def _regional_word_kind(text: str) -> str:
+        if looks_like_receipt_amount(text):
+            return "amount"
+        bare = text.strip().lstrip("+-")
+        if bare.isdecimal():
+            # Small standalone integers are quantity-like, not prices.
+            # Preserve digit/decimal OCR corrections such as 579199→579.99.
+            return "quantity" if len(bare) <= 2 else "number"
+        return "text"
+
+    @classmethod
+    def _regional_types_compatible(cls, left: str, right: str) -> bool:
+        kinds = {cls._regional_word_kind(left), cls._regional_word_kind(right)}
+        return len(kinds) == 1 or kinds == {"amount", "number"}
+
+    @staticmethod
+    def _x_overlap_ratio(
+        a_bbox: dict[str, float], b_bbox: dict[str, float]
+    ) -> float:
+        left = max(float(a_bbox["x"]), float(b_bbox["x"]))
+        right = min(
+            float(a_bbox["x"]) + float(a_bbox["width"]),
+            float(b_bbox["x"]) + float(b_bbox["width"]),
+        )
+        denominator = max(
+            min(float(a_bbox["width"]), float(b_bbox["width"])), 1e-6
+        )
+        return max(0.0, right - left) / denominator
+
+    def _regional_match_plan(
+        self,
+        new_words: list[ReceiptWord],
+        candidate_words: list[ReceiptWord],
+    ) -> tuple[list[tuple[ReceiptWord, ReceiptWord]], bool]:
+        """Plan matching before any writes, flagging unsafe correspondence.
+
+        A y-overlap alone cannot pair a price column with a quantity/name.
+        Unmatched words with rejected candidates must not silently fall into
+        the overlay's add-new/delete-orphan paths either.
+        """
         remaining = list(candidate_words)
         matches: list[tuple[ReceiptWord, ReceiptWord]] = []
+        ambiguous = False
 
         for new_word in sorted(
             new_words,
@@ -659,28 +705,64 @@ class OCRProcessor:
         ):
             best_idx: int | None = None
             best_score = -1.0
+            candidate_scores: list[float] = []
+            rejected_candidate = False
             for idx, old_word in enumerate(remaining):
                 overlap = self._y_overlap_ratio(
                     new_word.bounding_box, old_word.bounding_box
                 )
                 if overlap < 0.15:
                     continue
+                if self._x_overlap_ratio(
+                    new_word.bounding_box, old_word.bounding_box
+                ) < 0.15 or not self._regional_types_compatible(
+                    new_word.text, old_word.text
+                ):
+                    rejected_candidate = True
+                    continue
                 x_distance = abs(
                     self._bbox_center_x(new_word.bounding_box)
                     - self._bbox_center_x(old_word.bounding_box)
                 )
                 score = overlap - (0.5 * x_distance)
+                candidate_scores.append(score)
                 if score > best_score:
                     best_score = score
                     best_idx = idx
 
+            if (
+                sum(
+                    abs(score - best_score) <= 1e-9
+                    for score in candidate_scores
+                )
+                > 1
+            ):
+                ambiguous = True
+                continue
             if best_idx is None:
+                # A duplicate/split observation cannot become an appended
+                # word merely because its original was consumed earlier.
+                reuses_target = any(
+                    self._y_overlap_ratio(
+                        new_word.bounding_box, old.bounding_box
+                    )
+                    >= 0.15
+                    and self._x_overlap_ratio(
+                        new_word.bounding_box, old.bounding_box
+                    )
+                    >= 0.15
+                    and self._regional_types_compatible(
+                        new_word.text, old.text
+                    )
+                    for _, old in matches
+                )
+                ambiguous = ambiguous or rejected_candidate or reuses_target
                 continue
 
             old_word = remaining.pop(best_idx)
             matches.append((new_word, old_word))
 
-        return matches
+        return matches, ambiguous
 
     def _items_zone_baseline(
         self, image_id: str, receipt_id: int
@@ -1035,7 +1117,15 @@ class OCRProcessor:
             <= region_y2
         ]
 
-        matches = self._match_regional_words(receipt_words, candidate_words)
+        matches, ambiguous = self._regional_match_plan(
+            receipt_words, candidate_words
+        )
+        if ambiguous:
+            return self._fail_regional_reocr(
+                ocr_job,
+                ocr_routing_decision,
+                "Ambiguous regional OCR word correspondence; receipt unchanged",
+            )
         if not matches:
             logger.warning(
                 "Regional re-OCR produced no overlay matches for %s#%s",
