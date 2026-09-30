@@ -17,12 +17,15 @@ Pinned here:
 
 import json
 import logging
-from datetime import datetime, timezone
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
 from infra.receipt_line_item_updater import line_item_processor
+from receipt_dynamo.entities.ocr_job import OCRJob
 from receipt_dynamo.entities.receipt_line_item import ReceiptLineItem
+from receipt_dynamo_stream.message_builder import build_messages_from_records
 
 from receipt_upload.line_items.provenance import (
     SWIFT_WORKER_EXTRACTOR_VERSION,
@@ -181,6 +184,103 @@ def _divergence_logs(caplog):
 
 def _skip_logs(caplog):
     return _marker_logs(caplog, line_item_processor.NO_WORKER_ROWS_MARKER)
+
+
+def test_refine_completion_repairs_count_without_recursive_refine(
+    run, monkeypatch, caplog
+):
+    """A delayed completion refetches current data and is redelivery-safe."""
+    now = datetime(2026, 9, 10, tzinfo=timezone.utc)
+    job_args = {
+        "image_id": IMAGE_ID,
+        "job_id": "22222222-3333-4444-8555-666666666666",
+        "s3_bucket": "test-bucket",
+        "s3_key": "old-result.json",
+        "created_at": now,
+        "receipt_id": RECEIPT_ID,
+        "job_type": "LINE_ITEM_REFINE",
+        # Old event payload is intentionally different from current state.
+        "refine_summary": {
+            "subtotal": 100.0,
+            "tax": 0.0,
+            "grand_total": 100.0,
+        },
+    }
+    pending = OCRJob(**job_args, status="PENDING")
+    completed = OCRJob(**job_args, status="COMPLETED", updated_at=now)
+    messages = build_messages_from_records(
+        [
+            {
+                "eventName": "MODIFY",
+                "dynamodb": {
+                    "Keys": pending.key,
+                    "OldImage": pending.to_item(),
+                    "NewImage": completed.to_item(),
+                },
+            }
+        ]
+    )
+    assert len(messages) == 1
+    sqs_records = [
+        {
+            "messageId": message_id,
+            "body": json.dumps({"entity_data": messages[0].entity_data}),
+        }
+        for message_id in ("first", "duplicate")
+    ]
+    unique, malformed = line_item_processor.deduplicate_messages(sqs_records)
+    assert malformed == []
+    assert unique == {(IMAGE_ID, RECEIPT_ID): ["first", "duplicate"]}
+
+    fake = _FakeDynamo([_worker_row(0, "STALE", 100.0)])
+    fake.final_item_count = 99
+    # The current summary has already had its own completed refinement.
+    # A delayed event must neither restore its old figures nor enqueue again.
+    fake.list_ocr_jobs_for_image = lambda _image_id: (
+        [
+            SimpleNamespace(
+                job_type="LINE_ITEM_REFINE",
+                receipt_id=RECEIPT_ID,
+                status="COMPLETED",
+                refine_summary={
+                    "subtotal": 9.0,
+                    "tax": 0.72,
+                    "grand_total": 9.72,
+                },
+            )
+        ],
+        None,
+    )
+    monkeypatch.setenv("ENABLE_LINE_ITEM_REFINE", "true")
+    monkeypatch.setenv("OCR_JOB_QUEUE_NAME", "unused-test-queue")
+    monkeypatch.delenv("OCR_JOB_QUEUE_URL", raising=False)
+
+    repeated = replace(completed, updated_at=now + timedelta(seconds=60))
+    # The Swift worker runs again on upstream queue redelivery, rewrites
+    # rows, and updates an already-completed job. That event needs repair too.
+    repeated_messages = build_messages_from_records(
+        [
+            {
+                "eventName": "MODIFY",
+                "dynamodb": {
+                    "Keys": completed.key,
+                    "OldImage": completed.to_item(),
+                    "NewImage": repeated.to_item(),
+                },
+            }
+        ]
+    )
+    assert len(repeated_messages) == 1
+    assert repeated_messages[0].entity_data == messages[0].entity_data
+    for _ in (messages[0], repeated_messages[0]):
+        result = run(fake)
+        assert result["reconciliation"] == "match"
+        assert result["items"] == fake.final_item_count == 3
+        assert result["refine_triggered"] is False
+        assert [item.name for item in fake.written[-3:]] == [
+            name for name, _ in _PRODUCTS
+        ]
+    assert not [record for record in caplog.records if record.levelno >= 40]
 
 
 # ---------------------------------------------------------------------------

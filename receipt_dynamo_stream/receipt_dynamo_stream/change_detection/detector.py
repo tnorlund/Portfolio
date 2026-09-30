@@ -11,6 +11,7 @@ from typing import Dict, Optional
 from receipt_dynamo_stream.models import FieldChange, StreamEntity
 
 UPDATE_RELEVANT_FIELDS = {
+    "OCR_JOB": ["status", "updated_at"],
     "RECEIPT_PLACE": [
         "merchant_name",
         "merchant_category",
@@ -52,6 +53,12 @@ def get_update_relevant_changes(
     for field in fields_to_check:
         old_value = getattr(old_entity, field, None) if old_entity else None
         new_value = getattr(new_entity, field, None) if new_entity else None
+
+        if entity_type == "OCR_JOB" and field == "updated_at":
+            # OCRJob uses datetime objects; change messages go through JSON
+            # serialization before SQS and must contain scalar timestamps.
+            old_value = old_value.isoformat() if old_value else None
+            new_value = new_value.isoformat() if new_value else None
 
         if old_value != new_value:
             changes[field] = FieldChange(old=old_value, new=new_value)

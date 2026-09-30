@@ -14,6 +14,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Callable, Iterable, Optional
 
+from receipt_dynamo.entities.ocr_job import OCRJob
 from receipt_dynamo.entities.receipt_place import ReceiptPlace
 from receipt_dynamo.entities.receipt_section import ReceiptSection
 from receipt_dynamo.entities.receipt_summary_record import (
@@ -99,10 +100,41 @@ def build_entity_change_message(
         if not changes and record.get("eventName") != "REMOVE":
             return None
 
-        entity = old_entity or new_entity
-        entity_data, target_collections = _extract_entity_data(
-            entity_type, entity
-        )
+        if entity_type == "OCR_JOB":
+            # Swift writes refined rows before marking its job completed,
+            # but cannot finalize the summary's item_count. Run the canonical
+            # checker once more after that write (#1628). An upstream SQS
+            # redelivery rewrites rows even for an already-completed job;
+            # its fresh updated_at must also trigger repair. Only identity
+            # travels downstream: a delayed job must not restore its stale
+            # summary or OCR snapshot over the receipt's current state.
+            if not (
+                record.get("eventName") == "MODIFY"
+                and isinstance(old_entity, OCRJob)
+                and isinstance(new_entity, OCRJob)
+                and old_entity.job_type == "LINE_ITEM_REFINE"
+                and new_entity.job_type == "LINE_ITEM_REFINE"
+                and new_entity.status == "COMPLETED"
+                and (
+                    old_entity.status != "COMPLETED"
+                    or old_entity.updated_at != new_entity.updated_at
+                )
+                and new_entity.receipt_id is not None
+                and old_entity.receipt_id == new_entity.receipt_id
+                and old_entity.image_id == new_entity.image_id
+            ):
+                return None
+            entity_data = {
+                "entity_type": entity_type,
+                "image_id": new_entity.image_id,
+                "receipt_id": new_entity.receipt_id,
+            }
+            target_collections = [TargetQueue.LINE_ITEMS]
+        else:
+            entity = old_entity or new_entity
+            entity_data, target_collections = _extract_entity_data(
+                entity_type, entity
+            )
         if not entity_data or not target_collections:
             return None
 
