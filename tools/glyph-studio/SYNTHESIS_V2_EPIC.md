@@ -1,3 +1,7 @@
+> **Superseded as a plan (2026-09-23):** the milestone ordering and gates now live in
+> [`docs/plans/SYNTHESIS_UNIFIED_PLAN_2026-09-23.md`](../../docs/plans/SYNTHESIS_UNIFIED_PLAN_2026-09-23.md),
+> which merges this epic with #1188. This file remains the design rationale.
+
 # Epic v2: Learned receipt structure (stop reverse-engineering each merchant by hand)
 
 **Thesis:** A thermal receipt is a generative process — transaction CONTENT → POS LAYOUT → thermal RENDER. Today we reverse-engineer each merchant's (template + printer) by hand. v2 learns the generative structure from the already-labeled corpus so a new merchant is *inferred few-shot, not configured*.
