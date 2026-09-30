@@ -585,6 +585,112 @@ def _classify(text: str, has_price: bool, merchant: str = "sprouts") -> str:
     return "other"
 
 
+# --- label-driven section roles (synthesis v2 M1) -------------------------
+#
+# One shared, merchant-invariant CORE_LABELS -> role table: a line's role is
+# aggregated from its words' labels instead of re-derived per merchant by
+# regex. Keys are receipt_dynamo CORE_LABELS names (kept as literals so the
+# numpy+PIL-only glyph image never imports receipt_dynamo; a test pins them
+# against CORE_LABELS). DATE, TIME, TIP and REFUND are deliberately absent:
+# they print in several blocks and carry no role.
+CORE_LABEL_ROLE: dict[str, str] = {
+    "GRAND_TOTAL": "total_line",
+    "SUBTOTAL": "summary",
+    "TAX": "summary",
+    "CHANGE": "summary",
+    "CASH_BACK": "summary",
+    "PAYMENT_METHOD": "payment",
+    "PRODUCT_NAME": "item",
+    "QUANTITY": "item",
+    "UNIT_PRICE": "item",
+    "LINE_TOTAL": "item",
+    "MERCHANT_NAME": "header",
+    "ADDRESS_LINE": "header",
+    "PHONE_NUMBER": "header",
+    "WEBSITE": "header",
+    "STORE_HOURS": "header",
+    "DISCOUNT": "savings",
+    "COUPON": "savings",
+    "LOYALTY_ID": "savings",
+}
+# Tie-break when two roles draw the same number of word votes. summary
+# leads (SUBTOTAL/TAX/CHANGE words are unambiguous); payment beats
+# total_line because a tender row ("DEBIT $13.38", "Visa 61.13") carries the
+# tender word AND a GRAND_TOTAL-labeled amount, while the real total row has
+# only the latter.
+LABEL_ROLE_PRIORITY: tuple[str, ...] = (
+    "summary",
+    "payment",
+    "total_line",
+    "savings",
+    "item",
+    "header",
+)
+# Returned for a line none of whose words carries a role-bearing label.
+LABEL_ROLE_UNLABELED = "unlabeled"
+# Lossless legacy aliases, mirroring receipt_dynamo's NON_CORE_LABEL_ALIASES
+# (a test pins the two equal); older label files still carry these names.
+LABEL_ALIASES: dict[str, str] = {
+    "ADDRESS": "ADDRESS_LINE",
+    "BUSINESS_NAME": "MERCHANT_NAME",
+    "CARD_NUMBER": "PAYMENT_METHOD",
+    "PAYMENT_TYPE": "PAYMENT_METHOD",
+}
+
+
+def _word_core_labels(word: dict) -> list[str]:
+    """CORE label names on one word, BIO prefixes and ``O`` stripped and
+    legacy aliases (``LABEL_ALIASES``) mapped to their CORE target.
+
+    Accepts snapshot words (``labels`` list) and single-tag words
+    (``label``/``ner_tag`` string, e.g. ``B-PRODUCT_NAME``).
+    """
+    raw = word.get("labels")
+    if raw is None:
+        raw = [word.get("label") or word.get("ner_tag")]
+    elif isinstance(raw, str):
+        raw = [raw]
+    out = []
+    for tag in raw:
+        tag = str(tag or "").strip().upper()
+        if tag[:2] in ("B-", "I-"):
+            tag = tag[2:]
+        if tag and tag != "O":
+            out.append(LABEL_ALIASES.get(tag, tag))
+    return out
+
+
+def label_role_votes(line_words: list[dict]) -> dict[str, int]:
+    """Per-role word counts for one line (a word votes each role once)."""
+    votes: dict[str, int] = {}
+    for word in line_words:
+        roles = {
+            CORE_LABEL_ROLE[lbl]
+            for lbl in _word_core_labels(word)
+            if lbl in CORE_LABEL_ROLE
+        }
+        for role in roles:
+            votes[role] = votes.get(role, 0) + 1
+    return votes
+
+
+def _classify_from_labels(line_words: list[dict]) -> str:
+    """Section role of one visual line from its words' CORE labels.
+
+    Majority vote over ``CORE_LABEL_ROLE``; ties go to the earlier role in
+    ``LABEL_ROLE_PRIORITY``. Lines with no role-bearing label return
+    ``LABEL_ROLE_UNLABELED`` so callers can fall back explicitly. No merchant
+    argument: the table is shared by every merchant.
+    """
+    votes = label_role_votes(line_words)
+    if not votes:
+        return LABEL_ROLE_UNLABELED
+    return max(
+        votes,
+        key=lambda r: (votes[r], -LABEL_ROLE_PRIORITY.index(r)),
+    )
+
+
 def _sauvola(gray: np.ndarray) -> np.ndarray:
     from glyph_segment import auto_polarity, sauvola_mask
 
