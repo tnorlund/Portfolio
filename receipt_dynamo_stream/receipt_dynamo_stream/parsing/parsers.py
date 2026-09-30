@@ -11,6 +11,7 @@ parsers so stream handlers can remain lightweight.
 import logging
 from typing import Callable, Optional
 
+from receipt_dynamo.entities.ocr_job import item_to_ocr_job
 from receipt_dynamo.entities.receipt import item_to_receipt
 from receipt_dynamo.entities.receipt_line import item_to_receipt_line
 from receipt_dynamo.entities.receipt_place import item_to_receipt_place
@@ -46,6 +47,7 @@ def is_embedding_sk(sk: str) -> bool:
 
 # SK pattern matchers in order of specificity (most specific first)
 _SK_PATTERN_MATCHERS: list[tuple[Callable[[str], bool], str]] = [
+    (lambda sk: sk.startswith("OCR_JOB#"), "OCR_JOB"),
     (lambda sk: "#PLACE" in sk, "RECEIPT_PLACE"),
     (lambda sk: "#LABEL#" in sk, "RECEIPT_WORD_LABEL"),
     # RECEIPT#00001#SECTION#{TYPE}; "#SECTION#" appears in no other
@@ -65,6 +67,7 @@ _SK_PATTERN_MATCHERS: list[tuple[Callable[[str], bool], str]] = [
 _ENTITY_PARSERS: dict[
     str, Callable[[dict[str, dict[str, object]]], StreamEntity]
 ] = {
+    "OCR_JOB": item_to_ocr_job,
     "RECEIPT_PLACE": item_to_receipt_place,
     "RECEIPT_SUMMARY": item_to_receipt_summary_record,
     "RECEIPT_WORD_LABEL": item_to_receipt_word_label,
