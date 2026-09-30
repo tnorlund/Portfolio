@@ -45,7 +45,6 @@ from receipt_dynamo.entities.receipt_summary import (
     find_printed_grand_total,
     find_printed_subtotal,
 )
-
 from receipt_upload.line_items.geometry import (
     extract_items,
     propose_items_boundary_extension,
