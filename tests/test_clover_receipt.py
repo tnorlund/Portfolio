@@ -387,8 +387,7 @@ def test_real_receipt_matches_independently_rendered_expectations() -> None:
 def test_real_receipt_missing_item_marker_fails_closed() -> None:
     body = _private_path("CLOVER_RECEIPT_HTML").read_bytes()
     damaged = body.replace(b'class="line-item"', b'class="removed"')
-    assert (
-        damaged != body
-    ), "real fixture must contain the expected item marker"
+    marker_present = damaged != body
+    assert marker_present, "real fixture must contain the expected item marker"
     with pytest.raises(reader.ReceiptError, match="unrecognized_receipt"):
         reader.parse_clover_receipt(damaged)

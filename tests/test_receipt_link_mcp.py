@@ -3,6 +3,7 @@
 import asyncio
 import importlib.util
 import json
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -106,7 +107,7 @@ def test_malformed_protocol_does_not_log_access_link() -> None:
     asyncio.run(verify())
 
 
-def test_cancellation_holds_slots_until_workers_exit(
+def _check_cancellation_holds_slots_until_workers_exit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.syspath_prepend(str(SERVER.parent))
@@ -152,3 +153,25 @@ def test_cancellation_holds_slots_until_workers_exit(
         asyncio.run(verify())
     finally:
         release.set()
+
+
+def test_cancellation_holds_slots_until_workers_exit() -> None:
+    # Other root suites install process-global MCP module stubs. Exercise
+    # the real server in a fresh interpreter, as the stdio tests above do.
+    subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--check-cancellation",
+        ],
+        check=True,
+        capture_output=True,
+        timeout=15,
+    )
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] != ["--check-cancellation"]:
+        raise SystemExit("Use pytest or the cancellation check entry point.")
+    with pytest.MonkeyPatch.context() as patch:
+        _check_cancellation_holds_slots_until_workers_exit(patch)
