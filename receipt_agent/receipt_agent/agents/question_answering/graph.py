@@ -24,16 +24,23 @@ import logging
 from datetime import date, datetime
 from typing import Any, Callable, Optional
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 from receipt_embeddings.vector_client import VectorSearchClient
 
 from receipt_agent.agents.question_answering.context import (
+    COMPACT_AGGREGATE_NOTE,
     QAContextBudgetExceeded,
     aggregate_receipts,
     aggregate_view,
     amount_aggregate_view,
+    compact_aggregate_notes,
     ensure_context_budget,
     receipt_evidence_view,
     tool_result_view,
@@ -104,12 +111,12 @@ IMPORTANT: For category queries (coffee, groceries, etc.), use BOTH:
 SYNTHESIZE_SYSTEM_PROMPT = """You are synthesizing a final answer about receipts.
 
 You have been given:
-1. **Agent Analysis** — the reasoning and conclusions from the retrieval agent that searched the receipt database. This analysis has seen ALL tool results, not just the shaped subset below.
+1. **Agent Analysis** — the reasoning and conclusions from the retrieval agent, using bounded tool evidence and complete scoped aggregates.
 2. **Receipt Data** — structured receipt summaries for evidence and citation.
 3. **Pre-computed Aggregates** — verified totals from the database.
 
 ## Critical Rules
-1. **Trust the agent's analysis.** The agent saw the full tool output. If the agent concluded a total of $X across Y receipts, use that figure — do not re-derive a different total from the receipt data below.
+1. **Use the agent's analysis** for reviewed relevance and scope. Do not re-derive totals from evidence samples. An exact pre-computed aggregate for the same scope takes precedence over an unsupported conclusion in the analysis.
 2. **If the agent excluded items** (e.g., "excluding baking chocolate chips"), respect those exclusions. Do not re-include them.
 3. **Use receipt data for evidence/citations**, not for re-computing totals that the agent already computed.
 4. **Use pre-computed aggregates** when available — they are database-verified totals.
@@ -124,6 +131,25 @@ You have been given:
 10. For product/item spending, use the matching filtered amount_aggregations
     and Agent Analysis. Whole-receipt totals are not product spending. Keep
     separate comparison filters separate; they may overlap.
+11. For lowest/highest receipt totals, use receipt_total_extrema for the
+    matching scope and cite its representative_receipt. Never infer a receipt
+    minimum/maximum from monthly totals or a bounded receipt sample. Distinguish
+    negative refunds from purchases; minimum_nonnegative includes zero. If no
+    exact matching extrema are available, qualify the comparison as sampled.
+    When receipt_total_extrema.excluded_outlier_count is positive, describe the
+    maximum as "largest among accepted receipts" and disclose the excluded
+    count/range. Flagged receipts require review; the overall largest purchase
+    is not confirmed. Do not restore their values into accepted totals.
+12. Respect amount_coverage and scope_note: explicitly call nonexhaustive
+    product totals subtotals from retrieved receipts, not total corpus spending.
+    Disclose ambiguous OCR row exclusions; these prices cannot be assigned to
+    the named product. If all_matches_ambiguous is true, report spending as
+    unavailable rather than $0. If no amounts matched and no ambiguous rows
+    were excluded, say no matching amounts were found in the retrieved scope.
+    Do not reuse excluded prices from Agent Analysis
+    or receipt evidence. Do not assert a year/date scope unless that amount
+    scope was actually date-filtered; receipt-summary dates alone do not filter
+    independent product aggregates.
 
 ## Evidence Format
 Include evidence array with:
@@ -251,6 +277,64 @@ def create_plan_node(llm: Any) -> Callable:
 # ==============================================================================
 
 
+def _compact_aggregate_messages(messages: list) -> list:
+    """Copy known aggregate tool messages into a lossless provider view.
+
+    One local note registry serves this invocation only. Original messages,
+    tool contracts, and complete retained evidence are never changed.
+    """
+    shared_notes: list[str] = []
+    copied = []
+    tool_names = {
+        call["id"]: call["name"]
+        for message in messages
+        if isinstance(message, AIMessage)
+        for call in message.tool_calls
+    }
+    for message in messages:
+        name = (
+            message.name or tool_names.get(message.tool_call_id)
+            if isinstance(message, ToolMessage)
+            else None
+        )
+        if name in (
+            "get_receipt_summaries",
+            "aggregate_amounts",
+        ) and isinstance(message.content, str):
+            try:
+                result = json.loads(message.content)
+            except (TypeError, ValueError):
+                result = None
+            if isinstance(result, dict) and "error" not in result:
+                message = message.model_copy(
+                    update={
+                        "content": json.dumps(
+                            compact_aggregate_notes(result, shared_notes),
+                            ensure_ascii=False,
+                            default=str,
+                            separators=(",", ":"),
+                        )
+                    }
+                )
+        copied.append(message)
+    if shared_notes:
+        note_context = "\n\nAggregate context references:\n" + json.dumps(
+            {
+                "compact_context_note": COMPACT_AGGREGATE_NOTE,
+                "shared_notes": shared_notes,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        if copied and isinstance(copied[0], SystemMessage):
+            copied[0] = copied[0].model_copy(
+                update={"content": copied[0].content + note_context}
+            )
+        else:
+            copied.insert(0, SystemMessage(content=note_context))
+    return copied
+
+
 def create_agent_node(
     llm: Any,
     tools: list,
@@ -262,7 +346,7 @@ def create_agent_node(
 
     def agent_node(state: QAState) -> dict:
         """Call the LLM to decide next action with classification context."""
-        messages = list(state.messages)
+        messages = _compact_aggregate_messages(state.messages)
 
         # Include classification in context if available
         if state.classification:
@@ -275,8 +359,10 @@ def create_agent_node(
             )
             # Append to system message if present
             if messages and isinstance(messages[0], SystemMessage):
-                messages[0] = SystemMessage(
-                    content=messages[0].content + classification_context
+                messages[0] = messages[0].model_copy(
+                    update={
+                        "content": messages[0].content + classification_context
+                    }
                 )
 
         # Add context about what's been searched (helps avoid redundant searches)
@@ -292,8 +378,8 @@ def create_agent_node(
 
             # Append to system message if present
             if messages and isinstance(messages[0], SystemMessage):
-                messages[0] = SystemMessage(
-                    content=messages[0].content + context_msg
+                messages[0] = messages[0].model_copy(
+                    update={"content": messages[0].content + context_msg}
                 )
 
         # Retry up to 3 times if we get an empty response
@@ -363,6 +449,8 @@ def create_agent_node(
 def _extract_line_items_from_structured(
     words_by_line: dict[int, list[dict]],
     amounts: list[dict],
+    *,
+    excluded_line_idxs: set[int] | None = None,
 ) -> list[AmountItem]:
     """Extract product-price pairs from structured word/label data.
 
@@ -373,6 +461,7 @@ def _extract_line_items_from_structured(
     For each LINE_TOTAL or UNIT_PRICE, collects PRODUCT_NAME words on the same line.
     """
     line_items: list[AmountItem] = []
+    excluded_line_idxs = excluded_line_idxs or set()
 
     # Process each amount that's a line item price
     for amt in amounts:
@@ -385,7 +474,7 @@ def _extract_line_items_from_structured(
             continue
 
         line_idx = amt.get("line_idx")
-        if line_idx is None:
+        if line_idx is None or line_idx in excluded_line_idxs:
             continue
 
         # Get all words on this line
@@ -443,6 +532,25 @@ def _extract_line_items_from_structured(
     return line_items
 
 
+def _ambiguous_product_lines(state_holder: dict) -> dict[tuple, set[int]]:
+    """Identify rows rejected by an actual text-filtered product query.
+
+    Raw receipts and complete aggregates remain intact. Only the shaped
+    product-price assertions and their citations exclude these uncertain rows.
+    An unfiltered-only query keeps its existing receipt evidence.
+    """
+    excluded: dict[tuple, set[int]] = {}
+    for aggregate in state_holder.get("amount_aggregates", []):
+        if not aggregate.get("filter_text") or aggregate.get("label_type") != (
+            "LINE_TOTAL"
+        ):
+            continue
+        for row in aggregate.get("excluded_ambiguous_lines", []):
+            key = (row.get("image_id"), row.get("receipt_id"))
+            excluded.setdefault(key, set()).add(row["line_idx"])
+    return excluded
+
+
 def create_shape_node(state_holder: dict) -> Callable:
     """Create the context shaping node.
 
@@ -462,6 +570,7 @@ def create_shape_node(state_holder: dict) -> Callable:
         """
         retrieved_receipts = state_holder.get("retrieved_receipts", [])
         summary_receipts = state_holder.get("summary_receipts", [])
+        ambiguous_product_lines = _ambiguous_product_lines(state_holder)
 
         logger.info(
             "Shaping %d detail + %d summary receipts",
@@ -499,7 +608,9 @@ def create_shape_node(state_holder: dict) -> Callable:
                     tax = amount_value
 
             line_items = _extract_line_items_from_structured(
-                words_by_line, amounts
+                words_by_line,
+                amounts,
+                excluded_line_idxs=ambiguous_product_lines.get(key),
             )
 
             labels_found = set()
@@ -694,12 +805,9 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
 
         # Extract agent's reasoning from the last AIMessage
         agent_reasoning = ""
-        completed_agent_answer = ""
         for msg in reversed(state.messages):
             if isinstance(msg, AIMessage) and msg.content:
                 agent_reasoning = str(msg.content)
-                if not msg.tool_calls:
-                    completed_agent_answer = agent_reasoning
                 break
 
         # All summaries reach synthesis, but only a bounded evidence page
@@ -744,10 +852,27 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
                     "are not product spending or an exhaustive corpus scan."
                 ),
             }
+            # Search-fetched baskets are an unvetted sample. Their extrema
+            # cannot support an exact purchase comparison or priority citation.
+            context["retained_basket_totals"].pop("receipt_total_extrema")
             context["coverage_note"] += (
                 " retained_basket_totals covers the deduplicated union of "
                 "retrieved baskets, not necessarily the question's scope."
             )
+
+        # Remove duplicate wording and identical extrema before sacrificing
+        # any receipt evidence or monthly rows to the provider budget.
+        shared_notes: list[str] = []
+        context["precomputed_aggregates"] = [
+            compact_aggregate_notes(aggregate, shared_notes)
+            for aggregate in context["precomputed_aggregates"]
+        ]
+        context["amount_aggregations"] = [
+            compact_aggregate_notes(aggregate, shared_notes)
+            for aggregate in context["amount_aggregations"]
+        ]
+        context["shared_notes"] = shared_notes
+        context["compact_context_note"] = COMPACT_AGGREGATE_NOTE
 
         # Build synthesis prompt
         agent_section = ""
@@ -755,7 +880,12 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
             agent_section = f"Agent Analysis:\n{agent_reasoning}\n\n"
 
         def synthesis_messages() -> list:
-            context_str = json.dumps(context, ensure_ascii=False, default=str)
+            context_str = json.dumps(
+                context,
+                ensure_ascii=False,
+                default=str,
+                separators=(",", ":"),
+            )
             return [
                 SystemMessage(
                     content=SYNTHESIZE_SYSTEM_PROMPT + build_date_context()
@@ -775,14 +905,16 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
             # Preserve totals/filters for EVERY scope. Only optional audit
             # rows and period breakdowns are removed, with explicit coverage.
             context["receipt_evidence"] = receipt_evidence_view(rows, limit=0)
+            breakdown_note_ref = len(shared_notes)
+            shared_notes.append(
+                "Period rows omitted to fit context. Exact totals, "
+                "averages, filters and date coverage remain complete."
+            )
             for aggregate in context["precomputed_aggregates"]:
                 aggregate["monthly_spending"] = []
                 aggregate["weekday_spending"] = []
                 aggregate["month_coverage"]["returned_groups"] = 0
-                aggregate["breakdown_note"] = (
-                    "Period rows omitted to fit context. Exact totals, "
-                    "averages, filters and date coverage remain complete."
-                )
+                aggregate["breakdown_note_ref"] = breakdown_note_ref
             for aggregate in context["amount_aggregations"]:
                 aggregate["breakdown"] = []
                 aggregate["breakdown_coverage"]["returned_count"] = 0
@@ -795,10 +927,9 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
         try:
             ensure_context_budget(messages)
         except QAContextBudgetExceeded:
-            # Do not turn an already completed agent answer into an error.
-            # When there is no completed answer, disclose the remaining limit
-            # rather than selecting an arbitrary scope or misreporting totals.
-            answer_text = completed_agent_answer or (
+            # Agent prose may contain the unsupported conclusion these exact
+            # facts were meant to correct. Never reuse it without synthesis.
+            answer_text = (
                 f"I retrieved evidence for {len(summaries)} receipts, but "
                 "the question still spans too much evidence for one answer. "
                 "Please narrow the merchant, product, or date range. "
@@ -818,7 +949,45 @@ def create_synthesize_node(llm: Any, state_holder: dict) -> Callable:
             total_amount = aggregated.get("total")
 
         # Build evidence from structured summaries
-        evidence = build_evidence(summaries)
+        # Keep exact extreme receipts available as citations even when their
+        # identities fall beyond the normal 200-receipt evidence page.
+        evidence_scopes = state_holder.get("aggregates", [])
+        priority_keys = set()
+        for scope in evidence_scopes:
+            extrema = scope.get("receipt_total_extrema", {})
+            for name in ("minimum", "minimum_nonnegative", "maximum"):
+                extreme = extrema.get(name)
+                if extreme:
+                    receipt = extreme["representative_receipt"]
+                    priority_keys.add(
+                        (receipt["image_id"], receipt["receipt_id"])
+                    )
+        ambiguous_product_lines = _ambiguous_product_lines(state_holder)
+        accepted_receipt_keys = {
+            (receipt["image_id"], receipt["receipt_id"])
+            for receipt in state_holder.get("summary_receipts", [])
+        }
+        # An unresolved product row does not invalidate a separately vetted
+        # receipt total. Preserve extrema citations as receipt-level evidence.
+        evidence_summaries = [
+            summary
+            for summary in summaries
+            if summary.line_items
+            or (summary.image_id, summary.receipt_id) in priority_keys
+            or (summary.image_id, summary.receipt_id) in accepted_receipt_keys
+            or (summary.image_id, summary.receipt_id)
+            not in ambiguous_product_lines
+        ]
+        evidence = build_evidence(
+            sorted(
+                evidence_summaries,
+                key=lambda summary: (
+                    summary.image_id,
+                    summary.receipt_id,
+                )
+                not in priority_keys,
+            )
+        )
         evidence_coverage = {
             "total_receipts": len(summaries),
             "cited_receipts": len(

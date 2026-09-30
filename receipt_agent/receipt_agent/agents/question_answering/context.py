@@ -15,6 +15,12 @@ MAX_SUMMARY_ROWS = 20
 MAX_MONTH_ROWS = 60
 MAX_EVIDENCE_BYTES = 12_000
 MAX_TOOL_LIST_BYTES = 3_000
+COMPACT_AGGREGATE_NOTE = (
+    "Fields ending in note_ref index shared_notes. An extrema same_as entry "
+    "has exactly the same amount, tie count and representative receipt as "
+    "the named sibling entry. These references only remove duplicate text "
+    "and identical extrema; all scope facts remain exact."
+)
 
 
 class QAContextBudgetExceeded(ValueError):
@@ -90,11 +96,106 @@ def _totals(rows: list[dict]) -> dict:
     }
 
 
+def receipt_total_extrema(
+    rows: list[dict], *, excluded_outliers: list[dict] | None = None
+) -> dict:
+    """Keep exact extrema and one stable receipt per value, including ties.
+
+    This is separate from period totals: a small monthly sum does not identify
+    the cheapest receipt. Negative refunds remain in signed extrema, while the
+    nonnegative minimum also supports purchase comparisons without refunds.
+    """
+    extrema: dict[str, dict | None] = {
+        "minimum": None,
+        "minimum_nonnegative": None,
+        "maximum": None,
+    }
+    for row in rows:
+        amount = _decimal(row.get("grand_total"))
+        if amount is None:
+            continue
+        key = (str(row.get("image_id", "")), str(row.get("receipt_id", "")))
+        for name, previous in extrema.items():
+            if name == "minimum_nonnegative" and amount < 0:
+                continue
+            better = previous is None or (
+                amount > previous["value"]
+                if name == "maximum"
+                else amount < previous["value"]
+            )
+            if better:
+                extrema[name] = {
+                    "value": amount,
+                    "count": 1,
+                    "key": key,
+                    "row": row,
+                }
+            elif amount == previous["value"]:
+                previous["count"] += 1
+                if key < previous["key"]:
+                    previous["key"] = key
+                    previous["row"] = row
+
+    result: dict[str, Any] = {}
+    for name, extreme in extrema.items():
+        if extreme is None:
+            result[name] = None
+            continue
+        row = extreme["row"]
+        receipt = {
+            "image_id": row.get("image_id"),
+            "receipt_id": row.get("receipt_id"),
+            "grand_total": _money(extreme["value"]),
+            "date": row.get("effective_date") or row.get("date"),
+            "date_source": row.get("date_source"),
+        }
+        merchant = row.get("merchant_name") or row.get("merchant")
+        if len(str(merchant).encode("utf-8")) <= 512:
+            receipt["merchant"] = merchant
+        else:
+            receipt["merchant_omitted"] = (
+                "Exceeds display budget; retained in state."
+            )
+        result[name] = {
+            "amount": _money(extreme["value"]),
+            "matching_receipts": extreme["count"],
+            "representative_receipt": receipt,
+        }
+    result["population"] = "accepted_receipts"
+    result["excluded_outlier_count"] = len(excluded_outliers or [])
+    if excluded_outliers:
+        excluded = [
+            amount
+            for row in excluded_outliers
+            if (amount := _decimal(row.get("grand_total"))) is not None
+        ]
+        result["excluded_outlier_range"] = {
+            "minimum_total": _money(min(excluded)) if excluded else None,
+            "maximum_total": _money(max(excluded)) if excluded else None,
+            "note": (
+                "Flagged by the existing OCR-outlier heuristic; not confirmed "
+                "errors. These receipts are excluded from accepted extrema "
+                "and spending totals and require review."
+            ),
+        }
+    result["note"] = (
+        "Exact receipt grand-total extrema among accepted receipts in this scope, "
+        "not product prices or monthly totals. Missing/invalid totals are "
+        "excluded. Minimum and maximum include negative refunds; "
+        "minimum_nonnegative excludes negative totals and includes zero. "
+        "Each value retains one stable receipt; matching_receipts counts ties. "
+        "When excluded_outlier_count is positive, the maximum is only the "
+        "largest among accepted receipts, not all matching purchases."
+    )
+    return result
+
+
 def aggregate_receipts(
     rows: list[dict],
     *,
     start_date: str | None = None,
     end_date: str | None = None,
+    excluded_outliers: list[dict] | None = None,
 ) -> dict:
     """Aggregate every receipt using decimal arithmetic, including refunds.
 
@@ -145,6 +246,9 @@ def aggregate_receipts(
     )
     return {
         **_totals(rows),
+        "receipt_total_extrema": receipt_total_extrema(
+            rows, excluded_outliers=excluded_outliers
+        ),
         "date_coverage": {
             "first_date": first,
             "last_date": last,
@@ -204,6 +308,45 @@ def aggregate_view(aggregate: dict, month_offset: int = 0) -> dict:
         "next_offset": next_offset if next_offset < len(months) else None,
         "note": "All totals and averages include all groups, across pages.",
     }
+    return result
+
+
+def compact_aggregate_notes(aggregate: dict, shared_notes: list[str]) -> dict:
+    """Deduplicate explanatory text and identical extrema without losing facts.
+
+    The returned view owns every nested object; retained scope data is never
+    mutated. Note references index the synthesis context's shared_notes list.
+    Extrema aliases reference another entry in the same receipt_total_extrema.
+    """
+
+    def compact(value: Any) -> Any:
+        if isinstance(value, list):
+            return [compact(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        result = {}
+        for key, item in value.items():
+            if (key == "note" or key.endswith("_note")) and isinstance(
+                item, str
+            ):
+                if item not in shared_notes:
+                    shared_notes.append(item)
+                result[f"{key}_ref"] = shared_notes.index(item)
+            else:
+                result[key] = compact(item)
+        return result
+
+    result = compact(aggregate)
+    extrema = result.get("receipt_total_extrema", {})
+    originals = dict(extrema)
+    names = ("minimum", "minimum_nonnegative", "maximum")
+    for index, name in enumerate(names):
+        if originals.get(name) is None:
+            continue
+        for earlier in names[:index]:
+            if originals[name] == originals.get(earlier):
+                extrema[name] = {"same_as": earlier}
+                break
     return result
 
 
@@ -283,7 +426,13 @@ def amount_aggregate_view(aggregate: dict) -> dict:
     result = {
         key: value
         for key, value in aggregate.items()
-        if key not in ("breakdown", "excluded_outliers", "source_receipts")
+        if key
+        not in (
+            "breakdown",
+            "excluded_outliers",
+            "excluded_ambiguous_lines",
+            "source_receipts",
+        )
     }
     breakdown = aggregate.get("breakdown", [])
     sample, _ = bounded_rows(breakdown, limit=5)
@@ -293,10 +442,36 @@ def amount_aggregate_view(aggregate: dict) -> dict:
         "returned_count": len(sample),
         "note": (
             "Only the audit rows are sampled. The filtered total and count "
-            "include every matching amount in the retrieved receipt scope. "
+            "include every unambiguous matching amount in the retrieved "
+            "receipt scope after disclosed exclusions. "
             "Whole-receipt totals must not substitute for this item total."
         ),
     }
+    excluded = aggregate.get("excluded_ambiguous_lines", [])
+    if excluded:
+        samples = [
+            {
+                "image_id": row.get("image_id"),
+                "receipt_id": row.get("receipt_id"),
+                "line_idx": row.get("line_idx"),
+                "amounts": [
+                    amount.get("amount") for amount in row["amounts"][:5]
+                ],
+                "total_amount_count": len(row["amounts"]),
+                "returned_amount_count": min(5, len(row["amounts"])),
+            }
+            for row in excluded[:5]
+        ]
+        sample, _ = bounded_rows(samples, limit=5)
+        result["excluded_ambiguous_line_sample"] = sample
+        result["excluded_ambiguous_line_coverage"] = {
+            "total_count": len(excluded),
+            "returned_count": len(sample),
+            "note": (
+                "These prices are excluded, not confirmed product spending. "
+                "Full excluded rows and all prices remain in state."
+            ),
+        }
     return result
 
 
