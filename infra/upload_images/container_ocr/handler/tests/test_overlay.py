@@ -15,6 +15,7 @@ import importlib
 import json
 import sys
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -87,6 +88,22 @@ def _make_word(
         extracted_data=extracted_data,
         **g,
     )
+
+
+def _reused_target_words(
+    split_fragment: bool,
+) -> tuple[list[ReceiptWord], list[ReceiptWord]]:
+    """Synthetic counterexamples for duplicate/split correspondence only."""
+    old = _make_word(text="3.15", x=0.8, y=0.6, w=0.1, h=0.03)
+    first = _make_word(text="3.15", x=0.8, y=0.6, w=0.1, h=0.03)
+    if split_fragment:
+        fragment = _make_word(
+            text="15", x=0.87, y=0.6, w=0.03, h=0.03, word_id=2
+        )
+        return [old], [first, fragment]
+    neighbor = _make_word(text="9.99", x=0.8, y=0.58, w=0.1, h=0.03, line_id=2)
+    duplicate = _make_word(text="3.15", x=0.8, y=0.6, w=0.1, h=0.03, word_id=2)
+    return [old, neighbor], [first, duplicate]
 
 
 def _make_line(
@@ -434,6 +451,52 @@ class TestBboxCenterX:
 
 
 class TestMatchRegionalWords:
+    @pytest.mark.parametrize(
+        "old_text,new_text",
+        [
+            ("1", "$3.15"),
+            ("Poly", "$0.00"),
+            ("$3.15", "LG"),
+        ],
+    )
+    def test_disjoint_columns_never_match(self, old_text, new_text):
+        proc = _make_processor()
+        old = _make_word(text=old_text, x=0.02, y=0.6, w=0.04, h=0.02)
+        new = _make_word(text=new_text, x=0.86, y=0.6, w=0.11, h=0.02)
+        assert proc._match_regional_words([new], [old]) == []
+
+    @pytest.mark.parametrize(
+        "old_text,new_text",
+        [
+            ("1", "$3.15"),
+            ("Poly", "$0.00"),
+            ("$3.15", "LG"),
+        ],
+    )
+    def test_overlapping_but_incompatible_word_types_abstain(
+        self, old_text, new_text
+    ):
+        proc = _make_processor()
+        old = _make_word(text=old_text, x=0.8, y=0.6, w=0.1, h=0.02)
+        new = _make_word(text=new_text, x=0.8, y=0.6, w=0.1, h=0.02)
+        assert proc._match_regional_words([new], [old]) == []
+
+    @pytest.mark.parametrize(
+        "old_text,new_text",
+        [
+            ("4.89", "1.89"),
+            ("579199", "579.99"),
+            ("MILK", "M1LK"),
+        ],
+    )
+    def test_shifted_compatible_corrections_remain_matchable(
+        self, old_text, new_text
+    ):
+        proc = _make_processor()
+        old = _make_word(text=old_text, x=0.8, y=0.6, w=0.1, h=0.03)
+        new = _make_word(text=new_text, x=0.82, y=0.605, w=0.09, h=0.025)
+        assert proc._match_regional_words([new], [old]) == [(new, old)]
+
     def test_one_to_one(self):
         """Each new word matches exactly one existing word."""
         proc = _make_processor()
@@ -469,6 +532,85 @@ class TestMatchRegionalWords:
         )
         matches = proc._match_regional_words([new1, new2], [old])
         assert len(matches) == 1
+
+    def test_equivalent_original_candidates_require_review(self):
+        proc = _make_processor()
+        new = _make_word(text="4.99", x=0.8, y=0.1, w=0.1, h=0.05)
+        old1 = _make_word(text="4.99", x=0.8, y=0.1, w=0.1, h=0.05)
+        old2 = _make_word(text="9.99", x=0.8, y=0.1, w=0.1, h=0.05, word_id=2)
+        matches, ambiguous = proc._regional_match_plan([new], [old1, old2])
+        assert matches == []
+        assert ambiguous is True
+
+    @pytest.mark.parametrize(
+        "positions",
+        [
+            [0.800000001, 0.8],
+            [0.8, 0.800000001],
+            [0.800000003, 0.8000000015, 0.8],
+            [0.8, 0.8000000015, 0.800000003],
+        ],
+    )
+    def test_near_tie_is_independent_of_candidate_order(self, positions):
+        proc = _make_processor()
+        new = _make_word(text="4.99", x=0.8, y=0.1, w=0.1, h=0.05)
+        old = [
+            _make_word(text="4.99", x=x, y=0.1, w=0.1, h=0.05, word_id=i)
+            for i, x in enumerate(positions, 1)
+        ]
+        matches, ambiguous = proc._regional_match_plan([new], old)
+        assert matches == []
+        assert ambiguous is True
+
+    @pytest.mark.parametrize("split_fragment", [False, True])
+    @pytest.mark.parametrize("reverse_old", [False, True])
+    @pytest.mark.parametrize("reverse_new", [False, True])
+    def test_reused_target_is_ambiguous_before_matching_or_appending(
+        self, split_fragment, reverse_old, reverse_new
+    ):
+        proc = _make_processor()
+        old, new = _reused_target_words(split_fragment)
+        target = old[0]
+        if reverse_old:
+            old.reverse()
+        if reverse_new:
+            new.reverse()
+
+        matches, ambiguous = proc._regional_match_plan(new, old)
+
+        assert ambiguous is True
+        assert len(matches) == 1
+        assert matches[0][1] is target
+
+    @pytest.mark.parametrize(
+        "text,x,y,w",
+        [
+            ("3.15", 0.8, 0.58, 0.1),  # Overlapping neighboring row.
+            ("3.15", 0.88, 0.6, 0.1),  # Overlapping neighboring column.
+            ("15", 0.88, 0.6, 0.03),  # Distinct quantity beside an amount.
+        ],
+    )
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_stronger_distinct_target_survives_consumed_overlap(
+        self, text, x, y, w, reverse
+    ):
+        proc = _make_processor()
+        old = [
+            _make_word(text="3.15", x=0.8, y=0.6, w=0.1, h=0.03),
+            _make_word(text=text, x=x, y=y, w=w, h=0.03, line_id=2),
+        ]
+        new = deepcopy(old)
+        if reverse:
+            old.reverse()
+            new.reverse()
+
+        matches, ambiguous = proc._regional_match_plan(new, old)
+
+        assert ambiguous is False
+        assert len(matches) == 2
+        assert all(
+            fresh.line_id == target.line_id for fresh, target in matches
+        )
 
     def test_x_preference(self):
         """When y-overlap is equal, closer x-center is preferred."""
@@ -657,7 +799,7 @@ class TestCandidateSelection:
         """Both labeled and unlabeled words in the region are candidates."""
         proc = _make_processor()
         unlabeled_word = _make_word(
-            text="W", x=0.80, y=0.1, w=0.1, h=0.05, line_id=3, word_id=1
+            text="98.99", x=0.80, y=0.1, w=0.1, h=0.05, line_id=3, word_id=1
         )
         # Label exists but for a word outside the region
         label = SimpleNamespace(line_id=99, word_id=99)
@@ -774,6 +916,89 @@ class TestUnmatchedWordAddition:
         assert added[0].line_id == 1
         assert added[0].word_id == 2  # existing max=1, so next=2
 
+    def test_unsafe_correspondence_cannot_fall_through_to_delete_and_append(
+        self,
+    ):
+        proc = _make_processor()
+        old = _make_word(text="1", x=0.02, y=0.6, w=0.04, h=0.02)
+        new = _make_word(text="$3.15", x=0.86, y=0.6, w=0.11, h=0.02)
+        result = self._run_overlay(proc, [old], [new])
+        assert result["success"] is False
+        assert "ambiguous" in result["error"].lower()
+        assert old.text == "1"
+        for method in (
+            "add_receipt_words",
+            "update_receipt_words",
+            "delete_receipt_words",
+            "update_receipt_lines",
+            "remove_receipt_letters",
+            "put_receipt_letters",
+            "update_receipt_word_labels",
+            "delete_receipt_word_labels",
+        ):
+            getattr(proc.dynamo, method).assert_not_called()
+
+    def test_duplicate_fresh_price_cannot_be_appended_after_match_consumption(
+        self,
+    ):
+        proc = _make_processor()
+        old = _make_word(text="3.15", x=0.8, y=0.6, w=0.1, h=0.02)
+        first = _make_word(text="3.15", x=0.8, y=0.6, w=0.1, h=0.02)
+        duplicate = _make_word(
+            text="3.15", x=0.8, y=0.6, w=0.1, h=0.02, word_id=2
+        )
+        result = self._run_overlay(proc, [old], [first, duplicate])
+        assert result["success"] is False
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("split_fragment", [False, True])
+    def test_reused_target_aborts_overlay_without_receipt_content_writes(
+        self, split_fragment
+    ):
+        proc = _make_processor()
+        old, new = _reused_target_words(split_fragment)
+        labels = [_make_label(line_id=word.line_id) for word in old]
+        old_before, labels_before = deepcopy((old, labels))
+        with patch(
+            "handler.ocr_processor.dynamo_embedding_write.write_native_embeddings",
+            return_value={},
+        ) as write_embeddings:
+            result = self._run_overlay(proc, old, new, labels=labels)
+
+        assert result["success"] is False
+        assert "ambiguous" in result["error"].lower()
+        assert old == old_before
+        assert labels == labels_before
+        assert all(
+            line.text == "placeholder"
+            for line in proc.dynamo.list_receipt_lines_from_receipt.return_value
+        )
+        for method in (
+            "add_receipt_words",
+            "update_receipt_words",
+            "delete_receipt_words",
+            "update_receipt_lines",
+            "remove_receipt_letters",
+            "put_receipt_letters",
+            "update_receipt_word_labels",
+            "delete_receipt_word_labels",
+        ):
+            getattr(proc.dynamo, method).assert_not_called()
+        write_embeddings.assert_not_called()
+
+    def test_distinct_neighboring_prices_still_complete_overlay(self):
+        proc = _make_processor()
+        old, _ = _reused_target_words(split_fragment=False)
+        new = deepcopy(old)
+        result = self._run_overlay(proc, old, new)
+
+        assert result["success"] is True
+        assert [word.text for word in old] == ["3.15", "9.99"]
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
     def test_unmatched_word_no_overlap_skipped(self):
         """A new word with no Y-overlap to any line is skipped."""
         proc = _make_processor()
@@ -840,11 +1065,21 @@ class TestUnmatchedWordAddition:
             text="8.68", x=0.85, y=0.5, w=0.1, h=0.05, line_id=1, word_id=1
         )
 
-        self._run_overlay(proc, [existing], [new_word])
+        new_name = _make_word(
+            text="ADJUSTABLE",
+            x=0.1,
+            y=0.5,
+            w=0.2,
+            h=0.05,
+            line_id=1,
+            word_id=2,
+        )
+        self._run_overlay(proc, [existing], [new_name, new_word])
 
         assert proc.dynamo.update_receipt_lines.called
         updated_lines = proc.dynamo.update_receipt_lines.call_args[0][0]
         assert any("8.68" in line.text for line in updated_lines)
+        assert any("ADJUSTABLE" in line.text for line in updated_lines)
 
     def test_changed_word_label_reset_to_pending(self):
         """When re-OCR changes word text, attached labels need revalidation."""
@@ -1520,7 +1755,7 @@ class TestWriteOrdering:
 
 
 class TestIsNoiseRecomputation:
-    def _run_overlay_with_text(self, proc, new_text):
+    def _run_overlay_with_text(self, proc, new_text, old_text="OLD"):
         ocr_job = SimpleNamespace(
             job_id=_IMG_ID,
             image_id="00000000-0000-4000-8000-000000000001",
@@ -1538,7 +1773,7 @@ class TestIsNoiseRecomputation:
         )
 
         existing_w = _make_word(
-            text="OLD", x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
+            text=old_text, x=0.80, y=0.1, w=0.1, h=0.05, line_id=1, word_id=1
         )
         proc.dynamo.list_receipt_words_from_receipt.return_value = [existing_w]
         proc.dynamo.list_receipt_word_labels_for_receipt.return_value = (
@@ -1617,7 +1852,7 @@ class TestIsNoiseRecomputation:
     def test_normal_text_clears_noise(self):
         """Normal text like '99.99' should not be flagged as noise."""
         proc = _make_processor()
-        self._run_overlay_with_text(proc, "99.99")
+        self._run_overlay_with_text(proc, "99.99", old_text="98.99")
         updated = proc.dynamo.update_receipt_words.call_args[0][0]
         assert updated[0].is_noise is False
 
