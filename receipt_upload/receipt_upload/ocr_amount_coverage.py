@@ -130,6 +130,13 @@ def _has_unpriced_name(
     return (
         bool(re.search(r"[A-Za-z]{2}", text))
         and not is_settlement_row(bare)
+        # Match the whole summary label so product names containing "tax"
+        # remain eligible (for example, "SALES TAX GUIDE").
+        and not re.fullmatch(
+            r"(?:sales\s+)?tax(?:\s+(?:total|amount|included))?",
+            bare,
+            re.IGNORECASE,
+        )
         and not NON_PAYMENT_SUMMARY_RE.search(text)
         and not NON_PRODUCT_NOTE_RE.search(text)
         and not re.fullmatch(

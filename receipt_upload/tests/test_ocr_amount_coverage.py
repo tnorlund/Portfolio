@@ -130,6 +130,63 @@ def test_missing_amount_needs_unpriced_product_context(text):
     assert detect(zone=[name(text)]) is None
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Tax Amount",
+        "TAX TOTAL",
+        "Tax Included",
+        "Sales Tax Amount",
+        "Sales Tax Total",
+        "Sales Tax Included",
+        "Tax Amount (8.25%)",
+        "Sales Tax Included: 8.25%",
+    ],
+)
+def test_tax_summary_labels_are_not_lost_product_amounts(text: str) -> None:
+    # Constructed safety counterexamples: a coincidental exact subtotal gap
+    # must not turn a missing tax amount into product-price loss evidence.
+    assert detect(zone=[name(text)]) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "TAX PREP SOFTWARE",
+        "SALES TAX GUIDE",
+        "TAX AMOUNT WORKBOOK",
+        "TAX INCLUDED COFFEE",
+        "TAX FREE BAG",
+        "STEAK TIPS",
+    ],
+)
+def test_product_names_containing_summary_words_remain_eligible(
+    text: str,
+) -> None:
+    found = detect(zone=[name(text)])
+    assert found is not None
+    assert found.amount == 2.5
+
+
+@pytest.mark.parametrize(
+    "tokens,is_product",
+    [
+        (["Sales", "Tax", "Included:", "8.25%"], False),
+        (["SALES", "TAX", "GUIDE"], True),
+    ],
+)
+def test_split_tax_labels_use_full_row_context(
+    tokens: list[str], is_product: bool
+) -> None:
+    zone = [
+        {**name(text), "x": 0.1 + index * 0.1}
+        for index, text in enumerate(tokens)
+    ]
+    # Input order may differ from the left-to-right order on the receipt.
+    found = detect(zone=list(reversed(zone)))
+    assert (found is not None) is is_product
+
+
 def test_no_product_context_is_not_enough_evidence():
     assert detect(zone=[]) is None
     assert detect(zone=[name(y=0.4)]) is None
