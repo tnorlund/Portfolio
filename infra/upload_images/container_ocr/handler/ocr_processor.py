@@ -739,24 +739,36 @@ class OCRProcessor:
             ):
                 ambiguous = True
                 continue
-            if best_idx is None:
-                # A duplicate/split observation cannot become an appended
-                # word merely because its original was consumed earlier.
-                reuses_target = any(
-                    self._y_overlap_ratio(
-                        new_word.bounding_box, old.bounding_box
-                    )
-                    >= 0.15
-                    and self._x_overlap_ratio(
-                        new_word.bounding_box, old.bounding_box
-                    )
-                    >= 0.15
-                    and self._regional_types_compatible(
-                        new_word.text, old.text
-                    )
-                    for _, old in matches
+            # Compare consumed targets even when an unused candidate exists:
+            # a duplicate must not steal a weaker neighboring match. Use
+            # geometry alone here, since a split can change lexical class
+            # (e.g. an amount's trailing "15" becomes quantity-like).
+            reuses_target = False
+            for _, old in matches:
+                overlap = self._y_overlap_ratio(
+                    new_word.bounding_box, old.bounding_box
                 )
-                ambiguous = ambiguous or rejected_candidate or reuses_target
+                if (
+                    overlap < 0.15
+                    or self._x_overlap_ratio(
+                        new_word.bounding_box, old.bounding_box
+                    )
+                    < 0.15
+                ):
+                    continue
+                x_distance = abs(
+                    self._bbox_center_x(new_word.bounding_box)
+                    - self._bbox_center_x(old.bounding_box)
+                )
+                score = overlap - (0.5 * x_distance)
+                if best_idx is None or score >= best_score - 1e-9:
+                    reuses_target = True
+                    break
+            if reuses_target:
+                ambiguous = True
+                continue
+            if best_idx is None:
+                ambiguous = ambiguous or rejected_candidate
                 continue
 
             old_word = remaining.pop(best_idx)

@@ -15,6 +15,7 @@ import importlib
 import json
 import sys
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -87,6 +88,22 @@ def _make_word(
         extracted_data=extracted_data,
         **g,
     )
+
+
+def _reused_target_words(
+    split_fragment: bool,
+) -> tuple[list[ReceiptWord], list[ReceiptWord]]:
+    """Synthetic counterexamples for duplicate/split correspondence only."""
+    old = _make_word(text="3.15", x=0.8, y=0.6, w=0.1, h=0.03)
+    first = _make_word(text="3.15", x=0.8, y=0.6, w=0.1, h=0.03)
+    if split_fragment:
+        fragment = _make_word(
+            text="15", x=0.87, y=0.6, w=0.03, h=0.03, word_id=2
+        )
+        return [old], [first, fragment]
+    neighbor = _make_word(text="9.99", x=0.8, y=0.58, w=0.1, h=0.03, line_id=2)
+    duplicate = _make_word(text="3.15", x=0.8, y=0.6, w=0.1, h=0.03, word_id=2)
+    return [old, neighbor], [first, duplicate]
 
 
 def _make_line(
@@ -545,6 +562,56 @@ class TestMatchRegionalWords:
         assert matches == []
         assert ambiguous is True
 
+    @pytest.mark.parametrize("split_fragment", [False, True])
+    @pytest.mark.parametrize("reverse_old", [False, True])
+    @pytest.mark.parametrize("reverse_new", [False, True])
+    def test_reused_target_is_ambiguous_before_matching_or_appending(
+        self, split_fragment, reverse_old, reverse_new
+    ):
+        proc = _make_processor()
+        old, new = _reused_target_words(split_fragment)
+        target = old[0]
+        if reverse_old:
+            old.reverse()
+        if reverse_new:
+            new.reverse()
+
+        matches, ambiguous = proc._regional_match_plan(new, old)
+
+        assert ambiguous is True
+        assert len(matches) == 1
+        assert matches[0][1] is target
+
+    @pytest.mark.parametrize(
+        "text,x,y,w",
+        [
+            ("3.15", 0.8, 0.58, 0.1),  # Overlapping neighboring row.
+            ("3.15", 0.88, 0.6, 0.1),  # Overlapping neighboring column.
+            ("15", 0.88, 0.6, 0.03),  # Distinct quantity beside an amount.
+        ],
+    )
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_stronger_distinct_target_survives_consumed_overlap(
+        self, text, x, y, w, reverse
+    ):
+        proc = _make_processor()
+        old = [
+            _make_word(text="3.15", x=0.8, y=0.6, w=0.1, h=0.03),
+            _make_word(text=text, x=x, y=y, w=w, h=0.03, line_id=2),
+        ]
+        new = deepcopy(old)
+        if reverse:
+            old.reverse()
+            new.reverse()
+
+        matches, ambiguous = proc._regional_match_plan(new, old)
+
+        assert ambiguous is False
+        assert len(matches) == 2
+        assert all(
+            fresh.line_id == target.line_id for fresh, target in matches
+        )
+
     def test_x_preference(self):
         """When y-overlap is equal, closer x-center is preferred."""
         proc = _make_processor()
@@ -883,6 +950,52 @@ class TestUnmatchedWordAddition:
         result = self._run_overlay(proc, [old], [first, duplicate])
         assert result["success"] is False
         proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("split_fragment", [False, True])
+    def test_reused_target_aborts_overlay_without_receipt_content_writes(
+        self, split_fragment
+    ):
+        proc = _make_processor()
+        old, new = _reused_target_words(split_fragment)
+        labels = [_make_label(line_id=word.line_id) for word in old]
+        old_before, labels_before = deepcopy((old, labels))
+        with patch(
+            "handler.ocr_processor.dynamo_embedding_write.write_native_embeddings",
+            return_value={},
+        ) as write_embeddings:
+            result = self._run_overlay(proc, old, new, labels=labels)
+
+        assert result["success"] is False
+        assert "ambiguous" in result["error"].lower()
+        assert old == old_before
+        assert labels == labels_before
+        assert all(
+            line.text == "placeholder"
+            for line in proc.dynamo.list_receipt_lines_from_receipt.return_value
+        )
+        for method in (
+            "add_receipt_words",
+            "update_receipt_words",
+            "delete_receipt_words",
+            "update_receipt_lines",
+            "remove_receipt_letters",
+            "put_receipt_letters",
+            "update_receipt_word_labels",
+            "delete_receipt_word_labels",
+        ):
+            getattr(proc.dynamo, method).assert_not_called()
+        write_embeddings.assert_not_called()
+
+    def test_distinct_neighboring_prices_still_complete_overlay(self):
+        proc = _make_processor()
+        old, _ = _reused_target_words(split_fragment=False)
+        new = deepcopy(old)
+        result = self._run_overlay(proc, old, new)
+
+        assert result["success"] is True
+        assert [word.text for word in old] == ["3.15", "9.99"]
         proc.dynamo.add_receipt_words.assert_not_called()
         proc.dynamo.delete_receipt_words.assert_not_called()
 
