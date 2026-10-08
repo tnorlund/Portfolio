@@ -1,7 +1,7 @@
 # Development-only tools; never installed in a deployed Lambda.
 black==26.5.1
 isort==9.0.1
-mypy==2.3.1
+mypy==2.4.0
 pylint==4.0.8
 boto3-stubs[s3]>=1.43.93,<1.44.0
 
