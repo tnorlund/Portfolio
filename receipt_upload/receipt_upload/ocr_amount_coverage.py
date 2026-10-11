@@ -22,6 +22,7 @@ from receipt_dynamo.amounts import (
 
 from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.line_items.geometry import (
+    _SLASH_UNIT_WORD,
     COLUMN_HEADER_ANCHOR_TOKENS,
     MAX_PLAUSIBLE_BASELINE,
     NON_PRODUCT_NOTE_RE,
@@ -45,6 +46,10 @@ _MEASUREMENT_CONTEXT_RE = re.compile(
     r"oz|ounces?|lb|lbs|pounds?|kg|kilograms?|g|grams?|"
     r"gal|gallons?|ml|liters?|litres?|cm|mm|inches?)\b|\bunit\s+cost\b",
     re.I,
+)
+
+_UNIT_CONTEXT_RE = re.compile(
+    rf"(?<![A-Za-z]){_SLASH_UNIT_WORD}(?![A-Za-z])", re.I
 )
 
 _RATE_CONTEXT_RE = re.compile(
@@ -249,7 +254,7 @@ def _has_unpriced_name(
     ):
         return None
     return (
-        bool(re.search(r"[A-Za-z]{2}", text))
+        bool(re.search(r"[A-Za-z]{2}", _UNIT_CONTEXT_RE.sub(" ", text)))
         and not is_settlement_row(bare)
         and not NON_PAYMENT_SUMMARY_RE.search(text)
         and not NON_PRODUCT_NOTE_RE.search(text)
@@ -350,6 +355,16 @@ def detect_warp_lost_amount(
             # A partially cropped qualifier still constrains its price.
             # Preserve its original projection; never clamp it into place.
             projected = unbounded
+        box = word["bounding_box"]
+        # Ownership applies to names and qualifiers as well as prices. A
+        # foreign context word cannot establish a target receipt product.
+        for other in others:
+            other_box = _project_box(box, other, require_inside=False)
+            if other_box is None:
+                return None
+            ox, oy, ow, oh = other_box
+            if ox < 1 and oy < 1 and ox + ow > 0 and oy + oh > 0:
+                return None
         if cents is None:
             source_context.append(
                 {
@@ -368,15 +383,6 @@ def detect_warp_lost_amount(
             and 0.95 <= confidence <= 1
             and is_line_price_word(word)
         )
-        box = word["bounding_box"]
-        # Any second receipt owning this observation makes attribution unsafe.
-        for other in others:
-            other_box = _project_box(box, other, require_inside=False)
-            if other_box is None:
-                return None
-            ox, oy, ow, oh = other_box
-            if ox < 1 and oy < 1 and ox + ow > 0 and oy + oh > 0:
-                return None
         evidence = LostAmountEvidence(
             source_line_id=int(word["line_id"]),
             source_word_id=int(word["word_id"]),

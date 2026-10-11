@@ -1017,3 +1017,56 @@ def test_keystone_mapping_uses_projective_not_axis_aligned_coordinates():
     assert found.x == pytest.approx(0.8, abs=0.003)
     assert found.y == pytest.approx(0.6)
     assert found.height == pytest.approx(0.02)
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "EA",
+        "EACH",
+        "CT",
+        "PK",
+        "ITEM",
+        "UNIT",
+        "1B",
+        "IB",
+        "ea",
+        "ct",
+    ],
+)
+@pytest.mark.parametrize("source_context", [False, True])
+def test_count_unit_context_cannot_establish_a_product(
+    label: str, source_context: bool
+) -> None:
+    source = [word("$2.50")]
+    zone = [name(label)]
+    if source_context:
+        source.append(word(label, x=0.1, line_id=2))
+        zone = [name("MILK")]
+    assert detect(source=source, zone=zone) is None
+
+
+@pytest.mark.parametrize("other_right", [0.15, 0.3])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_foreign_source_context_cannot_support_target_price(
+    other_right: float, reverse: bool
+) -> None:
+    other = deepcopy(BOUNDS)
+    other["top_right"]["x"] = other["bottom_right"]["x"] = other_right
+    source = [word("$2.50"), word("MILK", x=0.1, line_id=2)]
+    if reverse:
+        source.reverse()
+    assert detect(source=source, zone=[name("MILK")], others=[other]) is None
+
+
+def test_disjoint_receipt_does_not_block_owned_product_context() -> None:
+    other = deepcopy(BOUNDS)
+    other["top_right"]["x"] = other["bottom_right"]["x"] = 0.05
+    assert (
+        detect(
+            source=[word("$2.50"), word("PEACH", x=0.1, line_id=2)],
+            zone=[name("PEACH")],
+            others=[other],
+        )
+        is not None
+    )
