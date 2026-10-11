@@ -12,6 +12,8 @@ Handles:
 import json
 import logging
 import os
+import re
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import atan2, degrees
@@ -25,6 +27,10 @@ from PIL import Image as PIL_Image
 from PIL import UnidentifiedImageError
 from PIL.Image import Resampling, Transform
 from receipt_dynamo import DynamoClient
+from receipt_dynamo.amounts import (
+    looks_like_receipt_amount,
+    parse_receipt_amount,
+)
 from receipt_dynamo.constants import (
     ImageType,
     OCRJobType,
@@ -47,7 +53,7 @@ from receipt_dynamo.entities import (
 )
 from receipt_embeddings import report_incomplete
 from receipt_upload.geometry.transformations import find_perspective_coeffs
-from receipt_upload.line_items.geometry import extract_items
+from receipt_upload.line_items.geometry import NOISY_MONEY_RE, extract_items
 from receipt_upload.line_items.provenance import (
     SWIFT_WORKER_EXTRACTOR_VERSION,
     SWIFT_WORKER_MODEL_SOURCE,
@@ -646,9 +652,356 @@ class OCRProcessor:
         new_words: list[ReceiptWord],
         candidate_words: list[ReceiptWord],
     ) -> list[tuple[ReceiptWord, ReceiptWord]]:
-        """Greedy y-overlap matching between re-OCR words and existing words."""
+        """Return only spatially and lexically compatible one-to-one pairs."""
+        matches, _ = self._regional_match_plan(new_words, candidate_words)
+        return matches
+
+    @staticmethod
+    def _regional_word_kind(text: str) -> str:
+        # Use the decoder's tax-flag alphabet, including flags around the
+        # signed/accounting forms supported by the shared amount parser.
+        # The amount shape check keeps sizes, SKUs and product words as text.
+        amount_text = (
+            re.sub(r"\s*[TFNOAB]X?(?=[()+\-\s]*$)", "", text.strip())
+            .removeprefix("+")
+            .removesuffix("+")
+        )
+        # Currency can precede or follow the number; whitespace inside
+        # accounting wrappers and omitted leading zeroes are valid OCR.
+        compact = re.sub(r"\s+", "", amount_text)
+        # Vision commonly reads the dollar sign as S/s. Use the decoder's
+        # narrow money-token shape, not arbitrary currency-looking text.
+        noisy_shape = re.fullmatch(
+            r"[+-]?(?:[Ss][+-]?[\d,.]+|\([Ss][+-]?[\d,.]+\)|"
+            r"[Ss]\([+-]?[\d,.]+\))[+-]?",
+            compact,
+        )
+        noisy_core = re.sub(r"[()+-]", "", compact)
+        if noisy_shape and NOISY_MONEY_RE.fullmatch(noisy_core):
+            return "amount"
+        currency = (
+            r"(?:(?:USD|US|CAD|CA|AUD|AU|NZD|NZ|EUR|GBP|JPY|JP|"
+            r"CNY|CN|RMB|INR|IN)?[$€£¥₹]+[Ss]?)"
+        )
+        number = r"[+-]?(?:\d[\d.,]*|[.,]\d+)"
+        whole_amount = re.fullmatch(
+            rf"[+-]?(?:{currency}?(?:{number}|\({number}\))|"
+            rf"\({currency}?{number}{currency}?\)){currency}?[+-]?",
+            compact,
+        )
+        if (
+            whole_amount
+            and looks_like_receipt_amount(amount_text.replace("+", ""))
+            and parse_receipt_amount(amount_text) is not None
+        ):
+            return "amount"
+        if whole_amount and re.search(r"[.,]", compact):
+            # Bare .99 and other incomplete decimal readings are numeric
+            # fragments, never names or interchangeable with a full price.
+            return "numeric_fragment"
+        bare = text.strip().lstrip("+-")
+        if bare.isdecimal():
+            # Small standalone integers are quantity-like, not prices.
+            # Preserve digit/decimal OCR corrections such as 579199→579.99.
+            return "quantity" if len(bare) <= 2 else "number"
+        return "text"
+
+    @classmethod
+    def _regional_types_compatible(cls, left: str, right: str) -> bool:
+        kinds = {cls._regional_word_kind(left), cls._regional_word_kind(right)}
+        return len(kinds) == 1 or kinds == {"amount", "number"}
+
+    @staticmethod
+    def _x_overlap_ratio(
+        a_bbox: dict[str, float], b_bbox: dict[str, float]
+    ) -> float:
+        left = max(float(a_bbox["x"]), float(b_bbox["x"]))
+        right = min(
+            float(a_bbox["x"]) + float(a_bbox["width"]),
+            float(b_bbox["x"]) + float(b_bbox["width"]),
+        )
+        denominator = max(
+            min(float(a_bbox["width"]), float(b_bbox["width"])), 1e-6
+        )
+        return max(0.0, right - left) / denominator
+
+    @staticmethod
+    def _same_regional_observation(
+        left: ReceiptWord, right: ReceiptWord
+    ) -> bool:
+        """Near-identical boxes are duplicate observations, not split words."""
+        a, b = left.bounding_box, right.bounding_box
+        overlap_x = max(
+            0.0,
+            min(a["x"] + a["width"], b["x"] + b["width"])
+            - max(a["x"], b["x"]),
+        )
+        overlap_y = max(
+            0.0,
+            min(a["y"] + a["height"], b["y"] + b["height"])
+            - max(a["y"], b["y"]),
+        )
+        intersection = overlap_x * overlap_y
+        union = (
+            a["width"] * a["height"] + b["width"] * b["height"] - intersection
+        )
+        return union > 0 and intersection / union >= 0.8
+
+    def _regional_usable_words(
+        self,
+        receipt_words: list[ReceiptWord],
+        candidate_words: list[ReceiptWord],
+    ) -> tuple[list[ReceiptWord], set[tuple[int, int]], int, str | None]:
+        """Pure eligibility planning, shared with the post-write retry check."""
+        # Observations rejected by the existing quality guards
+        # must not veto valid matches. Still preserve every old word they
+        # overlap: a rejected observation is not evidence of an orphan.
+        usable_words: list[ReceiptWord] = []
+        protected_old_ids: set[tuple[int, int]] = set()
+        rejected_observation_count = 0
+        for word in receipt_words:
+            overlaps = [
+                old
+                for old in candidate_words
+                if self._y_overlap_ratio(word.bounding_box, old.bounding_box)
+                >= 0.15
+                and self._x_overlap_ratio(word.bounding_box, old.bounding_box)
+                >= 0.15
+            ]
+            # Noise was historically allowed to update a matched text word,
+            # but never admitted as an unmatched addition (Guard 4b).
+            rejected_noise = is_noise_text(word.text) and not any(
+                self._regional_types_compatible(word.text, old.text)
+                for old in overlaps
+            )
+            compatible = [
+                (
+                    old,
+                    self._y_overlap_ratio(word.bounding_box, old.bounding_box)
+                    - 0.5
+                    * abs(
+                        self._bbox_center_x(word.bounding_box)
+                        - self._bbox_center_x(old.bounding_box)
+                    ),
+                )
+                for old in overlaps
+                if self._regional_types_compatible(word.text, old.text)
+            ]
+            best_score = max((score for _, score in compatible), default=-1.0)
+            # Apply target-relative guards before a weak duplicate can
+            # consume the best target. Never borrow a weaker neighbor to
+            # bypass rejection at the strongest compatible location.
+            relative_reject = bool(compatible) and all(
+                (word.text == old.text and word.confidence < old.confidence)
+                or (
+                    word.text != old.text
+                    and old.confidence - word.confidence > 0.15
+                )
+                for old, score in compatible
+                if score >= best_score - 1e-9
+            )
+            # Near-identical geometry describes one OCR observation. Pick
+            # its stronger compatible reading from the immutable fresh
+            # payload, so a partial write cannot reverse this decision on
+            # retry. Equal-confidence conflicting readings still abstain.
+            if (
+                word.confidence >= 0.5
+                and not is_noise_text(word.text)
+                and any(
+                    peer is not word
+                    and peer.confidence == word.confidence
+                    and not is_noise_text(peer.text)
+                    and self._regional_types_compatible(word.text, peer.text)
+                    and self._same_regional_observation(word, peer)
+                    for peer in receipt_words
+                )
+            ):
+                return (
+                    [],
+                    protected_old_ids,
+                    rejected_observation_count,
+                    "Ambiguous equal-confidence regional OCR observations; receipt unchanged",
+                )
+            duplicate_reject = any(
+                peer is not word
+                and self._same_regional_observation(word, peer)
+                and not is_noise_text(peer.text)
+                and self._regional_types_compatible(word.text, peer.text)
+                and peer.confidence > word.confidence
+                for peer in receipt_words
+            )
+            if (
+                word.confidence < 0.5
+                or rejected_noise
+                or relative_reject
+                or duplicate_reject
+            ):
+                protected_old_ids.update(
+                    (old.line_id, old.word_id) for old in overlaps
+                )
+                rejected_observation_count += 1
+            else:
+                usable_words.append(word)
+
+        return (
+            usable_words,
+            protected_old_ids,
+            rejected_observation_count,
+            None,
+        )
+
+    def _regional_partial_states_safe(
+        self,
+        fresh_words: list[ReceiptWord],
+        old_words: list[ReceiptWord],
+        final_words: list[ReceiptWord],
+        pairs: list[tuple[ReceiptWord, ReceiptWord]],
+        region: tuple[float, float, float, float],
+    ) -> bool:
+        """Conservatively prove eligibility and target choice across partial writes."""
+        x1, y1, x2, y2 = region
+        old_by_id = {(word.line_id, word.word_id): word for word in old_words}
+        final_by_id = {
+            (word.line_id, word.word_id): word for word in final_words
+        }
+        variants: dict[tuple[int, int], list[ReceiptWord]] = {}
+        for word in old_words + final_words:
+            variants.setdefault((word.line_id, word.word_id), []).append(word)
+
+        def candidate(word: ReceiptWord) -> bool:
+            return (
+                x1 <= self._bbox_center_x(word.bounding_box) <= x2
+                and y1 <= self._bbox_center_y(word.bounding_box) <= y2
+            )
+
+        def overlaps(fresh: ReceiptWord, target: ReceiptWord) -> bool:
+            return (
+                candidate(target)
+                and self._y_overlap_ratio(
+                    fresh.bounding_box, target.bounding_box
+                )
+                >= 0.15
+                and self._x_overlap_ratio(
+                    fresh.bounding_box, target.bounding_box
+                )
+                >= 0.15
+            )
+
+        def quality_ok(fresh: ReceiptWord, target: ReceiptWord) -> bool:
+            return not (
+                fresh.text == target.text
+                and fresh.confidence < target.confidence
+            ) and not (
+                fresh.text != target.text
+                and target.confidence - fresh.confidence > 0.15
+            )
+
+        def score(fresh: ReceiptWord, target: ReceiptWord) -> float:
+            return self._y_overlap_ratio(
+                fresh.bounding_box, target.bounding_box
+            ) - 0.5 * abs(
+                self._bbox_center_x(fresh.bounding_box)
+                - self._bbox_center_x(target.bounding_box)
+            )
+
+        # A word outside every possible line envelope stays unplaced after
+        # any subset of updates, additions, or orphan deletions.
+        line_envelopes: dict[int, tuple[float, float]] = {}
+        for word in old_words + final_words:
+            bottom = float(word.bounding_box["y"])
+            top = bottom + float(word.bounding_box["height"])
+            previous = line_envelopes.get(word.line_id, (bottom, top))
+            line_envelopes[word.line_id] = (
+                min(previous[0], bottom),
+                max(previous[1], top),
+            )
+        selected = {
+            (fresh.line_id, fresh.word_id): (target.line_id, target.word_id)
+            for fresh, target in pairs
+        }
+        for fresh in fresh_words:
+            target_id = selected.get((fresh.line_id, fresh.word_id))
+            if target_id is not None:
+                own = variants[target_id]
+                if any(
+                    not overlaps(fresh, target)
+                    or not self._regional_types_compatible(
+                        fresh.text, target.text
+                    )
+                    or not quality_ok(fresh, target)
+                    for target in own
+                ):
+                    return False
+                minimum = min(score(fresh, target) for target in own)
+                if any(
+                    overlaps(fresh, target)
+                    and score(fresh, target) >= minimum - 1e-9
+                    for key, choices in variants.items()
+                    if key != target_id
+                    for target in choices
+                ):
+                    return False
+                continue
+            # These exclusions depend only on the immutable OCR payload.
+            if fresh.confidence < 0.5 or any(
+                peer is not fresh
+                and not is_noise_text(peer.text)
+                and self._same_regional_observation(fresh, peer)
+                and self._regional_types_compatible(fresh.text, peer.text)
+                and peer.confidence > fresh.confidence
+                for peer in fresh_words
+            ):
+                continue
+            bottom = float(fresh.bounding_box["y"])
+            top = bottom + float(fresh.bounding_box["height"])
+            if not any(
+                min(top, line_top) > max(bottom, line_bottom)
+                for line_bottom, line_top in line_envelopes.values()
+            ):
+                continue
+            possible = [
+                target
+                for choices in variants.values()
+                for target in choices
+                if overlaps(fresh, target)
+                and self._regional_types_compatible(fresh.text, target.text)
+            ]
+            if any(quality_ok(fresh, target) for target in possible):
+                return False
+            # Noise remains rejected with no target. Other relative rejects
+            # need a compatible target that remains present in every state.
+            if not is_noise_text(fresh.text) and not any(
+                key in old_by_id
+                and key in final_by_id
+                and all(
+                    overlaps(fresh, target)
+                    and self._regional_types_compatible(
+                        fresh.text, target.text
+                    )
+                    for target in choices
+                )
+                for key, choices in variants.items()
+            ):
+                return False
+        return True
+
+    def _regional_match_plan(
+        self,
+        new_words: list[ReceiptWord],
+        candidate_words: list[ReceiptWord],
+        protected_old_ids: set[tuple[int, int]] | None = None,
+    ) -> tuple[list[tuple[ReceiptWord, ReceiptWord]], bool]:
+        """Plan matching before any writes, flagging unsafe correspondence.
+
+        A y-overlap alone cannot pair a price column with a quantity/name.
+        Unmatched words with rejected candidates must not silently fall into
+        the overlay's add-new/delete-orphan paths either.
+        """
         remaining = list(candidate_words)
         matches: list[tuple[ReceiptWord, ReceiptWord]] = []
+        ambiguous = False
+        deferred_rejections: set[tuple[int, int]] = set()
+        protected_old_ids = protected_old_ids or set()
 
         for new_word in sorted(
             new_words,
@@ -659,6 +1012,11 @@ class OCRProcessor:
         ):
             best_idx: int | None = None
             best_score = -1.0
+            candidate_scores: list[float] = []
+            rejected_scores: list[float] = []
+            disjoint_scores: list[tuple[ReceiptWord, float]] = []
+            rejected_words: list[ReceiptWord] = []
+            overlapping_conflict = False
             for idx, old_word in enumerate(remaining):
                 overlap = self._y_overlap_ratio(
                     new_word.bounding_box, old_word.bounding_box
@@ -670,17 +1028,101 @@ class OCRProcessor:
                     - self._bbox_center_x(old_word.bounding_box)
                 )
                 score = overlap - (0.5 * x_distance)
+                x_overlap = self._x_overlap_ratio(
+                    new_word.bounding_box, old_word.bounding_box
+                )
+                if x_overlap < 0.15 or not self._regional_types_compatible(
+                    new_word.text, old_word.text
+                ):
+                    if x_overlap >= 0.15:
+                        rejected_scores.append(score)
+                    else:
+                        disjoint_scores.append((old_word, score))
+                    rejected_words.append(old_word)
+                    overlapping_conflict = (
+                        overlapping_conflict or x_overlap >= 0.15
+                    )
+                    continue
+                candidate_scores.append(score)
                 if score > best_score:
                     best_score = score
                     best_idx = idx
 
+            # A distant same-row word can score above a valid counterpart
+            # because OCR shifts their Y positions differently. It blocks
+            # only if the complete plan leaves it without its own match.
+            if best_idx is not None:
+                deferred_rejections.update(
+                    (word.line_id, word.word_id)
+                    for word, score in disjoint_scores
+                    if score >= best_score - 1e-9
+                )
+            # An overlapping type conflict at the strongest location cannot
+            # be bypassed by borrowing a weaker compatible neighbor. Reject
+            # ties too, independently of candidate iteration order.
+            if best_idx is not None and any(
+                score >= best_score - 1e-9 for score in rejected_scores
+            ):
+                ambiguous = True
+                continue
+            if (
+                sum(
+                    abs(score - best_score) <= 1e-9
+                    for score in candidate_scores
+                )
+                > 1
+            ):
+                ambiguous = True
+                continue
+            # Compare consumed targets even when an unused candidate exists:
+            # a duplicate must not steal a weaker neighboring match. Use
+            # geometry alone here, since a split can change lexical class
+            # (e.g. an amount's trailing "15" becomes quantity-like).
+            reuses_target = False
+            for _, old in matches:
+                overlap = self._y_overlap_ratio(
+                    new_word.bounding_box, old.bounding_box
+                )
+                if (
+                    overlap < 0.15
+                    or self._x_overlap_ratio(
+                        new_word.bounding_box, old.bounding_box
+                    )
+                    < 0.15
+                ):
+                    continue
+                x_distance = abs(
+                    self._bbox_center_x(new_word.bounding_box)
+                    - self._bbox_center_x(old.bounding_box)
+                )
+                score = overlap - (0.5 * x_distance)
+                if best_idx is None or score >= best_score - 1e-9:
+                    reuses_target = True
+                    break
+            if reuses_target:
+                ambiguous = True
+                continue
             if best_idx is None:
+                # An overlapping type conflict is unsafe regardless of
+                # subsequent matches. A disjoint new leading word can be
+                # safe once later observations cover its same-row peers.
+                if overlapping_conflict:
+                    ambiguous = True
+                else:
+                    deferred_rejections.update(
+                        (word.line_id, word.word_id) for word in rejected_words
+                    )
                 continue
 
             old_word = remaining.pop(best_idx)
             matches.append((new_word, old_word))
 
-        return matches
+        ambiguous = ambiguous or any(
+            (word.line_id, word.word_id) in deferred_rejections
+            and (word.line_id, word.word_id) not in protected_old_ids
+            for word in remaining
+        )
+        return matches, ambiguous
 
     def _items_zone_baseline(
         self, image_id: str, receipt_id: int
@@ -1035,7 +1477,23 @@ class OCRProcessor:
             <= region_y2
         ]
 
-        matches = self._match_regional_words(receipt_words, candidate_words)
+        usable_words, protected_old_ids, rejected_observation_count, error = (
+            self._regional_usable_words(receipt_words, candidate_words)
+        )
+        if error:
+            return self._fail_regional_reocr(
+                ocr_job, ocr_routing_decision, error
+            )
+
+        matches, ambiguous = self._regional_match_plan(
+            usable_words, candidate_words, protected_old_ids
+        )
+        if ambiguous:
+            return self._fail_regional_reocr(
+                ocr_job,
+                ocr_routing_decision,
+                "Ambiguous regional OCR word correspondence; receipt unchanged",
+            )
         if not matches:
             logger.warning(
                 "Regional re-OCR produced no overlay matches for %s#%s",
@@ -1047,9 +1505,81 @@ class OCRProcessor:
         matched_new_keys = {(nw.line_id, nw.word_id) for nw, _ in matches}
         unmatched_new_words = [
             w
-            for w in receipt_words
+            for w in usable_words
             if (w.line_id, w.word_id) not in matched_new_keys
         ]
+
+        # New observations with no old target must also be one-to-one.
+        # A split or conflicting duplicate cannot become two persisted words.
+        for index, word in enumerate(unmatched_new_words):
+            for peer in unmatched_new_words[index + 1 :]:
+                if (
+                    self._y_overlap_ratio(word.bounding_box, peer.bounding_box)
+                    >= 0.15
+                    and self._x_overlap_ratio(
+                        word.bounding_box, peer.bounding_box
+                    )
+                    >= 0.15
+                ):
+                    return self._fail_regional_reocr(
+                        ocr_job,
+                        ocr_routing_decision,
+                        "Ambiguous overlapping regional OCR additions; receipt unchanged",
+                    )
+
+        # Additions must not overlap proposed replacements or old words
+        # preserved outside the candidate region. Old geometry alone misses
+        # fragments contained by an expanded fresh price box.
+        occupied_boxes = [word.bounding_box for word in existing_words]
+        occupied_boxes.extend(new.bounding_box for new, _ in matches)
+        if any(
+            self._y_overlap_ratio(word.bounding_box, box) >= 0.15
+            and self._x_overlap_ratio(word.bounding_box, box) >= 0.15
+            for word in unmatched_new_words
+            if not is_noise_text(word.text)
+            for box in occupied_boxes
+        ):
+            return self._fail_regional_reocr(
+                ocr_job,
+                ocr_routing_decision,
+                "Ambiguous regional OCR addition overlaps surviving word geometry; receipt unchanged",
+            )
+
+        # New words get IDs after the existing maximum. Inserting before
+        # a surviving word would disagree with consumers that read by ID.
+        # Abstain before mutation instead of renumbering labeled entities.
+        # Include old and proposed geometry to conservatively cover every
+        # line the later addition pass could choose after replacements.
+        insertion_lines: dict[int, tuple[float, float, float]] = {}
+        line_boxes = [
+            (old.line_id, old.bounding_box) for old in existing_words
+        ]
+        line_boxes.extend(
+            (old.line_id, new.bounding_box) for new, old in matches
+        )
+        for line_id, box in line_boxes:
+            x, y, height = (float(box[key]) for key in ("x", "y", "height"))
+            previous = insertion_lines.get(line_id, (y, y + height, x))
+            insertion_lines[line_id] = (
+                min(previous[0], y),
+                max(previous[1], y + height),
+                max(previous[2], x),
+            )
+        for word in unmatched_new_words:
+            if is_noise_text(word.text):
+                continue
+            x, y, height = (
+                float(word.bounding_box[key]) for key in ("x", "y", "height")
+            )
+            if any(
+                min(y + height, top) > max(y, bottom) and x < rightmost - 1e-9
+                for bottom, top, rightmost in insertion_lines.values()
+            ):
+                return self._fail_regional_reocr(
+                    ocr_job,
+                    ocr_routing_decision,
+                    "Regional OCR insertion would reorder stable word IDs; receipt unchanged",
+                )
 
         # Identify existing candidate words that weren't matched by any
         # new re-OCR word.  These are orphans that the re-OCR region no
@@ -1066,6 +1596,7 @@ class OCRProcessor:
             w
             for w in candidate_words
             if (w.line_id, w.word_id) not in matched_old_ids
+            and (w.line_id, w.word_id) not in protected_old_ids
             and self._bbox_containment_ratio(
                 w.bounding_box,
                 region_x1,
@@ -1076,17 +1607,305 @@ class OCRProcessor:
             >= _ORPHAN_CONTAINMENT_THRESHOLD
         ]
 
+        # Plan the entire persisted receipt before any entity mutation.
+        # Eligibility on retry must include additions as well as replacements.
+        orphan_ids = {(word.line_id, word.word_id) for word in orphaned_words}
+        replacements = {
+            (old.line_id, old.word_id): new
+            for new, old in matches
+            if new.confidence >= 0.5
+            and not (new.text == old.text and new.confidence < old.confidence)
+            and not (
+                new.text != old.text and old.confidence - new.confidence > 0.15
+            )
+        }
+        future_words: list[ReceiptWord] = []
+        for old in existing_words:
+            if (old.line_id, old.word_id) in orphan_ids:
+                continue
+            future = deepcopy(old)
+            replacement = replacements.get((old.line_id, old.word_id))
+            if replacement is not None:
+                future.text = replacement.text
+                future.confidence = replacement.confidence
+                future.bounding_box = deepcopy(replacement.bounding_box)
+            future_words.append(future)
+
         new_letters_by_new_key: dict[tuple[int, int], list[ReceiptLetter]] = {}
         for letter in receipt_letters:
             new_letters_by_new_key.setdefault(
                 (letter.line_id, letter.word_id), []
             ).append(letter)
 
+        # --- Add unmatched new words to the receipt ---
+        addition_matches: list[tuple[ReceiptWord, ReceiptWord]] = []
+        words_to_add: list[ReceiptWord] = []
+        letters_to_add_for_new: list[ReceiptLetter] = []
+
+        if unmatched_new_words:
+            # Compute Y-range for each existing receipt line.
+            line_y_ranges: dict[int, tuple[float, float]] = {}
+            for w in future_words:
+                wy = float(w.bounding_box.get("y", 0))
+                wh = float(w.bounding_box.get("height", 0))
+                cur = line_y_ranges.get(w.line_id)
+                if cur is None:
+                    line_y_ranges[w.line_id] = (wy, wy + wh)
+                else:
+                    line_y_ranges[w.line_id] = (
+                        min(cur[0], wy),
+                        max(cur[1], wy + wh),
+                    )
+
+            # Track max word_id per line so new words get unique IDs.
+            max_word_id: dict[int, int] = {}
+            for w in existing_words:
+                if (
+                    w.line_id not in max_word_id
+                    or w.word_id > max_word_id[w.line_id]
+                ):
+                    max_word_id[w.line_id] = w.word_id
+
+            for new_word in sorted(
+                unmatched_new_words,
+                key=lambda word: (
+                    float(word.bounding_box["x"]),
+                    float(word.bounding_box["y"]),
+                    word.line_id,
+                    word.word_id,
+                ),
+            ):
+                # Guard 4a — confidence floor (same 0.5 as Guard 3a).
+                if new_word.confidence < 0.5:
+                    logger.info(
+                        "Skipping unmatched re-OCR word '%s' — confidence %.4f below floor 0.5",
+                        new_word.text,
+                        new_word.confidence,
+                    )
+                    continue
+
+                # Guard 4b — noise rejection.
+                if is_noise_text(new_word.text):
+                    logger.info(
+                        "Skipping unmatched re-OCR word '%s' — noise text",
+                        new_word.text,
+                    )
+                    continue
+
+                nw_y = float(new_word.bounding_box.get("y", 0))
+                nw_h = float(new_word.bounding_box.get("height", 0))
+
+                # Find existing line with best Y-overlap.
+                best_line_id: int | None = None
+                best_overlap = 0.0
+                for lid, (ly_min, ly_max) in line_y_ranges.items():
+                    overlap = max(
+                        0.0, min(nw_y + nw_h, ly_max) - max(nw_y, ly_min)
+                    )
+                    if overlap > best_overlap:
+                        best_overlap = overlap
+                        best_line_id = lid
+
+                if best_line_id is None:
+                    logger.info(
+                        "Skipping unmatched re-OCR word '%s' — no line overlap",
+                        new_word.text,
+                    )
+                    continue
+
+                next_wid = max_word_id.get(best_line_id, 0) + 1
+                max_word_id[best_line_id] = next_wid
+
+                words_to_add.append(
+                    ReceiptWord(
+                        image_id=ocr_job.image_id,
+                        receipt_id=ocr_job.receipt_id,
+                        line_id=best_line_id,
+                        word_id=next_wid,
+                        text=new_word.text,
+                        bounding_box=new_word.bounding_box,
+                        top_left=new_word.top_left,
+                        top_right=new_word.top_right,
+                        bottom_left=new_word.bottom_left,
+                        bottom_right=new_word.bottom_right,
+                        angle_degrees=new_word.angle_degrees,
+                        angle_radians=new_word.angle_radians,
+                        confidence=new_word.confidence,
+                        extracted_data=new_word.extracted_data,
+                        is_noise=is_noise_text(new_word.text),
+                    )
+                )
+
+                addition_matches.append((new_word, words_to_add[-1]))
+
+                for letter_idx, letter in enumerate(
+                    new_letters_by_new_key.get(
+                        (new_word.line_id, new_word.word_id), []
+                    ),
+                    start=1,
+                ):
+                    letters_to_add_for_new.append(
+                        ReceiptLetter(
+                            image_id=ocr_job.image_id,
+                            receipt_id=ocr_job.receipt_id,
+                            line_id=best_line_id,
+                            word_id=next_wid,
+                            letter_id=letter_idx,
+                            text=letter.text,
+                            bounding_box=letter.bounding_box,
+                            top_left=letter.top_left,
+                            top_right=letter.top_right,
+                            bottom_left=letter.bottom_left,
+                            bottom_right=letter.bottom_right,
+                            angle_degrees=letter.angle_degrees,
+                            angle_radians=letter.angle_radians,
+                            confidence=letter.confidence,
+                        )
+                    )
+
+                logger.info(
+                    "Adding unmatched re-OCR word '%s' to line %d as word %d",
+                    new_word.text,
+                    best_line_id,
+                    next_wid,
+                )
+
+        # A partially completed multi-word insert on one line cannot safely
+        # recover its reserved IDs without a durable plan. Keep additions
+        # independent across lines until that atomic admission exists.
+        addition_lines = [word.line_id for word in words_to_add]
+        if len(addition_lines) != len(set(addition_lines)):
+            return self._fail_regional_reocr(
+                ocr_job,
+                ocr_routing_decision,
+                "Ambiguous multiple regional OCR additions on one line; receipt unchanged",
+            )
+
+        future_all = future_words + words_to_add
+        # An inserted word can expand its line envelope on redelivery. Keep
+        # additions isolated from every other line in every partial state,
+        # so their placement and the prefix-insertion guard cannot change.
+        line_envelopes: dict[int, tuple[float, float]] = {}
+        for word in existing_words + future_all:
+            bottom = float(word.bounding_box["y"])
+            top = bottom + float(word.bounding_box["height"])
+            previous = line_envelopes.get(word.line_id, (bottom, top))
+            line_envelopes[word.line_id] = (
+                min(previous[0], bottom),
+                max(previous[1], top),
+            )
+        if any(
+            min(
+                float(word.bounding_box["y"])
+                + float(word.bounding_box["height"]),
+                top,
+            )
+            > max(float(word.bounding_box["y"]), bottom)
+            for word in words_to_add
+            for line_id, (bottom, top) in line_envelopes.items()
+            if line_id != word.line_id
+        ):
+            return self._fail_regional_reocr(
+                ocr_job,
+                ocr_routing_decision,
+                "Ambiguous regional OCR addition spans multiple lines; receipt unchanged",
+            )
+        affected_lines = (
+            {old.line_id for _, old in matches}
+            | {word.line_id for word in words_to_add}
+            | {word.line_id for word in orphaned_words}
+        )
+        original_x = {
+            (word.line_id, word.word_id): float(word.bounding_box["x"])
+            for word in existing_words
+        }
+        for line_id in affected_lines:
+            ordered = sorted(
+                (word for word in future_all if word.line_id == line_id),
+                key=lambda word: word.word_id,
+            )
+
+            def stable_order(left: ReceiptWord, right: ReceiptWord) -> bool:
+                left_key, right_key = (left.line_id, left.word_id), (
+                    right.line_id,
+                    right.word_id,
+                )
+                left_x, right_x = float(left.bounding_box["x"]), float(
+                    right.bounding_box["x"]
+                )
+                left_states = (left_x, original_x.get(left_key, left_x))
+                right_states = (right_x, original_x.get(right_key, right_x))
+                if (
+                    left_key in original_x
+                    and right_key in original_x
+                    and original_x[left_key] > original_x[right_key] + 1e-9
+                ):
+                    return min(left_states) > max(right_states) + 1e-9
+                return max(left_states) <= min(right_states) + 1e-9
+
+            if any(
+                not stable_order(left, right)
+                for index, left in enumerate(ordered)
+                for right in ordered[index + 1 :]
+            ):
+                return self._fail_regional_reocr(
+                    ocr_job,
+                    ocr_routing_decision,
+                    "Regional OCR replacement would reorder stable word IDs; receipt unchanged",
+                )
+        future_candidates = [
+            word
+            for word in future_all
+            if region_x1 <= self._bbox_center_x(word.bounding_box) <= region_x2
+            and region_y1
+            <= self._bbox_center_y(word.bounding_box)
+            <= region_y2
+        ]
+        future_usable, future_protected, _, future_error = (
+            self._regional_usable_words(receipt_words, future_candidates)
+        )
+        future_matches, future_ambiguous = self._regional_match_plan(
+            future_usable, future_candidates, future_protected
+        )
+
+        def correspondence(
+            pairs: list[tuple[ReceiptWord, ReceiptWord]],
+        ) -> set[tuple[int, int, int, int]]:
+            return {
+                (new.line_id, new.word_id, old.line_id, old.word_id)
+                for new, old in pairs
+            }
+
+        if (
+            future_error
+            or future_ambiguous
+            or correspondence(future_matches)
+            != correspondence(matches + addition_matches)
+        ):
+            return self._fail_regional_reocr(
+                ocr_job,
+                ocr_routing_decision,
+                "Ambiguous regional OCR correspondence after replacement; receipt unchanged",
+            )
+
+        if not self._regional_partial_states_safe(
+            receipt_words,
+            existing_words,
+            future_all,
+            matches + addition_matches,
+            (region_x1, region_y1, region_x2, region_y2),
+        ):
+            return self._fail_regional_reocr(
+                ocr_job,
+                ocr_routing_decision,
+                "Ambiguous regional OCR correspondence across partial writes; receipt unchanged",
+            )
+
         words_to_update: list[ReceiptWord] = []
         words_to_delete: list[ReceiptWord] = []
         letters_to_delete: list[ReceiptLetter] = []
         letters_to_add: list[ReceiptLetter] = []
-        words_rejected = 0
+        words_rejected = rejected_observation_count
         changed_word_ids: set[tuple[int, int]] = set()
 
         for new_word, existing_word in matches:
@@ -1196,128 +2015,6 @@ class OCRProcessor:
                     )
                 )
 
-        # --- Add unmatched new words to the receipt ---
-        words_to_add: list[ReceiptWord] = []
-        letters_to_add_for_new: list[ReceiptLetter] = []
-
-        if unmatched_new_words:
-            # Compute Y-range for each existing receipt line.
-            line_y_ranges: dict[int, tuple[float, float]] = {}
-            for w in existing_words:
-                wy = float(w.bounding_box.get("y", 0))
-                wh = float(w.bounding_box.get("height", 0))
-                cur = line_y_ranges.get(w.line_id)
-                if cur is None:
-                    line_y_ranges[w.line_id] = (wy, wy + wh)
-                else:
-                    line_y_ranges[w.line_id] = (
-                        min(cur[0], wy),
-                        max(cur[1], wy + wh),
-                    )
-
-            # Track max word_id per line so new words get unique IDs.
-            max_word_id: dict[int, int] = {}
-            for w in existing_words:
-                if (
-                    w.line_id not in max_word_id
-                    or w.word_id > max_word_id[w.line_id]
-                ):
-                    max_word_id[w.line_id] = w.word_id
-
-            for new_word in unmatched_new_words:
-                # Guard 4a — confidence floor (same 0.5 as Guard 3a).
-                if new_word.confidence < 0.5:
-                    logger.info(
-                        "Skipping unmatched re-OCR word '%s' — confidence %.4f below floor 0.5",
-                        new_word.text,
-                        new_word.confidence,
-                    )
-                    continue
-
-                # Guard 4b — noise rejection.
-                if is_noise_text(new_word.text):
-                    logger.info(
-                        "Skipping unmatched re-OCR word '%s' — noise text",
-                        new_word.text,
-                    )
-                    continue
-
-                nw_y = float(new_word.bounding_box.get("y", 0))
-                nw_h = float(new_word.bounding_box.get("height", 0))
-
-                # Find existing line with best Y-overlap.
-                best_line_id: int | None = None
-                best_overlap = 0.0
-                for lid, (ly_min, ly_max) in line_y_ranges.items():
-                    overlap = max(
-                        0.0, min(nw_y + nw_h, ly_max) - max(nw_y, ly_min)
-                    )
-                    if overlap > best_overlap:
-                        best_overlap = overlap
-                        best_line_id = lid
-
-                if best_line_id is None:
-                    logger.info(
-                        "Skipping unmatched re-OCR word '%s' — no line overlap",
-                        new_word.text,
-                    )
-                    continue
-
-                next_wid = max_word_id.get(best_line_id, 0) + 1
-                max_word_id[best_line_id] = next_wid
-
-                words_to_add.append(
-                    ReceiptWord(
-                        image_id=ocr_job.image_id,
-                        receipt_id=ocr_job.receipt_id,
-                        line_id=best_line_id,
-                        word_id=next_wid,
-                        text=new_word.text,
-                        bounding_box=new_word.bounding_box,
-                        top_left=new_word.top_left,
-                        top_right=new_word.top_right,
-                        bottom_left=new_word.bottom_left,
-                        bottom_right=new_word.bottom_right,
-                        angle_degrees=new_word.angle_degrees,
-                        angle_radians=new_word.angle_radians,
-                        confidence=new_word.confidence,
-                        extracted_data=new_word.extracted_data,
-                        is_noise=is_noise_text(new_word.text),
-                    )
-                )
-
-                for letter_idx, letter in enumerate(
-                    new_letters_by_new_key.get(
-                        (new_word.line_id, new_word.word_id), []
-                    ),
-                    start=1,
-                ):
-                    letters_to_add_for_new.append(
-                        ReceiptLetter(
-                            image_id=ocr_job.image_id,
-                            receipt_id=ocr_job.receipt_id,
-                            line_id=best_line_id,
-                            word_id=next_wid,
-                            letter_id=letter_idx,
-                            text=letter.text,
-                            bounding_box=letter.bounding_box,
-                            top_left=letter.top_left,
-                            top_right=letter.top_right,
-                            bottom_left=letter.bottom_left,
-                            bottom_right=letter.bottom_right,
-                            angle_degrees=letter.angle_degrees,
-                            angle_radians=letter.angle_radians,
-                            confidence=letter.confidence,
-                        )
-                    )
-
-                logger.info(
-                    "Adding unmatched re-OCR word '%s' to line %d as word %d",
-                    new_word.text,
-                    best_line_id,
-                    next_wid,
-                )
-
         # --- Delete orphaned candidate words (in re-OCR region but not
         # matched by any new word).  Their letters are collected first
         # so we can remove them in the correct order.
@@ -1400,6 +2097,9 @@ class OCRProcessor:
         for line in details.lines:
             line_words = sorted(
                 words_by_line.get(line.line_id, []),
+                # Keep persisted text aligned with word-based consumers,
+                # including legacy lines whose IDs disagree with geometry.
+                # Unsafe insertions/replacements are rejected before writes.
                 key=lambda word: word.word_id,
             )
             rebuilt_text = " ".join(word.text for word in line_words)

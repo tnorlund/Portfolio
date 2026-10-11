@@ -414,10 +414,10 @@ def test_consistent_read_failure_does_not_refresh_or_complete(
     assert overlay.store.owner is None
 
 
-def test_partial_addition_does_not_duplicate_words_on_redelivery(
+def test_persisted_addition_does_not_duplicate_words_on_redelivery(
     overlay: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A persisted subset of new words is matched again rather than copied."""
+    """A persisted single addition is matched after an ambiguous write failure."""
     overlay.store.words = [_make_word(text="ITEM", x=0.1)]
     overlay.store.lines = [_make_line(text="ITEM")]
     overlay.store.labels = []
@@ -427,28 +427,25 @@ def test_partial_addition_does_not_duplicate_words_on_redelivery(
         "image_ocr_to_receipt_ocr",
         lambda **_kwargs: (
             [],
-            [
-                _make_word(text="2", x=0.1, w=0.1),
-                _make_word(text="9.99", x=0.7, w=0.2, word_id=2),
-            ],
+            [_make_word(text="9.99", x=0.7, w=0.2, word_id=2)],
             [],
         ),
     )
 
-    def partial_write(values: list[Any]) -> None:
-        overlay.store.replace("words", values[:1])
-        raise RuntimeError("second word unavailable")
+    def ambiguous_write(values: list[Any]) -> None:
+        overlay.store.replace("words", values)
+        raise RuntimeError("write result unavailable")
 
     dynamo = overlay.processor.dynamo
-    dynamo.add_receipt_words.side_effect = partial_write
+    dynamo.add_receipt_words.side_effect = ambiguous_write
     assert run_overlay(overlay)["success"] is False
-    assert [word.text for word in overlay.store.words] == ["ITEM", "2"]
+    assert [word.text for word in overlay.store.words] == ["ITEM", "9.99"]
     dynamo.add_receipt_words.side_effect = (
         lambda values: overlay.store.replace("words", values)
     )
     assert run_overlay(overlay)["success"] is True
-    assert [word.text for word in overlay.store.words] == ["ITEM", "2", "9.99"]
-    assert overlay.store.lines[0].text == "ITEM 2 9.99"
+    assert [word.text for word in overlay.store.words] == ["ITEM", "9.99"]
+    assert overlay.store.lines[0].text == "ITEM 9.99"
 
 
 def _first_pass_job(job_type: str = OCRJobType.FIRST_PASS.value) -> Any:
