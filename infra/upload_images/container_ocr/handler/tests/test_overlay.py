@@ -451,6 +451,33 @@ class TestBboxCenterX:
 
 
 class TestMatchRegionalWords:
+    @pytest.mark.parametrize(
+        "text", ["S0.49", "s0.49", "S0.490", "S1,234.56", "S0.49N", "S0.49+"]
+    )
+    def test_mangled_dollar_prefix_keeps_amount_compatibility(
+        self, text: str
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text=text, x=0.8, y=0.6)
+        fresh = _make_word(text="$0.49", x=0.8, y=0.6)
+        assert proc._regional_word_kind(text) == "amount"
+        assert proc._regional_match_plan([fresh], [old]) == (
+            [(fresh, old)],
+            False,
+        )
+
+    @pytest.mark.parametrize(
+        "text", ["SAVE0.49", "S0.49OFF", "S0.49/EA", "SS0.49"]
+    )
+    def test_mangled_currency_recognition_does_not_accept_qualifiers(
+        self, text: str
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text=text, x=0.8, y=0.6)
+        fresh = _make_word(text="$0.49", x=0.8, y=0.6)
+        assert proc._regional_word_kind(text) == "text"
+        assert proc._regional_match_plan([fresh], [old]) == ([], True)
+
     @pytest.mark.parametrize("reverse_new", [False, True])
     @pytest.mark.parametrize("reverse_old", [False, True])
     @pytest.mark.parametrize("include_product", [False, True])
@@ -1103,6 +1130,19 @@ class TestUnmatchedWordAddition:
         assert old.text == "8.68"
         rebuilt = proc.dynamo.update_receipt_lines.call_args[0][0]
         assert rebuilt[0].text == f"{text} 8.68"
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("text", ["S0.49", "s0.49"])
+    def test_mangled_dollar_can_be_corrected_to_currency(
+        self, text: str
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text=text, x=0.8, y=0.6)
+        fresh = _make_word(text="$0.49", x=0.8, y=0.6)
+        result = self._run_overlay(proc, [old], [fresh])
+        assert result["success"] is True
+        assert old.text == "$0.49"
+        proc.dynamo.add_receipt_words.assert_not_called()
         proc.dynamo.delete_receipt_words.assert_not_called()
 
     def test_disjoint_product_does_not_block_shifted_price_correction(

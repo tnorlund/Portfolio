@@ -52,7 +52,7 @@ from receipt_dynamo.entities import (
 )
 from receipt_embeddings import report_incomplete
 from receipt_upload.geometry.transformations import find_perspective_coeffs
-from receipt_upload.line_items.geometry import extract_items
+from receipt_upload.line_items.geometry import NOISY_MONEY_RE, extract_items
 from receipt_upload.line_items.provenance import (
     SWIFT_WORKER_EXTRACTOR_VERSION,
     SWIFT_WORKER_MODEL_SOURCE,
@@ -668,6 +668,10 @@ class OCRProcessor:
         # Currency can precede or follow the number; whitespace inside
         # accounting wrappers and omitted leading zeroes are valid OCR.
         compact = re.sub(r"\s+", "", amount_text)
+        # Vision commonly reads the dollar sign as S/s. Use the decoder's
+        # narrow money-token shape, not arbitrary currency-looking text.
+        if compact[:1] in {"S", "s"} and NOISY_MONEY_RE.fullmatch(compact):
+            return "amount"
         currency = (
             r"(?:(?:USD|US|CAD|CA|AUD|AU|NZD|NZ|EUR|GBP|JPY|JP|"
             r"CNY|CN|RMB|INR|IN)?[$€£¥₹]+[Ss]?)"
