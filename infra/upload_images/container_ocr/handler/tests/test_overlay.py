@@ -1132,7 +1132,20 @@ class TestUnmatchedWordAddition:
         assert rebuilt[0].text == f"{text} 8.68"
         proc.dynamo.delete_receipt_words.assert_not_called()
 
-    @pytest.mark.parametrize("text", ["S0.49", "s0.49"])
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "S0.49",
+            "s0.49",
+            "S0.49-",
+            "-S0.49",
+            "(S0.49)",
+            "S-0.49",
+            "S(0.49)",
+            "(s0.49N)",
+            "S0.49-N",
+        ],
+    )
     def test_mangled_dollar_can_be_corrected_to_currency(
         self, text: str
     ) -> None:
@@ -1142,6 +1155,58 @@ class TestUnmatchedWordAddition:
         result = self._run_overlay(proc, [old], [fresh])
         assert result["success"] is True
         assert old.text == "$0.49"
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "text,confidence",
+        [
+            ("8.68", 0.3),
+            ("MILK", 0.3),
+            ("---", 0.99),
+        ],
+    )
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_rejected_observation_cannot_veto_valid_overlay(
+        self, text: str, confidence: float, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="8.88", x=0.8, y=0.6)
+        fresh = _make_word(text="8.68", x=0.8, y=0.6)
+        rejected = _make_word(
+            text=text, x=0.8, y=0.6, word_id=2, confidence=confidence
+        )
+        observations = [rejected, fresh]
+        if reverse:
+            observations.reverse()
+        result = self._run_overlay(proc, [old], observations)
+        assert result["success"] is True
+        assert old.text == "8.68"
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "text,confidence",
+        [
+            ("8.68", 0.3),
+            ("MILK", 0.3),
+            ("---", 0.99),
+        ],
+    )
+    def test_rejected_observation_preserves_its_old_target(
+        self, text: str, confidence: float
+    ) -> None:
+        proc = _make_processor()
+        preserved = _make_word(text="9.99", x=0.1, y=0.59)
+        old_price = _make_word(text="8.88", x=0.8, y=0.63, word_id=2)
+        fresh = _make_word(text="8.68", x=0.8, y=0.59, word_id=2)
+        rejected = _make_word(text=text, x=0.1, y=0.59, confidence=confidence)
+        result = self._run_overlay(
+            proc, [preserved, old_price], [rejected, fresh]
+        )
+        assert result["success"] is True
+        assert preserved.text == "9.99"
+        assert old_price.text == "8.68"
         proc.dynamo.add_receipt_words.assert_not_called()
         proc.dynamo.delete_receipt_words.assert_not_called()
 

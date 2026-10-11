@@ -670,7 +670,13 @@ class OCRProcessor:
         compact = re.sub(r"\s+", "", amount_text)
         # Vision commonly reads the dollar sign as S/s. Use the decoder's
         # narrow money-token shape, not arbitrary currency-looking text.
-        if compact[:1] in {"S", "s"} and NOISY_MONEY_RE.fullmatch(compact):
+        noisy_shape = re.fullmatch(
+            r"[+-]?(?:[Ss][+-]?[\d,.]+|\([Ss][+-]?[\d,.]+\)|"
+            r"[Ss]\([+-]?[\d,.]+\))[+-]?",
+            compact,
+        )
+        noisy_core = re.sub(r"[()+-]", "", compact)
+        if noisy_shape and NOISY_MONEY_RE.fullmatch(noisy_core):
             return "amount"
         currency = (
             r"(?:(?:USD|US|CAD|CA|AUD|AU|NZD|NZ|EUR|GBP|JPY|JP|"
@@ -718,6 +724,7 @@ class OCRProcessor:
         self,
         new_words: list[ReceiptWord],
         candidate_words: list[ReceiptWord],
+        protected_old_ids: set[tuple[int, int]] | None = None,
     ) -> tuple[list[tuple[ReceiptWord, ReceiptWord]], bool]:
         """Plan matching before any writes, flagging unsafe correspondence.
 
@@ -729,6 +736,7 @@ class OCRProcessor:
         matches: list[tuple[ReceiptWord, ReceiptWord]] = []
         ambiguous = False
         deferred_rejections: set[tuple[int, int]] = set()
+        protected_old_ids = protected_old_ids or set()
 
         for new_word in sorted(
             new_words,
@@ -846,6 +854,7 @@ class OCRProcessor:
 
         ambiguous = ambiguous or any(
             (word.line_id, word.word_id) in deferred_rejections
+            and (word.line_id, word.word_id) not in protected_old_ids
             for word in remaining
         )
         return matches, ambiguous
@@ -1203,8 +1212,37 @@ class OCRProcessor:
             <= region_y2
         ]
 
+        # Observations rejected by the existing absolute quality guards
+        # must not veto valid matches. Still preserve every old word they
+        # overlap: a rejected observation is not evidence of an orphan.
+        usable_words: list[ReceiptWord] = []
+        protected_old_ids: set[tuple[int, int]] = set()
+        rejected_observation_count = 0
+        for word in receipt_words:
+            overlaps = [
+                old
+                for old in candidate_words
+                if self._y_overlap_ratio(word.bounding_box, old.bounding_box)
+                >= 0.15
+                and self._x_overlap_ratio(word.bounding_box, old.bounding_box)
+                >= 0.15
+            ]
+            # Noise was historically allowed to update a matched text word,
+            # but never admitted as an unmatched addition (Guard 4b).
+            rejected_noise = is_noise_text(word.text) and not any(
+                self._regional_types_compatible(word.text, old.text)
+                for old in overlaps
+            )
+            if word.confidence < 0.5 or rejected_noise:
+                protected_old_ids.update(
+                    (old.line_id, old.word_id) for old in overlaps
+                )
+                rejected_observation_count += 1
+            else:
+                usable_words.append(word)
+
         matches, ambiguous = self._regional_match_plan(
-            receipt_words, candidate_words
+            usable_words, candidate_words, protected_old_ids
         )
         if ambiguous:
             return self._fail_regional_reocr(
@@ -1223,7 +1261,7 @@ class OCRProcessor:
         matched_new_keys = {(nw.line_id, nw.word_id) for nw, _ in matches}
         unmatched_new_words = [
             w
-            for w in receipt_words
+            for w in usable_words
             if (w.line_id, w.word_id) not in matched_new_keys
         ]
 
@@ -1242,6 +1280,7 @@ class OCRProcessor:
             w
             for w in candidate_words
             if (w.line_id, w.word_id) not in matched_old_ids
+            and (w.line_id, w.word_id) not in protected_old_ids
             and self._bbox_containment_ratio(
                 w.bounding_box,
                 region_x1,
@@ -1262,7 +1301,7 @@ class OCRProcessor:
         words_to_delete: list[ReceiptWord] = []
         letters_to_delete: list[ReceiptLetter] = []
         letters_to_add: list[ReceiptLetter] = []
-        words_rejected = 0
+        words_rejected = rejected_observation_count
         changed_word_ids: set[tuple[int, int]] = set()
 
         for new_word, existing_word in matches:
