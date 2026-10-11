@@ -161,6 +161,21 @@
         "w": 760,
         "h": 1559
       }
+    },
+    "homedepot": {
+      "merchant": "The Home Depot",
+      "font": "homedepot",
+      "hero": "H",
+      "receipt": {
+        "image_id": "88c1e632-dea6-4331-a6ca-43894ebbd173",
+        "receipt_id": 1
+      },
+      "label": "Home Depot",
+      "bold_callout": "the measured heading weight",
+      "dims": {
+        "w": 760,
+        "h": 2206
+      }
     }
   }
 }

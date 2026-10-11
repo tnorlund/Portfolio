@@ -1,0 +1,33 @@
+{
+  "merchant": "The Home Depot",
+  "slug": "homedepot",
+  "portfolio_slug": "homedepot",
+  "aliases": [
+    "Home Depot"
+  ],
+  "hero": "H",
+  "label": "Home Depot",
+  "bold_callout": "the measured heading weight",
+  "graphics": {
+    "footer_codes": true,
+    "inbody_barcode": {
+      "max_count": 0
+    }
+  },
+  "studio_dir": "/tmp/gridfix/homedepot_studio",
+  "logo": "synthesis_loop/logo_masters/homedepot_logo.png",
+  "gold_receipt": {
+    "image_id": "88c1e632-dea6-4331-a6ca-43894ebbd173",
+    "receipt_id": 1,
+    "note": "SCAN 199 words 8/8 VALID. Chosen over ccfbeaca#1 (421 words, OCR ends mid-items) and e2628b64#1 (282 words, slogan OCR garbled so the logo band cannot lock). This slip is complete, readable from raw-image-bucket-c779c32, and the slogan OCR matches logo_anchor phrases."
+  },
+  "logo_phrases": [
+    "HOWDOERS",
+    "GETMOREDONE"
+  ],
+  "pitch_exclude": [
+    "13da1048-3888-429f-b2aa-b3e15341da5e#2",
+    "13da1048-3888-429f-b2aa-b3e15341da5e#3"
+  ]
+}
+
