@@ -22,6 +22,10 @@ from receipt_dynamo.amounts import looks_like_receipt_amount
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.data.shared_exceptions import EntityAlreadyExistsError
 from receipt_dynamo.entities import ReceiptRow, ReceiptSection
+from receipt_embeddings.formatting.line_format import (
+    projected_line_centers,
+    projected_row_center,
+)
 from receipt_embeddings.section_labels import sections_to_line_map
 
 from receipt_upload.line_items.geometry import is_tender_row
@@ -174,8 +178,15 @@ def extract_row_features(
 ) -> list[RowFeatures]:
     """Extract row and zone features in stable top-to-bottom order."""
 
+    centers = projected_line_centers(lines)
     ordered = sorted(
-        rows, key=lambda row: (-(row.y_min + row.y_max), row.row_id)
+        rows,
+        key=lambda row: (
+            -projected_row_center(
+                row.line_ids, centers, (row.y_min + row.y_max) / 2
+            ),
+            row.row_id,
+        ),
     )
     lines_by_id = {line.line_id: line for line in lines}
     count = len(ordered)

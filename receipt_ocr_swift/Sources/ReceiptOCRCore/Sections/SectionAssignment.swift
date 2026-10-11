@@ -42,6 +42,16 @@ public struct SectionWord: Sendable {
     }
 }
 
+public struct SectionPoint: Sendable {
+    public let x: Double
+    public let y: Double
+
+    public init(x: Double, y: Double) {
+        self.x = x
+        self.y = y
+    }
+}
+
 public struct SectionLine: Sendable {
     public let imageId: String
     public let receiptId: Int
@@ -49,10 +59,13 @@ public struct SectionLine: Sendable {
     public let text: String
     public let boundingBox: SectionRect
     public let words: [SectionWord]
+    /// Observed TL, TR, BR, BL corners; empty for legacy facades.
+    public let corners: [SectionPoint]
 
     public init(
         imageId: String, receiptId: Int, lineId: Int, text: String,
-        boundingBox: SectionRect, words: [SectionWord]
+        boundingBox: SectionRect, words: [SectionWord],
+        corners: [SectionPoint] = []
     ) {
         self.imageId = imageId
         self.receiptId = receiptId
@@ -60,6 +73,7 @@ public struct SectionLine: Sendable {
         self.text = text
         self.boundingBox = boundingBox
         self.words = words
+        self.corners = corners
     }
 }
 
@@ -235,15 +249,63 @@ private func pairRowLabelAmount(
     )
 }
 
+/// Port of Python `line_format._row_spans`. Compare observed quadrilaterals
+/// in a common baseline frame without changing persisted OCR coordinates.
+private func rowSpans(_ lines: [SectionLine]) -> (spans: [(Double, Double)], hasCorners: Bool) {
+    var corners: [[SectionPoint]?] = []
+    var slopes: [Double] = []
+    for line in lines {
+        let p = line.corners
+        guard p.count == 4, p.allSatisfy({ $0.x.isFinite && $0.y.isFinite }),
+              p[1].x > p[0].x, p[2].x > p[3].x,
+              p[0].y + p[1].y > p[3].y + p[2].y
+        else {
+            corners.append(nil)
+            continue
+        }
+        let width = p[1].x - p[0].x
+        let candidate = (p[1].y - p[0].y) / width
+        guard candidate.isFinite else {
+            corners.append(nil)
+            continue
+        }
+        corners.append(p)
+        slopes.append(candidate)
+    }
+    let slope = slopes.isEmpty ? 0 : median(slopes)
+    let spans = zip(lines, corners).map { line, observed in
+        let b = line.boundingBox
+        guard let points = observed else {
+            // No oriented edges: translate the center, never widen the box.
+            let center = b.y + b.height / 2 - slope * (b.x + b.width / 2)
+            return (center - b.height / 2, center + b.height / 2)
+        }
+        let projected = points.map { $0.y - slope * $0.x }
+        return (projected.min()!, projected.max()!)
+    }
+    return (spans, corners.contains { $0 != nil })
+}
+
+private func projectedLineCenters(_ lines: [SectionLine]) -> [Int: Double] {
+    let projection = rowSpans(lines)
+    guard projection.hasCorners else { return [:] }
+    return Dictionary(uniqueKeysWithValues: zip(lines, projection.spans).map {
+        ($0.lineId, ($1.0 + $1.1) / 2)
+    })
+}
+
+private func projectedRowCenter(_ ids: [Int], centers: [Int: Double], fallback: Double) -> Double {
+    guard !ids.isEmpty, ids.allSatisfy({ centers[$0] != nil }) else { return fallback }
+    return ids.reduce(0.0) { $0 + centers[$1]! } / Double(ids.count)
+}
+
 /// Port of Python `group_lines_into_visual_rows`.
 public func groupLinesIntoVisualRows(_ lines: [SectionLine]) -> [[SectionLine]] {
     guard !lines.isEmpty else { return [] }
     let count = lines.count
     var parent = Array(0..<count)
-
-    func centerY(_ line: SectionLine) -> Double {
-        line.boundingBox.y + line.boundingBox.height / 2
-    }
+    let spans = rowSpans(lines).spans
+    let centers = projectedLineCenters(lines)
     func find(_ value: Int) -> Int {
         var current = value
         while parent[current] != current { current = parent[current] }
@@ -262,16 +324,12 @@ public func groupLinesIntoVisualRows(_ lines: [SectionLine]) -> [[SectionLine]] 
     }
 
     for left in 0..<count {
-        let a = lines[left]
-        let aMin = a.boundingBox.y
-        let aMax = aMin + a.boundingBox.height
+        let (aMin, aMax) = spans[left]
         if left + 1 >= count { continue }
         for right in (left + 1)..<count {
-            let b = lines[right]
-            let bMin = b.boundingBox.y
-            let bMax = bMin + b.boundingBox.height
-            if (bMin...bMax).contains(centerY(a))
-                || (aMin...aMax).contains(centerY(b))
+            let (bMin, bMax) = spans[right]
+            if (bMin...bMax).contains((aMin + aMax) / 2)
+                || (aMin...aMax).contains((bMin + bMax) / 2)
             {
                 union(left, right)
             }
@@ -293,10 +351,10 @@ public func groupLinesIntoVisualRows(_ lines: [SectionLine]) -> [[SectionLine]] 
         $0.stableSorted { $0.boundingBox.x < $1.boundingBox.x }
     }
     return rows.stableSorted {
-        let left = $0.reduce(0.0) { $0 + $1.boundingBox.y }
-            / Double($0.count)
-        let right = $1.reduce(0.0) { $0 + $1.boundingBox.y }
-            / Double($1.count)
+        let left = projectedRowCenter($0.map(\.lineId), centers: centers,
+            fallback: $0.reduce(0.0) { $0 + $1.boundingBox.y } / Double($0.count))
+        let right = projectedRowCenter($1.map(\.lineId), centers: centers,
+            fallback: $1.reduce(0.0) { $0 + $1.boundingBox.y } / Double($1.count))
         return left > right
     }
 }
@@ -485,9 +543,10 @@ private func rowTokens(_ text: String) -> [String] {
 public func extractSectionRowFeatures(
     rows: [ReceiptVisualRow], lines: [SectionLine]
 ) -> [SectionRowFeatures] {
+    let centers = projectedLineCenters(lines)
     let ordered = rows.stableSorted {
-        let left = $0.yMin + $0.yMax
-        let right = $1.yMin + $1.yMax
+        let left = projectedRowCenter($0.lineIds, centers: centers, fallback: ($0.yMin + $0.yMax) / 2)
+        let right = projectedRowCenter($1.lineIds, centers: centers, fallback: ($1.yMin + $1.yMax) / 2)
         if left != right { return left > right }
         return $0.rowId < $1.rowId
     }
@@ -842,7 +901,10 @@ public func makeSectionLines(
                 width: Double(line.boundingBox.width),
                 height: Double(line.boundingBox.height)
             ),
-            words: words
+            words: words,
+            corners: [line.topLeft, line.topRight, line.bottomRight, line.bottomLeft].map {
+                SectionPoint(x: Double($0.x), y: Double($0.y))
+            }
         )
     }
 }

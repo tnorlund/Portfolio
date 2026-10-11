@@ -410,6 +410,28 @@ def _visual_rows(lines, words):
     return build_receipt_rows(lines, words, created_at=_CREATED_AT)
 
 
+def test_projected_reading_order_survives_section_feature_extraction():
+    lines = []
+    for line_id, x, width, baseline in (
+        (1, 0.1, 0.5, 0.7),
+        (2, 0.1, 0.5, 0.66),
+        (3, 0.8, 0.05, 0.66),
+    ):
+        geometry = _geometry(x, baseline + 0.12 * x, width, 0.012)
+        geometry["bounding_box"]["height"] += 0.12 * width
+        for corner in ("top_right", "bottom_right"):
+            geometry[corner]["y"] += 0.12 * width
+        lines.append(replace(_line(line_id, "ROW", baseline), **geometry))
+    rows = _visual_rows(lines, [])
+    assert [row.line_ids for row in rows] == [[1], [2, 3]]
+    # Persisted rows may arrive in ID order or any other order. Features must
+    # use the same projected frame rather than sorting raw bounding boxes.
+    assert [
+        feature.row.line_ids
+        for feature in extract_row_features(list(reversed(rows)), lines)
+    ] == [[1], [2, 3]]
+
+
 def test_section_predictions_are_additive_pending_records():
     lines, words = _receipt_fixture()
     rows = _visual_rows(lines, words)
