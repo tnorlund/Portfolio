@@ -10,14 +10,16 @@ lines into visual rows based on centroid overlap, then creates embeddings
 with row context (row above + target row + row below).
 
 Centroid Overlap Algorithm:
-Two lines are considered part of the same visual row if one line's centroid
-falls within the other line's vertical bounding box span. This approach uses
-no hardcoded tolerances - just the actual geometry of the lines. Connected
-lines are grouped using union-find to form visual rows.
+Observed quadrilaterals are projected onto a common receipt baseline before
+comparing vertical spans. Lines are connected when one projected centroid
+falls inside the other span, then grouped using union-find. Cornerless legacy
+inputs retain their axis-aligned comparison.
 """
 
 from collections import defaultdict
 from collections.abc import Sequence
+from math import isfinite
+from statistics import median
 from typing import Protocol, runtime_checkable
 
 
@@ -38,14 +40,102 @@ class LineLike(Protocol):
         """Calculate the centroid coordinates of the line."""
 
 
+def _row_spans(
+    lines: Sequence[LineLike],
+) -> tuple[list[tuple[float, float]], bool]:
+    """Project observed OCR quadrilaterals onto a common receipt baseline.
+
+    Axis-aligned boxes grow taller as text tilts and can bridge neighboring
+    rows. Use the median observed edge slope so a wide, differently tilted header
+    cannot outweigh the body, then compare projected quadrilaterals. Legacy
+    records use their boxes; an entirely cornerless input is unchanged.
+    """
+    corners = []
+    slopes = []
+    for line in lines:
+        points = [
+            getattr(line, key, None)
+            for key in ("top_left", "top_right", "bottom_right", "bottom_left")
+        ]
+        if not all(
+            isinstance(p, dict)
+            and all(
+                isinstance(p.get(k), (int, float)) and isfinite(p[k])
+                for k in ("x", "y")
+            )
+            for p in points
+        ):
+            corners.append(None)
+            continue
+        tl, tr, br, bl = points
+        dx = tr["x"] - tl["x"]
+        if (
+            dx <= 0
+            or br["x"] <= bl["x"]
+            or tl["y"] + tr["y"] <= bl["y"] + br["y"]
+        ):
+            corners.append(None)
+            continue
+        candidate = (tr["y"] - tl["y"]) / dx
+        if not isfinite(candidate):
+            corners.append(None)
+            continue
+        corners.append(points)
+        slopes.append(candidate)
+    slope = median(slopes) if slopes else 0.0
+    spans = []
+    for line, points in zip(lines, corners, strict=True):
+        if points is None:
+            box = line.bounding_box
+            center = box.get("y", 0) + box.get("height", 0) / 2
+            center -= slope * (box.get("x", 0) + box.get("width", 0) / 2)
+            half_height = box.get("height", 0) / 2
+            # No oriented edges: translate the center, never widen the box.
+            spans.append((center - half_height, center + half_height))
+            continue
+        projected = [p["y"] - slope * p["x"] for p in points]
+        spans.append((min(projected), max(projected)))
+    return spans, any(points is not None for points in corners)
+
+
+def projected_line_centers(lines: Sequence[LineLike]) -> dict[int, float]:
+    """Return reading-order centers when observed corners define a frame.
+
+    Text-only facades and entirely cornerless records retain legacy ordering.
+    """
+    if not all(
+        isinstance(getattr(line, "bounding_box", None), dict) for line in lines
+    ):
+        return {}
+    spans, has_corners = _row_spans(lines)
+    if not has_corners:
+        return {}
+    return {
+        line.line_id: (low + high) / 2
+        for line, (low, high) in zip(lines, spans, strict=True)
+    }
+
+
+def projected_row_center(
+    line_ids: Sequence[int], centers: dict[int, float], fallback: float
+) -> float:
+    """Average in the same sequential order as Swift, including float ties."""
+    if not line_ids or any(line_id not in centers for line_id in line_ids):
+        return fallback
+    total = 0.0
+    for line_id in line_ids:
+        total += centers[line_id]
+    return total / len(line_ids)
+
+
 def group_lines_into_visual_rows(
     lines: Sequence[LineLike],
 ) -> list[list[LineLike]]:
     """Group ReceiptLines into visual rows based on centroid overlap.
 
-    Two lines are on the same visual row if one line's vertical centroid
-    falls within the other line's bounding box height. This uses no hardcoded
-    tolerances - just the actual geometry of the lines.
+    Two lines share a row when one projected vertical centroid falls within
+    the other projected span. Observed corners remove residual receipt tilt
+    before comparison; no OCR coordinates are mutated.
 
     This handles Apple Vision OCR splitting rows into separate entities
     (e.g., "ORGANIC COFFEE" on left and "12.99" on right as separate lines).
@@ -62,6 +152,15 @@ def group_lines_into_visual_rows(
 
     lines_list = list(lines)
     n = len(lines_list)
+    spans, has_corners = _row_spans(lines_list)
+    centers = (
+        {
+            line.line_id: (low + high) / 2
+            for line, (low, high) in zip(lines_list, spans, strict=True)
+        }
+        if has_corners
+        else {}
+    )
 
     # Build adjacency: which lines share a row?
     # Two lines are on the same row if one's centroid falls within the other's
@@ -70,18 +169,12 @@ def group_lines_into_visual_rows(
 
     for i in range(n):
         same_row[i][i] = True
-        line_i = lines_list[i]
-        bb_i = line_i.bounding_box
-        cy_i = bb_i.get("y", 0) + bb_i.get("height", 0) / 2
-        y_min_i = bb_i.get("y", 0)
-        y_max_i = y_min_i + bb_i.get("height", 0)
+        y_min_i, y_max_i = spans[i]
+        cy_i = (y_min_i + y_max_i) / 2
 
         for j in range(i + 1, n):
-            line_j = lines_list[j]
-            bb_j = line_j.bounding_box
-            cy_j = bb_j.get("y", 0) + bb_j.get("height", 0) / 2
-            y_min_j = bb_j.get("y", 0)
-            y_max_j = y_min_j + bb_j.get("height", 0)
+            y_min_j, y_max_j = spans[j]
+            cy_j = (y_min_j + y_max_j) / 2
 
             # Check if centroids fall within each other's spans
             i_centroid_in_j = y_min_j <= cy_i <= y_max_j
@@ -120,10 +213,13 @@ def group_lines_into_visual_rows(
         comp_lines.sort(key=lambda ln: ln.bounding_box.get("x", 0))
         rows.append(comp_lines)
 
-    # Sort rows by average y-coordinate (top first, so descending)
+    # Keep geometric groups and their reading order in the same frame.
     rows.sort(
-        key=lambda row: -sum(ln.bounding_box.get("y", 0) for ln in row)
-        / len(row)
+        key=lambda row: -projected_row_center(
+            [line.line_id for line in row],
+            centers,
+            sum(line.bounding_box.get("y", 0) for line in row) / len(row),
+        )
     )
 
     return rows

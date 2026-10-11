@@ -18,7 +18,7 @@ from receipt_embeddings.formatting.line_format import (
 _AMOUNT_RE = re.compile(
     r"^(?:\()?[-+]?\$?(?:\d+|\d{1,3}(?:,\d{3})+)\.\d{2}-?(?:\))?$"
 )
-GROUPING_VERSION = "visual-rows-v1"
+GROUPING_VERSION = "visual-rows-v2"
 
 
 class WordLike(Protocol):

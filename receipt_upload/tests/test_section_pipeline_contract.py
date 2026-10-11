@@ -27,9 +27,6 @@ from receipt_dynamo.entities import (
     ReceiptSection,
     ReceiptWord,
 )
-from receipt_embeddings import ScoredItem
-from receipt_embeddings.formatting import build_receipt_rows
-
 from receipt_upload.section_assignment import (
     MODEL_SOURCE,
     assign_and_persist_sections,
@@ -40,6 +37,9 @@ from receipt_upload.section_verifier import (
     VERIFICATION_SOURCE,
     verify_receipt_sections,
 )
+
+from receipt_embeddings import ScoredItem
+from receipt_embeddings.formatting import build_receipt_rows
 
 _IMAGE_ID = "00000000-0000-4000-8000-000000000001"
 _NEIGHBOR_IMAGE_ID = "00000000-0000-4000-8000-000000000002"
@@ -135,7 +135,6 @@ def test_lines_worker_orders_merchant_sections_verification(
     worker builds ONE vector-seam client bound to its own table and hands
     it to both the resolver and the verifier."""
     import receipt_dynamo as receipt_dynamo_module
-
     import receipt_upload.merchant_resolution.embedding_processor as ep
     import receipt_upload.merchant_resolution.resolver as resolver_module
     import receipt_upload.section_assignment as assignment_module
@@ -265,7 +264,6 @@ def test_lines_worker_tags_reconstructed_rows_without_changing_behavior(
     row_source="reconstructed" for metrics, while section assignment still
     runs on rows with identical identities (row_id = primary line id)."""
     import receipt_dynamo as receipt_dynamo_module
-
     import receipt_upload.merchant_resolution.embedding_processor as ep
     import receipt_upload.merchant_resolution.resolver as resolver_module
     import receipt_upload.section_assignment as assignment_module
@@ -408,6 +406,28 @@ def _tiny_model(rows, lines) -> dict:
 
 def _visual_rows(lines, words):
     return build_receipt_rows(lines, words, created_at=_CREATED_AT)
+
+
+def test_projected_reading_order_survives_section_feature_extraction():
+    lines = []
+    for line_id, x, width, baseline in (
+        (1, 0.1, 0.5, 0.7),
+        (2, 0.1, 0.5, 0.66),
+        (3, 0.8, 0.05, 0.66),
+    ):
+        geometry = _geometry(x, baseline + 0.12 * x, width, 0.012)
+        geometry["bounding_box"]["height"] += 0.12 * width
+        for corner in ("top_right", "bottom_right"):
+            geometry[corner]["y"] += 0.12 * width
+        lines.append(replace(_line(line_id, "ROW", baseline), **geometry))
+    rows = _visual_rows(lines, [])
+    assert [row.line_ids for row in rows] == [[1], [2, 3]]
+    # Persisted rows may arrive in ID order or any other order. Features must
+    # use the same projected frame rather than sorting raw bounding boxes.
+    assert [
+        feature.row.line_ids
+        for feature in extract_row_features(list(reversed(rows)), lines)
+    ] == [[1], [2, 3]]
 
 
 def test_section_predictions_are_additive_pending_records():
