@@ -3,7 +3,7 @@
  "char": "u",
  "codepoint": 117,
  "provenance": "edited",
- "width": 716.7,
+ "width": 561.9,
  "baselineNudgePx": 0,
  "overrides": {},
  "strokes": [
@@ -11,47 +11,50 @@
    "closed": false,
    "nodes": [
     {
-     "x": 50.0,
-     "y": 650.0,
+     "x": 50,
+     "y": 572.2,
      "type": "corner"
     },
     {
-     "x": 50.0,
-     "y": 220,
+     "x": 50,
+     "y": 137.7,
      "type": "corner",
      "hOut": {
-      "x": 50.0,
-      "y": 90
+      "x": 50,
+      "y": 26.3
      }
     },
     {
-     "x": 358.3,
-     "y": 50.0,
+     "x": 245,
+     "y": -18.3,
      "type": "smooth",
      "hIn": {
-      "x": 238.3,
-      "y": 50.0
+      "x": 140,
+      "y": -18.3
      },
      "hOut": {
-      "x": 478.3,
-      "y": 50.0
+      "x": 350,
+      "y": -18.3
      }
     },
     {
-     "x": 666.7,
-     "y": 220,
+     "x": 440,
+     "y": 137.7,
      "type": "corner",
      "hIn": {
-      "x": 666.7,
-      "y": 90
+      "x": 440,
+      "y": 26.3
      }
     },
     {
-     "x": 666.7,
-     "y": 650.0,
+     "x": 440,
+     "y": 572.2,
      "type": "corner"
     }
    ]
   }
- ]
+ ],
+ "donor": "vons",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the vons face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(100..935) -> (37..968)"
 }

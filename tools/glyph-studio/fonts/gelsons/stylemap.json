@@ -1,18 +1,109 @@
 {
- "version": 1,
- "source": {
-  "merchant": "gelsons",
-  "receipts": 6,
-  "date": "2026-07-19",
-  "notes": "All 6 dev Gelson's Westlake Village receipts. Department headers (GROCERY/PRODUCE/REG DELI/BAKERY) measured bold (header ink density med 0.193 vs body 0.114, ~1.7x) and underlined 13/13 (dot-matrix dashed rule just below the baseline; stylescan's box-interior detector misses it -- measured with a below-box band detector). Cap height equals body. Payment/summary/footer measured body-normal, so only section_header is styled."
- },
- "sections": {
-  "section_header": {
-   "sizeScale": 1.0,
-   "weight": "bold",
-   "underline": true,
-   "underlineRate": 1.0,
-   "notes": "13/13 department headers underlined + bold across the fleet."
+  "version": 1,
+  "source": {
+    "merchant": "gelsons",
+    "receipts": 3,
+    "scan_dir": "/tmp/gridfix/gelsons_studio/scans",
+    "lines_measured": 122,
+    "date": "2026-09-20",
+    "notes": "Gelson's Westlake Village (7 SCAN receipts; stylescan on the 3 whose recorded raw keys live in raw-image-bucket-c779c32). Body is single-width thermal. Department headers (GROCERY/PRODUCE/REG DELI/BAKERY/WINE) measure bold (stroke_rel med 1.194). The dashed underline under those headers is a below-box dot-matrix rule that stylescan's box-interior detector misses (July 2026 fleet: 13/13 underlined) -- kept underline true. The Gelson's wordmark is a printed script logo (logo band), not bold text; store_header stroke_rel 1.161 is that graphic. Payment/summary/footer/BALANCE DUE measure body-normal (total_line stroke_rel 1.112 is under the 1.12 bold cut)."
+  },
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "^Gelson'?s$|TO[WN]NSGATE|WE[S]?T[A]?LAKE VILLAGE|\\(\\d{3}\\)\\s*496"
+    },
+    {
+      "section": "section_header",
+      "pattern": "^(GROCERY|PRODUCE|MEAT|SEAFOOD|REG DELI|SERVICE DELI|DELI|BAKERY|DAIRY|FROZEN|LIQUOR|FLORAL|SUSHI|WINE|MISC)\\s*:?$"
+    },
+    {
+      "section": "total_line",
+      "pattern": "^BALANCE DUE|^USD\\$"
+    },
+    {
+      "section": "summary",
+      "pattern": "^CREDIT CARD|^CHANGE\\b|^Auth#|^Ref#|^Tax Report|^TAX\\s*\\d"
+    },
+    {
+      "section": "payment",
+      "pattern": "MASTERCARD|VISA|US DEBIT|CARD #|AUTH CODE|Mode:|AID:|TVR:|IAD:|TSI:|TC:|MID:|TID:|HID:|ARC:|RRN:|Entry Method|XXXX|APPROVED|Issuer|^PURCHASE$|DEBIT TENDER"
+    },
+    {
+      "section": "footer",
+      "pattern": "Save up to|Rewards program|gel\\s*sons\\.com|Cashier:|POS:|Transaction:|^\\*{5,}|^Store:"
+    }
+  ],
+  "sections": {
+    "store_header": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=5: cap_rel med 1.190, stroke_rel med 1.161, underline 0.00. || stroke/cap inflated by the Gelson's script wordmark (logo band), not bold text; address/phone lines are body."
+    },
+    "section_header": {
+      "sizeScale": 1.0,
+      "weight": "bold",
+      "underline": true,
+      "underlineRate": 1.0,
+      "notes": "n=5: cap_rel med 1.167, stroke_rel med 1.194, underline 0.00. || Department headers print bold (stroke_rel 1.19 >= 1.12). The dashed underline is a below-box dot-matrix rule stylescan misses; July 2026 fleet measured 13/13 underlined."
+    },
+    "item": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=20: cap_rel med 1.024, stroke_rel med 0.976, underline 0.00."
+    },
+    "payment": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=35: cap_rel med 0.929, stroke_rel med 0.931, underline 0.00. || Card/auth block prints ABOVE the items; body weight."
+    },
+    "summary": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=8: cap_rel med 0.988, stroke_rel med 1.010, underline 0.00."
+    },
+    "total_line": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=3: cap_rel med 0.976, stroke_rel med 1.112, underline 0.00. || BALANCE DUE is just under the 1.12 bold cut and matches body on the print."
+    },
+    "footer": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=15: cap_rel med 1.048, stroke_rel med 1.079, underline 0.00."
+    },
+    "barcode_caption": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=12: cap_rel med 1.000, stroke_rel med 0.909, underline 0.00."
+    },
+    "separator": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=2: stroke_rel med 0.912, underline 0.00."
+    },
+    "other": {
+      "sizeScale": 1.0,
+      "weight": "normal",
+      "underline": false,
+      "underlineRate": 0.0,
+      "notes": "n=17: cap_rel med 0.921, stroke_rel med 1.003, underline 0.00."
+    }
   }
- }
 }

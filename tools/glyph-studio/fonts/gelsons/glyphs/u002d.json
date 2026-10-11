@@ -5,11 +5,11 @@
  "provenance": "traced",
  "trace": {
   "corpus": "gelsons.refined.npz",
-  "samples": 20,
-  "consensusHash": "7d687f2a777f",
-  "date": "2026-07-19"
+  "samples": 8,
+  "consensusHash": "d1a8628cefc9",
+  "date": "2026-09-20"
  },
- "width": 499.1,
+ "width": 483.5,
  "baselineNudgePx": 0,
  "overrides": {},
  "strokes": [
@@ -17,12 +17,12 @@
    "closed": false,
    "nodes": [
     {
-     "x": 55.1,
-     "y": 513.9,
+     "x": 36.2,
+     "y": 505.6,
      "type": "corner"
     },
     {
-     "x": 444.0,
+     "x": 447.3,
      "y": 505.6,
      "type": "corner"
     }
