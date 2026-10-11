@@ -27,6 +27,9 @@ from receipt_dynamo.entities import (
     ReceiptSection,
     ReceiptWord,
 )
+from receipt_embeddings import ScoredItem
+from receipt_embeddings.formatting import build_receipt_rows
+
 from receipt_upload.section_assignment import (
     MODEL_SOURCE,
     assign_and_persist_sections,
@@ -37,9 +40,6 @@ from receipt_upload.section_verifier import (
     VERIFICATION_SOURCE,
     verify_receipt_sections,
 )
-
-from receipt_embeddings import ScoredItem
-from receipt_embeddings.formatting import build_receipt_rows
 
 _IMAGE_ID = "00000000-0000-4000-8000-000000000001"
 _NEIGHBOR_IMAGE_ID = "00000000-0000-4000-8000-000000000002"
@@ -135,6 +135,7 @@ def test_lines_worker_orders_merchant_sections_verification(
     worker builds ONE vector-seam client bound to its own table and hands
     it to both the resolver and the verifier."""
     import receipt_dynamo as receipt_dynamo_module
+
     import receipt_upload.merchant_resolution.embedding_processor as ep
     import receipt_upload.merchant_resolution.resolver as resolver_module
     import receipt_upload.section_assignment as assignment_module
@@ -264,6 +265,7 @@ def test_lines_worker_tags_reconstructed_rows_without_changing_behavior(
     row_source="reconstructed" for metrics, while section assignment still
     runs on rows with identical identities (row_id = primary line id)."""
     import receipt_dynamo as receipt_dynamo_module
+
     import receipt_upload.merchant_resolution.embedding_processor as ep
     import receipt_upload.merchant_resolution.resolver as resolver_module
     import receipt_upload.section_assignment as assignment_module
