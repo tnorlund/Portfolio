@@ -7,6 +7,11 @@ QA, OCR, and direct OpenAI `text-embedding-3-small` embeddings are unaffected.
 There is no automatic provider fallback. This change does not enable the
 provider, create credentials, deploy, or authorize receipt processing.
 
+This is an optional direct transport. An existing Anthropic BYOK key in
+OpenRouter may already bill the credit-bearing Claude Console organization.
+Verify that key's organization, routing filters, and shared-capacity fallback
+before deciding whether a direct-provider switch or new credential is needed.
+
 ## Configuration and secure setup
 
 | Environment / portfolio config key | Purpose |
@@ -102,8 +107,12 @@ report false validations/corrections and abstentions, and manually review any
 disagreement against the real receipt. Existing model labels alone are not gold
 truth. Report token usage, actual estimated cost, per-receipt latency, errors,
 and the model provenance. Keep outputs local/dev and do not apply evaluation
-decisions to DynamoDB. Credits must be available in the direct API organization;
-OpenRouter and Bedrock do not use those credits.
+decisions to DynamoDB. Credits must be available in the Claude API organization.
+OpenRouter shared capacity and Bedrock do not use those credits. Anthropic BYOK
+through OpenRouter bills the underlying provider account; combined with the
+organization-wide credit policy, this suggests eligible BYOK requests can use
+the credits. That is a cross-document inference, not verified account routing
+or a vendor guarantee for this combination. OpenRouter fees are separate.
 
 ## Rollback
 
@@ -122,3 +131,5 @@ Official references (verified 2026-10-11):
 - [Sonnet 5.5 compatibility and pricing](https://platform.claude.com/docs/en/models/sonnet-5-5/overview)
 - [Python SDK, errors, and retries](https://platform.claude.com/docs/en/api/sdks/python)
 - [Model IDs](https://platform.claude.com/docs/en/models/overview)
+- [OpenRouter BYOK routing and billing](https://openrouter.ai/docs/guides/overview/auth/byok)
+- [Claude subscriber API credits](https://platform.claude.com/docs/en/about-claude/api-credits-for-subscribers)
