@@ -1545,6 +1545,24 @@ class TestUnmatchedWordAddition:
         proc.dynamo.add_receipt_words.assert_not_called()
         proc.dynamo.delete_receipt_words.assert_not_called()
 
+    @pytest.mark.parametrize(
+        "fragment", [".99", ",99", "-.99", "(.99)", ".99N", "3.5", "1.234"]
+    )
+    @pytest.mark.parametrize("old_text", ["MILK", "5.99", "2"])
+    def test_decimal_fragment_cannot_overwrite_name_price_or_quantity(
+        self, fragment: str, old_text: str
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text=old_text, x=0.8, y=0.6)
+        fresh = _make_word(text=fragment, x=0.8, y=0.6)
+        before = deepcopy(old)
+        result = self._run_overlay(proc, [old], [fresh])
+        assert result["success"] is False
+        assert old == before
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
     def test_multiple_trailing_additions_on_one_line_abstain(
         self,
     ) -> None:

@@ -695,6 +695,10 @@ class OCRProcessor:
             and parse_receipt_amount(amount_text) is not None
         ):
             return "amount"
+        if whole_amount and re.search(r"[.,]", compact):
+            # Bare .99 and other incomplete decimal readings are numeric
+            # fragments, never names or interchangeable with a full price.
+            return "numeric_fragment"
         bare = text.strip().lstrip("+-")
         if bare.isdecimal():
             # Small standalone integers are quantity-like, not prices.
