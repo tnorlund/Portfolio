@@ -16,6 +16,7 @@ import json
 import sys
 import tempfile
 from copy import deepcopy
+from itertools import permutations
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -1115,7 +1116,7 @@ class TestUnmatchedWordAddition:
         assert added[0].word_id == 2  # existing max=1, so next=2
 
     @pytest.mark.parametrize("text", ["MILK", "2"])
-    def test_missing_leading_word_is_added_after_price_match(
+    def test_missing_leading_word_abstains_without_reordering_ids(
         self, text: str
     ) -> None:
         proc = _make_processor()
@@ -1123,13 +1124,12 @@ class TestUnmatchedWordAddition:
         fresh = _make_word(text="8.68", x=0.8, y=0.6, word_id=2)
         leading = _make_word(text=text, x=0.1, y=0.6)
         result = self._run_overlay(proc, [old], [leading, fresh])
-        assert result["success"] is True
-        assert result["words_added"] == 1
-        added = proc.dynamo.add_receipt_words.call_args[0][0]
-        assert [word.text for word in added] == [text]
+        assert result["success"] is False
+        assert "stable word IDs" in result["error"]
         assert old.text == "8.68"
-        rebuilt = proc.dynamo.update_receipt_lines.call_args[0][0]
-        assert rebuilt[0].text == f"{text} 8.68"
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.update_receipt_lines.assert_not_called()
         proc.dynamo.delete_receipt_words.assert_not_called()
 
     @pytest.mark.parametrize(
@@ -1164,6 +1164,8 @@ class TestUnmatchedWordAddition:
             ("8.68", 0.3),
             ("MILK", 0.3),
             ("---", 0.99),
+            ("8.88", 0.98),
+            ("8.68", 0.7),
         ],
     )
     @pytest.mark.parametrize("reverse", [False, True])
@@ -1191,6 +1193,8 @@ class TestUnmatchedWordAddition:
             ("8.68", 0.3),
             ("MILK", 0.3),
             ("---", 0.99),
+            ("9.99", 0.98),
+            ("8.68", 0.7),
         ],
     )
     def test_rejected_observation_preserves_its_old_target(
@@ -1208,6 +1212,367 @@ class TestUnmatchedWordAddition:
         assert preserved.text == "9.99"
         assert old_price.text == "8.68"
         proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    @pytest.mark.parametrize("offset", [0.0, 0.001])
+    def test_relative_duplicate_rejection_is_stable_after_native_retry(
+        self, reverse: bool, offset: float
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="8.88", x=0.8, y=0.6)
+        fresh = _make_word(text="8.68", x=0.8, y=0.6)
+        weaker = _make_word(
+            text="8.88", x=0.8 + offset, y=0.6, confidence=0.98, word_id=2
+        )
+        observations = [fresh, weaker]
+        if reverse:
+            observations.reverse()
+        with patch(
+            "handler.ocr_processor.dynamo_embedding_write.write_native_embeddings",
+            side_effect=RuntimeError("test retry"),
+        ) as writer:
+            first = self._run_overlay(proc, [old], deepcopy(observations))
+        assert first["success"] is False and first["retryable"] is True
+        assert writer.call_count == 3
+        assert old.text == "8.68"
+        with patch(
+            "handler.ocr_processor.dynamo_embedding_write.write_native_embeddings",
+            return_value={},
+        ) as writer:
+            second = self._run_overlay(proc, [old], deepcopy(observations))
+        assert second["success"] is True
+        writer.assert_called_once()
+        assert old.text == "8.68"
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_equal_confidence_relative_duplicates_abstain_before_partial_write(
+        self, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="8.88", x=0.8, y=0.6)
+        readings = [
+            _make_word(text="8.88", x=0.8, y=0.6, confidence=0.98),
+            _make_word(text="8.68", x=0.8, y=0.6, confidence=0.98, word_id=2),
+        ]
+        if reverse:
+            readings.reverse()
+        with patch(
+            "handler.ocr_processor.dynamo_embedding_write.write_native_embeddings"
+        ) as writer:
+            result = self._run_overlay(proc, [old], readings)
+        assert result["success"] is False
+        assert old.text == "8.88"
+        writer.assert_not_called()
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("order", list(permutations(range(3))))
+    def test_duplicate_trailing_price_abstains_before_writes(
+        self, order: tuple[int, ...]
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="MILK", x=0.1, y=0.6)
+        observations = [
+            deepcopy(old),
+            _make_word(text="8.68", x=0.8, y=0.6, word_id=2),
+            _make_word(text="8.68", x=0.8, y=0.6, word_id=3),
+        ]
+        result = self._run_overlay(
+            proc, [old], [observations[i] for i in order]
+        )
+        assert result["success"] is False
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.update_receipt_lines.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("duplicate_text", ["9.99", "MILK", "68"])
+    def test_conflicting_trailing_observations_abstain_before_writes(
+        self, duplicate_text: str
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="MILK", x=0.1, y=0.6)
+        observations = [
+            deepcopy(old),
+            _make_word(text="8.68", x=0.8, y=0.6, word_id=2),
+            _make_word(text=duplicate_text, x=0.8, y=0.6, word_id=3),
+        ]
+        result = self._run_overlay(proc, [old], observations)
+        assert result["success"] is False
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.update_receipt_lines.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_fragment_overlapping_expanded_match_abstains(
+        self, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="3.15", x=0.8, y=0.6, w=0.04)
+        readings = [
+            _make_word(text="3.15", x=0.8, y=0.6, w=0.1),
+            _make_word(text="15", x=0.87, y=0.6, w=0.03, word_id=2),
+        ]
+        if reverse:
+            readings.reverse()
+        result = self._run_overlay(proc, [old], readings)
+        assert result["success"] is False
+        assert old.bounding_box["width"] == 0.04
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_proposed_geometry_must_remain_unambiguous_on_retry(
+        self, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        old = [
+            _make_word(text="3.15", x=0.8, y=0.6, h=0.01),
+            _make_word(text="9.99", x=0.8, y=0.64, h=0.03, line_id=2),
+        ]
+        readings = [
+            _make_word(text="3.15", x=0.8, y=0.6, h=0.05),
+            _make_word(text="9.99", x=0.8, y=0.62, h=0.03, line_id=2),
+        ]
+        if reverse:
+            readings.reverse()
+        before = deepcopy(old)
+        with patch(
+            "handler.ocr_processor.dynamo_embedding_write.write_native_embeddings"
+        ) as writer:
+            result = self._run_overlay(proc, old, readings)
+        assert result["success"] is False
+        assert old == before
+        writer.assert_not_called()
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    def test_addition_cannot_duplicate_noncandidate_boundary_word(
+        self,
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="3.15", x=0.06, y=0.6, w=0.06)
+        fresh = _make_word(text="3.15", x=0.0, y=0.6, w=0.05)
+        result = self._run_overlay(
+            proc,
+            [old],
+            [fresh],
+            region={"x": 0.1, "y": 0.0, "width": 0.9, "height": 1.0},
+        )
+        assert result["success"] is False
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_addition_that_enables_noise_on_retry_abstains_before_writes(
+        self, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="CARLON", x=0.1, y=0.6)
+        observations = [
+            deepcopy(old),
+            _make_word(text="MILK", x=0.8, y=0.6, confidence=0.95, word_id=2),
+            _make_word(text="---", x=0.8, y=0.6, confidence=0.99, word_id=3),
+        ]
+        if reverse:
+            observations.reverse()
+        with patch(
+            "handler.ocr_processor.dynamo_embedding_write.write_native_embeddings"
+        ) as writer:
+            result = self._run_overlay(proc, [old], observations)
+        assert result["success"] is False
+        writer.assert_not_called()
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_matched_replacements_cannot_reverse_stable_word_order(
+        self, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        old = [
+            _make_word(text="MILK", x=0.1, y=0.6, w=0.1),
+            _make_word(text="CHOCOLATE", x=0.22, y=0.6, w=0.1, word_id=2),
+        ]
+        observations = [
+            _make_word(text="MILK", x=0.14, y=0.6, w=0.06),
+            _make_word(text="CHOCOLATE", x=0.13, y=0.6, w=0.27, word_id=2),
+        ]
+        before = deepcopy(old)
+        if reverse:
+            observations.reverse()
+        result = self._run_overlay(proc, old, observations)
+        assert result["success"] is False
+        assert "stable word IDs" in result["error"]
+        assert old == before
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_legacy_adjacent_inversion_cannot_hide_new_nonadjacent_inversion(
+        self, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        old = [
+            _make_word(text="FIRST", x=0.1, y=0.6, w=0.26),
+            _make_word(text="SECOND", x=0.5, y=0.6, w=0.05, word_id=2),
+            _make_word(text="THIRD", x=0.2, y=0.6, w=0.05, word_id=3),
+        ]
+        readings = [deepcopy(word) for word in old]
+        readings[0] = _make_word(text="FIRST", x=0.3, y=0.6, w=0.05)
+        if reverse:
+            readings.reverse()
+        before = deepcopy(old)
+        result = self._run_overlay(proc, old, readings)
+        assert result["success"] is False
+        assert old == before
+        proc.dynamo.update_receipt_words.assert_not_called()
+
+    def test_partial_update_cannot_enable_rejected_noise(self) -> None:
+        proc = _make_processor()
+        old = _make_word(text="CARL0N", x=0.1, y=0.6, w=0.15, confidence=0.75)
+        readings = [
+            _make_word(text="CARLON", x=0.1, y=0.6, w=0.3, confidence=0.8),
+            _make_word(text="MILK", x=0.5, y=0.6, confidence=0.99, word_id=2),
+            _make_word(
+                text="---", x=0.35, y=0.6, w=0.25, confidence=0.7, word_id=3
+            ),
+        ]
+        result = self._run_overlay(proc, [old], readings)
+        assert result["success"] is False
+        assert old.text == "CARL0N"
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.add_receipt_words.assert_not_called()
+
+    def test_independent_price_updates_recover_after_partial_word_write(
+        self,
+    ) -> None:
+        proc = _make_processor()
+        old = [
+            _make_word(text="8.88", x=0.8, y=0.6),
+            _make_word(text="9.99", x=0.8, y=0.4, line_id=2),
+        ]
+        original = {word.line_id: word.text for word in old}
+        readings = [
+            _make_word(text="8.68", x=0.8, y=0.6),
+            _make_word(text="9.79", x=0.8, y=0.4, line_id=2),
+        ]
+
+        def partial_write(words):
+            for word in old:
+                if word.line_id != words[0].line_id:
+                    word.text = original[word.line_id]
+            raise RuntimeError("test partial update")
+
+        proc.dynamo.update_receipt_words.side_effect = partial_write
+        with patch(
+            "handler.ocr_processor.dynamo_embedding_write.write_native_embeddings",
+            return_value={},
+        ) as writer:
+            with pytest.raises(RuntimeError, match="test partial update"):
+                self._run_overlay(proc, old, deepcopy(readings))
+            proc.dynamo.update_receipt_words.side_effect = None
+            result = self._run_overlay(proc, old, deepcopy(readings))
+        assert result["success"] is True
+        assert [word.text for word in old] == ["8.68", "9.79"]
+        writer.assert_called_once()
+
+    def test_additions_on_independent_lines_recover_after_partial_insert(
+        self,
+    ) -> None:
+        proc = _make_processor()
+        old = [
+            _make_word(text="MILK", x=0.1, y=0.6),
+            _make_word(text="BREAD", x=0.1, y=0.4, line_id=2),
+        ]
+        readings = deepcopy(old) + [
+            _make_word(text="8.68", x=0.8, y=0.6, word_id=2),
+            _make_word(text="9.79", x=0.8, y=0.4, line_id=2, word_id=2),
+        ]
+
+        def partial_insert(words):
+            old.append(deepcopy(words[0]))
+            raise RuntimeError("test partial insert")
+
+        proc.dynamo.add_receipt_words.side_effect = partial_insert
+        with patch(
+            "handler.ocr_processor.dynamo_embedding_write.write_native_embeddings",
+            return_value={},
+        ) as writer:
+            with pytest.raises(RuntimeError, match="test partial insert"):
+                self._run_overlay(proc, old, deepcopy(readings))
+            proc.dynamo.add_receipt_words.side_effect = None
+            result = self._run_overlay(proc, old, deepcopy(readings))
+        assert result["success"] is True
+        assert result["words_added"] == 1
+        inserted = proc.dynamo.add_receipt_words.call_args[0][0]
+        assert {
+            (word.line_id, word.word_id, word.text) for word in old + inserted
+        } == {(1, 1, "MILK"), (2, 1, "BREAD"), (1, 2, "8.68"), (2, 2, "9.79")}
+        writer.assert_called_once()
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_cross_line_additions_cannot_expand_neighbor_insertion_envelope(
+        self, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        old = [
+            _make_word(text="MILK", x=0.1, y=0.2, h=0.04),
+            _make_word(text="BREAD", x=0.1, y=0.25, h=0.03, line_id=2),
+        ]
+        readings = deepcopy(old) + [
+            _make_word(text="1.99", x=0.7, y=0.22, h=0.035, word_id=2),
+            _make_word(
+                text="2.99", x=0.4, y=0.25, h=0.03, line_id=2, word_id=2
+            ),
+        ]
+        if reverse:
+            readings.reverse()
+        before = deepcopy(old)
+        result = self._run_overlay(proc, old, readings)
+        assert result["success"] is False
+        assert old == before
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    def test_multiple_trailing_additions_on_one_line_abstain(
+        self,
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="MILK", x=0.1, y=0.6)
+        fresh = deepcopy(old)
+        price = _make_word(text="8.68", x=0.8, y=0.6, word_id=3)
+        suffix = _make_word(text="WHOLE", x=0.4, y=0.6, word_id=2)
+        result = self._run_overlay(proc, [old], [price, fresh, suffix])
+        assert result["success"] is False
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    def test_recovered_phone_prefix_cannot_persist_reversed_word_ids(
+        self,
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="555-1234", x=0.5, y=0.6)
+        fresh = deepcopy(old)
+        prefix = _make_word(text="(702)", x=0.1, y=0.6, word_id=2)
+        result = self._run_overlay(proc, [old], [prefix, fresh])
+        assert result["success"] is False
+        assert "stable word IDs" in result["error"]
+        assert old.text == "555-1234" and old.word_id == 1
+        proc.dynamo.add_receipt_words.assert_not_called()
+        proc.dynamo.update_receipt_words.assert_not_called()
+        proc.dynamo.update_receipt_lines.assert_not_called()
         proc.dynamo.delete_receipt_words.assert_not_called()
 
     def test_disjoint_product_does_not_block_shifted_price_correction(
@@ -1230,7 +1595,7 @@ class TestUnmatchedWordAddition:
         proc.dynamo.delete_receipt_words.assert_not_called()
 
     @pytest.mark.parametrize("reverse", [False, True])
-    def test_recovered_prefix_rebuilds_line_in_geometric_order(
+    def test_recovered_prefix_abstains_before_any_content_mutation(
         self, reverse: bool
     ) -> None:
         proc = _make_processor()
@@ -1243,12 +1608,24 @@ class TestUnmatchedWordAddition:
         if reverse:
             new.reverse()
         result = self._run_overlay(proc, [chocolate, price], new)
-        assert result["success"] is True
-        added = proc.dynamo.add_receipt_words.call_args[0][0]
-        assert [(word.text, word.word_id) for word in added] == [("MILK", 3)]
+        assert result["success"] is False
+        assert "stable word IDs" in result["error"]
         assert (chocolate.word_id, price.word_id) == (1, 2)
-        rebuilt = proc.dynamo.update_receipt_lines.call_args[0][0]
-        assert rebuilt[0].text == "MILK CHOCOLATE 8.68"
+        assert [word.text for word in (chocolate, price)] == [
+            "CHOCOLATE",
+            "8.68",
+        ]
+        for method in (
+            "add_receipt_words",
+            "update_receipt_words",
+            "delete_receipt_words",
+            "update_receipt_lines",
+            "remove_receipt_letters",
+            "put_receipt_letters",
+            "update_receipt_word_labels",
+            "delete_receipt_word_labels",
+        ):
+            getattr(proc.dynamo, method).assert_not_called()
 
     @pytest.mark.parametrize(
         "text", ["2/$3", "$5OFF", "SAVE$5", "GET$5", "OFF$5"]
