@@ -1165,3 +1165,26 @@ def test_overlapping_crop_amount_outside_strict_match_window_abstains(
         )
         is None
     )
+
+
+@pytest.mark.parametrize(
+    "axis,source_shift,crop_shift", [("y", 0.011, 0.02), ("x", 0.051, 0.1)]
+)
+@pytest.mark.parametrize("direction", [-1, 1])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_conflicting_source_overlap_outside_strict_window_abstains(
+    axis: str,
+    source_shift: float,
+    crop_shift: float,
+    direction: int,
+    reverse: bool,
+) -> None:
+    first = word("$2.50")
+    conflicting = word("$7.50", line_id=2)
+    crop = word("$7.50", line_id=2)
+    conflicting["bounding_box"][axis] += direction * source_shift
+    crop["bounding_box"][axis] += direction * crop_shift
+    source = [first, conflicting]
+    if reverse:
+        source.reverse()
+    assert detect(source=source, warped=[crop]) is None

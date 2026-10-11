@@ -170,6 +170,15 @@ def _near(source: LostAmountEvidence, word: dict[str, Any]) -> bool:
     )
 
 
+def _overlaps(source: LostAmountEvidence, word: dict[str, Any]) -> bool:
+    box = word["bounding_box"]
+    return min(source.x + source.width, box["x"] + box["width"]) > max(
+        source.x, box["x"]
+    ) and min(source.y + source.height, box["y"] + box["height"]) > max(
+        source.y, box["y"]
+    )
+
+
 def _same_source_observation(
     left: LostAmountEvidence, right: LostAmountEvidence
 ) -> bool:
@@ -431,7 +440,10 @@ def detect_warp_lost_amount(
         }
         if any(
             previous.amount != evidence.amount
-            and _near(previous, evidence_word)
+            and (
+                _near(previous, evidence_word)
+                or _overlaps(previous, evidence_word)
+            )
             for previous in source_seen
         ):
             return None
@@ -447,14 +459,7 @@ def detect_warp_lost_amount(
         for i, candidate in enumerate(amounts):
             if i in nearby:
                 continue
-            box = candidate["bounding_box"]
-            if min(evidence.x + evidence.width, box["x"] + box["width"]) > max(
-                evidence.x, box["x"]
-            ) and min(
-                evidence.y + evidence.height, box["y"] + box["height"]
-            ) > max(
-                evidence.y, box["y"]
-            ):
+            if _overlaps(evidence, candidate):
                 overlaps.add(i)
         matches = [i for i in nearby if _cents(amounts[i]["text"]) == cents]
         # Any conflicting crop reading defeats single-loss attribution,
