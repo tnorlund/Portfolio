@@ -1251,3 +1251,55 @@ def test_split_currency_prefix_preserves_actual_product_words(
         ]
         zone = [name("MILK")]
     assert detect(source=source, zone=zone) is not None
+
+
+@pytest.mark.parametrize("direction", [-1, 1])
+@pytest.mark.parametrize("original_context", [False, True])
+def test_adjacent_decoder_row_cannot_supply_missing_product_name(
+    direction: int, original_context: bool
+) -> None:
+    offset = direction * 0.02 * 0.7
+    source = [word("$2.50")]
+    zone = [name("MILK", y=0.61 + offset)]
+    if original_context:
+        source.append(word("MILK", x=0.1, y=0.6 + offset, line_id=2))
+        zone = [name("MILK")]
+    assert detect(source=source, zone=zone) is None
+
+
+def test_opposite_context_words_cannot_bridge_distinct_bands() -> None:
+    assert detect(zone=[name("MILK", y=0.60), name("BREAD", y=0.62)]) is None
+
+
+@pytest.mark.parametrize(
+    "label", ["MSRP", "LIST", "RETAIL", "MSRP:", "Milk LIST", "RETAIL Milk"]
+)
+@pytest.mark.parametrize("original_context", [False, True])
+def test_standalone_reference_price_label_cannot_support_loss(
+    label: str, original_context: bool
+) -> None:
+    source = [word("$2.50")]
+    zone = [name(label)]
+    if original_context:
+        source.append(word(label, x=0.1, line_id=2))
+        zone = [name("MILK")]
+    assert detect(source=source, zone=zone) is None
+
+
+@pytest.mark.parametrize("label", ["WAS:", "-", "−"])
+@pytest.mark.parametrize("center", [0.604, 0.596])
+@pytest.mark.parametrize("original_context", [False, True])
+def test_small_warning_tokens_survive_tighter_product_context(
+    label: str, center: float, original_context: bool
+) -> None:
+    source = [word("$2.50")]
+    zone = [
+        name("MILK"),
+        {"text": label, "x": 0.5, "y_mid": center, "h": 0.008},
+    ]
+    if original_context:
+        qualifier = word(label, x=0.5, y=center - 0.004, line_id=3)
+        qualifier["bounding_box"]["height"] = 0.008
+        source.extend([word("MILK", x=0.1, line_id=2), qualifier])
+        zone = [name("MILK")]
+    assert detect(source=source, zone=zone) is None

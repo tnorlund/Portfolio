@@ -44,6 +44,8 @@ _CHARGE_OR_SAVINGS_RE = re.compile(
 
 _MINUS_TRANSLATION = str.maketrans({char: "-" for char in "−‒–—﹣－‐‑"})
 
+_REFERENCE_CONTEXT_RE = re.compile(r"\b(?:MSRP|LIST|RETAIL)\b", re.I)
+
 _TAX_ABBREVIATION_RE = re.compile(
     r"\b(?:GST|HST|PST|QST|TVA|IVA|MWST)\b", re.I
 )
@@ -240,24 +242,44 @@ def _has_unpriced_name(
     slope: float = 0.0,
 ) -> bool | None:
     """Return product context, or None when a summary-shaped row is unsure."""
-    row = [
+    # Product names must stay within canonical band_words' 0.6 median-
+    # height boundary. Preserve wider warning context so small qualifiers
+    # or split signs cannot disappear when the positive window tightens.
+    heights = sorted(
+        [evidence.height] + [float(word["h"]) for word in zone_words]
+    )
+    row_gap = (heights[len(heights) // 2] or 0.01) * 0.6
+    evidence_y = evidence.y + evidence.height / 2 - slope * evidence.x
+    nearby_row = [
         word
         for word in zone_words
-        if abs(
-            word["y_mid"]
-            - slope * word["x"]
-            - (evidence.y + evidence.height / 2 - slope * evidence.x)
-        )
+        if abs(word["y_mid"] - slope * word["x"] - evidence_y)
         <= max(float(word["h"]), evidence.height) * 0.75
     ]
-    if any(float(word["x"]) > evidence.x + evidence.width / 2 for word in row):
+    row = [
+        word
+        for word in nearby_row
+        if abs(word["y_mid"] - slope * word["x"] - evidence_y) < row_gap
+    ]
+    flat_centers = [evidence_y] + [
+        word["y_mid"] - slope * word["x"] for word in row
+    ]
+    if max(flat_centers) - min(flat_centers) >= row_gap:
+        # Two nearby words on opposite sides must not bridge distinct bands.
+        return None
+    if any(
+        float(word["x"]) > evidence.x + evidence.width / 2
+        for word in nearby_row
+    ):
         # A surviving suffix (e.g. OZ) can identify an embedded measurement,
         # even if its decimal happens to align with the amount column.
         return None
-    if any(is_line_price_word(word) for word in row):
+    if any(is_line_price_word(word) for word in nearby_row):
         # A surviving unit price does not prove the extended price survived.
         return None
-    text = " ".join(word["text"] for word in sorted(row, key=lambda w: w["x"]))
+    text = " ".join(
+        word["text"] for word in sorted(nearby_row, key=lambda w: w["x"])
+    )
     text = text.translate(_MINUS_TRANSLATION)
     bare = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z\s]", " ", text)).strip()
     # Summary vocabulary can appear in product names as well as in
@@ -288,6 +310,7 @@ def _has_unpriced_name(
         and not is_settlement_row(bare)
         and not NON_PAYMENT_SUMMARY_RE.search(text)
         and not _CHARGE_OR_SAVINGS_RE.search(text)
+        and not _REFERENCE_CONTEXT_RE.search(text)
         and not NON_PRODUCT_NOTE_RE.search(text)
         and not is_column_header_row(text)
         and COLUMN_HEADER_ANCHOR_TOKENS.isdisjoint(
