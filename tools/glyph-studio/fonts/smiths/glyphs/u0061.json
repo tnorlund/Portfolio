@@ -1,0 +1,111 @@
+{
+ "version": 1,
+ "char": "a",
+ "codepoint": 97,
+ "provenance": "edited",
+ "width": 590.5,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 80,
+     "y": 459.6,
+     "type": "corner",
+     "hOut": {
+      "x": 80,
+      "y": 545.8
+     }
+    },
+    {
+     "x": 270,
+     "y": 642.8,
+     "type": "smooth",
+     "hIn": {
+      "x": 160,
+      "y": 642.8
+     },
+     "hOut": {
+      "x": 380,
+      "y": 642.8
+     }
+    },
+    {
+     "x": 460,
+     "y": 459.6,
+     "type": "corner",
+     "hIn": {
+      "x": 460,
+      "y": 545.8
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 460,
+     "y": 459.6,
+     "type": "corner"
+    },
+    {
+     "x": 460,
+     "y": 50.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 440,
+     "y": 362.6,
+     "type": "corner"
+    },
+    {
+     "x": 230,
+     "y": 362.6,
+     "type": "corner",
+     "hOut": {
+      "x": 180,
+      "y": 362.6
+     }
+    },
+    {
+     "x": 75,
+     "y": 206.3,
+     "type": "corner",
+     "hIn": {
+      "x": 75,
+      "y": 292.5
+     },
+     "hOut": {
+      "x": 75,
+      "y": 120.1
+     }
+    },
+    {
+     "x": 230,
+     "y": 50.0,
+     "type": "corner",
+     "hIn": {
+      "x": 180,
+      "y": 50.0
+     }
+    },
+    {
+     "x": 460,
+     "y": 50.0,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "vons",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the vons face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(100..935) -> (50..950)"
+}

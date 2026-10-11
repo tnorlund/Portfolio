@@ -1,0 +1,128 @@
+{
+ "version": 1,
+ "char": "8",
+ "codepoint": 56,
+ "provenance": "edited",
+ "width": 505.2,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": true,
+   "nodes": [
+    {
+     "x": 222,
+     "y": 960.8,
+     "type": "smooth",
+     "hIn": {
+      "x": 132,
+      "y": 960.8
+     },
+     "hOut": {
+      "x": 312,
+      "y": 960.8
+     }
+    },
+    {
+     "x": 385,
+     "y": 742.0,
+     "type": "smooth",
+     "hIn": {
+      "x": 385,
+      "y": 862.7
+     },
+     "hOut": {
+      "x": 385,
+      "y": 621.3
+     }
+    },
+    {
+     "x": 222,
+     "y": 524.3,
+     "type": "smooth",
+     "hIn": {
+      "x": 312,
+      "y": 524.3
+     },
+     "hOut": {
+      "x": 132,
+      "y": 524.3
+     }
+    },
+    {
+     "x": 60,
+     "y": 742.0,
+     "type": "smooth",
+     "hIn": {
+      "x": 60,
+      "y": 621.3
+     },
+     "hOut": {
+      "x": 60,
+      "y": 862.7
+     }
+    }
+   ]
+  },
+  {
+   "closed": true,
+   "nodes": [
+    {
+     "x": 222,
+     "y": 513.5,
+     "type": "smooth",
+     "hIn": {
+      "x": 127,
+      "y": 513.5
+     },
+     "hOut": {
+      "x": 317,
+      "y": 513.5
+     }
+    },
+    {
+     "x": 395,
+     "y": 276.3,
+     "type": "smooth",
+     "hIn": {
+      "x": 395,
+      "y": 407.8
+     },
+     "hOut": {
+      "x": 395,
+      "y": 144.9
+     }
+    },
+    {
+     "x": 222,
+     "y": 39.2,
+     "type": "smooth",
+     "hIn": {
+      "x": 317,
+      "y": 39.2
+     },
+     "hOut": {
+      "x": 127,
+      "y": 39.2
+     }
+    },
+    {
+     "x": 50,
+     "y": 276.3,
+     "type": "smooth",
+     "hIn": {
+      "x": 50,
+      "y": 144.9
+     },
+     "hOut": {
+      "x": 50,
+      "y": 407.8
+     }
+    }
+   ]
+  }
+ ],
+ "donor": "vons",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the vons face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(100..935) -> (50..950)"
+}

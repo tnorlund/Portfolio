@@ -1,0 +1,74 @@
+{
+ "version": 1,
+ "char": "i",
+ "codepoint": 105,
+ "provenance": "edited",
+ "width": 640.6,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 320,
+     "y": 815.3,
+     "type": "corner"
+    },
+    {
+     "x": 320,
+     "y": 815.3,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 210,
+     "y": 642.8,
+     "type": "corner"
+    },
+    {
+     "x": 320,
+     "y": 642.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 320,
+     "y": 642.8,
+     "type": "corner"
+    },
+    {
+     "x": 320,
+     "y": -3.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 210,
+     "y": -3.9,
+     "type": "corner"
+    },
+    {
+     "x": 430,
+     "y": -3.9,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "vons",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the vons face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(100..935) -> (50..950)"
+}
