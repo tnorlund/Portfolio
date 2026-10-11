@@ -26,7 +26,10 @@ from PIL import Image as PIL_Image
 from PIL import UnidentifiedImageError
 from PIL.Image import Resampling, Transform
 from receipt_dynamo import DynamoClient
-from receipt_dynamo.amounts import looks_like_receipt_amount
+from receipt_dynamo.amounts import (
+    looks_like_receipt_amount,
+    parse_receipt_amount,
+)
 from receipt_dynamo.constants import (
     ImageType,
     OCRJobType,
@@ -658,11 +661,28 @@ class OCRProcessor:
         # signed/accounting forms supported by the shared amount parser.
         # The amount shape check keeps sizes, SKUs and product words as text.
         amount_text = (
-            re.sub(r"\s*[TFNOAB]X?([+-]?)$", r"\1", text.strip())
+            re.sub(r"\s*[TFNOAB]X?(?=[()+\-\s]*$)", "", text.strip())
             .removeprefix("+")
             .removesuffix("+")
         )
-        if looks_like_receipt_amount(amount_text):
+        # Currency can precede or follow the number; whitespace inside
+        # accounting wrappers and omitted leading zeroes are valid OCR.
+        compact = re.sub(r"\s+", "", amount_text)
+        currency = (
+            r"(?:(?:USD|US|CAD|CA|AUD|AU|NZD|NZ|EUR|GBP|JPY|JP|"
+            r"CNY|CN|RMB|INR|IN)?[$€£¥₹]+[Ss]?)"
+        )
+        number = r"[+-]?(?:\d[\d.,]*|[.,]\d+)"
+        whole_amount = re.fullmatch(
+            rf"[+-]?(?:{currency}?(?:{number}|\({number}\))|"
+            rf"\({currency}?{number}{currency}?\)){currency}?[+-]?",
+            compact,
+        )
+        if (
+            whole_amount
+            and looks_like_receipt_amount(amount_text.replace("+", ""))
+            and parse_receipt_amount(amount_text) is not None
+        ):
             return "amount"
         bare = text.strip().lstrip("+-")
         if bare.isdecimal():
@@ -704,6 +724,7 @@ class OCRProcessor:
         remaining = list(candidate_words)
         matches: list[tuple[ReceiptWord, ReceiptWord]] = []
         ambiguous = False
+        deferred_rejections: set[tuple[int, int]] = set()
 
         for new_word in sorted(
             new_words,
@@ -716,6 +737,8 @@ class OCRProcessor:
             best_score = -1.0
             candidate_scores: list[float] = []
             rejected_scores: list[float] = []
+            rejected_words: list[ReceiptWord] = []
+            overlapping_conflict = False
             for idx, old_word in enumerate(remaining):
                 overlap = self._y_overlap_ratio(
                     new_word.bounding_box, old_word.bounding_box
@@ -727,12 +750,17 @@ class OCRProcessor:
                     - self._bbox_center_x(old_word.bounding_box)
                 )
                 score = overlap - (0.5 * x_distance)
-                if self._x_overlap_ratio(
+                x_overlap = self._x_overlap_ratio(
                     new_word.bounding_box, old_word.bounding_box
-                ) < 0.15 or not self._regional_types_compatible(
+                )
+                if x_overlap < 0.15 or not self._regional_types_compatible(
                     new_word.text, old_word.text
                 ):
                     rejected_scores.append(score)
+                    rejected_words.append(old_word)
+                    overlapping_conflict = (
+                        overlapping_conflict or x_overlap >= 0.15
+                    )
                     continue
                 candidate_scores.append(score)
                 if score > best_score:
@@ -785,12 +813,24 @@ class OCRProcessor:
                 ambiguous = True
                 continue
             if best_idx is None:
-                ambiguous = ambiguous or bool(rejected_scores)
+                # An overlapping type conflict is unsafe regardless of
+                # subsequent matches. A disjoint new leading word can be
+                # safe once later observations cover its same-row peers.
+                if overlapping_conflict:
+                    ambiguous = True
+                else:
+                    deferred_rejections.update(
+                        (word.line_id, word.word_id) for word in rejected_words
+                    )
                 continue
 
             old_word = remaining.pop(best_idx)
             matches.append((new_word, old_word))
 
+        ambiguous = ambiguous or any(
+            (word.line_id, word.word_id) in deferred_rejections
+            for word in remaining
+        )
         return matches, ambiguous
 
     def _items_zone_baseline(
@@ -1519,7 +1559,12 @@ class OCRProcessor:
         for line in details.lines:
             line_words = sorted(
                 words_by_line.get(line.line_id, []),
-                key=lambda word: word.word_id,
+                # IDs are stable identity, not reading order: recovered
+                # leading words are allocated after the existing maximum.
+                key=lambda word: (
+                    float(word.bounding_box.get("x", 0.0)),
+                    word.word_id,
+                ),
             )
             rebuilt_text = " ".join(word.text for word in line_words)
             if line.text != rebuilt_text:

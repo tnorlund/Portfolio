@@ -452,6 +452,80 @@ class TestBboxCenterX:
 
 class TestMatchRegionalWords:
     @pytest.mark.parametrize(
+        "text", ["2/$3", "$5OFF", "SAVE$5", "GET$5", "OFF$5"]
+    )
+    def test_currency_in_product_text_does_not_make_an_amount(
+        self, text: str
+    ) -> None:
+        proc = _make_processor()
+        product = _make_word(text=text, x=0.8, y=0.6)
+        amount = _make_word(text="3.00", x=0.8, y=0.6)
+        assert proc._regional_word_kind(text) == "text"
+        assert proc._regional_match_plan([amount], [product]) == ([], True)
+        assert proc._regional_match_plan([product], [amount]) == ([], True)
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "USD$S 7.43",
+            "USD$S7.43",
+            "$$7.43",
+            "$3",
+            "-$7.32",
+            "($7.32)",
+            "$-7.32",
+            "€7,32",
+            "USD$S(7.43)",
+            "$(7.32)",
+            "CAD$7.32",
+            "(+7.32)",
+            "7,32€",
+            "7.32$",
+            "$.99",
+            "US$7.32",
+            "($ 7.32 )",
+            "(7,32€)",
+            ".99€",
+        ],
+    )
+    def test_whole_currency_amounts_remain_compatible(self, text: str) -> None:
+        proc = _make_processor()
+        old = _make_word(text=text, x=0.8, y=0.6)
+        fresh = _make_word(text="7.32", x=0.8, y=0.6)
+        assert proc._regional_word_kind(text) == "amount"
+        product = _make_word(text="MILK", x=0.8, y=0.6)
+        assert proc._regional_match_plan([product], [old]) == ([], True)
+        assert proc._regional_match_plan([old], [product]) == ([], True)
+        assert proc._regional_match_plan([fresh], [old]) == (
+            [(fresh, old)],
+            False,
+        )
+
+    @pytest.mark.parametrize("text", ["MILK", "2"])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_missing_leading_word_waits_for_surviving_price(
+        self, text: str, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="8.68", x=0.8, y=0.6, word_id=2)
+        fresh = _make_word(text="8.68", x=0.8, y=0.6, word_id=2)
+        leading = _make_word(text=text, x=0.1, y=0.6)
+        new = [leading, fresh]
+        if reverse:
+            new.reverse()
+        assert proc._regional_match_plan(new, [old]) == ([(fresh, old)], False)
+
+    def test_overlapping_unmatched_word_is_not_rescued_by_later_match(
+        self,
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="8.68", x=0.8, y=0.6)
+        fresh = _make_word(text="8.68", x=0.8, y=0.6, word_id=2)
+        conflict = _make_word(text="MILK", x=0.79, y=0.6)
+        _, ambiguous = proc._regional_match_plan([conflict, fresh], [old])
+        assert ambiguous is True
+
+    @pytest.mark.parametrize(
         "flagged",
         [
             "7.32N",
@@ -464,6 +538,8 @@ class TestMatchRegionalWords:
             "+7.32N",
             "7.32N+",
             "7.32+N",
+            "(7.32N)",
+            "($7.32N)",
         ],
     )
     def test_tax_flagged_amounts_keep_amount_compatibility(
@@ -986,6 +1062,69 @@ class TestUnmatchedWordAddition:
         assert added[0].line_id == 1
         assert added[0].word_id == 2  # existing max=1, so next=2
 
+    @pytest.mark.parametrize("text", ["MILK", "2"])
+    def test_missing_leading_word_is_added_after_price_match(
+        self, text: str
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text="8.68", x=0.8, y=0.6, word_id=2)
+        fresh = _make_word(text="8.68", x=0.8, y=0.6, word_id=2)
+        leading = _make_word(text=text, x=0.1, y=0.6)
+        result = self._run_overlay(proc, [old], [leading, fresh])
+        assert result["success"] is True
+        assert result["words_added"] == 1
+        added = proc.dynamo.add_receipt_words.call_args[0][0]
+        assert [word.text for word in added] == [text]
+        assert old.text == "8.68"
+        rebuilt = proc.dynamo.update_receipt_lines.call_args[0][0]
+        assert rebuilt[0].text == f"{text} 8.68"
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_recovered_prefix_rebuilds_line_in_geometric_order(
+        self, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        chocolate = _make_word(text="CHOCOLATE", x=0.3, y=0.6, word_id=1)
+        price = _make_word(text="8.68", x=0.8, y=0.6, word_id=2)
+        leading = _make_word(text="MILK", x=0.1, y=0.6, word_id=1)
+        fresh_chocolate = _make_word(text="CHOCOLATE", x=0.3, y=0.6, word_id=2)
+        fresh_price = _make_word(text="8.68", x=0.8, y=0.6, word_id=3)
+        new = [leading, fresh_chocolate, fresh_price]
+        if reverse:
+            new.reverse()
+        result = self._run_overlay(proc, [chocolate, price], new)
+        assert result["success"] is True
+        added = proc.dynamo.add_receipt_words.call_args[0][0]
+        assert [(word.text, word.word_id) for word in added] == [("MILK", 3)]
+        assert (chocolate.word_id, price.word_id) == (1, 2)
+        rebuilt = proc.dynamo.update_receipt_lines.call_args[0][0]
+        assert rebuilt[0].text == "MILK CHOCOLATE 8.68"
+
+    @pytest.mark.parametrize(
+        "text", ["2/$3", "$5OFF", "SAVE$5", "GET$5", "OFF$5"]
+    )
+    def test_product_currency_text_cannot_be_overwritten_by_a_price(
+        self, text: str
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text=text, x=0.8, y=0.6)
+        fresh = _make_word(text="3.00", x=0.8, y=0.6)
+        result = self._run_overlay(proc, [old], [fresh])
+        assert result["success"] is False
+        assert old.text == text
+        for method in (
+            "add_receipt_words",
+            "update_receipt_words",
+            "delete_receipt_words",
+            "update_receipt_lines",
+            "remove_receipt_letters",
+            "put_receipt_letters",
+            "update_receipt_word_labels",
+            "delete_receipt_word_labels",
+        ):
+            getattr(proc.dynamo, method).assert_not_called()
+
     def test_unsafe_correspondence_cannot_fall_through_to_delete_and_append(
         self,
     ):
@@ -1034,6 +1173,8 @@ class TestUnmatchedWordAddition:
             "+7.32N",
             "7.32N+",
             "7.32+N",
+            "(7.32N)",
+            "($7.32N)",
         ],
     )
     def test_rejected_target_aborts_before_content_mutation(
