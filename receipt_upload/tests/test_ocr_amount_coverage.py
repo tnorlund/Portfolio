@@ -234,6 +234,13 @@ def test_missing_amount_needs_unpriced_product_context(text):
         "New York State Sales Tax",
         "Tax Due",
         "Tax Total Amount Due",
+        "Produce Total",
+        "Grocery Total Amount",
+        "Produce Amount Due",
+        "Department Balance",
+        "Department Total to Pay",
+        "Department Balance to Pay",
+        "Department Total Paid",
     ],
 )
 def test_tax_summary_labels_are_not_lost_product_amounts(text: str) -> None:
@@ -250,31 +257,62 @@ def test_tax_summary_labels_are_not_lost_product_amounts(text: str) -> None:
         "TAX AMOUNT WORKBOOK",
         "TAX INCLUDED COFFEE",
         "TAX FREE BAG",
-        "STEAK TIPS",
         "VAT GUIDE",
         "SUBTOTAL MATH WORKBOOK",
         "GUIDE TO SALES TAX",
         "GUIDE TO VAT",
         "HANDBOOK ON VAT",
         "GUIDE TO SUBTOTAL",
+        "TOTAL BODY LOTION",
+        "BALANCE BAR",
+        "GUIDE TO TOTAL",
+        "AUTHORIZED BIOGRAPHY",
     ],
 )
-def test_product_names_containing_summary_words_remain_eligible(
+def test_product_names_with_summary_vocabulary_abstain_conservatively(
     text: str,
 ) -> None:
+    # This evidence-only helper has no reliable way to distinguish product
+    # names from all summary phrasing. Abstain without changing decoded items.
+    assert detect(zone=[name(text)]) is None
+
+
+@pytest.mark.parametrize("text", ["MILK", "STEAK TIPS", "BODY LOTION"])
+def test_unambiguous_product_names_remain_eligible(text: str) -> None:
     found = detect(zone=[name(text)])
-    assert found is not None
-    assert found.amount == 2.5
+    assert found is not None and found.amount == 2.5
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "TOOTHPASTE COLGATE TOTAL",
+        "RUNNING SHOES NEW BALANCE",
+        "Produce Total",
+        "Department Balance",
+        "Produce Subtotal",
+        "CA Sales Tax",
+    ],
+)
+@pytest.mark.parametrize("reverse", [False, True])
+def test_summary_shaped_context_cannot_hide_another_missing_price(
+    text: str, reverse: bool
+) -> None:
+    source = [word("$2.50"), word("$1.00", y=0.4, line_id=2)]
+    if reverse:
+        source.reverse()
+    assert detect(source=source, zone=[name(), name(text, y=0.41)]) is None
+    assert detect(zone=[name(text)]) is None
 
 
 @pytest.mark.parametrize(
     "tokens,is_product",
     [
         (["Sales", "Tax", "Included:", "8.25%"], False),
-        (["SALES", "TAX", "GUIDE"], True),
+        (["SALES", "TAX", "GUIDE"], False),
         (["Produce", "Sub", "Total"], False),
         (["VAT", "Amount"], False),
-        (["VAT", "GUIDE"], True),
+        (["VAT", "GUIDE"], False),
     ],
 )
 def test_split_tax_labels_use_full_row_context(
@@ -289,9 +327,61 @@ def test_split_tax_labels_use_full_row_context(
     assert (found is not None) is is_product
 
 
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("label", ["TOOTHPASTE COLGATE TOTAL", "MILK"])
+def test_surviving_unit_price_cannot_hide_a_second_missing_price(
+    reverse: bool, label: str
+) -> None:
+    source = [
+        word("$2.50"),
+        word("$1.00", y=0.4, line_id=2),
+        word("$0.50", x=0.55, y=0.4, line_id=3),
+    ]
+    if reverse:
+        source.reverse()
+    assert (
+        detect(
+            source=source,
+            warped=[word("$0.50", x=0.55, y=0.4, line_id=3)],
+            zone=[
+                name(),
+                name(label, y=0.41),
+                {**name("2 @", y=0.41), "x": 0.4},
+                {**name("$0.50", y=0.41), "x": 0.55},
+            ],
+        )
+        is None
+    )
+
+
 def test_no_product_context_is_not_enough_evidence():
     assert detect(zone=[]) is None
     assert detect(zone=[name(y=0.4)]) is None
+
+
+@pytest.mark.parametrize("context", [None, "1", "VISA DEBIT", "DISCOUNT"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_uncovered_price_without_product_context_blocks_single_loss(
+    context: str | None, reverse: bool
+) -> None:
+    source = [
+        word("$2.50"),
+        word("$1.00", y=0.4, line_id=2),
+        word("$3.00", y=0.2, line_id=3),
+    ]
+    if reverse:
+        source.reverse()
+    zone = [name(), name("MILK", y=0.21)]
+    if context is not None:
+        zone.append(name(context, y=0.41))
+    assert (
+        detect(
+            source=source,
+            warped=[word("$3.00", y=0.2, line_id=3)],
+            zone=zone,
+        )
+        is None
+    )
 
 
 def test_multiple_missing_prices_that_each_explain_gap_are_ambiguous():

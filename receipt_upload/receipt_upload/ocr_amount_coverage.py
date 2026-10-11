@@ -16,6 +16,7 @@ from receipt_dynamo.amounts import (
     NON_PAYMENT_SUMMARY_RE,
     SUBTOTAL_KEYWORD_RE,
     TAX_KEYWORD_RE,
+    TOTAL_KEYWORD_RE,
     parse_receipt_amount,
 )
 
@@ -131,7 +132,8 @@ def _same_source_observation(
 
 def _has_unpriced_name(
     evidence: LostAmountEvidence, zone_words: Sequence[dict[str, Any]]
-) -> bool:
+) -> bool | None:
+    """Return product context, or None when a summary-shaped row is unsure."""
     row = [
         word
         for word in zone_words
@@ -139,28 +141,19 @@ def _has_unpriced_name(
         <= max(float(word["h"]), evidence.height) * 0.75
     ]
     if any(is_line_price_word(word) for word in row):
-        return False
+        # A surviving unit price does not prove the extended price survived.
+        return None
     text = " ".join(word["text"] for word in sorted(row, key=lambda w: w["x"]))
     bare = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z\s]", " ", text)).strip()
-    # Summary labels may have arbitrary department/jurisdiction prefixes.
-    # Preserve descriptive suffixes and title-shaped product prefixes such
-    # as "SALES TAX GUIDE" and "GUIDE TO SALES TAX" without enumerating
-    # jurisdictions (which would miss labels such as "CA Sales Tax").
-    for pattern in (SUBTOTAL_KEYWORD_RE, TAX_KEYWORD_RE):
-        for match in pattern.finditer(bare):
-            if re.search(
-                r"\b(?:guide|manual|handbook|workbook)\s+"
-                r"(?:to|for|on|about)\b",
-                bare[: match.start()].strip(),
-                re.IGNORECASE,
-            ):
-                continue
-            if re.fullmatch(
-                r"(?:(?:total|amount|included|due|payable)\s*)*",
-                bare[match.end() :].strip(),
-                re.IGNORECASE,
-            ):
-                return False
+    # Summary vocabulary can appear in product names as well as in
+    # department totals and settlement rows. Text alone cannot resolve that
+    # ambiguity: retain the missing observation as a blocker, regardless of
+    # prefixes or suffixes, rather than guessing a product/summary class.
+    if any(
+        pattern.search(bare)
+        for pattern in (SUBTOTAL_KEYWORD_RE, TAX_KEYWORD_RE, TOTAL_KEYWORD_RE)
+    ):
+        return None
     return (
         bool(re.search(r"[A-Za-z]{2}", text))
         and not is_settlement_row(bare)
@@ -323,25 +316,27 @@ def detect_warp_lost_amount(
         unpriced_names = [
             _has_unpriced_name(item, zone_words) for item in group
         ]
-        if any(unpriced_names):
-            if not all(unpriced_names):
-                return None
-            # Preserve an actual observation and stable provenance; never
-            # synthesize an average box for the duplicate group.
-            lost.append(
-                min(
-                    group,
-                    key=lambda item: (
-                        item.source_line_id,
-                        item.source_word_id,
-                        item.x,
-                        item.y,
-                        item.width,
-                        item.height,
-                        item.text,
-                    ),
-                )
+        # Every uncovered positive observation must have clear product
+        # context. Missing/numeric-only rows and rejected summary context
+        # cannot be ignored: they may conceal a second lost amount.
+        if not all(context is True for context in unpriced_names):
+            return None
+        # Preserve an actual observation and stable provenance; never
+        # synthesize an average box for the duplicate group.
+        lost.append(
+            min(
+                group,
+                key=lambda item: (
+                    item.source_line_id,
+                    item.source_word_id,
+                    item.x,
+                    item.y,
+                    item.width,
+                    item.height,
+                    item.text,
+                ),
             )
+        )
     return (
         lost[0]
         if len(lost) == 1 and round(lost[0].amount * 100) == gap
