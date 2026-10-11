@@ -1434,3 +1434,50 @@ def test_invalid_warped_name_geometry_cannot_support_evidence(
     label = name("MILK")
     label[field] = value
     assert detect(zone=[label]) is None
+
+
+@pytest.mark.parametrize("confidence", [1.01, 100.0])
+@pytest.mark.parametrize("invalid_indices", [(0,), (1,), (0, 1)])
+def test_out_of_range_anchor_confidence_cannot_establish_column(
+    confidence: float, invalid_indices: tuple[int, ...]
+) -> None:
+    anchors = [word("$9.00", y=0.04), word("$8.00", y=0.10)]
+    for index in invalid_indices:
+        anchors[index]["confidence"] = confidence
+    assert detect(warped=anchors, column_anchors=False) is None
+
+
+@pytest.mark.parametrize("confidence", [0.95, 0.999, 1.0])
+def test_valid_anchor_confidence_boundaries_remain_eligible(
+    confidence: float,
+) -> None:
+    anchors = [
+        word("$9.00", y=0.04, confidence=confidence),
+        word("$8.00", y=0.10, confidence=confidence),
+    ]
+    assert detect(warped=anchors, column_anchors=False) is not None
+
+
+@pytest.mark.parametrize("text", ["$2.50", "WAS", "MILK"])
+@pytest.mark.parametrize(
+    "missing", ["bounding_box", "x", "y", "width", "height"]
+)
+def test_incomplete_source_geometry_causes_abstention(
+    text: str, missing: str
+) -> None:
+    observed = word(text)
+    if missing == "bounding_box":
+        del observed[missing]
+    else:
+        del observed["bounding_box"][missing]
+    assert detect(source=[word("$2.50"), observed]) is None
+
+
+@pytest.mark.parametrize("text", ["$2.50", "WAS", "MILK"])
+@pytest.mark.parametrize(
+    "value", [None, "0.8", True, float("nan"), float("inf")]
+)
+def test_invalid_source_geometry_causes_abstention(text: str, value) -> None:
+    observed = word(text)
+    observed["bounding_box"]["x"] = value
+    assert detect(source=[word("$2.50"), observed]) is None

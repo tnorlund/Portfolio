@@ -218,7 +218,7 @@ def _established_price_column(words: Sequence[dict[str, Any]]) -> float | None:
             or isinstance(confidence, bool)
             or not isinstance(confidence, (int, float))
             or not math.isfinite(confidence)
-            or confidence < 0.95
+            or not 0.95 <= confidence <= 1
         ):
             continue
         box = word["bounding_box"]
@@ -405,18 +405,21 @@ def detect_warp_lost_amount(
             }
             crop_boxes.append(box)
         identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
-        for box in crop_boxes:
+        source_boxes = [word["bounding_box"] for word in source_words]
+        for box in crop_boxes + source_boxes:
             if (
                 any(
                     isinstance(box[key], bool)
                     or not isinstance(box[key], (int, float))
                     for key in ("x", "y", "width", "height")
                 )
-                or _project_box(box, identity) is None
+                or _project_box(box, identity, require_inside=False) is None
             ):
-                # An observed amount with unknown coverage cannot be
-                # discarded and then reported as missing from the crop.
+                # Unknown geometry cannot establish coverage, receipt
+                # ownership, or product context for a missing amount.
                 return None
+        if any(_project_box(box, identity) is None for box in crop_boxes):
+            return None
         if others:
             to_source = _transform(receipt_bounds, to_source=True)
             # Surviving prices also support the inferred column, so they
