@@ -12,6 +12,7 @@ Handles:
 import json
 import logging
 import os
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import atan2, degrees
@@ -653,7 +654,15 @@ class OCRProcessor:
 
     @staticmethod
     def _regional_word_kind(text: str) -> str:
-        if looks_like_receipt_amount(text):
+        # Use the decoder's tax-flag alphabet, including flags around the
+        # signed/accounting forms supported by the shared amount parser.
+        # The amount shape check keeps sizes, SKUs and product words as text.
+        amount_text = (
+            re.sub(r"\s*[TFNOAB]X?([+-]?)$", r"\1", text.strip())
+            .removeprefix("+")
+            .removesuffix("+")
+        )
+        if looks_like_receipt_amount(amount_text):
             return "amount"
         bare = text.strip().lstrip("+-")
         if bare.isdecimal():
@@ -706,30 +715,38 @@ class OCRProcessor:
             best_idx: int | None = None
             best_score = -1.0
             candidate_scores: list[float] = []
-            rejected_candidate = False
+            rejected_scores: list[float] = []
             for idx, old_word in enumerate(remaining):
                 overlap = self._y_overlap_ratio(
                     new_word.bounding_box, old_word.bounding_box
                 )
                 if overlap < 0.15:
                     continue
-                if self._x_overlap_ratio(
-                    new_word.bounding_box, old_word.bounding_box
-                ) < 0.15 or not self._regional_types_compatible(
-                    new_word.text, old_word.text
-                ):
-                    rejected_candidate = True
-                    continue
                 x_distance = abs(
                     self._bbox_center_x(new_word.bounding_box)
                     - self._bbox_center_x(old_word.bounding_box)
                 )
                 score = overlap - (0.5 * x_distance)
+                if self._x_overlap_ratio(
+                    new_word.bounding_box, old_word.bounding_box
+                ) < 0.15 or not self._regional_types_compatible(
+                    new_word.text, old_word.text
+                ):
+                    rejected_scores.append(score)
+                    continue
                 candidate_scores.append(score)
                 if score > best_score:
                     best_score = score
                     best_idx = idx
 
+            # A type/column conflict at the strongest location cannot be
+            # bypassed by borrowing a weaker compatible neighbor. Reject
+            # ties too, independently of candidate iteration order.
+            if best_idx is not None and any(
+                score >= best_score - 1e-9 for score in rejected_scores
+            ):
+                ambiguous = True
+                continue
             if (
                 sum(
                     abs(score - best_score) <= 1e-9
@@ -768,7 +785,7 @@ class OCRProcessor:
                 ambiguous = True
                 continue
             if best_idx is None:
-                ambiguous = ambiguous or rejected_candidate
+                ambiguous = ambiguous or bool(rejected_scores)
                 continue
 
             old_word = remaining.pop(best_idx)

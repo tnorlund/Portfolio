@@ -452,6 +452,76 @@ class TestBboxCenterX:
 
 class TestMatchRegionalWords:
     @pytest.mark.parametrize(
+        "flagged",
+        [
+            "7.32N",
+            "0.49T",
+            "$1.25AX",
+            "-0.99 F",
+            "7.32-N",
+            "(7.32)N",
+            "7.32N-",
+            "+7.32N",
+            "7.32N+",
+            "7.32+N",
+        ],
+    )
+    def test_tax_flagged_amounts_keep_amount_compatibility(
+        self, flagged: str
+    ) -> None:
+        proc = _make_processor()
+        old = _make_word(text=flagged, x=0.8, y=0.6)
+        text = _make_word(text="LG", x=0.8, y=0.6)
+        amount = _make_word(text="7.32", x=0.8, y=0.6)
+
+        assert proc._regional_word_kind(flagged) == "amount"
+        assert proc._regional_match_plan([text], [old]) == ([], True)
+        assert proc._regional_match_plan([amount], [old]) == (
+            [(amount, old)],
+            False,
+        )
+        assert proc._regional_match_plan([old], [amount]) == (
+            [(old, amount)],
+            False,
+        )
+
+    @pytest.mark.parametrize("text", ["4006N", "14.10Z", "0.95g", "CAT"])
+    def test_non_amount_suffixes_remain_text(self, text: str) -> None:
+        assert OCRProcessor._regional_word_kind(text) == "text"
+
+    @pytest.mark.parametrize("neighbor_x", [0.8, 0.88])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_stronger_rejected_target_cannot_donate_neighboring_price(
+        self, neighbor_x: float, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        name = _make_word(text="MILK", x=0.8, y=0.6)
+        neighbor = _make_word(text="9.99", x=neighbor_x, y=0.6, word_id=2)
+        fresh = _make_word(text="4.99", x=0.8, y=0.6)
+        old = [name, neighbor]
+        if reverse:
+            old.reverse()
+
+        assert proc._regional_match_plan([fresh], old) == ([], True)
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_weaker_incompatible_neighbor_preserves_real_price_match(
+        self, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        name = _make_word(text="MILK", x=0.72, y=0.6)
+        amount = _make_word(text="9.99", x=0.8, y=0.6, word_id=2)
+        fresh = _make_word(text="4.99", x=0.8, y=0.6)
+        old = [name, amount]
+        if reverse:
+            old.reverse()
+
+        assert proc._regional_match_plan([fresh], old) == (
+            [(fresh, amount)],
+            False,
+        )
+
+    @pytest.mark.parametrize(
         "old_text,new_text",
         [
             ("1", "$3.15"),
@@ -952,6 +1022,55 @@ class TestUnmatchedWordAddition:
         proc.dynamo.update_receipt_words.assert_not_called()
         proc.dynamo.add_receipt_words.assert_not_called()
         proc.dynamo.delete_receipt_words.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "flagged_price",
+        [
+            None,
+            "7.32N",
+            "7.32-N",
+            "(7.32)N",
+            "7.32N-",
+            "+7.32N",
+            "7.32N+",
+            "7.32+N",
+        ],
+    )
+    def test_rejected_target_aborts_before_content_mutation(
+        self, flagged_price: str | None
+    ) -> None:
+        proc = _make_processor()
+        old = [_make_word(text="MILK", x=0.8, y=0.6)]
+        fresh = [_make_word(text="4.99", x=0.8, y=0.6)]
+        if flagged_price:
+            old[0].text = flagged_price
+            fresh[0].text = "LG"
+        else:
+            old.append(_make_word(text="9.99", x=0.88, y=0.6, word_id=2))
+        labels = [_make_label(line_id=word.line_id) for word in old]
+        old_before, labels_before = deepcopy((old, labels))
+        with patch(
+            "handler.ocr_processor.dynamo_embedding_write.write_native_embeddings",
+            return_value={},
+        ) as write_embeddings:
+            result = self._run_overlay(proc, old, fresh, labels=labels)
+
+        assert result["success"] is False
+        assert "ambiguous" in result["error"].lower()
+        assert old == old_before
+        assert labels == labels_before
+        for method in (
+            "add_receipt_words",
+            "update_receipt_words",
+            "delete_receipt_words",
+            "update_receipt_lines",
+            "remove_receipt_letters",
+            "put_receipt_letters",
+            "update_receipt_word_labels",
+            "delete_receipt_word_labels",
+        ):
+            getattr(proc.dynamo, method).assert_not_called()
+        write_embeddings.assert_not_called()
 
     @pytest.mark.parametrize("split_fragment", [False, True])
     def test_reused_target_aborts_overlay_without_receipt_content_writes(
