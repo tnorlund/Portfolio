@@ -7,14 +7,6 @@ from typing import cast
 
 import pulumi
 import pulumi_aws as aws
-from dynamo_db import dynamodb_table
-
-# Import the CodeBuildDockerImage component
-from infra.components.codebuild_docker_image import CodeBuildDockerImage
-from infra.components.receipt_validation_config import (
-    receipt_validation_environment,
-)
-from infra.components.tracing_config import hosted_tracing_environment
 from pulumi import (
     ComponentResource,
     Config,
@@ -25,6 +17,15 @@ from pulumi_aws.iam import Role, RolePolicy, RolePolicyAttachment
 from pulumi_aws.lambda_ import Function
 from pulumi_aws.s3 import Bucket
 from pulumi_aws.sqs import Queue
+
+from dynamo_db import dynamodb_table
+
+# Import the CodeBuildDockerImage component
+from infra.components.codebuild_docker_image import CodeBuildDockerImage
+from infra.components.receipt_validation_config import (
+    receipt_validation_environment,
+)
+from infra.components.tracing_config import hosted_tracing_environment
 
 config = Config("portfolio")
 current_region = aws.get_region()
