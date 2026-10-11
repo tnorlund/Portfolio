@@ -14,6 +14,7 @@ import sys
 import types
 from types import SimpleNamespace
 
+import pytest
 from receipt_dynamo.constants import ValidationStatus
 from receipt_dynamo.entities import ReceiptWordLabel
 
@@ -163,6 +164,30 @@ def _restore(saved):
             sys.modules.pop(k, None)
         else:
             sys.modules[k] = v
+
+
+@pytest.mark.parametrize("raise_on_failure", [False, True])
+def test_anthropic_failure_keeps_pending_labels(monkeypatch, raise_on_failure):
+    monkeypatch.setenv("RECEIPT_VALIDATION_PROVIDER", "anthropic")
+    needed = [_label(1, 1, "AMOUNT")]
+    dynamo = _FakeDynamo()
+    saved = _install_stubs([], raises=RuntimeError("provider unavailable"))
+    try:
+        if raise_on_failure:
+            with pytest.raises(RuntimeError, match="provider unavailable"):
+                m.apply_async_payload(_payload(needed), dynamo)
+        else:
+            assert (
+                m.apply_async_payload(
+                    _payload(needed), dynamo, raise_on_failure=False
+                )
+                == 0
+            )
+    finally:
+        _restore(saved)
+    assert not dynamo.updated
+    assert not dynamo.added
+    assert not dynamo.deleted
 
 
 def _result(line, word, decision, label, reasoning="x"):

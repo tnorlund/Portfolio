@@ -1,7 +1,7 @@
-"""LLM-based label validation using Ollama with OpenRouter fallback.
+"""Receipt label validation with explicitly selected provider routing.
 
 This module provides receipt-aware batch validation of pending labels using
-the same LLM infrastructure as the label evaluator (gpt-oss:120b-cloud).
+OpenRouter or the explicitly configured direct Anthropic Messages API.
 
 The LLM sees:
 1. Full receipt text with pending labels highlighted
@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from langchain_core.messages import HumanMessage
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from receipt_agent.constants import CORE_LABELS
 from receipt_agent.utils.llm_factory import create_resilient_llm
 from receipt_dynamo.amounts import (
@@ -31,6 +31,7 @@ from receipt_dynamo.amounts import (
 
 from receipt_upload.tracing import traceable as native_traceable
 
+from .anthropic_client import AnthropicLabelClient, AnthropicValidationError
 from .label_normalization import canonical_label_name, normalize_label_alias
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,17 @@ class LabelValidationResponse(BaseModel):
     )
 
 
+class _AnthropicLabelDecision(LabelDecision):
+    """Enforce the strict wire contract locally as well as at the provider."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class _AnthropicLabelValidationResponse(LabelValidationResponse):
+    model_config = ConfigDict(extra="forbid")
+    decisions: List[_AnthropicLabelDecision]
+
+
 @dataclass
 class LLMValidationResult:
     """Result of LLM validation for a single label."""
@@ -163,6 +175,8 @@ def _sanitize_label_decision(
 def convert_structured_response(
     response: LabelValidationResponse,
     pending_labels: List[Dict[str, Any]],
+    *,
+    preserve_uncertainty: bool = False,
 ) -> List[LLMValidationResult]:
     """
     Convert structured LLM response to LLMValidationResult list.
@@ -240,6 +254,10 @@ def convert_structured_response(
             decision=decision_str,
             reasoning=reasoning,
         )
+
+        if preserve_uncertainty and llm_decision.decision == "NEEDS_REVIEW":
+            final_label = label["label"]
+            decision_str = "NEEDS_REVIEW"
 
         # If INVALID but label unchanged, mark as NEEDS_REVIEW
         if decision_str == "INVALID" and final_label == label["label"]:
@@ -722,7 +740,7 @@ class LLMBatchValidator:
     """
     Validates all pending labels for a receipt using LLM with structured output.
 
-    Uses the same Ollama + OpenRouter fallback pattern as the label evaluator.
+    OpenRouter remains the default; direct Anthropic is an explicit opt-in.
     Structured output via Pydantic ensures type-safe responses.
     """
 
@@ -738,14 +756,26 @@ class LLMBatchValidator:
             temperature: LLM temperature (0.0 for deterministic)
             timeout: Request timeout in seconds
         """
-        base_llm = create_resilient_llm(
-            temperature=temperature,
-            timeout=timeout,
+        self.provider = (
+            os.environ.get("RECEIPT_VALIDATION_PROVIDER", "openrouter")
+            .strip()
+            .lower()
         )
-        # Wrap with structured output for type-safe responses
-        self.structured_llm = base_llm.with_structured_output(
-            LabelValidationResponse
-        )
+        if self.provider == "anthropic":
+            self.structured_llm = AnthropicLabelClient(
+                _AnthropicLabelValidationResponse, timeout=timeout
+            )
+        elif self.provider == "openrouter":
+            base_llm = create_resilient_llm(
+                temperature=temperature, timeout=timeout
+            )
+            self.structured_llm = base_llm.with_structured_output(
+                LabelValidationResponse
+            )
+        else:
+            raise AnthropicValidationError(
+                "Unsupported RECEIPT_VALIDATION_PROVIDER"
+            )
         self._call_count = 0
         self._success_count = 0
 
@@ -775,10 +805,17 @@ class LLMBatchValidator:
             merchant: Optional[str],
         ) -> dict:
             """Traced LLM call - captures prompt and structured response."""
-            response = self.structured_llm.invoke(
-                [HumanMessage(content=prompt)]
+            if self.provider == "anthropic":
+                response = self.structured_llm.invoke(prompt, label_count)
+            else:
+                response = self.structured_llm.invoke(
+                    [HumanMessage(content=prompt)]
+                )
+            converted = convert_structured_response(
+                response,
+                pending_labels,
+                preserve_uncertainty=self.provider == "anthropic",
             )
-            converted = convert_structured_response(response, pending_labels)
             validations = []
             for label, decision in zip(pending_labels, converted, strict=True):
                 validations.append(
@@ -795,6 +832,12 @@ class LLMBatchValidator:
                 )
             return {
                 "validations": validations,
+                "provider": self.provider,
+                "provenance": (
+                    self.structured_llm.get_stats()
+                    if self.provider == "anthropic"
+                    else {}
+                ),
                 "prompt": prompt,
                 "response": response,
                 "label_count": label_count,
@@ -859,7 +902,18 @@ class LLMBatchValidator:
             )
 
             # Convert structured response to results
-            results = convert_structured_response(response, pending_labels)
+            results = convert_structured_response(
+                response,
+                pending_labels,
+                preserve_uncertainty=self.provider == "anthropic",
+            )
+            if self.provider == "anthropic":
+                provenance = self.structured_llm.get_stats()
+                # Persist provenance through the existing reasoning audit field.
+                # No receipt entity/schema or embedding format changes needed.
+                stamp = json.dumps(provenance, sort_keys=True)
+                for result in results:
+                    result.reasoning += f" [validation_provenance={stamp}]"
             self._success_count += 1
 
             # Log summary
@@ -873,7 +927,13 @@ class LLMBatchValidator:
 
             return results
 
+        except AnthropicValidationError:
+            raise
         except ValidationError as e:
+            if self.provider == "anthropic":
+                raise AnthropicValidationError(
+                    "Anthropic validation contract failed"
+                ) from None
             logger.error("LLM structured output validation failed: %s", e)
             # Return fallback results - mark all as NEEDS_REVIEW
             # Note: NEEDS_REVIEW decision means embedding_processor won't update DynamoDB
@@ -896,6 +956,10 @@ class LLMBatchValidator:
             ]
 
         except Exception as e:
+            if self.provider == "anthropic":
+                raise AnthropicValidationError(
+                    "Anthropic validation failed"
+                ) from None
             logger.error("LLM validation failed: %s", e)
             # Return fallback results - mark all as NEEDS_REVIEW
             # Note: NEEDS_REVIEW decision means embedding_processor won't update DynamoDB

@@ -21,6 +21,7 @@ decisions, same audit trail.
 
 from __future__ import annotations
 
+import os
 from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -327,6 +328,15 @@ def apply_llm_results(
             # Async consumer: don't clean up — leave the pending labels intact
             # and propagate so SQS redrives (and eventually DLQs) the message.
             raise
+        if (
+            os.environ.get("RECEIPT_VALIDATION_PROVIDER", "openrouter")
+            .strip()
+            .lower()
+            != "openrouter"
+        ):
+            # Direct-provider/configuration failures preserve all pending work.
+            # Async callers already raised; sync uploads may finish embedding.
+            return 0
         for label in needed_labels:
             _delete_non_core_label(
                 dynamo=dynamo,
