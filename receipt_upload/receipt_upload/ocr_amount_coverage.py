@@ -37,6 +37,10 @@ from receipt_upload.line_items.geometry import (
     strip_tax_flag,
 )
 
+_CHARGE_OR_SAVINGS_RE = re.compile(
+    r"\b(?:tips?|gratuit(?:y|ies)|service\s+charges?|save[ds]?)\b", re.I
+)
+
 _MINUS_TRANSLATION = str.maketrans({char: "-" for char in "−‒–—﹣－‐‑"})
 
 _TAX_ABBREVIATION_RE = re.compile(
@@ -264,6 +268,7 @@ def _has_unpriced_name(
         bool(re.search(r"[A-Za-z]{2}", _UNIT_CONTEXT_RE.sub(" ", text)))
         and not is_settlement_row(bare)
         and not NON_PAYMENT_SUMMARY_RE.search(text)
+        and not _CHARGE_OR_SAVINGS_RE.search(text)
         and not NON_PRODUCT_NOTE_RE.search(text)
         and not is_column_header_row(text)
         and COLUMN_HEADER_ANCHOR_TOKENS.isdisjoint(
@@ -357,6 +362,7 @@ def detect_warp_lost_amount(
     )
     source_groups: list[list[LostAmountEvidence]] = []
     group_matches: list[set[int]] = []
+    group_overlaps: list[set[int]] = []
     for word in source_words:
         cents = _cents(word["text"])
         projected = _project_box(word["bounding_box"], target)
@@ -434,6 +440,22 @@ def detect_warp_lost_amount(
             for i, candidate in enumerate(amounts)
             if _near(evidence, candidate)
         ]
+        # A shifted crop reading can narrowly miss the strict same-word
+        # window while still occupying the source price. It is ambiguous,
+        # never positive evidence that the amount disappeared.
+        overlaps: set[int] = set()
+        for i, candidate in enumerate(amounts):
+            if i in nearby:
+                continue
+            box = candidate["bounding_box"]
+            if min(evidence.x + evidence.width, box["x"] + box["width"]) > max(
+                evidence.x, box["x"]
+            ) and min(
+                evidence.y + evidence.height, box["y"] + box["height"]
+            ) > max(
+                evidence.y, box["y"]
+            ):
+                overlaps.add(i)
         matches = [i for i in nearby if _cents(amounts[i]["text"]) == cents]
         # Any conflicting crop reading defeats single-loss attribution,
         # even if this row also has a matching observation or another row
@@ -462,16 +484,24 @@ def detect_warp_lost_amount(
             index = duplicate_groups[0]
             source_groups[index].append(evidence)
             group_matches[index].update(matches)
+            group_overlaps[index].update(overlaps)
             continue
         source_groups.append([evidence])
         group_matches.append(set(matches))
+        group_overlaps.append(overlaps)
 
     # Coverage belongs to an occurrence, not whichever duplicate happened
     # to be scanned first. Resolve all group members before counting loss.
     source_slope = estimate_skew(source_projected_words)
     used: set[int] = set()
     lost: list[LostAmountEvidence] = []
-    for group, matches in zip(source_groups, group_matches):
+    for group, matches, overlaps in zip(
+        source_groups, group_matches, group_overlaps
+    ):
+        # A duplicate's near match can resolve another member's wider
+        # overlap; unresolved crop occupancy remains ambiguous.
+        if overlaps - matches:
+            return None
         if len(matches) > 1 or matches & used:
             return None
         if matches:

@@ -661,7 +661,7 @@ def test_product_names_with_summary_vocabulary_abstain_conservatively(
     assert detect(zone=[name(text)]) is None
 
 
-@pytest.mark.parametrize("text", ["MILK", "STEAK TIPS", "BODY LOTION"])
+@pytest.mark.parametrize("text", ["MILK", "STEAK STRIPS", "BODY LOTION"])
 def test_unambiguous_product_names_remain_eligible(text: str) -> None:
     found = detect(zone=[name(text)])
     assert found is not None and found.amount == 2.5
@@ -914,8 +914,8 @@ def test_source_image_identity_must_match():
     assert detect(source_image_id="", receipt_image_id="") is None
 
 
-def test_real_product_containing_tip_word_is_not_a_tip_suggestion():
-    assert detect(zone=[name("STEAK TIPS")]) is not None
+def test_product_containing_summary_vocabulary_conservatively_abstains():
+    assert detect(zone=[name("STEAK TIPS")]) is None
 
 
 def test_source_word_partly_overlapping_other_receipt_abstains():
@@ -1126,4 +1126,42 @@ def test_skewed_product_context_keeps_its_own_price(direction: int) -> None:
             column_anchors=False,
         )
         is not None
+    )
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "Automatic Gratuity",
+        "Banquet Service Charge",
+        "Service Charges Included",
+        "You Saved",
+        "SAVE",
+        "Member Saved",
+        "Banquet Tip",
+        "Optional Tips",
+    ],
+)
+@pytest.mark.parametrize("original_context", [False, True])
+def test_qualified_charges_and_past_tense_savings_abstain(
+    label: str, original_context: bool
+) -> None:
+    source = [word("$2.50")]
+    zone = [name(label)]
+    if original_context:
+        source.append(word(label, x=0.1))
+        zone = [name("MILK")]
+    assert detect(source=source, zone=zone) is None
+
+
+@pytest.mark.parametrize("offset", [-0.019, -0.011, 0.011, 0.019])
+@pytest.mark.parametrize("text", ["$2.50", "$3.50"])
+def test_overlapping_crop_amount_outside_strict_match_window_abstains(
+    offset: float, text: str
+) -> None:
+    assert (
+        detect(
+            warped=[word(text, y=0.6 + offset)], zone=[name(y=0.61 + offset)]
+        )
+        is None
     )
