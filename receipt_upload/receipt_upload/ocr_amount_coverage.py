@@ -29,6 +29,7 @@ from receipt_upload.line_items.geometry import (
     PRICE_COLUMN_X_TOL,
     SALE_PRICE_RE,
     WAS_PRICE_RE,
+    estimate_skew,
     is_column_header_row,
     is_line_price_word,
     is_settlement_row,
@@ -220,13 +221,19 @@ def _established_price_column(words: Sequence[dict[str, Any]]) -> float | None:
 
 
 def _has_unpriced_name(
-    evidence: LostAmountEvidence, zone_words: Sequence[dict[str, Any]]
+    evidence: LostAmountEvidence,
+    zone_words: Sequence[dict[str, Any]],
+    slope: float = 0.0,
 ) -> bool | None:
     """Return product context, or None when a summary-shaped row is unsure."""
     row = [
         word
         for word in zone_words
-        if abs(word["y_mid"] - evidence.y - evidence.height / 2)
+        if abs(
+            word["y_mid"]
+            - slope * word["x"]
+            - (evidence.y + evidence.height / 2 - slope * evidence.x)
+        )
         <= max(float(word["h"]), evidence.height) * 0.75
     ]
     if any(float(word["x"]) > evidence.x + evidence.width / 2 for word in row):
@@ -336,6 +343,18 @@ def detect_warp_lost_amount(
     source_seen: list[LostAmountEvidence] = []
     eligible_source: set[LostAmountEvidence] = set()
     source_context: list[dict[str, Any]] = []
+    source_projected_words: list[dict[str, Any]] = []
+    crop_slope = estimate_skew(
+        [
+            {
+                "line_id": word["line_id"],
+                "x": word["bounding_box"]["x"],
+                "y_mid": word["bounding_box"]["y"]
+                + word["bounding_box"]["height"] / 2,
+            }
+            for word in warped_words
+        ]
+    )
     source_groups: list[list[LostAmountEvidence]] = []
     group_matches: list[set[int]] = []
     for word in source_words:
@@ -365,15 +384,16 @@ def detect_warp_lost_amount(
             ox, oy, ow, oh = other_box
             if ox < 1 and oy < 1 and ox + ow > 0 and oy + oh > 0:
                 return None
+        context_word = {
+            "line_id": word["line_id"],
+            "text": word["text"],
+            "x": projected[0],
+            "y_mid": projected[1] + projected[3] / 2,
+            "h": projected[3],
+        }
+        source_projected_words.append(context_word)
         if cents is None:
-            source_context.append(
-                {
-                    "text": word["text"],
-                    "x": projected[0],
-                    "y_mid": projected[1] + projected[3] / 2,
-                    "h": projected[3],
-                }
-            )
+            source_context.append(context_word)
             continue
         confidence = word.get("confidence", 0)
         eligible = (
@@ -448,6 +468,7 @@ def detect_warp_lost_amount(
 
     # Coverage belongs to an occurrence, not whichever duplicate happened
     # to be scanned first. Resolve all group members before counting loss.
+    source_slope = estimate_skew(source_projected_words)
     used: set[int] = set()
     lost: list[LostAmountEvidence] = []
     for group, matches in zip(source_groups, group_matches):
@@ -480,13 +501,21 @@ def detect_warp_lost_amount(
             source_row = [
                 word
                 for word in source_context
-                if abs(word["y_mid"] - item.y - item.height / 2)
+                if abs(
+                    word["y_mid"]
+                    - source_slope * word["x"]
+                    - (item.y + item.height / 2 - source_slope * item.x)
+                )
                 <= max(float(word["h"]), item.height) * 0.75
             ]
-            if source_row and _has_unpriced_name(item, source_row) is not True:
+            if (
+                source_row
+                and _has_unpriced_name(item, source_row, source_slope)
+                is not True
+            ):
                 return None
         unpriced_names = [
-            _has_unpriced_name(item, zone_words) for item in group
+            _has_unpriced_name(item, zone_words, crop_slope) for item in group
         ]
         # Every uncovered positive observation must have clear product
         # context. Missing/numeric-only rows and rejected summary context

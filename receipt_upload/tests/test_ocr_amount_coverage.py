@@ -1070,3 +1070,60 @@ def test_disjoint_receipt_does_not_block_owned_product_context() -> None:
         )
         is not None
     )
+
+
+@pytest.mark.parametrize("label", ["Tax", "Total", "Subtotal"])
+@pytest.mark.parametrize("direction", [-1, 1])
+@pytest.mark.parametrize("original_label", [False, True])
+def test_skewed_summary_cannot_borrow_neighboring_product_context(
+    label: str, direction: int, original_label: bool
+) -> None:
+    drift = direction * 0.03
+    source = [word("$2.50")]
+    if original_label:
+        source.extend(
+            [
+                word(label, x=0.1, y=0.6 - drift),
+                word("MILK", x=0.1, y=0.6, line_id=2),
+            ]
+        )
+    warped = []
+    for i, y in enumerate([0.2, 0.4], 10):
+        warped.extend(
+            [
+                word("PRODUCT", x=0.1, y=y - drift, line_id=i),
+                word("$9.00", y=y, line_id=i),
+            ]
+        )
+    assert (
+        detect(
+            source=source,
+            warped=warped,
+            zone=[name(label, y=0.61 - drift), name("MILK")],
+            column_anchors=False,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("direction", [-1, 1])
+def test_skewed_product_context_keeps_its_own_price(direction: int) -> None:
+    drift = direction * 0.03
+    source = [word("$2.50"), word("MILK", x=0.1, y=0.6 - drift)]
+    warped = []
+    for i, y in enumerate([0.2, 0.4], 10):
+        warped.extend(
+            [
+                word("PRODUCT", x=0.1, y=y - drift, line_id=i),
+                word("$9.00", y=y, line_id=i),
+            ]
+        )
+    assert (
+        detect(
+            source=source,
+            warped=warped,
+            zone=[name("MILK", y=0.61 - drift)],
+            column_anchors=False,
+        )
+        is not None
+    )
