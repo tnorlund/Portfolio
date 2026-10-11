@@ -2097,12 +2097,10 @@ class OCRProcessor:
         for line in details.lines:
             line_words = sorted(
                 words_by_line.get(line.line_id, []),
-                # IDs are stable identity, not reading order: recovered
-                # leading words are allocated after the existing maximum.
-                key=lambda word: (
-                    float(word.bounding_box.get("x", 0.0)),
-                    word.word_id,
-                ),
+                # Keep persisted text aligned with word-based consumers,
+                # including legacy lines whose IDs disagree with geometry.
+                # Unsafe insertions/replacements are rejected before writes.
+                key=lambda word: word.word_id,
             )
             rebuilt_text = " ".join(word.text for word in line_words)
             if line.text != rebuilt_text:

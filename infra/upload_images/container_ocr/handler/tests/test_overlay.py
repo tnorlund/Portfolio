@@ -1563,6 +1563,63 @@ class TestUnmatchedWordAddition:
         proc.dynamo.add_receipt_words.assert_not_called()
         proc.dynamo.delete_receipt_words.assert_not_called()
 
+    @pytest.mark.parametrize("touch_legacy", [False, True])
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_rebuilt_legacy_line_matches_stable_word_id_order(
+        self, touch_legacy: bool, reverse: bool
+    ) -> None:
+        proc = _make_processor()
+        old = [
+            _make_word(text="RIGHT", x=0.4, y=0.6),
+            _make_word(text="LEFT", x=0.1, y=0.6, word_id=2),
+            _make_word(text="8.88", x=0.8, y=0.2, line_id=2),
+        ]
+        stored_lines = [
+            _make_line(text="RIGHT LEFT", line_id=1),
+            _make_line(text="8.88", line_id=2),
+        ]
+        proc.dynamo.list_receipt_lines_from_receipt.side_effect = (
+            lambda *_args: stored_lines
+        )
+        if touch_legacy:
+            readings = deepcopy(old)
+            readings[0].text = "BETTER"
+            readings[2].text = "8.68"
+            region = None
+        else:
+            readings = [_make_word(text="8.68", x=1 / 3, y=0.2, w=1 / 3)]
+            region = {"x": 0.7, "y": 0.0, "width": 0.3, "height": 1.0}
+        if reverse:
+            old.reverse()
+            readings.reverse()
+        with patch(
+            "handler.ocr_processor.dynamo_embedding_write.write_native_embeddings",
+            return_value={},
+        ) as writer:
+            result = self._run_overlay(proc, old, readings, region=region)
+        assert result["success"] is True
+        expected = "BETTER LEFT" if touch_legacy else "RIGHT LEFT"
+        assert stored_lines[0].text == expected
+        assert stored_lines[1].text == "8.68"
+        assert (
+            " ".join(
+                word.text
+                for word in sorted(old, key=lambda word: word.word_id)
+                if word.line_id == 1
+            )
+            == expected
+        )
+        refreshed = {
+            line.line_id: line.text
+            for line in writer.call_args.kwargs["lines"]
+        }
+        assert refreshed[1] == expected
+        updated_ids = {
+            line.line_id
+            for line in proc.dynamo.update_receipt_lines.call_args[0][0]
+        }
+        assert updated_ids == ({1, 2} if touch_legacy else {2})
+
     def test_multiple_trailing_additions_on_one_line_abstain(
         self,
     ) -> None:
