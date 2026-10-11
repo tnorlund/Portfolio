@@ -22,11 +22,46 @@ from receipt_dynamo.amounts import (
 
 from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.line_items.geometry import (
+    COLUMN_HEADER_ANCHOR_TOKENS,
+    MAX_PLAUSIBLE_BASELINE,
     NON_PRODUCT_NOTE_RE,
+    PRICE_COLUMN_X_TOL,
+    SALE_PRICE_RE,
+    WAS_PRICE_RE,
+    is_column_header_row,
     is_line_price_word,
     is_settlement_row,
     is_unit_rate_row,
     strip_tax_flag,
+)
+
+_MINUS_TRANSLATION = str.maketrans({char: "-" for char in "−‒–—﹣－‐‑"})
+
+_TAX_ABBREVIATION_RE = re.compile(
+    r"\b(?:GST|HST|PST|QST|TVA|IVA|MWST)\b", re.I
+)
+_MEASUREMENT_CONTEXT_RE = re.compile(
+    r"\b(?:weight|wt|tare|volume|vol|length|width|height|"
+    r"oz|ounces?|lb|lbs|pounds?|kg|kilograms?|g|grams?|"
+    r"gal|gallons?|ml|liters?|litres?|cm|mm|inches?)\b|\bunit\s+cost\b",
+    re.I,
+)
+
+_RATE_CONTEXT_RE = re.compile(
+    r"[×@]|\(\s*a\s*\)|\bper\b|\bunit\s+(?:price|cost)\b|"
+    r"\b\d+\s*x\b|\b\d+\s+for\b|\b\d+\s*/",
+    re.I,
+)
+
+_SIGN_CONTEXT_RE = re.compile(r"[-−–]|(?:^|\s)\(")
+
+_CURRENCY_AMOUNT_RE = re.compile(
+    r"(?:[$€£¥₹]\s*\d[\d.,]*|\d[\d.,]*\s*[$€£¥₹])"
+)
+
+_UNQUALIFIED_AMOUNT_RE = re.compile(
+    r"[+-]?(?:[$€£¥₹]?\d[\d.,]*[$€£¥₹]?|"
+    r"\([$€£¥₹]?\d[\d.,]*[$€£¥₹]?\))[+-]?"
 )
 
 
@@ -45,7 +80,12 @@ class LostAmountEvidence:
 
 
 def _cents(text: str) -> int | None:
-    if not is_line_price_word({"text": text}):
+    # OCR/printers use several Unicode dashes for a monetary minus. Preserve
+    # their sign when counting ambiguity, rather than dropping the token.
+    text = text.translate(_MINUS_TRANSLATION)
+    if not is_line_price_word({"text": text}) and not re.search(
+        r"[$€£¥₹]\s*[+-]?\s*\d|\d\s*[$€£¥₹]", text
+    ):
         return None
     amount = parse_receipt_amount(strip_tax_flag(text))
     if amount is None or not math.isfinite(amount):
@@ -130,6 +170,50 @@ def _same_source_observation(
     )
 
 
+def _established_price_column(words: Sequence[dict[str, Any]]) -> float | None:
+    """Require explicit currency observations on two distinct surviving rows."""
+    anchors: list[tuple[float, float, float]] = []
+    for word in words:
+        text = strip_tax_flag(word["text"]).strip()
+        confidence = word.get("confidence", 0)
+        cents = _cents(word["text"])
+        if (
+            not _CURRENCY_AMOUNT_RE.fullmatch(text)
+            or not is_line_price_word(word)
+            or cents is None
+            or cents <= 0
+            or isinstance(confidence, bool)
+            or not isinstance(confidence, (int, float))
+            or not math.isfinite(confidence)
+            or confidence < 0.95
+        ):
+            continue
+        box = word["bounding_box"]
+        x, y, width, height = (
+            float(box[key]) for key in ("x", "y", "width", "height")
+        )
+        if (
+            not all(math.isfinite(value) for value in (x, y, width, height))
+            or min(x, y) < 0
+            or min(width, height) <= 0
+            or x + width > 1
+            or y + height > 1
+        ):
+            continue
+        anchors.append((x, y + height / 2, height))
+    if not anchors:
+        return None
+    column = max(anchor[0] for anchor in anchors)
+    aligned = [a for a in anchors if column - a[0] <= PRICE_COLUMN_X_TOL]
+    if not any(
+        abs(left[1] - right[1]) > max(left[2], right[2])
+        for index, left in enumerate(aligned)
+        for right in aligned[index + 1 :]
+    ):
+        return None
+    return column
+
+
 def _has_unpriced_name(
     evidence: LostAmountEvidence, zone_words: Sequence[dict[str, Any]]
 ) -> bool | None:
@@ -140,10 +224,15 @@ def _has_unpriced_name(
         if abs(word["y_mid"] - evidence.y - evidence.height / 2)
         <= max(float(word["h"]), evidence.height) * 0.75
     ]
+    if any(float(word["x"]) > evidence.x + evidence.width / 2 for word in row):
+        # A surviving suffix (e.g. OZ) can identify an embedded measurement,
+        # even if its decimal happens to align with the amount column.
+        return None
     if any(is_line_price_word(word) for word in row):
         # A surviving unit price does not prove the extended price survived.
         return None
     text = " ".join(word["text"] for word in sorted(row, key=lambda w: w["x"]))
+    text = text.translate(_MINUS_TRANSLATION)
     bare = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z\s]", " ", text)).strip()
     # Summary vocabulary can appear in product names as well as in
     # department totals and settlement rows. Text alone cannot resolve that
@@ -151,7 +240,12 @@ def _has_unpriced_name(
     # prefixes or suffixes, rather than guessing a product/summary class.
     if any(
         pattern.search(bare)
-        for pattern in (SUBTOTAL_KEYWORD_RE, TAX_KEYWORD_RE, TOTAL_KEYWORD_RE)
+        for pattern in (
+            SUBTOTAL_KEYWORD_RE,
+            TAX_KEYWORD_RE,
+            TOTAL_KEYWORD_RE,
+            _TAX_ABBREVIATION_RE,
+        )
     ):
         return None
     return (
@@ -159,6 +253,20 @@ def _has_unpriced_name(
         and not is_settlement_row(bare)
         and not NON_PAYMENT_SUMMARY_RE.search(text)
         and not NON_PRODUCT_NOTE_RE.search(text)
+        and not is_column_header_row(text)
+        and COLUMN_HEADER_ANCHOR_TOKENS.isdisjoint(
+            re.findall(r"[a-z]{2,}", bare.lower())
+        )
+        and not _MEASUREMENT_CONTEXT_RE.search(bare)
+        and not SALE_PRICE_RE.search(text)
+        and not _RATE_CONTEXT_RE.search(text)
+        and not _SIGN_CONTEXT_RE.search(text)
+        # Treat a reference keyword as ambiguous regardless of how OCR
+        # split or spelled the currency qualifier between it and the price.
+        and not any(
+            WAS_PRICE_RE.search(f"{token} {evidence.amount:.2f}")
+            for token in re.findall(r"[A-Za-z]+", text)
+        )
         and not re.fullmatch(
             r"(?:suggested\s+)?(?:tips?|gratuity|service\s+charge)"
             r"(?:\s+(?:total|amount|included))?",
@@ -189,15 +297,18 @@ def detect_warp_lost_amount(
     IDs; zone_words use the decoder's x/y_mid/h shape. Bounds must include
     every other receipt on the image. A same-price item elsewhere is valid:
     coverage is spatial and one-to-one, not a global amount-membership test.
-    This intentionally handles only one missing positive amount, not subset
-    sum search, tax corrections, missing baselines, or over-extraction.
+    Two surviving high-confidence currency amounts on distinct rows must
+    establish the price column. Missing observations outside that column or
+    without clear product context cause abstention. This intentionally handles
+    only one missing positive amount, not subset sum search, tax corrections,
+    missing/implausible baselines, or over-extraction.
     """
     if not source_image_id or source_image_id != receipt_image_id:
         return None
     if (
         printed_subtotal is None
         or not all(math.isfinite(v) for v in (item_sum, printed_subtotal))
-        or printed_subtotal <= 0
+        or not 0 < printed_subtotal <= MAX_PLAUSIBLE_BASELINE
     ):
         return None
     gap = round(printed_subtotal * 100) - round(item_sum * 100)
@@ -214,24 +325,50 @@ def detect_warp_lost_amount(
     amounts = [
         word for word in warped_words if _cents(word["text"]) is not None
     ]
+    price_column = _established_price_column(amounts)
+    if price_column is None:
+        return None
     source_seen: list[LostAmountEvidence] = []
+    eligible_source: set[LostAmountEvidence] = set()
+    source_context: list[dict[str, Any]] = []
     source_groups: list[list[LostAmountEvidence]] = []
     group_matches: list[set[int]] = []
     for word in source_words:
         cents = _cents(word["text"])
-        confidence = word.get("confidence", 0)
-        if (
-            cents is None
-            or isinstance(confidence, bool)
-            or not isinstance(confidence, (int, float))
-            or not math.isfinite(confidence)
-            or confidence < 0.95
-        ):
-            continue
-        box = word["bounding_box"]
-        projected = _project_box(box, target)
+        projected = _project_box(word["bounding_box"], target)
         if projected is None:
+            unbounded = _project_box(
+                word["bounding_box"], target, require_inside=False
+            )
+            if unbounded is None:
+                return None
+            x, y, width, height = unbounded
+            if not (x < 1 and y < 1 and x + width > 0 and y + height > 0):
+                continue
+            if cents is not None:
+                return None
+            # A partially cropped qualifier still constrains its price.
+            # Preserve its original projection; never clamp it into place.
+            projected = unbounded
+        if cents is None:
+            source_context.append(
+                {
+                    "text": word["text"],
+                    "x": projected[0],
+                    "y_mid": projected[1] + projected[3] / 2,
+                    "h": projected[3],
+                }
+            )
             continue
+        confidence = word.get("confidence", 0)
+        eligible = (
+            not isinstance(confidence, bool)
+            and isinstance(confidence, (int, float))
+            and math.isfinite(confidence)
+            and 0.95 <= confidence <= 1
+            and is_line_price_word(word)
+        )
+        box = word["bounding_box"]
         # Any second receipt owning this observation makes attribution unsafe.
         for other in others:
             other_box = _project_box(box, other, require_inside=False)
@@ -250,6 +387,8 @@ def detect_warp_lost_amount(
             width=projected[2],
             height=projected[3],
         )
+        if eligible:
+            eligible_source.add(evidence)
         evidence_word = {
             "bounding_box": {
                 "x": evidence.x,
@@ -311,8 +450,35 @@ def detect_warp_lost_amount(
         if matches:
             used.update(matches)
             continue
-        if group[0].amount <= 0:
+        if group[0].amount == 0:
             continue
+        if group[0].amount < 0:
+            # A missing discount/refund defeats a single positive-loss
+            # explanation, even if that positive amount matches the gap.
+            return None
+        eligible_group = [item for item in group if item in eligible_source]
+        if not eligible_group or any(
+            not _UNQUALIFIED_AMOUNT_RE.fullmatch(
+                re.sub(r"\s+", "", strip_tax_flag(item.text))
+            )
+            for item in group
+        ):
+            return None
+        if any(
+            abs(item.x - price_column) > PRICE_COLUMN_X_TOL for item in group
+        ):
+            return None
+        # Original qualifiers can disappear together with their price. Keep
+        # any available source-row context as a second ambiguity guard.
+        for item in group:
+            source_row = [
+                word
+                for word in source_context
+                if abs(word["y_mid"] - item.y - item.height / 2)
+                <= max(float(word["h"]), item.height) * 0.75
+            ]
+            if source_row and _has_unpriced_name(item, source_row) is not True:
+                return None
         unpriced_names = [
             _has_unpriced_name(item, zone_words) for item in group
         ]
@@ -325,7 +491,7 @@ def detect_warp_lost_amount(
         # synthesize an average box for the duplicate group.
         lost.append(
             min(
-                group,
+                eligible_group,
                 key=lambda item: (
                     item.source_line_id,
                     item.source_word_id,

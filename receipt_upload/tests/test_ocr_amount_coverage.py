@@ -30,9 +30,19 @@ def name(text="SIDE", y=0.61):
 
 
 def detect(source=None, warped=None, zone=None, **kwargs):
+    # A valid fixture includes two explicit surviving prices that establish
+    # the amount column. Opt out to exercise insufficient-column evidence.
+    anchors = (
+        [
+            word("$9.00", y=0.04, line_id=1001),
+            word("$8.00", y=0.10, line_id=1002),
+        ]
+        if kwargs.pop("column_anchors", True)
+        else []
+    )
     return detect_warp_lost_amount(
         source if source is not None else [word("$2.50")],
-        warped if warped is not None else [],
+        (warped if warped is not None else []) + anchors,
         zone if zone is not None else [name()],
         kwargs.pop("bounds", BOUNDS),
         kwargs.pop("others", []),
@@ -42,6 +52,380 @@ def detect(source=None, warped=None, zone=None, **kwargs):
         receipt_image_id=kwargs.pop("receipt_image_id", "test-image"),
         **kwargs,
     )
+
+
+@pytest.mark.parametrize(
+    "label", ["GST", "HST", "PST", "QST", "TVA", "IVA", "MWST"]
+)
+def test_tax_abbreviations_are_not_product_context(label: str) -> None:
+    assert detect(zone=[name(label)]) is None
+    assert detect(zone=[name(f"Department {label} Amount")]) is None
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "Sale Price",
+        "Regular Price",
+        "Original Price",
+        "Comparable Value",
+        "PENNE PASTA Sale Price",
+        "WAS:",
+        "REG.",
+        "Unit Price",
+        "Unit Cost",
+    ],
+)
+def test_price_comparison_and_column_annotations_abstain(label: str) -> None:
+    assert detect(zone=[name(label)]) is None
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "MILK 2 @",
+        "MILK 2 (a)",
+        "MILK Unit Price",
+        "MILK Unit Cost",
+        "MILK per item",
+        "2x MILK",
+    ],
+)
+def test_named_rate_context_does_not_prove_a_line_price(label: str) -> None:
+    assert detect(zone=[name(label)]) is None
+
+
+@pytest.mark.parametrize("currency", ["$", "£", "€", "¥", "₹"])
+@pytest.mark.parametrize("label", ["WAS:", "REG.", "MILK WAS:"])
+def test_reference_prices_abstain_in_every_supported_currency(
+    currency: str, label: str
+) -> None:
+    assert (
+        detect(
+            source=[word(f"{currency}2.50")],
+            warped=[
+                word(f"{currency}9.00", y=0.04),
+                word(f"{currency}8.00", y=0.10),
+            ],
+            zone=[name(label)],
+            column_anchors=False,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "token", ["$2.50/lb", "WAS:£2.50", "2/$2.50", "$2.50OFF"]
+)
+def test_qualified_source_token_cannot_be_loss_evidence(token: str) -> None:
+    assert detect(source=[word(token)], zone=[name("MILK")]) is None
+
+
+@pytest.mark.parametrize(
+    "label", ["WAS:", "Weight (oz)", "MILK Unit Price", "MILK 2 @"]
+)
+def test_source_row_qualifier_survives_loss_of_crop_context(
+    label: str,
+) -> None:
+    assert (
+        detect(
+            source=[word("$2.50"), word(label, x=0.1, line_id=2)],
+            zone=[name("MILK")],
+        )
+        is None
+    )
+
+
+def test_clear_original_product_context_remains_eligible() -> None:
+    assert (
+        detect(source=[word("$2.50"), word("MILK", x=0.1, line_id=2)])
+        is not None
+    )
+
+
+@pytest.mark.parametrize(
+    "confidence", [0.0, 0.5, 0.94, None, True, float("nan")]
+)
+@pytest.mark.parametrize("reverse", [False, True])
+def test_lower_confidence_observation_still_blocks_ambiguity(
+    confidence: float | bool | None, reverse: bool
+) -> None:
+    source = [
+        word("$2.50"),
+        word("$1.00", y=0.4, line_id=2, confidence=confidence),
+    ]
+    if reverse:
+        source.reverse()
+    assert detect(source=source, zone=[name(), name(y=0.41)]) is None
+    conflict = [word("$2.50"), word("$7.50", line_id=2, confidence=confidence)]
+    assert detect(source=conflict) is None
+
+
+@pytest.mark.parametrize("token", ["-$1.00", "$-1.00", "(1.00)", "1.00-"])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_missing_discount_blocks_single_positive_loss(
+    token: str, reverse: bool
+) -> None:
+    source = [word("$2.50"), word(token, y=0.4, line_id=2)]
+    if reverse:
+        source.reverse()
+    assert detect(source=source, zone=[name(), name("COUPON", y=0.41)]) is None
+
+
+@pytest.mark.parametrize("x", [float("nan"), -0.01, 0.99])
+def test_unattributable_source_amount_blocks_other_loss(x: float) -> None:
+    assert (
+        detect(source=[word("$2.50"), word("$1.00", x=x, y=0.4, line_id=2)])
+        is None
+    )
+
+
+def test_entirely_outside_source_amount_does_not_block_target() -> None:
+    found = detect(
+        source=[word("$2.50"), word("$1.00", x=1.01, y=0.4, line_id=2)]
+    )
+    assert found is not None and found.amount == 2.5
+
+
+@pytest.mark.parametrize("token", ["$1", "£1", "$1.000"])
+@pytest.mark.parametrize("confidence", [0.94, 1.0])
+def test_other_explicit_currency_shapes_remain_ambiguity_blockers(
+    token: str, confidence: float
+) -> None:
+    assert (
+        detect(
+            source=[
+                word("$2.50"),
+                word(token, y=0.4, line_id=2, confidence=confidence),
+            ],
+            zone=[name(), name(y=0.41)],
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "marker", ["-", "−", "–", "(", "-$", "-USD$", "$-", "£-", "USD-"]
+)
+@pytest.mark.parametrize("reverse", [False, True])
+def test_split_negative_or_accounting_prefix_blocks_positive_evidence(
+    marker: str, reverse: bool
+) -> None:
+    source = [
+        word("$2.50"),
+        word("MILK", x=0.1, line_id=2),
+        word(marker, x=0.7, line_id=3),
+    ]
+    if reverse:
+        source.reverse()
+    assert detect(source=source, zone=[name("MILK")]) is None
+
+
+@pytest.mark.parametrize(
+    "label,x", [("/LB", 0.86), ("/LB", 0.89), ("REG.", 0.08)]
+)
+def test_partly_cropped_source_qualifiers_remain_blockers(
+    label: str, x: float
+) -> None:
+    bounds = {
+        "top_left": {"x": 0.1, "y": 0.9},
+        "top_right": {"x": 0.9, "y": 0.9},
+        "bottom_right": {"x": 0.9, "y": 0.1},
+        "bottom_left": {"x": 0.1, "y": 0.1},
+    }
+    price = word("$2.50", x=0.74, y=0.58)
+    price["bounding_box"].update(width=0.08, height=0.016)
+    qualifier = word(label, x=x, y=0.58, line_id=2)
+    qualifier["bounding_box"].update(width=0.03, height=0.016)
+    assert (
+        detect(source=[price, qualifier], bounds=bounds, zone=[name("MILK")])
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "label", ["MILK 2 FOR", "MILK 2 /", "MILK 2/$", "MILK 2/USD$"]
+)
+def test_multiples_deal_prefix_does_not_prove_a_charged_total(
+    label: str,
+) -> None:
+    assert (
+        detect(
+            source=[word("$2.50"), word(label, x=0.1, line_id=2)],
+            zone=[name(label)],
+        )
+        is None
+    )
+
+
+def test_covered_currency_deal_prefix_remains_context_not_an_amount() -> None:
+    prefix = word("2/$", x=0.5, line_id=2)
+    assert (
+        detect(
+            source=[word("2.50"), prefix], warped=[prefix], zone=[name("MILK")]
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("minus", ["−", "‒", "–", "—", "﹣", "－", "‐", "‑"])
+@pytest.mark.parametrize("suffix", [False, True])
+@pytest.mark.parametrize("reverse", [False, True])
+def test_unicode_negative_observations_remain_ambiguity_blockers(
+    minus: str, suffix: bool, reverse: bool
+) -> None:
+    token = f"1.00{minus}" if suffix else f"{minus}1.00"
+    source = [word("$2.50"), word(token, y=0.4, line_id=2)]
+    if reverse:
+        source.reverse()
+    assert detect(source=source, zone=[name(), name("COUPON", y=0.41)]) is None
+
+
+def test_low_confidence_duplicate_cannot_be_selected_as_evidence() -> None:
+    found = detect(
+        source=[
+            word("$2.50", line_id=1, confidence=0.94),
+            word("$2.50", line_id=2),
+        ]
+    )
+    assert found is not None and found.source_line_id == 2
+
+
+@pytest.mark.parametrize("currency", ["$", "£", "€", "USD $", "CAD $"])
+def test_split_source_currency_cannot_hide_reference_keyword(
+    currency: str,
+) -> None:
+    assert (
+        detect(
+            source=[
+                word("2.50"),
+                word("MILK", x=0.1, line_id=2),
+                word("WAS:", x=0.3, line_id=3),
+                word(currency, x=0.6, line_id=4),
+            ],
+            zone=[name("MILK")],
+        )
+        is None
+    )
+
+
+def test_split_source_multiplication_sign_is_rate_context() -> None:
+    assert (
+        detect(
+            source=[
+                word("$2.50"),
+                word("MILK", x=0.1, line_id=2),
+                word("2", x=0.3, line_id=3),
+                word("×", x=0.4, line_id=4),
+            ],
+            zone=[name("MILK")],
+        )
+        is None
+    )
+
+
+def test_product_prefixed_price_header_abstains() -> None:
+    assert detect(zone=[name("MILK REGUL R PRICE")]) is None
+    assert detect(zone=[name("HOUSE REGULAR COFFEE")]) is not None
+
+
+def test_sale_word_in_product_name_remains_eligible() -> None:
+    assert detect(zone=[name("BAG SALE PAPER EA")]) is not None
+
+
+@pytest.mark.parametrize("subtotal", [50_000.01, 60_000.0, 1_000_000.0])
+def test_implausible_subtotal_cannot_anchor_loss(subtotal: float) -> None:
+    assert (
+        detect(
+            source=[word("$1,000.00")],
+            item_sum=subtotal - 1_000.0,
+            subtotal=subtotal,
+        )
+        is None
+    )
+
+
+def test_plausibility_ceiling_itself_remains_eligible() -> None:
+    found = detect(
+        source=[word("$1,000.00")], item_sum=49_000.0, subtotal=50_000.0
+    )
+    assert found is not None and found.amount == 1_000.0
+
+
+@pytest.mark.parametrize("x", [0.2, 0.4, 0.6])
+def test_decimal_measurement_outside_price_column_abstains(x: float) -> None:
+    assert (
+        detect(
+            source=[word("12.50", x=x)],
+            zone=[name("CHEESE"), {**name("OZ"), "x": x + 0.12}],
+            item_sum=187.5,
+            subtotal=200.0,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "label",
+    [
+        "Weight (oz):",
+        "NET WT LB",
+        "Tare",
+        "Volume ml",
+        "LENGTH CM",
+        "CHEESE OZ",
+    ],
+)
+def test_measurement_prefix_is_not_product_context(label: str) -> None:
+    assert (
+        detect(
+            source=[word("12.50")],
+            zone=[name(label)],
+            item_sum=187.5,
+            subtotal=200.0,
+        )
+        is None
+    )
+
+
+def test_measurement_substring_in_product_name_remains_eligible() -> None:
+    assert detect(zone=[name("WEIGHTED BLANKET")]) is not None
+
+
+def test_bare_decimal_price_aligned_with_established_column_is_eligible() -> (
+    None
+):
+    found = detect(source=[word("2.50")])
+    assert found is not None and found.amount == 2.5
+
+
+def test_measurement_suffix_blocks_even_column_aligned_decimal() -> None:
+    assert (
+        detect(
+            source=[word("12.50")],
+            zone=[name("CHEESE"), {**name("OZ"), "x": 0.95}],
+            item_sum=187.5,
+            subtotal=200.0,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "anchors",
+    [
+        [],
+        [word("$9.00", y=0.04)],
+        [word("9.00", y=0.04), word("8.00", y=0.10)],
+        [word("$9.00", y=0.04), word("$9.00", y=0.04, line_id=2)],
+        [word("$9.00", y=0.04), word("$8.00", y=0.10, confidence=0.94)],
+        [word("$9.00", y=0.04, x=0.3), word("$8.00", y=0.10)],
+    ],
+)
+def test_insufficient_price_column_evidence_abstains(
+    anchors: list[dict],
+) -> None:
+    assert detect(warped=anchors, column_anchors=False) is None
 
 
 def test_exact_single_price_loss_produces_evidence_not_an_item():
