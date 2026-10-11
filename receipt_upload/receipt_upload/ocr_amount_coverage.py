@@ -106,7 +106,9 @@ def _cents(text: str) -> int | None:
     return round(amount * 100)
 
 
-def _transform(bounds: dict[str, Any]) -> list[float]:
+def _transform(
+    bounds: dict[str, Any], *, to_source: bool = False
+) -> list[float]:
     corners = [
         bounds[key]
         for key in ("top_left", "top_right", "bottom_right", "bottom_left")
@@ -126,9 +128,11 @@ def _transform(bounds: dict[str, Any]) -> list[float]:
         and points[0][0] + points[3][0] < points[1][0] + points[2][0]
     ):
         raise ValueError("receipt corner labels do not match Vision axes")
-    return find_perspective_coeffs(
-        [(0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)],
-        points,
+    unit = [(0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)]
+    return (
+        find_perspective_coeffs(points, unit)
+        if to_source
+        else find_perspective_coeffs(unit, points)
     )
 
 
@@ -144,6 +148,7 @@ def _project_box(
     if width <= 0 or height <= 0:
         return None
     points = []
+    denominators = []
     for px, py in (
         (x, y),
         (x + width, y),
@@ -153,11 +158,16 @@ def _project_box(
         denominator = 1 + g * px + h * py
         if abs(denominator) < 1e-10:
             return None
+        denominators.append(denominator)
         qx = (a * px + b * py + c) / denominator
         qy = (d * px + e * py + f) / denominator
         if require_inside and not (0 <= qx <= 1 and 0 <= qy <= 1):
             return None
         points.append((qx, qy))
+    # Across a projective horizon, transformed corners do not bound the
+    # interior. Such a box cannot prove receipt ownership or coverage.
+    if min(denominators) < 0 < max(denominators):
+        return None
     left, right = min(p[0] for p in points), max(p[0] for p in points)
     bottom, top = min(p[1] for p in points), max(p[1] for p in points)
     return left, bottom, right - left, top - bottom
@@ -379,6 +389,39 @@ def detect_warp_lost_amount(
     try:
         target = _transform(receipt_bounds)
         others = [_transform(bounds) for bounds in other_receipt_bounds]
+        if others:
+            to_source = _transform(receipt_bounds, to_source=True)
+            crop_boxes = [word["bounding_box"] for word in warped_words]
+            for word in zone_words:
+                # The legacy zone shape omits width. Its conservative
+                # envelope reaches the crop's right edge until a width is
+                # supplied, so unknown extent cannot prove ownership.
+                x, height = float(word["x"]), float(word["h"])
+                box = {
+                    "x": x,
+                    "y": float(word["y_mid"]) - height / 2,
+                    "width": float(word.get("w", 1.0 - x)),
+                    "height": height,
+                }
+                crop_boxes.append(box)
+            # Surviving prices also support the inferred column, so they
+            # require the same ownership proof as the product context.
+            for box in crop_boxes:
+                source_box = _project_box(box, to_source, require_inside=False)
+                if source_box is None:
+                    return None
+                source_box_dict = dict(
+                    zip(("x", "y", "width", "height"), source_box)
+                )
+                for other in others:
+                    projection = _project_box(
+                        source_box_dict, other, require_inside=False
+                    )
+                    if projection is None:
+                        return None
+                    ox, oy, ow, oh = projection
+                    if ox < 1 and oy < 1 and ox + ow > 0 and oy + oh > 0:
+                        return None
     except (KeyError, TypeError, ValueError, ZeroDivisionError):
         return None
     amounts = [

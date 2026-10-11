@@ -942,7 +942,8 @@ def test_other_receipt_cannot_donate_its_price():
 def test_non_overlapping_other_receipt_does_not_block_target():
     other = deepcopy(BOUNDS)
     other["top_right"]["x"] = other["bottom_right"]["x"] = 0.3
-    assert detect(others=[other]) is not None
+    owned_name = {**name(), "x": 0.4}
+    assert detect(others=[other], zone=[owned_name]) is not None
 
 
 def test_degenerate_receipt_geometry_abstains():
@@ -1303,3 +1304,74 @@ def test_small_warning_tokens_survive_tighter_product_context(
         source.extend([word("MILK", x=0.1, line_id=2), qualifier])
         zone = [name("MILK")]
     assert detect(source=source, zone=zone) is None
+
+
+@pytest.mark.parametrize("width", [None, 0.1])
+def test_other_receipt_cannot_donate_warped_product_name(
+    width: float | None,
+) -> None:
+    other = deepcopy(BOUNDS)
+    other["top_right"]["x"] = other["bottom_right"]["x"] = 0.3
+    label = name("MILK")
+    if width is not None:
+        label["w"] = width
+    assert detect(others=[other], zone=[label]) is None
+
+
+@pytest.mark.parametrize("name_x,expected", [(0.1, False), (0.4, True)])
+def test_warped_context_ownership_maps_back_to_source_coordinates(
+    name_x: float, expected: bool
+) -> None:
+    target = deepcopy(BOUNDS)
+    target["top_left"]["x"] = target["bottom_left"]["x"] = 0.2
+    other = deepcopy(BOUNDS)
+    other["top_right"]["x"] = other["bottom_right"]["x"] = 0.3
+    price = word("$2.50", x=0.84)
+    price["bounding_box"]["width"] = 0.08
+    result = detect(
+        source=[price],
+        bounds=target,
+        others=[other],
+        zone=[{**name("MILK"), "x": name_x, "w": 0.1}],
+    )
+    assert (result is not None) is expected
+
+
+@pytest.mark.parametrize(
+    "width,expected", [(None, False), (0.1, True), (0.35, False)]
+)
+def test_context_extent_must_not_overlap_another_receipt(
+    width: float | None, expected: bool
+) -> None:
+    other = deepcopy(BOUNDS)
+    other["top_left"]["x"] = other["bottom_left"]["x"] = 0.4
+    other["top_right"]["x"] = other["bottom_right"]["x"] = 0.6
+    label = name("MILK")
+    if width is not None:
+        label["w"] = width
+    assert (detect(others=[other], zone=[label]) is not None) is expected
+
+
+def test_foreign_surviving_prices_cannot_establish_target_column() -> None:
+    other = deepcopy(BOUNDS)
+    other["top_left"]["x"] = other["bottom_left"]["x"] = 0.7
+    other["top_left"]["y"] = other["top_right"]["y"] = 0.2
+    assert detect(others=[other], zone=[{**name("MILK"), "w": 0.2}]) is None
+
+
+@pytest.mark.parametrize(
+    "width,expected", [(None, False), (0.65, False), (0.1, True)]
+)
+def test_projective_horizon_cannot_hide_foreign_context(
+    width: float | None, expected: bool
+) -> None:
+    other = {
+        "top_left": {"x": 0.3, "y": 0.7},
+        "top_right": {"x": 0.5, "y": 0.65},
+        "bottom_right": {"x": 0.5, "y": 0.55},
+        "bottom_left": {"x": 0.3, "y": 0.5},
+    }
+    label = name("MILK")
+    if width is not None:
+        label["w"] = width
+    assert (detect(others=[other], zone=[label]) is not None) is expected
