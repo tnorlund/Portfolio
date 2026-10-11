@@ -1,6 +1,7 @@
 """Negative controls for evidence-backed, single-amount OCR loss detection."""
 
 from copy import deepcopy
+from itertools import permutations
 
 import pytest
 
@@ -67,6 +68,84 @@ def test_all_source_prices_survive():
 
 def test_different_warped_reading_at_same_location_is_not_an_omission():
     assert detect(warped=[word("$7.50")]) is None
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("matching_reading_also_present", [False, True])
+def test_conflicting_crop_row_blocks_other_loss_evidence(
+    reverse: bool, matching_reading_also_present: bool
+) -> None:
+    source = [word("$1.00"), word("$2.50", y=0.4, line_id=2)]
+    warped = [word("$7.50", y=0.4, line_id=2)]
+    if matching_reading_also_present:
+        warped.append(word("$2.50", y=0.4, line_id=3))
+    if reverse:
+        source.reverse()
+        warped.reverse()
+    assert (
+        detect(
+            source=source,
+            warped=warped,
+            zone=[name(), name(y=0.41)],
+            item_sum=29.0,
+            subtotal=30.0,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("reverse_source", [False, True])
+@pytest.mark.parametrize("reverse_crop", [False, True])
+def test_duplicate_source_cannot_hide_crop_conflict(
+    reverse_source: bool, reverse_crop: bool
+) -> None:
+    source = [
+        word("$1.00"),
+        word("$2.50", x=0.8, y=0.4, line_id=2),
+        word("$2.50", x=0.82, y=0.4, line_id=3),
+    ]
+    warped = [
+        word("$2.50", x=0.8, y=0.4, line_id=2),
+        word("$7.50", x=0.86, y=0.4, line_id=3),
+    ]
+    if reverse_source:
+        source.reverse()
+    if reverse_crop:
+        warped.reverse()
+    assert (
+        detect(
+            source=source,
+            warped=warped,
+            zone=[name(), name(y=0.41)],
+            item_sum=29.0,
+            subtotal=30.0,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("reverse_source", [False, True])
+def test_duplicate_source_cannot_hide_later_source_conflict(
+    reverse_source: bool,
+) -> None:
+    source = [
+        word("$1.00"),
+        word("$2.50", x=0.8, y=0.4, line_id=2),
+        word("$2.50", x=0.82, y=0.4, line_id=3),
+        word("$7.50", x=0.86, y=0.4, line_id=4),
+    ]
+    if reverse_source:
+        source.reverse()
+    assert (
+        detect(
+            source=source,
+            warped=[word("$7.50", x=0.88, y=0.4, line_id=4)],
+            zone=[name(), name(y=0.41), {**name("$7.50", y=0.41), "x": 0.88}],
+            item_sum=29.0,
+            subtotal=30.0,
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize(
@@ -141,6 +220,20 @@ def test_missing_amount_needs_unpriced_product_context(text):
         "Sales Tax Included",
         "Tax Amount (8.25%)",
         "Sales Tax Included: 8.25%",
+        "Produce Subtotal",
+        "Produce Sub-total",
+        "Grocery Sub Total Amount",
+        "VAT",
+        "VAT Amount",
+        "VAT Included (8.25%)",
+        "State Tax Total",
+        "State Sales Tax Amount",
+        "VAT Total Amount",
+        "VAT Amount Included",
+        "CA Sales Tax",
+        "New York State Sales Tax",
+        "Tax Due",
+        "Tax Total Amount Due",
     ],
 )
 def test_tax_summary_labels_are_not_lost_product_amounts(text: str) -> None:
@@ -158,6 +251,12 @@ def test_tax_summary_labels_are_not_lost_product_amounts(text: str) -> None:
         "TAX INCLUDED COFFEE",
         "TAX FREE BAG",
         "STEAK TIPS",
+        "VAT GUIDE",
+        "SUBTOTAL MATH WORKBOOK",
+        "GUIDE TO SALES TAX",
+        "GUIDE TO VAT",
+        "HANDBOOK ON VAT",
+        "GUIDE TO SUBTOTAL",
     ],
 )
 def test_product_names_containing_summary_words_remain_eligible(
@@ -173,6 +272,9 @@ def test_product_names_containing_summary_words_remain_eligible(
     [
         (["Sales", "Tax", "Included:", "8.25%"], False),
         (["SALES", "TAX", "GUIDE"], True),
+        (["Produce", "Sub", "Total"], False),
+        (["VAT", "Amount"], False),
+        (["VAT", "GUIDE"], True),
     ],
 )
 def test_split_tax_labels_use_full_row_context(
@@ -205,6 +307,100 @@ def test_multiple_missing_prices_that_each_explain_gap_are_ambiguous():
 def test_duplicate_source_observations_are_not_double_counted():
     found = detect(source=[word("$2.50"), word("$2.50", line_id=2)])
     assert found is not None
+
+
+@pytest.mark.parametrize("ys", list(permutations([0.600, 0.604, 0.608])))
+def test_ambiguous_duplicate_chains_abstain_in_every_order(
+    ys: tuple[float, float, float],
+) -> None:
+    source = [word("$2.50", y=y, line_id=i) for i, y in enumerate(ys, 1)]
+    assert detect(source=source) is None
+
+
+@pytest.mark.parametrize("ys", list(permutations([0.600, 0.601, 0.602])))
+def test_tight_duplicate_group_counts_once_in_every_order(
+    ys: tuple[float, float, float],
+) -> None:
+    source = [word("$2.50", y=y, line_id=i) for i, y in enumerate(ys, 1)]
+    found = detect(source=source)
+    assert found is not None and found.amount == 2.5
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_duplicate_geometry_threshold_is_symmetric(reverse: bool) -> None:
+    source = [word("$2.50", x=0.8), word("$2.50", x=0.823, line_id=2)]
+    source[0]["bounding_box"]["width"] = 0.08
+    if reverse:
+        source.reverse()
+    assert detect(source=source) is None
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("separate_loss", [False, True])
+def test_surviving_crop_amount_covers_every_source_duplicate(
+    reverse: bool, separate_loss: bool
+) -> None:
+    source = [word("$2.50", x=0.8), word("$2.50", x=0.82, line_id=2)]
+    if separate_loss:
+        source.append(word("$1.00", y=0.4, line_id=3))
+    if reverse:
+        source.reverse()
+    found = detect(
+        source=source,
+        warped=[word("$2.50", x=0.86)],
+        zone=[name(), name(y=0.41)],
+        item_sum=29.0 if separate_loss else 27.5,
+    )
+    if separate_loss:
+        assert found is not None
+        assert found.amount == 1.0 and found.source_line_id == 3
+    else:
+        assert found is None
+
+
+@pytest.mark.parametrize("reverse_source", [False, True])
+@pytest.mark.parametrize("reverse_crop", [False, True])
+def test_duplicate_group_cannot_claim_two_crop_occurrences(
+    reverse_source: bool, reverse_crop: bool
+) -> None:
+    source = [word("$2.50", x=0.8), word("$2.50", x=0.82, line_id=2)]
+    source.append(word("$1.00", y=0.4, line_id=3))
+    warped = [word("$2.50", x=0.76), word("$2.50", x=0.86, line_id=2)]
+    if reverse_source:
+        source.reverse()
+    if reverse_crop:
+        warped.reverse()
+    assert (
+        detect(
+            source=source,
+            warped=warped,
+            zone=[name(), name(y=0.41)],
+            item_sum=29.0,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_duplicate_group_with_mixed_product_context_abstains(
+    reverse: bool,
+) -> None:
+    source = [word("$2.50", y=0.600), word("$2.50", y=0.604, line_id=2)]
+    if reverse:
+        source.reverse()
+    assert detect(source=source, zone=[name(y=0.628)]) is None
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_duplicate_evidence_uses_a_stable_existing_observation(
+    reverse: bool,
+) -> None:
+    source = [word("$2.50", x=0.8), word("$2.50", x=0.82, line_id=2)]
+    if reverse:
+        source.reverse()
+    found = detect(source=source)
+    assert found is not None
+    assert found.source_line_id == 1 and found.x == pytest.approx(0.8)
 
 
 def test_conflicting_source_observations_at_same_position_abstain():

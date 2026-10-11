@@ -12,7 +12,12 @@ import re
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-from receipt_dynamo.amounts import NON_PAYMENT_SUMMARY_RE, parse_receipt_amount
+from receipt_dynamo.amounts import (
+    NON_PAYMENT_SUMMARY_RE,
+    SUBTOTAL_KEYWORD_RE,
+    TAX_KEYWORD_RE,
+    parse_receipt_amount,
+)
 
 from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.line_items.geometry import (
@@ -114,6 +119,16 @@ def _near(source: LostAmountEvidence, word: dict[str, Any]) -> bool:
     )
 
 
+def _same_source_observation(
+    left: LostAmountEvidence, right: LostAmountEvidence
+) -> bool:
+    return (
+        left.amount == right.amount
+        and abs(left.x - right.x) < min(left.width, right.width) * 0.25
+        and abs(left.y - right.y) < min(left.height, right.height) * 0.25
+    )
+
+
 def _has_unpriced_name(
     evidence: LostAmountEvidence, zone_words: Sequence[dict[str, Any]]
 ) -> bool:
@@ -127,16 +142,28 @@ def _has_unpriced_name(
         return False
     text = " ".join(word["text"] for word in sorted(row, key=lambda w: w["x"]))
     bare = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z\s]", " ", text)).strip()
+    # Summary labels may have arbitrary department/jurisdiction prefixes.
+    # Preserve descriptive suffixes and title-shaped product prefixes such
+    # as "SALES TAX GUIDE" and "GUIDE TO SALES TAX" without enumerating
+    # jurisdictions (which would miss labels such as "CA Sales Tax").
+    for pattern in (SUBTOTAL_KEYWORD_RE, TAX_KEYWORD_RE):
+        for match in pattern.finditer(bare):
+            if re.search(
+                r"\b(?:guide|manual|handbook|workbook)\s+"
+                r"(?:to|for|on|about)\b",
+                bare[: match.start()].strip(),
+                re.IGNORECASE,
+            ):
+                continue
+            if re.fullmatch(
+                r"(?:(?:total|amount|included|due|payable)\s*)*",
+                bare[match.end() :].strip(),
+                re.IGNORECASE,
+            ):
+                return False
     return (
         bool(re.search(r"[A-Za-z]{2}", text))
         and not is_settlement_row(bare)
-        # Match the whole summary label so product names containing "tax"
-        # remain eligible (for example, "SALES TAX GUIDE").
-        and not re.fullmatch(
-            r"(?:sales\s+)?tax(?:\s+(?:total|amount|included))?",
-            bare,
-            re.IGNORECASE,
-        )
         and not NON_PAYMENT_SUMMARY_RE.search(text)
         and not NON_PRODUCT_NOTE_RE.search(text)
         and not re.fullmatch(
@@ -194,9 +221,9 @@ def detect_warp_lost_amount(
     amounts = [
         word for word in warped_words if _cents(word["text"]) is not None
     ]
-    used: set[int] = set()
     source_seen: list[LostAmountEvidence] = []
-    lost: list[LostAmountEvidence] = []
+    source_groups: list[list[LostAmountEvidence]] = []
+    group_matches: list[set[int]] = []
     for word in source_words:
         cents = _cents(word["text"])
         confidence = word.get("confidence", 0)
@@ -244,31 +271,77 @@ def detect_warp_lost_amount(
             for previous in source_seen
         ):
             return None
-        # Duplicate source observations are not separate lost-price evidence.
-        if any(
-            previous.amount == evidence.amount
-            and abs(previous.x - evidence.x) < evidence.width * 0.25
-            and abs(previous.y - evidence.y) < evidence.height * 0.25
-            for previous in source_seen
-        ):
-            continue
-        source_seen.append(evidence)
         nearby = [
             i
             for i, candidate in enumerate(amounts)
             if _near(evidence, candidate)
         ]
         matches = [i for i in nearby if _cents(amounts[i]["text"]) == cents]
+        # Any conflicting crop reading defeats single-loss attribution,
+        # even if this row also has a matching observation or another row
+        # contains a missing amount that happens to explain the gap.
+        if len(matches) != len(nearby) or len(matches) > 1:
+            return None
+        # Check every observation for crop conflicts before suppressing
+        # duplicate source evidence, whose slightly shifted box may reveal
+        # a conflicting crop reading hidden from the first observation.
+        duplicate_groups: list[int] = []
+        for index, group in enumerate(source_groups):
+            same = [
+                _same_source_observation(previous, evidence)
+                for previous in group
+            ]
+            if any(same):
+                # Proximity is not transitive. A bridge between distinct
+                # observations makes occurrence counting ambiguous.
+                if not all(same):
+                    return None
+                duplicate_groups.append(index)
+        if len(duplicate_groups) > 1:
+            return None
+        source_seen.append(evidence)
+        if duplicate_groups:
+            index = duplicate_groups[0]
+            source_groups[index].append(evidence)
+            group_matches[index].update(matches)
+            continue
+        source_groups.append([evidence])
+        group_matches.append(set(matches))
+
+    # Coverage belongs to an occurrence, not whichever duplicate happened
+    # to be scanned first. Resolve all group members before counting loss.
+    used: set[int] = set()
+    lost: list[LostAmountEvidence] = []
+    for group, matches in zip(source_groups, group_matches):
+        if len(matches) > 1 or matches & used:
+            return None
         if matches:
-            if len(matches) != 1 or matches[0] in used:
+            used.update(matches)
+            continue
+        if group[0].amount <= 0:
+            continue
+        unpriced_names = [
+            _has_unpriced_name(item, zone_words) for item in group
+        ]
+        if any(unpriced_names):
+            if not all(unpriced_names):
                 return None
-            used.add(matches[0])
-            continue
-        # A different crop reading at this position is a conflict, not loss.
-        if nearby:
-            continue
-        if cents > 0 and _has_unpriced_name(evidence, zone_words):
-            lost.append(evidence)
+            # Preserve an actual observation and stable provenance; never
+            # synthesize an average box for the duplicate group.
+            lost.append(
+                min(
+                    group,
+                    key=lambda item: (
+                        item.source_line_id,
+                        item.source_word_id,
+                        item.x,
+                        item.y,
+                        item.width,
+                        item.height,
+                        item.text,
+                    ),
+                )
+            )
     return (
         lost[0]
         if len(lost) == 1 and round(lost[0].amount * 100) == gap
