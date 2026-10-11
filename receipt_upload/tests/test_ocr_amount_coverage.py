@@ -1203,3 +1203,51 @@ def test_plural_tax_context_cannot_be_product_evidence(
         source.append(word(label, x=0.1))
         zone = [name("MILK")]
     assert detect(source=source, zone=zone) is None
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        "USD$S",
+        "USD$",
+        "US$",
+        "usd$s:",
+        "USD $ S",
+        "USD",
+        "EUR",
+        "GBP",
+        "CAD",
+        "AUD",
+        "JPY",
+        "MXN",
+        "CHF",
+        "USDS",
+    ],
+)
+@pytest.mark.parametrize("original_context", [False, True])
+def test_currency_prefix_alone_cannot_establish_product_context(
+    prefix: str, original_context: bool
+) -> None:
+    source = [word("2.50")]
+    zone = [name(prefix)]
+    if original_context:
+        source.append(word(prefix, x=0.1, line_id=2))
+        zone = [name("MILK")]
+    assert detect(source=source, zone=zone) is None
+
+
+@pytest.mark.parametrize("combined", [False, True])
+@pytest.mark.parametrize("original_context", [False, True])
+def test_split_currency_prefix_preserves_actual_product_words(
+    combined: bool, original_context: bool
+) -> None:
+    labels = ["MILK USD$S"] if combined else ["MILK", "USD$S"]
+    source = [word("2.50")]
+    zone = [name(label) for label in labels]
+    if original_context:
+        source += [
+            word(label, x=0.1 + i * 0.15, line_id=2 + i)
+            for i, label in enumerate(labels)
+        ]
+        zone = [name("MILK")]
+    assert detect(source=source, zone=zone) is not None

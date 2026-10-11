@@ -19,6 +19,7 @@ from receipt_dynamo.amounts import (
     TOTAL_KEYWORD_RE,
     parse_receipt_amount,
 )
+from receipt_dynamo.entities.receipt_summary import _is_currency_prefix_token
 
 from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.line_items.geometry import (
@@ -273,8 +274,17 @@ def _has_unpriced_name(
         )
     ):
         return None
+    # Currency wrappers are not product names, whether OCR emitted them as
+    # a standalone word or alongside actual name words in one observation.
+    name_text = " ".join(
+        token
+        for word in row
+        if not _is_currency_prefix_token(word["text"])
+        for token in word["text"].split()
+        if not _is_currency_prefix_token(token)
+    )
     return (
-        bool(re.search(r"[A-Za-z]{2}", _UNIT_CONTEXT_RE.sub(" ", text)))
+        bool(re.search(r"[A-Za-z]{2}", _UNIT_CONTEXT_RE.sub(" ", name_text)))
         and not is_settlement_row(bare)
         and not NON_PAYMENT_SUMMARY_RE.search(text)
         and not _CHARGE_OR_SAVINGS_RE.search(text)
