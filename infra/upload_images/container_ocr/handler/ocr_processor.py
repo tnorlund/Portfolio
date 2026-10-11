@@ -737,6 +737,7 @@ class OCRProcessor:
             best_score = -1.0
             candidate_scores: list[float] = []
             rejected_scores: list[float] = []
+            disjoint_scores: list[tuple[ReceiptWord, float]] = []
             rejected_words: list[ReceiptWord] = []
             overlapping_conflict = False
             for idx, old_word in enumerate(remaining):
@@ -756,7 +757,10 @@ class OCRProcessor:
                 if x_overlap < 0.15 or not self._regional_types_compatible(
                     new_word.text, old_word.text
                 ):
-                    rejected_scores.append(score)
+                    if x_overlap >= 0.15:
+                        rejected_scores.append(score)
+                    else:
+                        disjoint_scores.append((old_word, score))
                     rejected_words.append(old_word)
                     overlapping_conflict = (
                         overlapping_conflict or x_overlap >= 0.15
@@ -767,8 +771,17 @@ class OCRProcessor:
                     best_score = score
                     best_idx = idx
 
-            # A type/column conflict at the strongest location cannot be
-            # bypassed by borrowing a weaker compatible neighbor. Reject
+            # A distant same-row word can score above a valid counterpart
+            # because OCR shifts their Y positions differently. It blocks
+            # only if the complete plan leaves it without its own match.
+            if best_idx is not None:
+                deferred_rejections.update(
+                    (word.line_id, word.word_id)
+                    for word, score in disjoint_scores
+                    if score >= best_score - 1e-9
+                )
+            # An overlapping type conflict at the strongest location cannot
+            # be bypassed by borrowing a weaker compatible neighbor. Reject
             # ties too, independently of candidate iteration order.
             if best_idx is not None and any(
                 score >= best_score - 1e-9 for score in rejected_scores

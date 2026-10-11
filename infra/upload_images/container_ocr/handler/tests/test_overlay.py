@@ -451,6 +451,31 @@ class TestBboxCenterX:
 
 
 class TestMatchRegionalWords:
+    @pytest.mark.parametrize("reverse_new", [False, True])
+    @pytest.mark.parametrize("reverse_old", [False, True])
+    @pytest.mark.parametrize("include_product", [False, True])
+    def test_stronger_disjoint_word_waits_for_complete_plan(
+        self, reverse_new: bool, reverse_old: bool, include_product: bool
+    ) -> None:
+        proc = _make_processor()
+        old_price = _make_word(text="8.88", x=0.8, y=0.63, h=0.05, word_id=2)
+        old_product = _make_word(text="MILK", x=0.1, y=0.59, h=0.05, word_id=1)
+        fresh_price = _make_word(text="8.68", x=0.8, y=0.59, h=0.05, word_id=2)
+        fresh_product = _make_word(
+            text="MILK", x=0.1, y=0.60, h=0.05, word_id=1
+        )
+        old = [old_price, old_product]
+        new = [fresh_price] + ([fresh_product] if include_product else [])
+        if reverse_old:
+            old.reverse()
+        if reverse_new:
+            new.reverse()
+        matches, ambiguous = proc._regional_match_plan(new, old)
+        assert (fresh_price, old_price) in matches
+        assert ambiguous is not include_product
+        if include_product:
+            assert (fresh_product, old_product) in matches
+
     @pytest.mark.parametrize(
         "text", ["2/$3", "$5OFF", "SAVE$5", "GET$5", "OFF$5"]
     )
@@ -1078,6 +1103,25 @@ class TestUnmatchedWordAddition:
         assert old.text == "8.68"
         rebuilt = proc.dynamo.update_receipt_lines.call_args[0][0]
         assert rebuilt[0].text == f"{text} 8.68"
+        proc.dynamo.delete_receipt_words.assert_not_called()
+
+    def test_disjoint_product_does_not_block_shifted_price_correction(
+        self,
+    ) -> None:
+        proc = _make_processor()
+        old_price = _make_word(text="8.88", x=0.8, y=0.63, h=0.05, word_id=2)
+        old_product = _make_word(text="MILK", x=0.1, y=0.59, h=0.05, word_id=1)
+        fresh_price = _make_word(text="8.68", x=0.8, y=0.59, h=0.05, word_id=2)
+        fresh_product = _make_word(
+            text="MILK", x=0.1, y=0.60, h=0.05, word_id=1
+        )
+        result = self._run_overlay(
+            proc, [old_price, old_product], [fresh_price, fresh_product]
+        )
+        assert result["success"] is True
+        assert old_price.text == "8.68"
+        assert old_product.text == "MILK"
+        proc.dynamo.add_receipt_words.assert_not_called()
         proc.dynamo.delete_receipt_words.assert_not_called()
 
     @pytest.mark.parametrize("reverse", [False, True])
