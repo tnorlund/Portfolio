@@ -1375,3 +1375,62 @@ def test_projective_horizon_cannot_hide_foreign_context(
     if width is not None:
         label["w"] = width
     assert (detect(others=[other], zone=[label]) is not None) is expected
+
+
+@pytest.mark.parametrize("label", ["25% OFF", "BOGO 50% OFF", "MILK 25 % OFF"])
+@pytest.mark.parametrize("original_context", [False, True])
+def test_percentage_off_annotations_are_not_product_context(
+    label: str, original_context: bool
+) -> None:
+    source = [word("$2.50")]
+    zone = [name(label)]
+    if original_context:
+        source.append(word(label, x=0.1, line_id=2))
+        zone = [name("MILK")]
+    assert detect(source=source, zone=zone) is None
+
+
+@pytest.mark.parametrize("label", ["SALMON FILLET SKIN OFF", "EASY OFF"])
+def test_bare_off_product_names_remain_valid_context(label: str) -> None:
+    assert detect(zone=[name(label)]) is not None
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("x", -0.1),
+        ("x", 1.0),
+        ("y", -0.1),
+        ("y", 1.0),
+        ("width", 0.0),
+        ("height", -0.1),
+        ("height", float("nan")),
+        ("width", float("inf")),
+        ("x", "0.8"),
+        ("height", True),
+    ],
+)
+def test_invalid_warped_amount_coverage_blocks_loss_evidence(
+    field: str, value
+) -> None:
+    observed = word("$2.50")
+    observed["bounding_box"][field] = value
+    assert detect(warped=[observed]) is None
+
+
+def test_warped_amount_without_geometry_cannot_be_ignored() -> None:
+    observed = word("$2.50")
+    del observed["bounding_box"]
+    assert detect(warped=[observed]) is None
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [("x", -0.1), ("x", "0.1"), ("h", 0.0), ("y_mid", float("nan"))],
+)
+def test_invalid_warped_name_geometry_cannot_support_evidence(
+    field: str, value
+) -> None:
+    label = name("MILK")
+    label[field] = value
+    assert detect(zone=[label]) is None

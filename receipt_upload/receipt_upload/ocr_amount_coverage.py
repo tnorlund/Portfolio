@@ -25,6 +25,7 @@ from receipt_upload.geometry.transformations import find_perspective_coeffs
 from receipt_upload.line_items.geometry import (
     _SLASH_UNIT_WORD,
     COLUMN_HEADER_ANCHOR_TOKENS,
+    DISCOUNT_WORD_RE,
     MAX_PLAUSIBLE_BASELINE,
     NON_PRODUCT_NOTE_RE,
     PRICE_COLUMN_X_TOL,
@@ -319,6 +320,7 @@ def _has_unpriced_name(
         bool(re.search(r"[A-Za-z]{2}", _UNIT_CONTEXT_RE.sub(" ", name_text)))
         and not is_settlement_row(bare)
         and not NON_PAYMENT_SUMMARY_RE.search(text)
+        and not DISCOUNT_WORD_RE.search(text)
         and not _CHARGE_OR_SAVINGS_RE.search(text)
         and not _REFERENCE_CONTEXT_RE.search(text)
         and not NON_PRODUCT_NOTE_RE.search(text)
@@ -389,21 +391,34 @@ def detect_warp_lost_amount(
     try:
         target = _transform(receipt_bounds)
         others = [_transform(bounds) for bounds in other_receipt_bounds]
+        crop_boxes = [word["bounding_box"] for word in warped_words]
+        for word in zone_words:
+            # The legacy zone shape omits width. Its conservative
+            # envelope reaches the crop's right edge until a width is
+            # supplied, so unknown extent cannot prove ownership.
+            x, height = word["x"], word["h"]
+            box = {
+                "x": x,
+                "y": word["y_mid"] - height / 2,
+                "width": word.get("w", 1.0 - x),
+                "height": height,
+            }
+            crop_boxes.append(box)
+        identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0]
+        for box in crop_boxes:
+            if (
+                any(
+                    isinstance(box[key], bool)
+                    or not isinstance(box[key], (int, float))
+                    for key in ("x", "y", "width", "height")
+                )
+                or _project_box(box, identity) is None
+            ):
+                # An observed amount with unknown coverage cannot be
+                # discarded and then reported as missing from the crop.
+                return None
         if others:
             to_source = _transform(receipt_bounds, to_source=True)
-            crop_boxes = [word["bounding_box"] for word in warped_words]
-            for word in zone_words:
-                # The legacy zone shape omits width. Its conservative
-                # envelope reaches the crop's right edge until a width is
-                # supplied, so unknown extent cannot prove ownership.
-                x, height = float(word["x"]), float(word["h"])
-                box = {
-                    "x": x,
-                    "y": float(word["y_mid"]) - height / 2,
-                    "width": float(word.get("w", 1.0 - x)),
-                    "height": height,
-                }
-                crop_boxes.append(box)
             # Surviving prices also support the inferred column, so they
             # require the same ownership proof as the product context.
             for box in crop_boxes:
