@@ -1188,3 +1188,18 @@ def test_conflicting_source_overlap_outside_strict_window_abstains(
     if reverse:
         source.reverse()
     assert detect(source=source, warped=[crop]) is None
+
+
+@pytest.mark.parametrize(
+    "label", ["Taxes", "Sales Taxes", "TAXES INCLUDED", "Local Taxes"]
+)
+@pytest.mark.parametrize("original_context", [False, True])
+def test_plural_tax_context_cannot_be_product_evidence(
+    label: str, original_context: bool
+) -> None:
+    source = [word("$2.50")]
+    zone = [name(label)]
+    if original_context:
+        source.append(word(label, x=0.1))
+        zone = [name("MILK")]
+    assert detect(source=source, zone=zone) is None

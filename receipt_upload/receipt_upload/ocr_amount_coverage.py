@@ -38,7 +38,7 @@ from receipt_upload.line_items.geometry import (
 )
 
 _CHARGE_OR_SAVINGS_RE = re.compile(
-    r"\b(?:tips?|gratuit(?:y|ies)|service\s+charges?|save[ds]?)\b", re.I
+    r"\b(?:taxes|tips?|gratuit(?:y|ies)|service\s+charges?|save[ds]?)\b", re.I
 )
 
 _MINUS_TRANSLATION = str.maketrans({char: "-" for char in "−‒–—﹣－‐‑"})
