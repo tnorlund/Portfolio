@@ -7,7 +7,7 @@ workflow.
 
 import logging
 import os
-from typing import Any, Optional
+from typing import Any, Optional, TypedDict
 
 from langchain_core.messages import (
     AIMessage,
@@ -247,6 +247,24 @@ place data."""
 # ======================================================================
 
 
+class PlaceFieldConfidence(TypedDict, total=False):
+    """Confidence keys match the four place fields the tool can submit."""
+
+    place_id: float
+    merchant_name: float
+    address: float
+    phone_number: float
+
+
+class PlaceFieldSources(TypedDict, total=False):
+    """Provenance for the same supported place fields."""
+
+    place_id: str
+    merchant_name: str
+    address: str
+    phone_number: str
+
+
 def create_place_submission_tool(state_holder: dict):
     """Create a tool for submitting found place data."""
 
@@ -274,7 +292,7 @@ def create_place_submission_tool(state_holder: dict):
             le=1.0,
             description="Overall confidence in the place data (0.0 to 1.0)",
         )
-        field_confidence: dict[str, float] = Field(
+        field_confidence: PlaceFieldConfidence = Field(
             default_factory=dict,
             description=(
                 "Confidence for each field: {'place_id': 0.9, "
@@ -287,7 +305,7 @@ def create_place_submission_tool(state_holder: dict):
                 "confident"
             )
         )
-        sources: dict[str, str] = Field(
+        sources: PlaceFieldSources = Field(
             default_factory=dict,
             description=(
                 "Source for each field: {'place_id': 'google_places', "
@@ -443,7 +461,7 @@ def create_receipt_place_finder_graph(
     )
     forced_submit_node = create_agent_node_with_retry(
         llm=base_llm.bind_tools(
-            [submit_tool],
+            tools,
             tool_choice="submit_place",
         ),
         agent_name="place_finder_final_submit",
