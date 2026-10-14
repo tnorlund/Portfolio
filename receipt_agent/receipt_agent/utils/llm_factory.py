@@ -40,6 +40,7 @@ Environment Variables:
     OPENROUTER_BASE_URL: OpenRouter API URL (default: https://openrouter.ai/api/v1)
     OPENROUTER_API_KEY: OpenRouter API key (required)
     OPENROUTER_MODEL: Model name (default: openai/gpt-oss-120b)
+    Haiku 5.5 automatically uses the Anthropic-only compatibility adapter.
 """
 
 import asyncio
@@ -184,7 +185,8 @@ def create_llm(
         model: Model name (default from OPENROUTER_MODEL env var)
         base_url: API URL (default from OPENROUTER_BASE_URL env var)
         api_key: API key (default from OPENROUTER_API_KEY env var)
-        temperature: LLM temperature (default 0.0)
+        temperature: LLM temperature (default 0.0). Omitted for Haiku 5.5,
+            which does not support this parameter.
         timeout: Request timeout in seconds (default 120)
         reasoning: Enable/disable reasoning tokens for supported models.
             None = use model's default behavior.
@@ -246,17 +248,27 @@ def create_llm(
     default_headers.setdefault("X-Title", "Receipt Agent")
 
     # Build extra_body for OpenRouter-specific parameters
-    extra_body = kwargs.pop("extra_body", {})
+    extra_body = dict(kwargs.pop("extra_body", {}))
     if reasoning_effort is not None:
         extra_body["reasoning"] = {"effort": reasoning_effort}
     elif reasoning is not None:
         extra_body["reasoning"] = {"enabled": reasoning}
 
-    # Only pass extra_body if it has content
+    chat_class = ChatOpenAI
+    if _model == "anthropic/claude-haiku-5.5":
+        from receipt_agent.utils.openrouter_chat import (
+            HaikuOpenRouterChat,
+            anthropic_provider_options,
+        )
+
+        chat_class = HaikuOpenRouterChat
+        extra_body = anthropic_provider_options(extra_body)
+        extra_body["reasoning"] = {"enabled": False}
+        temperature = None
     if extra_body:
         kwargs["extra_body"] = extra_body
 
-    return ChatOpenAI(
+    return chat_class(
         model=_model,
         base_url=_base_url,
         api_key=_api_key,
@@ -824,7 +836,8 @@ def create_llm_invoker(
 
     Args:
         model: Model name (default from OPENROUTER_MODEL env var)
-        temperature: LLM temperature (default 0.0)
+        temperature: LLM temperature (default 0.0). Omitted for Haiku 5.5,
+            which does not support this parameter.
         timeout: Request timeout in seconds (default 120)
         max_jitter_seconds: Max random delay between calls (default 0.25s)
         max_retries: Max retry attempts (default 3)
@@ -867,7 +880,8 @@ def create_production_invoker(
     This is an alias for create_llm_invoker() for backward compatibility.
 
     Args:
-        temperature: LLM temperature (default 0.0)
+        temperature: LLM temperature (default 0.0). Omitted for Haiku 5.5,
+            which does not support this parameter.
         timeout: Request timeout in seconds (default 120)
         circuit_breaker_threshold: Ignored (kept for API compatibility)
         max_jitter_seconds: Max random delay between calls (default 0.25s)
@@ -896,7 +910,8 @@ def create_resilient_llm(
     This is an alias for create_llm_invoker() for backward compatibility.
 
     Args:
-        temperature: LLM temperature (default 0.0)
+        temperature: LLM temperature (default 0.0). Omitted for Haiku 5.5,
+            which does not support this parameter.
         timeout: Request timeout in seconds (default 120)
         **kwargs: Additional arguments passed to create_llm()
 

@@ -1,10 +1,13 @@
 """Tests for LLM Factory module - OpenRouter-only implementation."""
 
 import asyncio
+import json
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
+from pydantic import BaseModel
 
 from receipt_agent.exceptions import (
     AgentExecutionError,
@@ -227,6 +230,126 @@ class TestCreateLLM:
         assert call_kwargs["model"] == "prefixed-model"
         assert call_kwargs["base_url"] == "https://prefixed.url"
         assert call_kwargs["api_key"] == "prefixed-key"
+
+
+class TestHaikuRouting:
+    """Selecting Haiku alone enforces routing on every request path."""
+
+    @pytest.mark.parametrize("structured", [False, True])
+    def test_restricted_provider_reaches_transport(
+        self, structured: bool
+    ) -> None:
+        requests_seen = []
+
+        class Answer(BaseModel):
+            valid: bool
+
+        def handle(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content)
+            requests_seen.append(body)
+            assert "temperature" not in body
+            assert body["reasoning"] == {"enabled": False}
+            assert body["provider"] == {
+                "only": ["anthropic"],
+                "allow_fallbacks": False,
+                "require_parameters": True,
+            }
+            assert "response_format" in body if structured else "tools" in body
+            return httpx.Response(
+                200,
+                json={
+                    "id": "test-response",
+                    "object": "chat.completion",
+                    "created": 1,
+                    "model": "anthropic/claude-haiku-5.5",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "message": {
+                                "role": "assistant",
+                                "content": '{"valid": true}',
+                            },
+                            "finish_reason": "stop",
+                        }
+                    ],
+                    "usage": {
+                        "prompt_tokens": 1,
+                        "completion_tokens": 1,
+                        "total_tokens": 2,
+                    },
+                },
+            )
+
+        with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+            llm = create_llm(
+                model="anthropic/claude-haiku-5.5",
+                base_url="https://openrouter.ai/api/v1",
+                api_key="synthetic-test-key",
+                http_client=client,
+                max_retries=0,
+            )
+            bound = (
+                llm.with_structured_output(Answer, method="json_schema")
+                if structured
+                else llm.bind_tools([Answer])
+            )
+            result = bound.invoke("Return valid=true.")
+            if structured:
+                assert result.valid is True
+        assert len(requests_seen) == 1
+
+    @pytest.mark.parametrize(
+        "provider",
+        [
+            None,
+            [],
+            {"only": []},
+            {"only": ["anthropic", "openai"]},
+            {"only": ["google-vertex"]},
+        ],
+    )
+    @patch("receipt_agent.utils.openrouter_chat.HaikuOpenRouterChat")
+    def test_invalid_route_fails_before_client_creation(
+        self, mock_chat: MagicMock, provider: object
+    ) -> None:
+        with pytest.raises(ReceiptAgentConfigurationError):
+            create_llm(
+                model="anthropic/claude-haiku-5.5",
+                api_key="synthetic-test-key",
+                extra_body={"provider": provider},
+            )
+        mock_chat.assert_not_called()
+
+    @patch("receipt_agent.utils.openrouter_chat.HaikuOpenRouterChat")
+    def test_haiku_disables_fallback_without_mutating_input(
+        self, mock_chat: MagicMock
+    ) -> None:
+        extra_body = {
+            "provider": {"only": ["anthropic"], "allow_fallbacks": True},
+            "reasoning": {"enabled": True},
+        }
+        create_llm(
+            model="anthropic/claude-haiku-5.5",
+            api_key="synthetic-test-key",
+            extra_body=extra_body,
+        )
+        sent = mock_chat.call_args.kwargs["extra_body"]
+        assert sent["provider"] == {
+            "only": ["anthropic"],
+            "allow_fallbacks": False,
+            "require_parameters": True,
+        }
+        assert sent["reasoning"] == {"enabled": False}
+        assert extra_body["provider"]["allow_fallbacks"] is True
+        assert extra_body["reasoning"]["enabled"] is True
+
+    @patch("langchain_openai.ChatOpenAI")
+    def test_other_models_keep_existing_routing(
+        self, mock_chat: MagicMock
+    ) -> None:
+        create_llm(model="openai/gpt-5.6-luna", api_key="synthetic-test-key")
+        assert "extra_body" not in mock_chat.call_args.kwargs
+        assert mock_chat.call_args.kwargs["temperature"] == 0.0
 
 
 class TestLLMInvoker:

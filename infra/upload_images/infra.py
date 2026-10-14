@@ -606,7 +606,7 @@ class UploadImages(ComponentResource):
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": config.get("RECEIPT_OPENROUTER_MODEL")
-                or "x-ai/grok-4.3",
+                or "anthropic/claude-haiku-5.5",
                 **hosted_tracing_environment(config),
                 "RECEIPT_TRACE_BUCKET": (
                     trace_bucket.id if trace_bucket else ""
