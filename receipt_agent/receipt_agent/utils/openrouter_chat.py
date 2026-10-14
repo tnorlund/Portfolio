@@ -1,4 +1,4 @@
-"""Enforce deployment routing after LangChain merges per-call options."""
+"""Haiku compatibility and Anthropic-only routing through OpenRouter."""
 
 import json
 from typing import Any
@@ -10,44 +10,33 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from receipt_agent.exceptions import ReceiptAgentConfigurationError
 
 
-def restrict_provider_options(
-    extra_body: dict[str, Any], allowed: tuple[str, ...]
-) -> dict[str, Any]:
-    """Permit narrower requests, never removal or broadening of the route."""
+def anthropic_provider_options(extra_body: dict[str, Any]) -> dict[str, Any]:
+    """Keep Haiku on the approved Anthropic route, including per-call options."""
     provider = extra_body.get("provider", {})
-    if not isinstance(provider, dict):
+    if not isinstance(provider, dict) or provider.get(
+        "only", ["anthropic"]
+    ) != ["anthropic"]:
         raise ReceiptAgentConfigurationError(
-            "OpenRouter provider options must be an object"
-        )
-    requested = provider.get("only", list(allowed))
-    if (
-        not isinstance(requested, list)
-        or not requested
-        or any(item not in allowed for item in requested)
-    ):
-        raise ReceiptAgentConfigurationError(
-            "Request provider allowlist exceeds OPENROUTER_PROVIDER_ONLY"
+            "Haiku requires the Anthropic-only OpenRouter route"
         )
     return {
         **extra_body,
         "provider": {
             **provider,
-            "only": list(requested),
+            "only": ["anthropic"],
             "allow_fallbacks": False,
             "require_parameters": True,
         },
     }
 
 
-class RestrictedOpenRouterChat(ChatOpenAI):
-    """Keep routing restrictions on sync, async, structured and bound calls."""
-
-    allowed_openrouter_providers: tuple[str, ...] = Field(exclude=True)
+class HaikuOpenRouterChat(ChatOpenAI):
+    """Support Haiku tools and schemas while enforcing Anthropic-only routing."""
 
     def _get_request_payload(
         self,
@@ -67,15 +56,11 @@ class RestrictedOpenRouterChat(ChatOpenAI):
             extra_body["response_format"] = forced_format
             extra_body.pop("tool_choice", None)
             payload["tool_choice"] = "none"
-        payload["extra_body"] = restrict_provider_options(
-            extra_body, self.allowed_openrouter_providers
-        )
-        if payload.get("model") == "anthropic/claude-haiku-5.5":
-            payload.pop("temperature", None)
-            # ChatOpenAI does not round-trip OpenRouter reasoning_details.
-            # Keep every turn (including structured final submissions) free of
-            # thinking metadata that the next tool continuation would lose.
-            payload["extra_body"]["reasoning"] = {"enabled": False}
+        payload["extra_body"] = anthropic_provider_options(extra_body)
+        payload.pop("temperature", None)
+        # ChatOpenAI does not round-trip OpenRouter reasoning_details. Disable
+        # thinking so subsequent tool turns do not lose required metadata.
+        payload["extra_body"]["reasoning"] = {"enabled": False}
         return payload
 
     def bind_tools(
@@ -93,7 +78,7 @@ class RestrictedOpenRouterChat(ChatOpenAI):
         arguments under its JSON schema, then exposing the validated result as
         a tool call. Multi-tool forced choices are not silently weakened.
         """
-        if self.model_name != "anthropic/claude-haiku-5.5" or tool_choice in (
+        if tool_choice in (
             None,
             "auto",
             "none",

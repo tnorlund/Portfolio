@@ -40,12 +40,10 @@ Environment Variables:
     OPENROUTER_BASE_URL: OpenRouter API URL (default: https://openrouter.ai/api/v1)
     OPENROUTER_API_KEY: OpenRouter API key (required)
     OPENROUTER_MODEL: Model name (default: openai/gpt-oss-120b)
-    OPENROUTER_PROVIDER_ONLY: Optional JSON provider allowlist. When set,
-        disable provider fallback and require support for request parameters.
+    Haiku 5.5 automatically uses the Anthropic-only compatibility adapter.
 """
 
 import asyncio
-import json
 import logging
 import os
 import random
@@ -251,62 +249,30 @@ def create_llm(
 
     # Build extra_body for OpenRouter-specific parameters
     extra_body = dict(kwargs.pop("extra_body", {}))
-    provider_only_json = os.environ.get("OPENROUTER_PROVIDER_ONLY")
-    if provider_only_json is not None:
-        try:
-            provider_only = json.loads(provider_only_json)
-        except (TypeError, ValueError) as exc:
-            raise ReceiptAgentConfigurationError(
-                "OPENROUTER_PROVIDER_ONLY must be a nonempty JSON string list"
-            ) from exc
-        if (
-            not isinstance(provider_only, list)
-            or not provider_only
-            or any(
-                not isinstance(provider, str) or not provider.strip()
-                for provider in provider_only
-            )
-        ):
-            raise ReceiptAgentConfigurationError(
-                "OPENROUTER_PROVIDER_ONLY must be a nonempty JSON string list"
-            )
-        from receipt_agent.utils.openrouter_chat import (
-            RestrictedOpenRouterChat,
-            restrict_provider_options,
-        )
-
-        extra_body = restrict_provider_options(
-            extra_body, tuple(provider_only)
-        )
-        kwargs["allowed_openrouter_providers"] = tuple(provider_only)
-        chat_class = RestrictedOpenRouterChat
-    else:
-        chat_class = ChatOpenAI
-    if (
-        _model == "anthropic/claude-haiku-5.5"
-        and reasoning is None
-        and reasoning_effort is None
-    ):
-        reasoning = False
     if reasoning_effort is not None:
         extra_body["reasoning"] = {"effort": reasoning_effort}
     elif reasoning is not None:
         extra_body["reasoning"] = {"enabled": reasoning}
 
-    # Only pass extra_body if it has content
+    chat_class = ChatOpenAI
+    if _model == "anthropic/claude-haiku-5.5":
+        from receipt_agent.utils.openrouter_chat import (
+            HaikuOpenRouterChat,
+            anthropic_provider_options,
+        )
+
+        chat_class = HaikuOpenRouterChat
+        extra_body = anthropic_provider_options(extra_body)
+        extra_body["reasoning"] = {"enabled": False}
+        temperature = None
     if extra_body:
         kwargs["extra_body"] = extra_body
 
-    # Haiku 5.5 has no sampling-temperature parameter. Sending even the
-    # default 0.0 is incompatible with require_parameters=True.
-    effective_temperature = (
-        None if _model == "anthropic/claude-haiku-5.5" else temperature
-    )
     return chat_class(
         model=_model,
         base_url=_base_url,
         api_key=_api_key,
-        temperature=effective_temperature,
+        temperature=temperature,
         timeout=timeout,
         default_headers=default_headers,
         **kwargs,

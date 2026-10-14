@@ -44,9 +44,8 @@ def completion(message: dict) -> httpx.Response:
 )
 @pytest.mark.asyncio
 async def test_async_per_call_options_cannot_remove_restrictions(
-    monkeypatch: pytest.MonkeyPatch, structured: bool, extra_body: dict
+    structured: bool, extra_body: dict
 ) -> None:
-    monkeypatch.setenv("OPENROUTER_PROVIDER_ONLY", '["anthropic"]')
     requests_seen = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -84,9 +83,8 @@ async def test_async_per_call_options_cannot_remove_restrictions(
 
 @pytest.mark.parametrize("structured", [False, True])
 def test_per_call_provider_broadening_fails_before_transport(
-    monkeypatch: pytest.MonkeyPatch, structured: bool
+    structured: bool,
 ) -> None:
-    monkeypatch.setenv("OPENROUTER_PROVIDER_ONLY", '["anthropic"]')
 
     def handle(request: httpx.Request) -> httpx.Response:
         pytest.fail("A broadened route reached the transport")
@@ -109,10 +107,7 @@ def test_per_call_provider_broadening_fails_before_transport(
             )
 
 
-def test_tool_result_round_trip_disables_thinking(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENROUTER_PROVIDER_ONLY", '["anthropic"]')
+def test_tool_result_round_trip_disables_thinking() -> None:
     bodies = []
 
     def handle(request: httpx.Request) -> httpx.Response:
@@ -160,9 +155,8 @@ def test_tool_result_round_trip_disables_thinking(
 
 @pytest.mark.parametrize("choice", ["Answer", "required"])
 def test_forced_single_tool_uses_schema_and_preserves_usage(
-    monkeypatch: pytest.MonkeyPatch, choice: str
+    choice: str,
 ) -> None:
-    monkeypatch.setenv("OPENROUTER_PROVIDER_ONLY", '["anthropic"]')
 
     def handle(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
@@ -186,20 +180,14 @@ def test_forced_single_tool_uses_schema_and_preserves_usage(
     assert result.usage_metadata["total_tokens"] == 5
 
 
-def test_ambiguous_forced_tool_choice_fails_locally(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENROUTER_PROVIDER_ONLY", '["anthropic"]')
+def test_ambiguous_forced_tool_choice_fails_locally() -> None:
     llm = create_llm(model="anthropic/claude-haiku-5.5", api_key="synthetic")
     with pytest.raises(ReceiptAgentConfigurationError):
         llm.bind_tools([Answer, Answer], tool_choice="required")
 
 
 @pytest.mark.asyncio
-async def test_real_submission_preserves_tool_history_and_maps(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OPENROUTER_PROVIDER_ONLY", '["anthropic"]')
+async def test_real_submission_preserves_tool_history_and_maps() -> None:
     submit = create_place_submission_tool({})
     arguments = {
         "merchant_name": "Synthetic Market",

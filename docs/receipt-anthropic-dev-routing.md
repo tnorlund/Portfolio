@@ -7,16 +7,18 @@ newest Haiku in the Anthropic and OpenRouter catalogs as of 2026-10-14. It
 supports tools and structured outputs but not temperature; the factory omits
 temperature for this exact model while preserving other models’ behavior.
 
-`portfolio:RECEIPT_OPENROUTER_PROVIDER_ONLY` is a nonempty list of OpenRouter
-provider slugs. The upload component serializes it into
-`OPENROUTER_PROVIDER_ONLY`. The common LLM factory applies it to label
-validation and merchant-agent fallback, disables provider fallback, and
-requires support for request parameters. Invalid restrictions fail before
-creating the client. Request options may narrow this list, but cannot broaden
-it or enable fallback, including at invocation after bound and per-call
-options merge. Unconfigured deployments retain their existing routing.
+Selecting this Haiku model automatically uses the Anthropic-only adapter.
+There is no additional provider setting. It applies `provider.only=["anthropic"]`,
+disables fallback, and requires parameter support after LangChain merges request
+options. Bound or per-call options cannot remove or broaden that route. Other
+models retain their existing client behavior.
 
-Restricted Haiku requests explicitly disable thinking because ChatOpenAI does
+The shared receipt-processor default is also Haiku. Dev has an explicit Haiku
+override; the checked-in production configuration has no receipt-model override,
+so a later production deployment would pick up the new default. This change is
+deployed only to dev; production requires its separate authorization.
+
+Haiku requests explicitly disable thinking because ChatOpenAI does
 not preserve OpenRouter thinking metadata across tool results. The Haiku
 endpoint currently rejects named and `required` tool choices. For
 one identified function, the adapter requests its arguments with the original
@@ -43,11 +45,11 @@ replacements. Replacing the receipt processor’s local upload-context and
 pipeline-trigger commands is expected when rebuilding its image. Use exact
 resource URNs for these build commands and the receipt Lambda.
 
-The provider restriction requires the updated factory in the container image.
-Deploy and verify that image **before** activating the new model and provider
-environment. A model-only change on the old image does not enforce the
-allowlist. Use a temporary dev config file retaining the previous model for
-the code-build phase, then preview and apply the final model/provider config.
+The Haiku adapter requires the updated factory in the container image.
+Deploy and verify that image **before** activating the new model. A model-only
+change on the old image does not enforce routing or provide compatibility. Use
+a temporary dev config file retaining the previous model for the code-build
+phase, then preview and apply the final model setting.
 Wait for CodeBuild and Lambda updates to finish; an async build trigger alone
 is not verification. Do not change the production model configuration.
 
@@ -57,9 +59,8 @@ tool-call path with synthetic input. Confirm the returned provider and BYOK
 usage before resuming journaled uploads. No test should contain private receipt
 data until that routing check passes.
 
-For rollback, restore the saved receipt model and remove its provider-only
-setting together, preview the same dev targets, and apply the configuration.
-The new factory is backward compatible when the allowlist is absent. Preserve
+For rollback, restore the saved receipt model, preview the same dev targets,
+and apply the configuration. Other models use the original client behavior. Preserve
 the previous image digest for a separately reviewed image rollback if needed.
 
 OpenRouter documents [provider restrictions](https://openrouter.ai/docs/guides/routing/provider-selection)

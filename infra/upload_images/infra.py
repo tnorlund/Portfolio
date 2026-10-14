@@ -36,20 +36,6 @@ openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 openrouter_api_key = config.require_secret("OPENROUTER_API_KEY")
 # Defer grok label validation to the async queue/consumer (off by default).
 llm_validation_async = config.get("LLM_VALIDATION_ASYNC") or "false"
-receipt_openrouter_provider_only = config.get_object(
-    "RECEIPT_OPENROUTER_PROVIDER_ONLY"
-)
-if receipt_openrouter_provider_only is not None and (
-    not isinstance(receipt_openrouter_provider_only, list)
-    or not receipt_openrouter_provider_only
-    or any(
-        not isinstance(provider, str) or not provider.strip()
-        for provider in receipt_openrouter_provider_only
-    )
-):
-    raise ValueError(
-        "RECEIPT_OPENROUTER_PROVIDER_ONLY must be a nonempty string list"
-    )
 
 stack = pulumi.get_stack()
 
@@ -620,16 +606,7 @@ class UploadImages(ComponentResource):
                 "OPENROUTER_API_KEY": openrouter_api_key,
                 "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
                 "OPENROUTER_MODEL": config.get("RECEIPT_OPENROUTER_MODEL")
-                or "x-ai/grok-4.3",
-                **(
-                    {
-                        "OPENROUTER_PROVIDER_ONLY": json.dumps(
-                            receipt_openrouter_provider_only
-                        )
-                    }
-                    if receipt_openrouter_provider_only is not None
-                    else {}
-                ),
+                or "anthropic/claude-haiku-5.5",
                 **hosted_tracing_environment(config),
                 "RECEIPT_TRACE_BUCKET": (
                     trace_bucket.id if trace_bucket else ""

@@ -232,14 +232,13 @@ class TestCreateLLM:
         assert call_kwargs["api_key"] == "prefixed-key"
 
 
-class TestProviderRestrictions:
-    """Deployment destinations survive structured-output and tool bindings."""
+class TestHaikuRouting:
+    """Selecting Haiku alone enforces routing on every request path."""
 
     @pytest.mark.parametrize("structured", [False, True])
     def test_restricted_provider_reaches_transport(
-        self, monkeypatch: pytest.MonkeyPatch, structured: bool
+        self, structured: bool
     ) -> None:
-        monkeypatch.setenv("OPENROUTER_PROVIDER_ONLY", '["anthropic"]')
         requests_seen = []
 
         class Answer(BaseModel):
@@ -300,58 +299,57 @@ class TestProviderRestrictions:
         assert len(requests_seen) == 1
 
     @pytest.mark.parametrize(
-        "value", ["", "[", "null", '"anthropic"', "[]", "[null]", '[""]']
+        "provider",
+        [
+            None,
+            [],
+            {"only": []},
+            {"only": ["anthropic", "openai"]},
+            {"only": ["google-vertex"]},
+        ],
     )
-    @patch("langchain_openai.ChatOpenAI")
-    def test_invalid_allowlist_fails_before_client_creation(
-        self, mock_chat_openai: MagicMock, value: str
+    @patch("receipt_agent.utils.openrouter_chat.HaikuOpenRouterChat")
+    def test_invalid_route_fails_before_client_creation(
+        self, mock_chat: MagicMock, provider: object
     ) -> None:
-        with patch.dict(os.environ, {"OPENROUTER_PROVIDER_ONLY": value}):
-            with pytest.raises(ReceiptAgentConfigurationError):
-                create_llm(api_key="synthetic-test-key")
-        mock_chat_openai.assert_not_called()
+        with pytest.raises(ReceiptAgentConfigurationError):
+            create_llm(
+                model="anthropic/claude-haiku-5.5",
+                api_key="synthetic-test-key",
+                extra_body={"provider": provider},
+            )
+        mock_chat.assert_not_called()
 
-    @patch("langchain_openai.ChatOpenAI")
-    def test_request_cannot_broaden_provider_allowlist(
-        self, mock_chat_openai: MagicMock
-    ) -> None:
-        with patch.dict(
-            os.environ, {"OPENROUTER_PROVIDER_ONLY": '["anthropic"]'}
-        ):
-            with pytest.raises(ReceiptAgentConfigurationError):
-                create_llm(
-                    api_key="synthetic-test-key",
-                    extra_body={"provider": {"only": ["anthropic", "openai"]}},
-                )
-        mock_chat_openai.assert_not_called()
-
-    @patch("receipt_agent.utils.openrouter_chat.RestrictedOpenRouterChat")
-    def test_request_can_narrow_but_not_enable_fallback(
-        self, mock_chat_openai: MagicMock
+    @patch("receipt_agent.utils.openrouter_chat.HaikuOpenRouterChat")
+    def test_haiku_disables_fallback_without_mutating_input(
+        self, mock_chat: MagicMock
     ) -> None:
         extra_body = {
             "provider": {"only": ["anthropic"], "allow_fallbacks": True},
-            "reasoning": {"enabled": False},
+            "reasoning": {"enabled": True},
         }
-        with patch.dict(
-            os.environ,
-            {"OPENROUTER_PROVIDER_ONLY": '["anthropic", "openai"]'},
-        ):
-            create_llm(api_key="synthetic-test-key", extra_body=extra_body)
-        sent = mock_chat_openai.call_args.kwargs["extra_body"]
-        assert sent["provider"]["only"] == ["anthropic"]
-        assert sent["provider"]["allow_fallbacks"] is False
-        assert sent["provider"]["require_parameters"] is True
+        create_llm(
+            model="anthropic/claude-haiku-5.5",
+            api_key="synthetic-test-key",
+            extra_body=extra_body,
+        )
+        sent = mock_chat.call_args.kwargs["extra_body"]
+        assert sent["provider"] == {
+            "only": ["anthropic"],
+            "allow_fallbacks": False,
+            "require_parameters": True,
+        }
         assert sent["reasoning"] == {"enabled": False}
         assert extra_body["provider"]["allow_fallbacks"] is True
+        assert extra_body["reasoning"]["enabled"] is True
 
     @patch("langchain_openai.ChatOpenAI")
-    def test_unconfigured_deployments_keep_existing_routing(
-        self, mock_chat_openai: MagicMock, monkeypatch: pytest.MonkeyPatch
+    def test_other_models_keep_existing_routing(
+        self, mock_chat: MagicMock
     ) -> None:
-        monkeypatch.delenv("OPENROUTER_PROVIDER_ONLY", raising=False)
-        create_llm(api_key="synthetic-test-key")
-        assert "extra_body" not in mock_chat_openai.call_args.kwargs
+        create_llm(model="openai/gpt-5.6-luna", api_key="synthetic-test-key")
+        assert "extra_body" not in mock_chat.call_args.kwargs
+        assert mock_chat.call_args.kwargs["temperature"] == 0.0
 
 
 class TestLLMInvoker:
