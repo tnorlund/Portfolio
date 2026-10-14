@@ -6,7 +6,6 @@ import httpx
 import pytest
 from langchain_core.messages import AIMessage, ToolMessage
 from pydantic import BaseModel
-
 from receipt_agent.exceptions import ReceiptAgentConfigurationError
 from receipt_agent.subagents.place_finder.graph import (
     create_place_submission_tool,

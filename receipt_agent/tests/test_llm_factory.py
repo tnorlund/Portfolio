@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 from pydantic import BaseModel
-
 from receipt_agent.exceptions import (
     AgentExecutionError,
     LLMError,
