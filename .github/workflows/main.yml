@@ -330,7 +330,7 @@ jobs:
             pydantic pydantic-settings structlog requests tenacity \
             segno python-barcode numpy
           pip install pytest pytest-asyncio pytest-mock pytest-xdist \
-            pytest-timeout pytest-rerunfailures moto responses
+            pytest-timeout pytest-rerunfailures moto responses "mcp>=1.26,<2"
 
       - name: Verify eval regression corpus
         run: |
