@@ -47,7 +47,7 @@ test = [
     "responses>=0.25.0",
 ]
 lint = [
-    "black==26.5.1",
+    "black==26.10.0",
     "isort==9.0.1",
 ]
 dev = [
