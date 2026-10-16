@@ -789,10 +789,16 @@ def create_qa_tools(
             }
 
         breakdown = []
+        ambiguous_lines: dict[tuple, dict] = {}
 
         for receipt in retrieved:
             amounts = receipt.get("amounts", [])
             words_by_line = receipt.get("words_by_line", {})
+            line_totals: dict[Any, list[dict]] = defaultdict(list)
+            if filter_text and label_type == "LINE_TOTAL":
+                for amount in amounts:
+                    if amount.get("label") == "LINE_TOTAL":
+                        line_totals[amount.get("line_idx")].append(amount)
 
             for amt in amounts:
                 if amt.get("label") != label_type:
@@ -810,6 +816,26 @@ def create_qa_tools(
 
                     # Check if filter text appears on this line
                     if filter_text.upper() not in line_text.upper():
+                        continue
+                    if (
+                        label_type == "LINE_TOTAL"
+                        and len(line_totals[line_idx]) > 1
+                    ):
+                        # OCR can merge multiple product/price rows. A term
+                        # on that merged line does not establish ownership of
+                        # each price (e.g. coffee $5.49 beside milk $4.29).
+                        key = (
+                            receipt.get("image_id"),
+                            receipt.get("receipt_id"),
+                            line_idx,
+                        )
+                        ambiguous_lines[key] = {
+                            "image_id": key[0],
+                            "receipt_id": key[1],
+                            "line_idx": line_idx,
+                            "line_text": line_text,
+                            "amounts": line_totals[line_idx],
+                        }
                         continue
 
                 amount_value = amt.get("amount", 0.0)
@@ -888,6 +914,28 @@ def create_qa_tools(
                 {"image_id": row["image_id"], "receipt_id": row["receipt_id"]}
                 for row in retrieved
             ],
+            "excluded_ambiguous_lines": list(ambiguous_lines.values()),
+            "amount_coverage": {
+                "exhaustive_corpus": False,
+                "independently_date_filtered": False,
+                "ambiguous_line_count": len(ambiguous_lines),
+                "excluded_amount_count": sum(
+                    len(row["amounts"]) for row in ambiguous_lines.values()
+                ),
+                "has_unambiguous_matches": bool(breakdown),
+                "all_matches_ambiguous": not breakdown
+                and bool(ambiguous_lines),
+                "note": (
+                    "This is a subtotal of matching amounts in retrieved "
+                    "detail receipts, not all corpus spending. Text-filtered "
+                    "product rows with multiple LINE_TOTAL prices are excluded "
+                    "because product-to-price ownership is unresolved. "
+                    "Disclose exclusions; if all_matches_ambiguous is true, "
+                    "report unavailable spending rather than a zero purchase. "
+                    "With no matches and no ambiguous exclusions, report no "
+                    "matching amounts found in the retrieved scope."
+                ),
+            },
             "scope_note": (
                 "Amounts with this label and line-text filter across all "
                 "detail receipts retrieved so far. This is not an exhaustive "
@@ -1348,7 +1396,10 @@ def create_qa_tools(
                     state_holder["summary_receipts"].append(s)
 
             aggregate = aggregate_receipts(
-                filtered, start_date=start_date, end_date=end_date
+                filtered,
+                start_date=start_date,
+                end_date=end_date,
+                excluded_outliers=outliers,
             )
             source = (
                 f"get_receipt_summaries(merchant={merchant_filter}, "
@@ -1556,10 +1607,23 @@ A separate step will format your answer with supporting receipt details.
 
 **For specific products**:
 - Use text search with exact product name
+- Text-filtered aggregate_amounts excludes ambiguous OCR rows with multiple
+  LINE_TOTAL prices. Report the supported subtotal and exclusion coverage;
+  never attribute every price on a merged row to its matching product term.
+- Product aggregates cover retrieved detail receipts, not the entire corpus
+  or an independent date filter. State that scope explicitly in the answer.
 
 **For merchant/date aggregation**:
 - Use get_receipt_summaries (pre-computed, fast)
 - It computes exact monthly and weekday totals across ALL matching receipts.
+- For lowest/highest receipt totals, use receipt_total_extrema, including its
+  representative receipt identity and tie count. It covers all accepted
+  matching receipts even when the extreme is absent from the evidence page.
+  When excluded_outlier_count is positive, call the maximum "largest among
+  accepted receipts" and disclose the flagged receipt count and excluded
+  range; a larger flagged receipt requires review, not a claim it is wrong. Use
+  minimum_nonnegative to exclude negative refunds while retaining zero totals;
+  do not infer receipt extrema from monthly sums or sampled rows.
 - Use date_coverage averages with their stated denominators: requested months
   when both date filters are given, otherwise calendar months from first to last
   recorded date. State partial boundary months and undated/missing-total coverage.

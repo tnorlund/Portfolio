@@ -29,6 +29,7 @@ from receipt_agent.agents.question_answering.context import (
     bounded_rows,
     ensure_context_budget,
     receipt_evidence_view,
+    receipt_total_extrema,
     tool_result_view,
 )
 from receipt_agent.agents.question_answering.state import (
@@ -149,6 +150,44 @@ def _captured_context(provider: MagicMock) -> dict:
     )
 
 
+def _expanded_scope(scope: dict, context: dict) -> dict:
+    """Resolve the provider's lossless note and extrema references."""
+
+    def expand(value: Any) -> Any:
+        if isinstance(value, list):
+            return [expand(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        return {
+            key.removesuffix("_ref") if key.endswith("note_ref") else key: (
+                context["shared_notes"][item]
+                if key.endswith("note_ref")
+                else expand(item)
+            )
+            for key, item in value.items()
+        }
+
+    expanded = expand(scope)
+    extrema = expanded.get("receipt_total_extrema", {})
+    for name in ("minimum", "minimum_nonnegative", "maximum"):
+        entry = extrema.get(name)
+        if entry and "same_as" in entry:
+            extrema[name] = extrema[entry["same_as"]]
+    return expanded
+
+
+def _tool_reference_context(messages: list) -> dict:
+    for message in messages:
+        if isinstance(message, SystemMessage) and (
+            "Aggregate context references:\n" in message.content
+        ):
+            raw = message.content.split("Aggregate context references:\n", 1)[
+                1
+            ]
+            return json.JSONDecoder().raw_decode(raw)[0]
+    return {"shared_notes": []}
+
+
 def test_product_comparisons_reach_synthesis_without_totals_in_agent_prose() -> (
     None
 ):
@@ -222,6 +261,120 @@ def test_repeated_product_calculations_keep_history_bounded() -> None:
     assert len(holder["amount_aggregates"]) == 1
 
 
+@pytest.mark.parametrize("include_clear_coffee", [False, True])
+def test_ambiguous_product_prices_are_excluded_through_synthesis(
+    include_clear_coffee: bool,
+) -> None:
+    tools, holder = create_qa_tools(
+        MagicMock(),
+        lambda texts: [[1.0] for _ in texts],
+        vector_client=FakeVectorIndex([]),
+    )
+    merged = _details(0)
+    merged["words_by_line"] = {
+        0: [
+            {"text": "MILK", "label": "PRODUCT_NAME", "word_id": 1},
+            {"text": "COFFEE", "label": "PRODUCT_NAME", "word_id": 2},
+        ]
+    }
+    merged["amounts"] = [
+        {"label": "LINE_TOTAL", "amount": 5.49, "line_idx": 0},
+        {"label": "LINE_TOTAL", "amount": 4.29, "line_idx": 0},
+    ]
+    # Many ambiguous lines must remain in state without inflating the prompt.
+    holder["retrieved_receipts"] = [
+        {**merged, "image_id": f"merged-{index}"} for index in range(100)
+    ]
+    if include_clear_coffee:
+        holder["retrieved_receipts"].append(_details(101))
+    tool = next(tool for tool in tools if tool.name == "aggregate_amounts")
+    result = tool.invoke({"filter_text": "COFFEE"})
+    assert result["total"] == (1 if include_clear_coffee else 0)
+    assert result["count"] == int(include_clear_coffee)
+    coverage = result["amount_coverage"]
+    assert coverage["ambiguous_line_count"] == 100
+    assert coverage["excluded_amount_count"] == 200
+    assert coverage["has_unambiguous_matches"] is include_clear_coffee
+    assert coverage["all_matches_ambiguous"] is not include_clear_coffee
+    assert coverage["exhaustive_corpus"] is False
+    assert coverage["independently_date_filtered"] is False
+    assert "excluded_ambiguous_lines" not in result
+    assert (
+        len(holder["amount_aggregates"][0]["excluded_ambiguous_lines"]) == 100
+    )
+    assert len(holder["retrieved_receipts"][0]["amounts"]) == 2
+    assert len(json.dumps(result).encode()) < 4000
+    excluded_sample = result["excluded_ambiguous_line_sample"]
+    assert len(excluded_sample) == 5
+    assert excluded_sample[0] == {
+        "image_id": "merged-0",
+        "receipt_id": 1,
+        "line_idx": 0,
+        "amounts": [5.49, 4.29],
+        "total_amount_count": 2,
+        "returned_amount_count": 2,
+    }
+    exclusion_coverage = result["excluded_ambiguous_line_coverage"]
+    assert exclusion_coverage["total_count"] == 100
+    assert exclusion_coverage["returned_count"] == 5
+
+    state = QAState(
+        question="How much did I spend on coffee this year?",
+        messages=[
+            ToolMessage(content=json.dumps(result), tool_call_id="coffee"),
+            AIMessage(content="Incorrectly assign the merged milk prices."),
+        ],
+    )
+    state.shaped_summaries = qa_graph.create_shape_node(holder)(state)[
+        "shaped_summaries"
+    ]
+    assert all(
+        not summary.line_items
+        for summary in state.shaped_summaries
+        if summary.image_id.startswith("merged-")
+    )
+    provider = MagicMock()
+    provider.invoke.return_value = AIMessage(
+        content="Only a partial subtotal."
+    )
+    answer = qa_graph.create_synthesize_node(provider, holder)(state)
+    context = _captured_context(provider)
+    scope = _expanded_scope(context["amount_aggregations"][0], context)
+    assert scope["total"] == result["total"]
+    assert scope["amount_coverage"] == coverage
+    assert "excluded_ambiguous_lines" not in scope
+    assert scope["excluded_ambiguous_line_sample"] == excluded_sample
+    assert scope["excluded_ambiguous_line_coverage"] == exclusion_coverage
+    assert not any(
+        "line_items" in receipt
+        for receipt in context["receipt_evidence"]["summaries"]
+        if receipt["image_id"].startswith("merged-")
+    )
+    assert all(row["image_id"] == "detail-101" for row in answer["evidence"])
+    assert bool(answer["evidence"]) is include_clear_coffee
+    assert "retained_basket_totals" not in context
+    prompt = provider.invoke.call_args.args[0][0].content
+    assert "subtotals from retrieved receipts" in prompt
+    assert "all_matches_ambiguous is true, report spending as" in prompt
+    assert "Do not reuse excluded prices" in prompt
+    ensure_context_budget(provider.invoke.call_args.args[0])
+
+    # An unfiltered sum makes no product-to-price ownership assertion.
+    all_amounts = tool.invoke({})
+    assert all_amounts["total"] == 978 + (3 if include_clear_coffee else 0)
+    assert all_amounts["amount_coverage"]["ambiguous_line_count"] == 0
+    assert all_amounts["amount_coverage"]["all_matches_ambiguous"] is False
+    # A separate unfiltered-only shape preserves all raw line item prices.
+    unfiltered_holder = {
+        "retrieved_receipts": holder["retrieved_receipts"],
+        "amount_aggregates": [holder["amount_aggregates"][-1]],
+    }
+    unfiltered = qa_graph.create_shape_node(unfiltered_holder)(state)
+    assert [
+        item.amount for item in unfiltered["shaped_summaries"][0].line_items
+    ] == [5.49, 4.29]
+
+
 @pytest.mark.parametrize("compact", [False, True])
 def test_synthesis_does_not_promote_unreviewed_candidate_spending(
     compact: bool,
@@ -276,6 +429,114 @@ def test_synthesis_does_not_promote_unreviewed_candidate_spending(
     )
     if compact:
         assert context["precomputed_aggregates"][0]["monthly_spending"] == []
+
+
+def test_product_no_match_is_distinct_from_excluded_ambiguous_matches() -> (
+    None
+):
+    tools, holder = create_qa_tools(
+        MagicMock(),
+        lambda texts: [[1.0] for _ in texts],
+        vector_client=FakeVectorIndex([]),
+    )
+    holder["retrieved_receipts"] = [_details(0)]
+    aggregate_tool = next(
+        tool for tool in tools if tool.name == "aggregate_amounts"
+    )
+    result = aggregate_tool.invoke({"filter_text": "PET FOOD"})
+    assert result["total"] == 0
+    assert result["count"] == 0
+    coverage = result["amount_coverage"]
+    assert coverage["ambiguous_line_count"] == 0
+    assert coverage["has_unambiguous_matches"] is False
+    assert coverage["all_matches_ambiguous"] is False
+    provider = MagicMock()
+    provider.invoke.return_value = AIMessage(content="No matching amounts.")
+    qa_graph.create_synthesize_node(provider, holder)(
+        QAState(question="How much did I spend on pet food?")
+    )
+    context = _captured_context(provider)
+    assert (
+        _expanded_scope(context["amount_aggregations"][0], context)[
+            "amount_coverage"
+        ]
+        == coverage
+    )
+    assert "no matching amounts were found in the retrieved scope" in (
+        provider.invoke.call_args.args[0][0].content
+    )
+
+
+def test_ambiguous_product_rows_keep_vetted_receipt_extrema_citations() -> (
+    None
+):
+    rows = [_row(index, grand_total=100) for index in range(253)]
+    rows[250]["grand_total"] = 0.27
+    rows[251]["grand_total"] = 50
+    rows[252]["grand_total"] = 137.07
+    tools, holder = create_qa_tools(
+        _client(rows),
+        lambda texts: [[1.0] for _ in texts],
+        vector_client=FakeVectorIndex([]),
+    )
+    summary_tool = next(
+        tool for tool in tools if tool.name == "get_receipt_summaries"
+    )
+    summary_tool.invoke({"merchant_filter": "Example Market"})
+    clear = _details(0, lines=1)
+    clear["image_id"] = rows[0]["image_id"]
+    holder["retrieved_receipts"] = [clear]
+    for row in rows[250:]:
+        holder["retrieved_receipts"].append(
+            {
+                "image_id": row["image_id"],
+                "receipt_id": 1,
+                "words_by_line": {
+                    0: [{"text": "MILK COFFEE", "label": "PRODUCT_NAME"}]
+                },
+                "amounts": [
+                    {"label": "LINE_TOTAL", "amount": 5.49, "line_idx": 0},
+                    {"label": "LINE_TOTAL", "amount": 4.29, "line_idx": 0},
+                ],
+            }
+        )
+    aggregate_tool = next(
+        tool for tool in tools if tool.name == "aggregate_amounts"
+    )
+    product_result = aggregate_tool.invoke({"filter_text": "COFFEE"})
+    assert product_result["total"] == 1
+    assert product_result["amount_coverage"]["ambiguous_line_count"] == 3
+    state = QAState(
+        question="What were my lowest and highest receipt totals and coffee spending?"
+    )
+    state.shaped_summaries = qa_graph.create_shape_node(holder)(state)[
+        "shaped_summaries"
+    ]
+    assert len(state.shaped_summaries) == 253
+    assert all(
+        not summary.line_items
+        for summary in state.shaped_summaries
+        if summary.image_id in {row["image_id"] for row in rows[250:]}
+    )
+    provider = MagicMock()
+    provider.invoke.return_value = AIMessage(content="Scoped totals reviewed.")
+    result = qa_graph.create_synthesize_node(provider, holder)(state)
+    context = _captured_context(provider)
+    assert context["amount_aggregations"][0]["total"] == 1
+    extrema = context["precomputed_aggregates"][0]["receipt_total_extrema"]
+    assert extrema["minimum"]["amount"] == 0.27
+    assert extrema["maximum"]["amount"] == 137.07
+    evidence = {row["image_id"]: row for row in result["evidence"]}
+    assert len(result["evidence"]) == qa_graph.MAX_EVIDENCE_ITEMS
+    assert evidence[rows[250]["image_id"]]["amount"] == 0.27
+    assert evidence[rows[252]["image_id"]]["amount"] == 137.07
+    assert evidence[rows[0]["image_id"]]["amount"] == 1
+    # This non-extreme receipt still supports the independently vetted
+    # merchant spending scope, even though its product prices are unresolved.
+    assert evidence[rows[251]["image_id"]]["amount"] == 50
+    assert all(row["amount"] not in (5.49, 4.29) for row in evidence.values())
+    assert len(holder["amount_aggregates"][0]["excluded_ambiguous_lines"]) == 3
+    ensure_context_budget(provider.invoke.call_args.args[0])
 
 
 def test_three_large_receipts_keep_raw_words_out_of_provider_history() -> None:
@@ -441,6 +702,172 @@ async def test_new_question_clears_prior_scoped_evidence() -> None:
     assert result["answer"] == "No prior scope reused."
 
 
+def test_aggregate_agent_history_preserves_eight_complete_tool_scopes() -> (
+    None
+):
+    rows = [
+        _row(
+            scope * 12 + month,
+            merchant_name=f"Merchant-{scope:02d}",
+            grand_total=(month + 1) / 10,
+            effective_date=f"2025-{month + 1:02d}-01",
+        )
+        for scope in range(8)
+        for month in range(12)
+    ]
+    tool, holder, _ = _summary_tool(rows)
+    provider = MagicMock()
+    provider.bind_tools.return_value = provider
+    provider.invoke.return_value = AIMessage(content="Continue reviewing.")
+    node = qa_graph.create_agent_node(provider, [tool], holder)
+    state = QAState(
+        question="Compare every merchant scope",
+        messages=[
+            SystemMessage(content=SYSTEM_PROMPT, id="system-message"),
+            HumanMessage(content="Compare every merchant scope"),
+        ],
+    )
+    for index in range(8):
+        call = {
+            "name": tool.name,
+            "args": {"merchant_filter": f"Merchant-{index:02d}"},
+            "id": f"scope-{index}",
+            "type": "tool_call",
+        }
+        result = tool.invoke(call).model_copy(
+            update={
+                "id": f"result-{index}",
+                "artifact": {"audit": index},
+                "response_metadata": {"scope": index},
+            }
+        )
+        # Also cover tools whose name is supplied only by the AI tool call.
+        if index % 2:
+            result = result.model_copy(update={"name": None})
+        state.messages.extend(
+            [AIMessage(content="", tool_calls=[call]), result]
+        )
+        originals = [message.model_dump() for message in state.messages]
+        assert node(state).get("current_phase") != "shape"
+        assert [
+            message.model_dump() for message in state.messages
+        ] == originals
+        provider_messages = provider.invoke.call_args.args[0]
+        references = _tool_reference_context(provider_messages)
+        assert len(references["shared_notes"]) == len(
+            set(references["shared_notes"])
+        )
+        assert provider_messages[0].id == "system-message"
+        assert (
+            provider_messages[0].content.count("Aggregate context references:")
+            == 1
+        )
+        for original, copied in zip(state.messages, provider_messages):
+            if isinstance(original, ToolMessage):
+                assert copied.model_dump(exclude={"content"}) == (
+                    original.model_dump(exclude={"content"})
+                )
+                assert _expanded_scope(
+                    json.loads(copied.content), references
+                ) == (json.loads(original.content))
+        ensure_context_budget(provider_messages)
+    assert provider.invoke.call_count == 8
+    assert len(holder["aggregates"]) == 8
+    assert len(holder["summary_receipts"]) == 96
+    assert not holder.get("retrieval_complete")
+
+
+def test_product_scope_compaction_preserves_42_exact_filtered_results() -> (
+    None
+):
+    tools, holder = create_qa_tools(
+        MagicMock(),
+        lambda texts: [[1.0] for _ in texts],
+        vector_client=FakeVectorIndex([]),
+    )
+    receipt = _details(0)
+    receipt["words_by_line"] = {}
+    receipt["amounts"] = []
+    for index in range(42):
+        for line in (2 * index, 2 * index + 1):
+            receipt["words_by_line"][line] = [
+                {"text": f"PRODUCT-{index:03d}", "label": "PRODUCT_NAME"}
+            ]
+        receipt["amounts"].extend(
+            {"label": "LINE_TOTAL", "amount": value, "line_idx": line}
+            for line, value in (
+                (2 * index, index + 1),
+                (2 * index + 1, 5.49),
+                (2 * index + 1, 4.29),
+            )
+        )
+    holder["retrieved_receipts"] = [receipt]
+    tool = next(tool for tool in tools if tool.name == "aggregate_amounts")
+    results = [
+        tool.invoke({"filter_text": f"PRODUCT-{index:03d}"})
+        for index in range(42)
+    ]
+    messages = [SystemMessage(content=SYSTEM_PROMPT)]
+    for index, result in enumerate(results):
+        call = {
+            "name": tool.name,
+            "args": {"filter_text": result["filter_text"]},
+            "id": f"product-{index}",
+            "type": "tool_call",
+        }
+        messages.extend(
+            [
+                AIMessage(content="", tool_calls=[call]),
+                ToolMessage(
+                    content=json.dumps(result),
+                    tool_call_id=call["id"],
+                    name=tool.name,
+                ),
+            ]
+        )
+    agent_provider = MagicMock()
+    agent_provider.bind_tools.return_value = agent_provider
+    agent_provider.invoke.return_value = AIMessage(content="Scopes reviewed.")
+    agent_outcome = qa_graph.create_agent_node(agent_provider, tools, holder)(
+        QAState(question="Compare all product subtotals", messages=messages)
+    )
+    assert agent_outcome.get("current_phase") != "shape"
+    references = _tool_reference_context(
+        agent_provider.invoke.call_args.args[0]
+    )
+    for expected, actual in zip(
+        results, agent_provider.invoke.call_args.args[0][2::2]
+    ):
+        assert (
+            _expanded_scope(json.loads(actual.content), references) == expected
+        )
+    assert [
+        json.loads(message.content) for message in messages[2::2]
+    ] == results
+    summary_aggregate = {
+        "source": "complete receipt scope",
+        "filters": {"merchant": "Example Market"},
+        **aggregate_receipts([_row(0)]),
+    }
+    holder["aggregates"] = [summary_aggregate]
+    originals = json.dumps(holder["amount_aggregates"], sort_keys=True)
+    provider = MagicMock()
+    provider.invoke.return_value = AIMessage(content="All scopes compared.")
+    qa_graph.create_synthesize_node(provider, holder)(
+        QAState(question="Compare all product subtotals")
+    )
+    context = _captured_context(provider)
+    assert _expanded_scope(context["precomputed_aggregates"][0], context) == (
+        aggregate_view(summary_aggregate)
+    )
+    assert len(context["amount_aggregations"]) == 42
+    for expected, actual in zip(results, context["amount_aggregations"]):
+        assert _expanded_scope(actual, context) == expected
+    assert json.dumps(holder["amount_aggregates"], sort_keys=True) == originals
+    assert len(context["shared_notes"]) == len(set(context["shared_notes"]))
+    ensure_context_budget(provider.invoke.call_args.args[0])
+
+
 def test_long_history_hands_retained_evidence_to_synthesis() -> None:
     provider = MagicMock()
     provider.bind_tools.return_value = provider
@@ -464,6 +891,93 @@ def test_long_history_hands_retained_evidence_to_synthesis() -> None:
     ensure_context_budget(provider.invoke.call_args.args[0])
 
 
+@pytest.mark.parametrize("question_type", ["aggregation", "time_based"])
+def test_sampled_basket_totals_do_not_claim_or_prioritize_exact_extrema(
+    question_type: str,
+) -> None:
+    holder = {"retrieved_receipts": [_details(i) for i in range(251)]}
+    # A detail-only OCR total has never passed the summary outlier filter.
+    holder["retrieved_receipts"][-1]["amounts"][-1]["amount"] = 129900
+    state = QAState(
+        question="What was my biggest purchase last month?",
+        classification=QuestionClassification(
+            question_type=question_type, retrieval_strategy="semantic_hybrid"
+        ),
+    )
+    state.shaped_summaries = qa_graph.create_shape_node(holder)(state)[
+        "shaped_summaries"
+    ]
+    provider = MagicMock()
+    provider.invoke.return_value = AIMessage(content="Incomplete scope.")
+    result = qa_graph.create_synthesize_node(provider, holder)(state)
+    context = _captured_context(provider)
+    baskets = context["retained_basket_totals"]
+    assert baskets["count"] == 251
+    assert "receipt_total_extrema" not in baskets
+    assert "not product spending or an exhaustive corpus scan" in (
+        baskets["scope_note"]
+    )
+    assert context["precomputed_aggregates"] == []
+    assert state.shaped_summaries[-1].grand_total == 129900
+    assert len(result["evidence"]) == qa_graph.MAX_EVIDENCE_ITEMS
+    assert not any(
+        row["image_id"] == "detail-250" for row in result["evidence"]
+    )
+    ensure_context_budget(provider.invoke.call_args.args[0])
+
+
+@pytest.mark.parametrize("month_count,scope_count", [(12, 14), (60, 5)])
+def test_first_pass_compaction_preserves_full_month_rows_at_previous_boundary(
+    month_count: int, scope_count: int
+) -> None:
+    rows = [
+        _row(
+            index,
+            effective_date=f"{2000 + index // 12}-{1 + index % 12:02d}-01",
+            grand_total=(index + 1) / 10,
+        )
+        for index in range(month_count)
+    ]
+    full = aggregate_receipts(rows)
+    holder = {
+        "summary_receipts": rows,
+        "aggregates": [
+            {
+                **full,
+                "source": f"merchant-scope-{index}",
+                "filters": {"merchant": f"merchant-{index}"},
+            }
+            for index in range(scope_count)
+        ],
+    }
+    state = QAState(question="Which month was highest for each merchant?")
+    state.shaped_summaries = qa_graph.create_shape_node(holder)(state)[
+        "shaped_summaries"
+    ]
+    provider = MagicMock()
+    provider.invoke.return_value = AIMessage(content="All months compared.")
+    qa_graph.create_synthesize_node(provider, holder)(state)
+    context = _captured_context(provider)
+    assert len(context["precomputed_aggregates"]) == scope_count
+    assert len(context["receipt_evidence"]["summaries"]) == min(
+        month_count, MAX_SUMMARY_ROWS
+    )
+    for index, scope in enumerate(context["precomputed_aggregates"]):
+        expanded = _expanded_scope(scope, context)
+        assert expanded["filters"] == {"merchant": f"merchant-{index}"}
+        assert expanded["monthly_spending"] == full["monthly_spending"]
+        assert expanded["weekday_spending"] == full["weekday_spending"]
+        assert (
+            expanded["receipt_total_extrema"] == full["receipt_total_extrema"]
+        )
+        assert expanded["month_coverage"]["returned_groups"] == month_count
+        assert expanded["month_coverage"]["next_offset"] is None
+        assert "breakdown_note" not in expanded
+    assert len(holder["aggregates"][0]["monthly_spending"]) == month_count
+    assert len(state.shaped_summaries) == month_count
+    ensure_context_budget(provider.invoke.call_args.args[0])
+
+
 def test_many_receipt_scopes_keep_every_total_when_breakdowns_are_compacted() -> (
     None
 ):
@@ -481,7 +995,9 @@ def test_many_receipt_scopes_keep_every_total_when_breakdowns_are_compacted() ->
                 "filters": {"merchant": f"merchant-{index}"},
                 **aggregate_receipts(rows),
             }
-            for index in range(20)
+            # The pre-extrema context admitted 44 of these scopes. Keeping
+            # only 20 would miss the observed regression to a 24-scope limit.
+            for index in range(44)
         ]
     }
     provider = MagicMock()
@@ -497,14 +1013,21 @@ def test_many_receipt_scopes_keep_every_total_when_breakdowns_are_compacted() ->
         )
     )
     context = _captured_context(provider)
-    assert len(context["precomputed_aggregates"]) == 20
-    for index, aggregate in enumerate(context["precomputed_aggregates"]):
+    assert len(context["precomputed_aggregates"]) == 44
+    for index, compact_scope in enumerate(context["precomputed_aggregates"]):
+        aggregate = _expanded_scope(compact_scope, context)
         assert aggregate["filters"] == {"merchant": f"merchant-{index}"}
         assert aggregate["total_spending"] == 12
         assert aggregate["count"] == 120
         assert aggregate["monthly_spending"] == []
         assert aggregate["date_coverage"]["calendar_month_count"] == 120
         assert aggregate["month_coverage"]["total_groups"] == 120
+        assert aggregate["receipt_total_extrema"] == (
+            holder["aggregates"][index]["receipt_total_extrema"]
+        )
+        assert aggregate["date_coverage"] == (
+            holder["aggregates"][index]["date_coverage"]
+        )
     assert len(holder["aggregates"][0]["monthly_spending"]) == 120
     ensure_context_budget(provider.invoke.call_args.args[0])
 
@@ -543,7 +1066,10 @@ class _Provider:
             self.synthesis = json.loads(raw_context)
             return AIMessage(content="Recorded receipt spending is $250.50.")
         if messages[-1].type == "tool":
-            self.tool_result = json.loads(messages[-1].content)
+            self.tool_result = _expanded_scope(
+                json.loads(messages[-1].content),
+                _tool_reference_context(messages),
+            )
             return AIMessage(content="Keep this agent conclusion: $250.50.")
         return AIMessage(
             content="",
@@ -630,6 +1156,218 @@ def test_large_corpus_survives_tool_shape_synthesis(
     assert result["evidence_coverage"]["total_receipts"] == 2505
     assert result["evidence_coverage"]["cited_receipts"] == 200
     assert len(provider.messages) == 3
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What was my cheapest grocery trip?",
+        "What was my largest purchase this month?",
+        "Which receipt had the highest total?",
+    ],
+)
+def test_receipt_extrema_survive_paging_graph_and_citation_limits(
+    monkeypatch: pytest.MonkeyPatch, question: str
+) -> None:
+    rows = [_row(i, grand_total=50) for i in range(351)]
+    rows[0]["grand_total"] = 2.58  # A plausible but wrong sample minimum.
+    rows[340]["grand_total"] = 0.27
+    rows[349]["grand_total"] = 137.07
+    rows[350]["grand_total"] = 0.27  # A tie outside both evidence limits.
+    rows.extend(
+        [
+            _row(1000, merchant_name="Other Market", grand_total=0.01),
+            _row(1001, effective_date="2025-12-31", grand_total=999),
+        ]
+    )
+
+    class ExtremaProvider(_Provider):
+        def invoke(self, messages: list) -> AIMessage:
+            self.messages.append(messages)
+            ensure_context_budget(messages)
+            if "Receipt Data:\n" in messages[-1].content:
+                assert "sample suggested $2.58" in messages[-1].content
+                assert "takes precedence" in messages[0].content
+                self.synthesis = json.loads(
+                    messages[-1]
+                    .content.split("Receipt Data:\n", 1)[1]
+                    .split("\n\nGenerate a clear", 1)[0]
+                )
+                return AIMessage(content="Exact receipt range: $0.27–$137.07")
+            if messages[-1].type == "tool":
+                self.tool_result = _expanded_scope(
+                    json.loads(messages[-1].content),
+                    _tool_reference_context(messages),
+                )
+                return AIMessage(content="The sample suggested $2.58.")
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "extrema",
+                        "name": "get_receipt_summaries",
+                        "args": {
+                            "merchant_filter": "Example Market",
+                            "start_date": "2026-01-01",
+                            "end_date": "2026-01-31",
+                        },
+                        "type": "tool_call",
+                    }
+                ],
+            )
+
+    provider = ExtremaProvider()
+    monkeypatch.setattr(qa_graph, "create_llm", lambda **kwargs: provider)
+    graph, holder = qa_graph.create_qa_graph(
+        dynamo_client=_client(rows),
+        embed_fn=lambda texts: [[1.0] for _ in texts],
+        vector_client=FakeVectorIndex([]),
+        settings=SimpleNamespace(
+            openrouter_model="test/model",
+            openrouter_base_url="https://unused.invalid",
+            openrouter_api_key=SecretStr("unused"),
+        ),
+    )
+    result = graph.invoke(
+        QAState(
+            question=question,
+            messages=[
+                SystemMessage(content=SYSTEM_PROMPT),
+                HumanMessage(content=question),
+            ],
+        )
+    )
+    assert len(holder["summary_receipts"]) == 351
+    assert len(result["shaped_summaries"]) == 351
+    assert len(provider.tool_result["summaries"]) == MAX_SUMMARY_ROWS
+    sampled_ids = {
+        row["image_id"] for row in provider.tool_result["summaries"]
+    }
+    extrema = provider.tool_result["receipt_total_extrema"]
+    assert extrema["minimum"]["amount"] == 0.27
+    assert extrema["minimum"]["matching_receipts"] == 2
+    assert extrema["minimum_nonnegative"] == extrema["minimum"]
+    assert extrema["maximum"]["amount"] == 137.07
+    scope = _expanded_scope(
+        provider.synthesis["precomputed_aggregates"][0], provider.synthesis
+    )
+    assert scope["receipt_total_extrema"] == extrema
+    assert scope["filters"]["merchant"] == "Example Market"
+    assert scope["filters"]["start_date"] == "2026-01-01"
+    cited = {(e["image_id"], e["receipt_id"]) for e in result["evidence"]}
+    for name, index in (("minimum", 340), ("maximum", 349)):
+        receipt = extrema[name]["representative_receipt"]
+        assert receipt["image_id"] == rows[index]["image_id"]
+        assert receipt["merchant"] == "Example Market"
+        assert receipt["date"] == rows[index]["effective_date"]
+        assert receipt["image_id"] not in sampled_ids
+        assert (receipt["image_id"], receipt["receipt_id"]) in cited
+    assert len(result["evidence"]) == qa_graph.MAX_EVIDENCE_ITEMS
+    assert result["evidence_coverage"]["total_receipts"] == 351
+
+
+def test_receipt_extrema_distinguish_refunds_zero_missing_and_ties() -> None:
+    rows = [
+        _row(5, grand_total=None),
+        _row(4, grand_total=True),
+        _row(3, grand_total="NaN"),
+        _row(2, grand_total=-5),
+        _row(1, grand_total=0),
+        _row(9, grand_total="9.10"),
+        _row(8, grand_total=9.1),
+    ]
+    extrema = receipt_total_extrema(rows)
+    assert extrema["minimum"]["amount"] == -5
+    assert extrema["minimum_nonnegative"]["amount"] == 0
+    assert extrema["maximum"]["amount"] == 9.1
+    assert extrema["maximum"]["matching_receipts"] == 2
+    assert extrema["maximum"]["representative_receipt"]["image_id"] == (
+        rows[-1]["image_id"]
+    )
+    assert receipt_total_extrema(list(reversed(rows))) == extrema
+    assert receipt_total_extrema([])["minimum"] is None
+    assert (
+        receipt_total_extrema([_row(0, grand_total=-1)])["minimum_nonnegative"]
+        is None
+    )
+
+
+def test_extrema_disclose_relative_outlier_exclusions_through_synthesis() -> (
+    None
+):
+    rows = [_row(i, grand_total=50) for i in range(10)]
+    rows[-1]["grand_total"] = 137.07
+    # Both are below the absolute $50,000 ceiling but exceed the existing
+    # max(median * 100, $5,000) relative threshold. They might be real purchases.
+    rows.extend([_row(10, grand_total=6000), _row(11, grand_total=7000)])
+    tool, holder, _ = _summary_tool(rows)
+    result = tool.invoke({})
+    assert result["count"] == 10
+    assert result["total_spending"] == 587.07
+    assert result["excluded_outlier_count"] == 2
+    extrema = result["receipt_total_extrema"]
+    assert extrema["population"] == "accepted_receipts"
+    assert extrema["maximum"]["amount"] == 137.07
+    assert extrema["excluded_outlier_count"] == 2
+    assert extrema["excluded_outlier_range"]["minimum_total"] == 6000
+    assert extrema["excluded_outlier_range"]["maximum_total"] == 7000
+    assert "not confirmed" in extrema["excluded_outlier_range"]["note"]
+    assert "not all matching purchases" in extrema["note"]
+    assert len(json.dumps(extrema).encode()) < 2500
+    assert len(next(iter(holder["excluded_summary_outliers"].values()))) == 2
+
+    state = QAState(
+        question="What was my largest purchase?",
+        messages=[AIMessage(content="Unqualified maximum $137.07.")],
+    )
+    state.shaped_summaries = qa_graph.create_shape_node(holder)(state)[
+        "shaped_summaries"
+    ]
+    assert len(state.shaped_summaries) == 10
+    provider = MagicMock()
+    provider.invoke.return_value = AIMessage(
+        content="Largest accepted receipt $137.07; two larger receipts flagged."
+    )
+    qa_graph.create_synthesize_node(provider, holder)(state)
+    context = _captured_context(provider)
+    assert (
+        _expanded_scope(context["precomputed_aggregates"][0], context)[
+            "receipt_total_extrema"
+        ]
+        == extrema
+    )
+    system = provider.invoke.call_args.args[0][0].content
+    assert 'maximum as "largest among accepted receipts"' in system
+    assert "overall largest purchase\n    is not confirmed" in system
+    assert "Do not restore their values" in system
+    assert "all accepted\n  matching receipts" in SYSTEM_PROMPT
+    ensure_context_budget(provider.invoke.call_args.args[0])
+
+
+def test_receipt_extrema_tie_evidence_is_bounded_across_scopes() -> None:
+    rows = [_row(i, grand_total=2.58) for i in range(2505)]
+    aggregate = aggregate_receipts(rows)
+    extrema = aggregate["receipt_total_extrema"]
+    assert extrema["minimum"]["matching_receipts"] == 2505
+    assert len(json.dumps(extrema).encode()) < 2000
+    assert aggregate_view(aggregate)["receipt_total_extrema"] == extrema
+    provider = MagicMock()
+    provider.invoke.return_value = AIMessage(content="Minimum $2.58.")
+    holder = {
+        "aggregates": [
+            {"source": f"merchant-{i}", **aggregate} for i in range(20)
+        ]
+    }
+    qa_graph.create_synthesize_node(provider, holder)(
+        QAState(question="Compare each merchant's lowest receipt totals")
+    )
+    context = _captured_context(provider)
+    assert len(context["precomputed_aggregates"]) == 20
+    assert all(
+        _expanded_scope(scope, context)["receipt_total_extrema"] == extrema
+        for scope in context["precomputed_aggregates"]
+    )
+    ensure_context_budget(provider.invoke.call_args.args[0])
 
 
 def test_money_missing_dates_refunds_and_zero_totals_are_explicit() -> None:
@@ -744,17 +1482,20 @@ def test_synthesis_preserves_agent_analysis_beyond_old_character_cap() -> None:
     assert analysis in messages[-1].content
 
 
-def test_synthesis_budget_limit_preserves_a_completed_agent_answer() -> None:
+def test_synthesis_budget_limit_does_not_reuse_unsupported_agent_answer() -> (
+    None
+):
     provider = MagicMock()
     node = qa_graph.create_synthesize_node(provider, {})
-    answer = "x" * MAX_CONTEXT_BYTES
+    answer = "x" * MAX_CONTEXT_BYTES + " Unsupported cheapest purchase: $2.58."
     result = node(
         QAState(
             question="total",
             messages=[AIMessage(content=answer)],
         )
     )
-    assert result["final_answer"] == answer
+    assert "Please narrow" in result["final_answer"]
+    assert "$2.58" not in result["final_answer"]
     provider.invoke.assert_not_called()
 
 
