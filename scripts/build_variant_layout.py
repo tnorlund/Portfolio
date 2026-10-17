@@ -199,7 +199,7 @@ def main(argv=None) -> int:
     ap.add_argument(
         "--stylescan-merchant",
         default="costco",
-        help="stylescan rule-set key (see stylescan._MERCHANT_RULES)",
+        help="stylescan rule-set key (see stylescan.known_rule_slugs)",
     )
     ap.add_argument(
         "--table",

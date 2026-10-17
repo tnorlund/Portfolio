@@ -6,6 +6,40 @@
     "lines_measured": 865,
     "date": "2026-07-07"
   },
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "How doers|get more done|HOMEDEPOT\\.COM|@\\s*HOMEDEPOT\\.COM"
+    },
+    {
+      "section": "address",
+      "pattern": "(BLVD|AVE\\b|STREET|\\bRD\\b|TELLER|VICTORY|WEST HILLS|CA\\.?\\s*\\d{5}|\\(\\d{3}\\)\\s*\\d{3}|\\d{3}[- ]?\\d{3}[- ]?\\d{4}|STR MGR)"
+    },
+    {
+      "section": "transaction",
+      "pattern": "\\bSALE\\b|CASHIER|^\\d{4}\\s+\\d{5}\\s+\\d{3}\\b"
+    },
+    {
+      "section": "discount",
+      "pattern": "Pro\\s*Xtra(?!\\s+(MEMBER|[#*]))|Preferred Pricing|MAX REFUND|REFUND\\s+VALUE"
+    },
+    {
+      "section": "total_line",
+      "pattern": "^\\s*TOTAL\\b|USD\\$"
+    },
+    {
+      "section": "summary",
+      "pattern": "SUBTOTAL|SALES TAX|^TAX\\b|BALANCE DUE"
+    },
+    {
+      "section": "payment",
+      "pattern": "AID|AUTH|APPROVED|DEBIT|CREDIT|VISA|MASTERCARD|PIN|Chip|Verified|XXXXXXXX|NON-DISCO"
+    },
+    {
+      "section": "footer",
+      "pattern": "PRO XTRA MEMBER|PRO XTRA .*SUMMARY|PO/JOB|SPEND|CREDIT LINE|Perks|Apply and SAVE|homedepot\\.com/credit"
+    }
+  ],
   "sections": {
     "store_header": {
       "sizeScale": 1.0,

@@ -23,7 +23,8 @@ python new_vendor.py font wholefoods                    # mint -> specimen + str
 python new_vendor.py font wholefoods --fix "DGHMWbcde"  # triage feedback (repeat)
 python new_vendor.py pitch wholefoods                   # pitchRatioTarget / weight / condense
 python new_vendor.py style wholefoods                   # stylescan+agg -> stylemap.json draft + lines_*.txt
-#   author `rules` in fonts/<slug>/stylemap.json, rerun `style`
+#   author `rules` in fonts/<slug>/stylemap.json, register the slug in
+#   stylescan._STYLEMAP_RULE_SLUGS, rerun `style`
 python new_vendor.py profile wholefoods                 # merchant_profiles.json + env.mjs
 python new_vendor.py fixture wholefoods                 # faces -> $BITMATRIX_DIR, local truth fixture
 python new_vendor.py calibrate wholefoods               # render, solve ocr_cap_height_ratio, re-render
@@ -149,9 +150,14 @@ python -m glyphstudio.stylescan <image_id> <receipt_id> out.json --merchant <slu
 python -m glyphstudio.styleagg /tmp/gridfix/<slug>_studio/scans stylemap-agg.json
 ```
 
-- Add a `_<SLUG>_RULES` section-classifier list in `stylescan.py` (copy the
-  vons/cvs pattern; classify store_header/items/payment/footer/etc from a
-  line-text dump of 2 receipts).
+- Author the section-classifier `rules` list in `fonts/<slug>/stylemap.json`
+  (schema in `glyphstudio/stylerules.py`; copy the vons/cvs pattern;
+  classify store_header/items/payment/footer/etc from a line-text dump of 2
+  receipts). Do not add rule lists to `stylescan.py`; merchants without
+  `rules` fall back to the Sprouts rules. Do add the slug to
+  `_STYLEMAP_RULE_SLUGS` in `stylescan.py` so `known_rule_slugs()` (used by
+  `section_seeds` and `face_map_v2_cli`) accepts it; `test_stylerules.py`
+  fails until you do.
 - Write `fonts/<slug>/stylemap.json` from the aggregate (sizeScale / weight /
   underline per section, with `notes`). Bold = `stroke_rel med ≳ 1.12`.
 - Set `metrics.pitchRatioTarget` (the fleet median) and `preview.condense =
@@ -288,8 +294,8 @@ scorecard is not reviewable and will be bounced.
 
 Re-run step 7 once from a cold cache (proves vault resolution), then commit
 the font sources (`fonts/<slug>/` — skeleton JSONs + font.json + stylemap
-are the source of truth; compiled npz and samples npz stay OUT of git),
-the stylescan rules, and the profile.
+are the source of truth, including the stylemap `rules`; compiled npz and
+samples npz stay OUT of git), and the profile.
 
 Optional: showcase finale assets (`final.webp`/`real.webp`/labels) — add
 the merchant to `fixtures/pipeline_merchants.json` and run

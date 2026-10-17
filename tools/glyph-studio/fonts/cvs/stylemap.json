@@ -6,6 +6,44 @@
     "lines_measured": 703,
     "date": "2026-07-07"
   },
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "CVS\\s*pharmacy|•CVS"
+    },
+    {
+      "section": "reg_line",
+      "pattern": "REG#\\d+|TRN#\\d+|CSHR#|STR#"
+    },
+    {
+      "section": "extracare",
+      "pattern": "ExtraCare|ExtraBucks|Reward|Earn\\b"
+    },
+    {
+      "section": "pharmacy",
+      "pattern": "RX\\s?#|vaccin|pharmacist|prescription|shingles|Tdap|RSV|insurance"
+    },
+    {
+      "section": "fsa",
+      "pattern": "FSA|FLEXIBLE SPENDING|Eligible Total"
+    },
+    {
+      "section": "total_line",
+      "pattern": "^\\s*TOTAL\\b|^CHARGE\\b"
+    },
+    {
+      "section": "summary",
+      "pattern": "SUBTOTAL|^TAX\\b|\\d+\\.\\d{2}N\\s*$"
+    },
+    {
+      "section": "payment",
+      "pattern": "AID:|TVR|TSI|CVM:|TC:|REF#|MASTERCARD|VISA|DEBIT|PIN VERIFIED|TRAN TYPE|\\*{4,}|CHIP|TERMINAL"
+    },
+    {
+      "section": "footer",
+      "pattern": "THANK YOU|Return Policy|Returns\\b|with receipt|State law|Scan the QR|CVS\\.\\s?COM|Helped by|Subject to"
+    }
+  ],
   "sections": {
     "store_header": {
       "sizeScale": 1.0,
