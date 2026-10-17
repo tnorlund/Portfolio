@@ -1,0 +1,86 @@
+{
+ "version": 1,
+ "char": "b",
+ "codepoint": 98,
+ "provenance": "edited",
+ "width": 760.0,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 50.0,
+     "y": 63.3,
+     "type": "corner"
+    },
+    {
+     "x": 50.0,
+     "y": 965.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": true,
+   "nodes": [
+    {
+     "x": 380.0,
+     "y": 606.7,
+     "type": "smooth",
+     "hIn": {
+      "x": 197.7,
+      "y": 606.7
+     },
+     "hOut": {
+      "x": 562.3,
+      "y": 606.7
+     }
+    },
+    {
+     "x": 710.0,
+     "y": 335.0,
+     "type": "smooth",
+     "hIn": {
+      "x": 710.0,
+      "y": 485.1
+     },
+     "hOut": {
+      "x": 710.0,
+      "y": 185.0
+     }
+    },
+    {
+     "x": 380.0,
+     "y": 63.3,
+     "type": "smooth",
+     "hIn": {
+      "x": 562.3,
+      "y": 63.3
+     },
+     "hOut": {
+      "x": 197.7,
+      "y": 63.3
+     }
+    },
+    {
+     "x": 50.0,
+     "y": 335.0,
+     "type": "smooth",
+     "hIn": {
+      "x": 50.0,
+      "y": 185.0
+     },
+     "hOut": {
+      "x": 50.0,
+      "y": 485.1
+     }
+    }
+   ]
+  }
+ ],
+ "donor": "thestand",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the thestand face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(33..967) -> (47..953)"
+}

@@ -1,0 +1,67 @@
+{
+ "version": 1,
+ "char": "H",
+ "codepoint": 72,
+ "provenance": "edited",
+ "width": 782.5,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 49.5,
+     "y": 953.1,
+     "type": "corner"
+    },
+    {
+     "x": 49.5,
+     "y": 46.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 731.4,
+     "y": 953.1,
+     "type": "corner"
+    },
+    {
+     "x": 723.1,
+     "y": 46.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 718.7,
+     "y": 533.9,
+     "type": "corner",
+     "hOut": {
+      "x": 507.18009384770437,
+      "y": 507.2
+     }
+    },
+    {
+     "x": 54.999999999999886,
+     "y": 521.5,
+     "type": "corner",
+     "hIn": {
+      "x": 264.37881760436795,
+      "y": 490.4
+     }
+    }
+   ]
+  }
+ ],
+ "donor": "thestand",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the thestand face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(33..967) -> (47..953)"
+}

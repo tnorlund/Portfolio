@@ -1,0 +1,116 @@
+{
+ "version": 1,
+ "char": "g",
+ "codepoint": 103,
+ "provenance": "edited",
+ "width": 600.0,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": true,
+   "nodes": [
+    {
+     "x": 300.0,
+     "y": 648.1,
+     "type": "smooth",
+     "hIn": {
+      "x": 161.9,
+      "y": 648.1
+     },
+     "hOut": {
+      "x": 438.1,
+      "y": 648.1
+     }
+    },
+    {
+     "x": 550.0,
+     "y": 351.9,
+     "type": "smooth",
+     "hIn": {
+      "x": 550.0,
+      "y": 515.5
+     },
+     "hOut": {
+      "x": 550.0,
+      "y": 188.4
+     }
+    },
+    {
+     "x": 300.0,
+     "y": 55.8,
+     "type": "smooth",
+     "hIn": {
+      "x": 438.1,
+      "y": 55.8
+     },
+     "hOut": {
+      "x": 161.9,
+      "y": 55.8
+     }
+    },
+    {
+     "x": 50.0,
+     "y": 351.9,
+     "type": "smooth",
+     "hIn": {
+      "x": 50.0,
+      "y": 188.4
+     },
+     "hOut": {
+      "x": 50.0,
+      "y": 515.5
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 550.0,
+     "y": 322.3,
+     "type": "corner"
+    },
+    {
+     "x": 550.0,
+     "y": -141.6,
+     "type": "corner",
+     "hIn": {
+      "x": 560.0,
+      "y": -23.2
+     },
+     "hOut": {
+      "x": 490.0,
+      "y": -279.8
+     }
+    },
+    {
+     "x": 300.0,
+     "y": -260.1,
+     "type": "smooth",
+     "hIn": {
+      "x": 470.0,
+      "y": -279.8
+     },
+     "hOut": {
+      "x": 130.0,
+      "y": -250.2
+     }
+    },
+    {
+     "x": 110.0,
+     "y": -131.8,
+     "type": "corner",
+     "hIn": {
+      "x": 90.0,
+      "y": -220.6
+     }
+    }
+   ]
+  }
+ ],
+ "donor": "thestand",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the thestand face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(33..967) -> (39..961)"
+}

@@ -28,6 +28,7 @@ export const SAMPLES = {
   dollartree: "/tmp/gridfix/dollartree_studio/dollartree.refined.npz",
   speedway: "/tmp/gridfix/speedway_studio/speedway.refined.npz",
   wholefoods: "/tmp/gridfix/wholefoods_studio/wholefoods.refined.npz",
+  roastrice: "/tmp/gridfix/roastrice_studio/roastrice.refined.npz",
 };
 
 // Font dir -> canonical merchant name. The receipt renderer caches per-merchant
@@ -48,6 +49,7 @@ export const FONT_MERCHANTS = {
   dollartree: "Dollar Tree",
   speedway: "Speedway",
   wholefoods: "Whole Foods Market",
+  roastrice: "Roast & Rice Asian Fusion",
 };
 
 // Mirror _render_cache_path's slug: runs of non-alphanumerics -> single "_".

@@ -1,0 +1,85 @@
+{
+ "version": 1,
+ "char": "l",
+ "codepoint": 108,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "roastrice.refined.npz",
+  "samples": 14,
+  "consensusHash": "1f14a249da4e",
+  "date": "2026-09-20"
+ },
+ "width": 428.7,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 48.4,
+     "y": 783.3,
+     "type": "corner"
+    },
+    {
+     "x": 48.4,
+     "y": 46.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 309.5,
+     "y": 653.1,
+     "type": "corner"
+    },
+    {
+     "x": 363.6,
+     "y": 653.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 320.6,
+     "y": 438.9,
+     "type": "corner"
+    },
+    {
+     "x": 374.7,
+     "y": 438.9,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 356.7,
+     "y": 46.9,
+     "type": "corner",
+     "hOut": {
+      "x": 410.29155719732466,
+      "y": 224.6
+     }
+    },
+    {
+     "x": 359.5,
+     "y": 953.1,
+     "type": "corner",
+     "hIn": {
+      "x": 365.60879030909234,
+      "y": 738.9
+     }
+    }
+   ]
+  }
+ ]
+}

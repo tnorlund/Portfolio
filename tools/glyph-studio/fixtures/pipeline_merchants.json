@@ -161,6 +161,21 @@
         "w": 760,
         "h": 1559
       }
+    },
+    "roastrice": {
+      "merchant": "Roast & Rice Asian Fusion",
+      "font": "roastrice",
+      "hero": "R",
+      "receipt": {
+        "image_id": "d84d4101-8a2f-4b6f-9c4e-4d89af1850f5",
+        "receipt_id": 1
+      },
+      "label": "Roast & Rice",
+      "bold_callout": "the measured Total Due weight",
+      "dims": {
+        "w": 760,
+        "h": 1300
+      }
     }
   }
 }

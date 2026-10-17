@@ -1,0 +1,160 @@
+{
+ "version": 1,
+ "char": "T",
+ "codepoint": 84,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "roastrice.refined.npz",
+  "samples": 27,
+  "consensusHash": "59df7467fec5",
+  "date": "2026-09-20"
+ },
+ "width": 634.7,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 270.1,
+     "y": 494.4,
+     "type": "corner"
+    },
+    {
+     "x": 341.0,
+     "y": 494.4,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 270.1,
+     "y": 144.4,
+     "type": "corner"
+    },
+    {
+     "x": 335.4,
+     "y": 144.4,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 281.3,
+     "y": 555.6,
+     "type": "corner"
+    },
+    {
+     "x": 341.0,
+     "y": 555.6,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 397.9,
+     "y": 294.4,
+     "type": "corner"
+    },
+    {
+     "x": 338.2,
+     "y": 294.4,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 392.4,
+     "y": 822.2,
+     "type": "corner"
+    },
+    {
+     "x": 338.2,
+     "y": 822.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 392.4,
+     "y": 653.1,
+     "type": "corner"
+    },
+    {
+     "x": 338.2,
+     "y": 653.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 341.0,
+     "y": 46.9,
+     "type": "corner"
+    },
+    {
+     "x": 341.0,
+     "y": 953.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 597.9,
+     "y": 953.1,
+     "type": "corner",
+     "hOut": {
+      "x": 512.8518945095767,
+      "y": 953.1
+     }
+    },
+    {
+     "x": 357.3343251670351,
+     "y": 953.1,
+     "type": "corner",
+     "hIn": {
+      "x": 436.2448185179223,
+      "y": 951.9
+     }
+    },
+    {
+     "x": 298.5789842650336,
+     "y": 953.1,
+     "type": "corner"
+    },
+    {
+     "x": 255.650038790584,
+     "y": 953.1,
+     "type": "corner"
+    },
+    {
+     "x": 36.8,
+     "y": 953.1,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

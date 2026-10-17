@@ -1,0 +1,274 @@
+{
+ "version": 1,
+ "char": "F",
+ "codepoint": 70,
+ "provenance": "edited",
+ "width": 642.8,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 84.0,
+     "y": 810.8,
+     "type": "corner"
+    },
+    {
+     "x": 114.4,
+     "y": 810.8,
+     "type": "corner"
+    },
+    {
+     "x": 114.4,
+     "y": 662.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 171.7,
+     "y": 559.3,
+     "type": "corner"
+    },
+    {
+     "x": 98.5,
+     "y": 524.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 24.2,
+     "y": 122.6,
+     "type": "corner"
+    },
+    {
+     "x": 89.4,
+     "y": 133.4,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 151.9,
+     "y": 866.6,
+     "type": "corner"
+    },
+    {
+     "x": 97.8,
+     "y": 866.6,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 168.6,
+     "y": 662.0,
+     "type": "corner"
+    },
+    {
+     "x": 51.9,
+     "y": 662.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 163.0,
+     "y": 473.0,
+     "type": "corner"
+    },
+    {
+     "x": 171.7,
+     "y": 559.3,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 92.1,
+     "y": 46.9,
+     "type": "corner"
+    },
+    {
+     "x": 92.1,
+     "y": 251.7,
+     "type": "corner"
+    },
+    {
+     "x": 71.0521032532873,
+     "y": 268.0,
+     "type": "corner",
+     "hOut": {
+      "x": 83.38223324519682,
+      "y": 378.5
+     }
+    },
+    {
+     "x": 91.8,
+     "y": 662.0,
+     "type": "corner",
+     "hIn": {
+      "x": 128.86805427277028,
+      "y": 559.8
+     }
+    },
+    {
+     "x": 91.8,
+     "y": 662.0,
+     "type": "corner",
+     "hOut": {
+      "x": 90.52529845704122,
+      "y": 655.9
+     }
+    },
+    {
+     "x": 66.19561685020905,
+     "y": 737.0,
+     "type": "smooth",
+     "hIn": {
+      "x": 73.0391439415244,
+      "y": 709.2
+     },
+     "hOut": {
+      "x": 54.75138688105651,
+      "y": 790.8
+     }
+    },
+    {
+     "x": 106.10000000000004,
+     "y": 953.1,
+     "type": "corner",
+     "hIn": {
+      "x": 94.56023407987882,
+      "y": 894.1
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 618.6,
+     "y": 953.1,
+     "type": "corner"
+    },
+    {
+     "x": 507.55461713915224,
+     "y": 953.1,
+     "type": "corner"
+    },
+    {
+     "x": 332.67423608839346,
+     "y": 953.1,
+     "type": "corner"
+    },
+    {
+     "x": 293.7172067294285,
+     "y": 953.1,
+     "type": "corner"
+    },
+    {
+     "x": 249.33855605033895,
+     "y": 953.1,
+     "type": "corner",
+     "hOut": {
+      "x": 235.1591014436676,
+      "y": 966.0
+     }
+    },
+    {
+     "x": 114.28536734430733,
+     "y": 953.1,
+     "type": "corner",
+     "hIn": {
+      "x": 152.25424907136562,
+      "y": 919.1
+     }
+    },
+    {
+     "x": 88.83515475555198,
+     "y": 953.1,
+     "type": "corner"
+    },
+    {
+     "x": 63.0,
+     "y": 953.1,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 164.9,
+     "y": 519.8,
+     "type": "corner"
+    },
+    {
+     "x": 375.7740445159583,
+     "y": 543.2,
+     "type": "corner"
+    },
+    {
+     "x": 394.0229656603484,
+     "y": 528.8,
+     "type": "corner"
+    },
+    {
+     "x": 579.7,
+     "y": 554.0,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 585.3,
+     "y": 494.6,
+     "type": "corner",
+     "hOut": {
+      "x": 536.7765669323311,
+      "y": 503.5
+     }
+    },
+    {
+     "x": 540.8,
+     "y": 591.6,
+     "type": "corner",
+     "hIn": {
+      "x": 538.8835128709275,
+      "y": 554.8
+     }
+    }
+   ]
+  }
+ ],
+ "donor": "thestand",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the thestand face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(33..967) -> (47..953)"
+}
