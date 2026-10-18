@@ -161,6 +161,21 @@
         "w": 760,
         "h": 1559
       }
+    },
+    "smiths": {
+      "merchant": "Smith's",
+      "font": "smiths",
+      "hero": "S",
+      "receipt": {
+        "image_id": "55af0e9b-97fb-4f4a-bd34-98e832567414",
+        "receipt_id": 1
+      },
+      "label": "Smith's",
+      "bold_callout": "the measured heading weight",
+      "dims": {
+        "w": 760,
+        "h": 3077
+      }
     }
   }
 }

@@ -1,0 +1,86 @@
+{
+ "version": 1,
+ "char": "q",
+ "codepoint": 113,
+ "provenance": "edited",
+ "width": 442.8,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": true,
+   "nodes": [
+    {
+     "x": 115,
+     "y": 481.2,
+     "type": "smooth",
+     "hIn": {
+      "x": 115,
+      "y": 391.9
+     },
+     "hOut": {
+      "x": 115,
+      "y": 570.5
+     }
+    },
+    {
+     "x": 237,
+     "y": 642.6,
+     "type": "smooth",
+     "hIn": {
+      "x": 170,
+      "y": 642.6
+     },
+     "hOut": {
+      "x": 304,
+      "y": 642.6
+     }
+    },
+    {
+     "x": 358,
+     "y": 481.2,
+     "type": "smooth",
+     "hIn": {
+      "x": 358,
+      "y": 570.5
+     },
+     "hOut": {
+      "x": 358,
+      "y": 391.9
+     }
+    },
+    {
+     "x": 237,
+     "y": 319.8,
+     "type": "smooth",
+     "hIn": {
+      "x": 304,
+      "y": 319.8
+     },
+     "hOut": {
+      "x": 170,
+      "y": 319.8
+     }
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 360,
+     "y": 642.6,
+     "type": "corner"
+    },
+    {
+     "x": 360,
+     "y": -121.3,
+     "type": "corner"
+    }
+   ]
+  }
+ ],
+ "donor": "vons",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the vons face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(100..935) -> (51..949)"
+}

@@ -1,0 +1,35 @@
+{
+  "merchant": "Smith's",
+  "slug": "smiths",
+  "portfolio_slug": "smiths",
+  "aliases": [
+    "Smith's Marketplace",
+    "Smith's Fresh for Everyone",
+    "Smiths"
+  ],
+  "hero": "S",
+  "label": "Smith's",
+  "bold_callout": "the measured heading weight",
+  "graphics": {
+    "footer_codes": true,
+    "inbody_barcode": {
+      "max_count": 0
+    }
+  },
+  "studio_dir": "/tmp/gridfix/smiths_studio",
+  "donor": "vons",
+  "logo": "synthesis_loop/logo_masters/smiths_logo.png",
+  "gold_receipt": {
+    "image_id": "55af0e9b-97fb-4f4a-bd34-98e832567414",
+    "receipt_id": 1
+  },
+  "logo_phrases": [
+    "SMITH'S",
+    "SMITHS",
+    "FRESH FOR EVERYONE",
+    "FRESH",
+    "FOR",
+    "EVERYONE"
+  ],
+  "owns_profile": true
+}

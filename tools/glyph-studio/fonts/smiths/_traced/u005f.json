@@ -1,0 +1,47 @@
+{
+ "version": 1,
+ "char": "_",
+ "codepoint": 95,
+ "provenance": "traced",
+ "trace": {
+  "corpus": "smiths.refined.npz",
+  "samples": 4,
+  "consensusHash": "96aeea3b0c8c",
+  "date": "2026-09-20"
+ },
+ "width": 556.0,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 214.1,
+     "y": 77.8,
+     "type": "corner"
+    },
+    {
+     "x": 341.9,
+     "y": 77.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 214.1,
+     "y": -22.2,
+     "type": "corner"
+    },
+    {
+     "x": 291.9,
+     "y": -22.2,
+     "type": "corner"
+    }
+   ]
+  }
+ ]
+}

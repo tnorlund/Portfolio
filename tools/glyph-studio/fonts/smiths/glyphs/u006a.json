@@ -1,0 +1,85 @@
+{
+ "version": 1,
+ "char": "j",
+ "codepoint": 106,
+ "provenance": "edited",
+ "width": 450,
+ "baselineNudgePx": 0,
+ "overrides": {},
+ "strokes": [
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 300,
+     "y": 815.3,
+     "type": "corner"
+    },
+    {
+     "x": 300,
+     "y": 815.3,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 190,
+     "y": 642.8,
+     "type": "corner"
+    },
+    {
+     "x": 300,
+     "y": 642.8,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 300,
+     "y": 642.8,
+     "type": "corner"
+    },
+    {
+     "x": 300,
+     "y": 39.2,
+     "type": "corner",
+     "hOut": {
+      "x": 300,
+      "y": -35.1
+     }
+    },
+    {
+     "x": 200,
+     "y": -95.5,
+     "type": "smooth",
+     "hIn": {
+      "x": 255,
+      "y": -95.5
+     },
+     "hOut": {
+      "x": 159,
+      "y": -95.5
+     }
+    },
+    {
+     "x": 110,
+     "y": -68.6,
+     "type": "corner",
+     "hIn": {
+      "x": 128,
+      "y": -88.0
+     }
+    }
+   ]
+  }
+ ],
+ "donor": "vons",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the vons face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(100..935) -> (50..950)"
+}
