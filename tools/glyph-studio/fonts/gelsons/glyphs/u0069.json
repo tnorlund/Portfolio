@@ -3,64 +3,22 @@
  "char": "i",
  "codepoint": 105,
  "provenance": "edited",
- "width": 716.7,
+ "width": 640.6,
  "baselineNudgePx": 0,
  "overrides": {},
  "strokes": [
   {
-   "closed": true,
+   "closed": false,
    "nodes": [
     {
-     "x": 358.3,
-     "y": 870,
-     "type": "smooth",
-     "hIn": {
-      "x": 336.2,
-      "y": 870
-     },
-     "hOut": {
-      "x": 380.4,
-      "y": 870
-     }
+     "x": 320,
+     "y": 828.5,
+     "type": "corner"
     },
     {
-     "x": 398.3,
-     "y": 830,
-     "type": "smooth",
-     "hIn": {
-      "x": 398.3,
-      "y": 852.1
-     },
-     "hOut": {
-      "x": 398.3,
-      "y": 807.9
-     }
-    },
-    {
-     "x": 358.3,
-     "y": 790,
-     "type": "smooth",
-     "hIn": {
-      "x": 380.4,
-      "y": 790
-     },
-     "hOut": {
-      "x": 336.2,
-      "y": 790
-     }
-    },
-    {
-     "x": 318.3,
-     "y": 830,
-     "type": "smooth",
-     "hIn": {
-      "x": 318.3,
-      "y": 807.9
-     },
-     "hOut": {
-      "x": 318.3,
-      "y": 852.1
-     }
+     "x": 320,
+     "y": 828.5,
+     "type": "corner"
     }
    ]
   },
@@ -68,16 +26,49 @@
    "closed": false,
    "nodes": [
     {
-     "x": 358.3,
-     "y": 50.0,
+     "x": 210,
+     "y": 650.2,
      "type": "corner"
     },
     {
-     "x": 358.3,
-     "y": 650.0,
+     "x": 320,
+     "y": 650.2,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 320,
+     "y": 650.2,
+     "type": "corner"
+    },
+    {
+     "x": 320,
+     "y": -18.3,
+     "type": "corner"
+    }
+   ]
+  },
+  {
+   "closed": false,
+   "nodes": [
+    {
+     "x": 210,
+     "y": -18.3,
+     "type": "corner"
+    },
+    {
+     "x": 430,
+     "y": -18.3,
      "type": "corner"
     }
    ]
   }
- ]
+ ],
+ "donor": "vons",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the vons face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(100..935) -> (37..968)"
 }

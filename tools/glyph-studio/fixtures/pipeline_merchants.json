@@ -161,6 +161,21 @@
         "w": 760,
         "h": 1559
       }
+    },
+    "gelsons": {
+      "merchant": "Gelson's Westlake Village",
+      "font": "gelsons",
+      "hero": "G",
+      "receipt": {
+        "image_id": "659623a5-5989-4e61-b153-9cda1331cc8e",
+        "receipt_id": 2
+      },
+      "label": "Gelson's",
+      "bold_callout": "the measured department heading weight",
+      "dims": {
+        "w": 760,
+        "h": 2172
+      }
     }
   }
 }

@@ -2,14 +2,8 @@
  "version": 1,
  "char": "s",
  "codepoint": 115,
- "provenance": "traced",
- "trace": {
-  "corpus": "gelsons.refined.npz",
-  "samples": 8,
-  "consensusHash": "73cf2c7ce444",
-  "date": "2026-07-19"
- },
- "width": 567.0,
+ "provenance": "edited",
+ "width": 368.7,
  "baselineNudgePx": 0,
  "overrides": {},
  "strokes": [
@@ -17,193 +11,96 @@
    "closed": false,
    "nodes": [
     {
-     "x": 108.3,
-     "y": 660.9,
-     "type": "corner"
-    },
-    {
-     "x": 91.3,
-     "y": 455.6,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 386.6,
-     "y": 177.8,
-     "type": "corner"
-    },
-    {
-     "x": 386.6,
-     "y": 39.1,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 487.1,
-     "y": 660.9,
-     "type": "corner"
-    },
-    {
-     "x": 526.0,
-     "y": 572.2,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 237.1,
-     "y": 350.0,
-     "type": "corner"
-    },
-    {
-     "x": 213.8,
-     "y": 391.1,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 31.5,
-     "y": 516.7,
+     "x": 330,
+     "y": 583.4,
      "type": "corner",
-     "hOut": {
-      "x": 76.70816671616461,
-      "y": 470.5090470508751
-     }
-    },
-    {
-     "x": 215.40282824069942,
-     "y": 393.3384496775833,
-     "type": "smooth",
      "hIn": {
-      "x": 155.35794715494438,
-      "y": 408.3706730458289
+      "x": 330,
+      "y": 583.4
      },
      "hOut": {
-      "x": 316.64732520371456,
-      "y": 412.8573912820966
+      "x": 300,
+      "y": 639.1
      }
     },
     {
-     "x": 510.5000000000001,
-     "y": 321.59999999999997,
-     "type": "corner",
+     "x": 190,
+     "y": 650.2,
+     "type": "smooth",
      "hIn": {
-      "x": 414.2363502767249,
-      "y": 346.5017001592088
-     }
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 387.1,
-     "y": 660.9,
-     "type": "corner"
-    },
-    {
-     "x": 369.661485754635,
-     "y": 660.9,
-     "type": "corner"
-    },
-    {
-     "x": 343.8708578426049,
-     "y": 660.9,
-     "type": "corner"
-    },
-    {
-     "x": 322.8570638109488,
-     "y": 660.9,
-     "type": "corner"
-    },
-    {
-     "x": 108.3,
-     "y": 660.9,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 45.0,
-     "y": 250.0,
-     "type": "corner"
-    },
-    {
-     "x": 45.0,
-     "y": 221.75216012021673,
-     "type": "corner"
-    },
-    {
-     "x": 133.59867935779425,
-     "y": 134.4,
-     "type": "corner"
-    },
-    {
-     "x": 170.76325567243816,
-     "y": 134.4,
-     "type": "corner",
+      "x": 250,
+      "y": 650.2
+     },
      "hOut": {
-      "x": 197.8779059609527,
-      "y": 147.7239292224039
+      "x": 120,
+      "y": 650.2
      }
     },
     {
-     "x": 252.541703478707,
-     "y": 39.1,
-     "type": "corner",
+     "x": 60,
+     "y": 527.7,
+     "type": "smooth",
      "hIn": {
-      "x": 240.69470123553623,
-      "y": 62.5
-     }
-    },
-    {
-     "x": 270.4,
-     "y": 39.1,
-     "type": "corner"
-    }
-   ]
-  },
-  {
-   "closed": false,
-   "nodes": [
-    {
-     "x": 259.3,
-     "y": 39.1,
-     "type": "corner",
+      "x": 60,
+      "y": 605.7
+     },
      "hOut": {
-      "x": 481.09522191026826,
-      "y": 39.1
+      "x": 60,
+      "y": 449.7
      }
     },
     {
-     "x": 510.5,
-     "y": 321.6000000000001,
+     "x": 195,
+     "y": 349.4,
+     "type": "smooth",
+     "hIn": {
+      "x": 120,
+      "y": 394.0
+     },
+     "hOut": {
+      "x": 270,
+      "y": 304.8
+     }
+    },
+    {
+     "x": 330,
+     "y": 182.3,
+     "type": "smooth",
+     "hIn": {
+      "x": 330,
+      "y": 260.3
+     },
+     "hOut": {
+      "x": 330,
+      "y": 104.3
+     }
+    },
+    {
+     "x": 190,
+     "y": 37.4,
+     "type": "smooth",
+     "hIn": {
+      "x": 260,
+      "y": 37.4
+     },
+     "hOut": {
+      "x": 120,
+      "y": 37.4
+     }
+    },
+    {
+     "x": 60,
+     "y": 126.5,
      "type": "corner",
      "hIn": {
-      "x": 469.9559793374679,
-      "y": 154.75768167622385
+      "x": 80,
+      "y": 59.7
      }
     }
    ]
   }
- ]
+ ],
+ "donor": "vons",
+ "note": "Corpus too thin/polluted for this char; skeleton adopted from the vons face (y-remapped onto this font's cap band). Replace with a trace once more receipts exist.",
+ "normalized": "y: donor(100..935) -> (37..968)"
 }

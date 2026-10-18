@@ -3,7 +3,7 @@
  "char": "v",
  "codepoint": 118,
  "provenance": "edited",
- "width": 760.0,
+ "width": 612.8,
  "baselineNudgePx": 0,
  "overrides": {},
  "strokes": [
@@ -16,7 +16,7 @@
      "type": "corner"
     },
     {
-     "x": 380.0,
+     "x": 301.4,
      "y": 50.0,
      "type": "corner"
     }
@@ -26,16 +26,17 @@
    "closed": false,
    "nodes": [
     {
-     "x": 380.0,
+     "x": 301.4,
      "y": 50.0,
      "type": "corner"
     },
     {
-     "x": 710.0,
+     "x": 552.8,
      "y": 650.0,
      "type": "corner"
     }
    ]
   }
- ]
+ ],
+ "normalized": "x 660 -> 503"
 }
