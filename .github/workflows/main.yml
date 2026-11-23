@@ -458,6 +458,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # ubuntu-26.04 runner images no longer ship the Pulumi CLI.
+      - uses: pulumi/actions@v7
+
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -557,6 +560,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # ubuntu-26.04 runner images no longer ship the Pulumi CLI.
+      - uses: pulumi/actions@v7
+
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -652,6 +658,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      # ubuntu-26.04 runner images no longer ship the Pulumi CLI.
+      - uses: pulumi/actions@v7
 
       - uses: actions/setup-python@v7
         with:
