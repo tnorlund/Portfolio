@@ -15,7 +15,7 @@ S3. The worker must run on macOS (coremltools requirement).
 > **Python 3.14 / modern torch:** the base `receipt_layoutlm` package no longer
 > caps torch at 2.7. The Core ML pin (`torch<=2.7.0` + `coremltools==9.0`) lives
 > only in the `[coreml]` extra. For experimental Apple Core AI (`.aimodel`)
-> export, see the `coreai-export` skill (`~/.coreai-venv`, `[coreai]`).
+> export, see the `coreai-export` skill (`~/.coreai-py314-venv`, `[coreai]`).
 
 ## Key files
 
@@ -95,7 +95,7 @@ Do not add the `training` extra to this venv (it pulls scikit-learn 1.6+ and
 `seqeval`). A clean install resolves coremltools 9.0 with PyTorch 2.7.0 and no
 unsupported-version warning.
 
-For Core AI (`.aimodel`) export use a separate `~/.coreai-venv` — see the
+For Core AI (`.aimodel`) export use a separate `~/.coreai-py314-venv` — see the
 `coreai-export` skill. Never install `[coreml]` and `[coreai]` into the same
 venv (conflicting torch ceilings).
 

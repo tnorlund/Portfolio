@@ -18,18 +18,21 @@ default** until parity is proven.
 | Env | Python | Purpose |
 |-----|--------|---------|
 | Main LayoutLM | 3.14 | train / infer / tests; `torch>=2.6,<3` |
-| `~/.coreml-venv` | 3.13 | legacy Core ML (`[coreml]`, torch≤2.7) |
-| `~/.coreai-venv` | 3.13 | Core AI (`[coreai]`, torch≥2.8) |
+| `~/.coreml-venv` | legacy | Core ML (`[coreml]`; see `coreml-export`) |
+| `~/.coreai-py314-venv` | 3.14 | Core AI (`[coreai]`, torch 2.13.0) |
 
-`coreai-core` currently requires Python `<3.14`, which is why Core AI export
-stays on 3.13 even though the main package supports 3.14.
+The Core AI extra pins the verified exporter stack: `coreai-core==1.0.0`,
+`coreai-torch==0.4.4`, `torch==2.13.0` and `transformers==4.57.3`.
+Use standard CPython 3.14, not the free-threaded build. The Core AI wheel
+targets Apple Silicon on macOS 26+ or x86-64 Linux with glibc 2.34+.
+The Swift backend has a separate macOS 27+ requirement.
 
 ## Create the Core AI venv
 
 ```bash
-/usr/local/bin/python3.13 -m venv ~/.coreai-venv
-# Quotes protect the extras syntax in zsh.
-~/.coreai-venv/bin/pip install -e 'receipt_layoutlm[coreai]'
+# From the repository root. Use a fresh venv, not an older Core AI venv.
+python3.14 -m venv ~/.coreai-py314-venv
+~/.coreai-py314-venv/bin/python -m pip install -e receipt_dynamo -e 'receipt_layoutlm[coreai]'
 ```
 
 Do **not** install `[training]` or `[coreml]` into this venv.
@@ -37,7 +40,7 @@ Do **not** install `[training]` or `[coreml]` into this venv.
 ## Local export
 
 ```bash
-~/.coreai-venv/bin/layoutlm-cli export-coreai \
+~/.coreai-py314-venv/bin/layoutlm-cli export-coreai \
   --checkpoint-dir /path/to/checkpoint \
   --output-dir ./coreai-out
 ```
@@ -61,15 +64,16 @@ coreai-out/
 Conversion success alone is **not** enough:
 
 ```bash
-~/.coreai-venv/bin/layoutlm-cli validate-coreai \
+env -u DYNAMO_TABLE_NAME ~/.coreai-py314-venv/bin/layoutlm-cli validate-coreai \
   --checkpoint-dir /path/to/checkpoint \
   --coreai-bundle ./coreai-out \
   --num-samples 20 \
   --output-json /tmp/coreai-parity.json
 ```
 
-Compares PyTorch vs Core AI: label agreement, confidence deltas, logit RMSE,
-NaN/Inf detection.
+Compares PyTorch with the Python Core AI runtime: label agreement, confidence
+deltas, logit RMSE and NaN/Inf detection. Without a DynamoDB table, validation
+uses synthetic inputs. This command does not validate the Swift backend.
 
 ## Swift opt-in (macOS 27 / Xcode 27)
 
@@ -88,17 +92,16 @@ RECEIPT_OCR_COREAI=1 swift build -c release
 LAYOUTLM_BACKEND=coreai \
   ./.build/release/receipt-ocr \
   --process-local-image ~/test-receipt.png \
-  --layoutlm-model ./coreai-out \
+  --layoutlm-model ../coreai-out \
   --layoutlm-backend coreai \
   --output-dir /tmp/ocr-out
 ```
 
-`CoreAILayoutLMBackend.swift` compiles against the macOS 27.0 SDK
-(Command Line Tools, Swift 6.4) and has run a `.aimodel` exported from a tiny
-random LayoutLM v1 checkpoint through `--process-local-image`; a trained
-checkpoint has not been exercised yet. Default backend is still Core ML
-(`LAYOUTLM_BACKEND=coreml` or omit), and the default build never compiles the
-Core AI code.
+On macOS 27.2, the trained dev LayoutLM v1 bundle matched PyTorch using
+identical tensors from synthetic inputs. That verifies the Swift backend,
+not Swift tokenization, OCR, or real-receipt accuracy. The default backend
+is still Core ML (`LAYOUTLM_BACKEND=coreml` or omit), and the default build
+never compiles the Core AI code.
 
 ## Key files
 

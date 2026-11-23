@@ -117,7 +117,8 @@ Extras:
 
 - base / `[training]` / `[dev]`: Python 3.13 or 3.14, `torch>=2.6,<3`
 - `[coreml]`: isolated Python 3.13 worker — `torch<=2.7` + `coremltools==9.0`
-- `[coreai]`: isolated Python 3.13 exporter — `torch>=2.8` + `coreai-torch`
+- `[coreai]`: isolated standard CPython 3.14 exporter — `coreai-core==1.0.0`,
+  `coreai-torch==0.4.4`, `torch==2.13.0` and `transformers==4.57.3`
 
 See the `coreml-export` and `coreai-export` skills for venv setup. Never
 combine `[coreml]` and `[coreai]` in one venv.

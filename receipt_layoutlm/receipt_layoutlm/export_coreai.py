@@ -1,7 +1,7 @@
 """Export trained LayoutLM v1 checkpoints to Apple Core AI (.aimodel).
 
-Uses torch.export + coreai-torch. Runs in an isolated Python 3.13 environment
-with torch>=2.8; does not constrain the main LayoutLM package.
+Uses torch.export + coreai-torch. Runs in an isolated Python 3.14 environment
+with the [coreai] extra; does not constrain the main LayoutLM package.
 """
 
 from __future__ import annotations
@@ -74,7 +74,7 @@ def export_coreai(
     except ImportError as e:
         raise MissingDependencyError(
             "coreai-torch and transformers required for Core AI export: "
-            "pip install -e 'receipt_layoutlm[coreai]'"
+            "pip install -e receipt_dynamo -e 'receipt_layoutlm[coreai]'"
         ) from e
 
     checkpoint_path = Path(checkpoint_dir)
@@ -118,18 +118,13 @@ def export_coreai(
     print("Converting ExportedProgram to Core AI...")
     try:
         converter = TorchConverter()
-        # Prefer the documented kwargs form; fall back if an older API
-        # rejects keyword arguments.
-        try:
-            converter.add_exported_program(
-                exported,
-                input_names=input_names,
-                output_names=["logits"],
-            )
-        except TypeError:
-            converter.add_exported_program(exported)
+        converter.add_exported_program(
+            exported,
+            input_names=input_names,
+            output_names=["logits"],
+        )
+        # The pinned converter returns an already optimized AIProgram.
         program = converter.to_coreai()
-        program.optimize()
     except Exception as e:
         raise CoreAIExportError(f"Core AI conversion failed: {e}") from e
 
