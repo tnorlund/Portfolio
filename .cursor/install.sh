@@ -51,6 +51,7 @@ pip install --no-deps -e receipt_places
 pip install --no-deps -e receipt_nutrition
 pip install --no-deps -e receipt_agent
 pip install --no-deps -e receipt_upload
+pip install "anthropic>=1.13.0,<2.0.0"
 pip install boto3 "openai>=2.8.1,<3.0.0" Pillow \
     pillow-avif-plugin langsmith langgraph \
     "langchain-core>=0.3.0" "langchain-openai>=0.2.0" httpx \

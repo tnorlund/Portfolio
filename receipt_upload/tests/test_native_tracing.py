@@ -128,6 +128,7 @@ def test_real_llm_producer_maps_prompt_indexes_to_receipt_word_ids(
     sink: list,
 ) -> None:
     validator = LLMBatchValidator.__new__(LLMBatchValidator)
+    validator.provider = "openrouter"
     response = LabelValidationResponse(
         decisions=[
             LabelDecision(
