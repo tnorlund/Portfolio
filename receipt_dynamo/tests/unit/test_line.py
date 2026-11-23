@@ -540,9 +540,11 @@ def normalized_line():
 )
 def test_line_calculate_corners(normalized_line, kwargs, expected):
     """calculate_corners returns normalized or pixel-scaled corners."""
-    assert normalized_line.calculate_corners(**kwargs) == pytest.approx(
-        expected
-    )
+    # pytest.approx rejects nested sequences, so compare corner by corner.
+    corners = normalized_line.calculate_corners(**kwargs)
+    assert len(corners) == len(expected)
+    for corner, expected_corner in zip(corners, expected):
+        assert corner == pytest.approx(expected_corner)
 
 
 @pytest.mark.unit

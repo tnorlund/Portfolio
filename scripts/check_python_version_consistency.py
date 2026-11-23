@@ -9,12 +9,10 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 PYTHON_VERSION = "3.14"
-# The oldest runtime still deployed. Only the LayoutLM containers run it
-# (their pinned torch has no 3.14 wheels), and they install receipt_dynamo.
-# Every other runtime and CI leg sits on the 3.14 baseline, but package
-# metadata follows the floor: requires-python, and the black/ruff/mypy
-# targets (which declare the oldest interpreter the code must parse on).
-# When LayoutLM moves, raise PYTHON_FLOOR and everything follows.
+# The SageMaker LayoutLM training image still runs 3.13 with CUDA torch
+# 2.6 and installs receipt_dynamo. The isolated Core ML exporter also uses
+# the floor. Lambda images and CI sit on 3.14; shared package metadata and
+# language targets still support the oldest runtime that needs them.
 PYTHON_FLOOR = "3.13"
 PYTHON_FLOOR_TARGET = "py" + PYTHON_FLOOR.replace(".", "")
 # Files that legitimately name the 3.13 LayoutLM export/training runtimes.
@@ -23,17 +21,13 @@ SECONDARY_RUNTIME_DOCUMENTS = {
     Path("AGENTS.md"),
     Path("receipt_layoutlm/README.md"),
     Path(".agents/skills/coreml-export/SKILL.md"),
-    # The [coreai] extra needs coreai-core, which has no cp314 wheel, so
-    # its export venv is documented on the floor.
-    Path(".agents/skills/coreai-export/SKILL.md"),
 }
 SECONDARY_RUNTIME_FILES = {
     Path("infra/sagemaker_training/Dockerfile"),
     Path("tests/test_sagemaker_training_runtime.py"),
 }
-# receipt_layoutlm deploys on the 3.14 inference image but its [coreml] and
-# [coreai] extras are pinned to 3.13-only wheels (export venvs, SageMaker
-# training), so it must keep advertising the floor alongside the baseline.
+# receipt_layoutlm runs on the 3.14 inference image and the 3.13 SageMaker
+# image and Core ML export worker, so it must still advertise the floor.
 SECONDARY_RUNTIME_PYPROJECTS = {Path("receipt_layoutlm/pyproject.toml")}
 
 SCAN_ROOTS = (

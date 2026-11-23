@@ -97,9 +97,8 @@ updates:
         update-types: ["version-update:semver-major"]
       # torch<=2.7.0 is pinned only in receipt_layoutlm[coreml] for
       # coremltools 9.0. The base package allows torch>=2.6,<3 and
-      # [coreai] requires torch>=2.8. Ignore base torch bumps that would
-      # fight the [coreml] ceiling; raise that ceiling only alongside a
-      # newer coremltools release.
+      # [coreai] separately pins its verified torch version. Keep automated
+      # updates from changing either exporter pin without testing the stack.
       - dependency-name: "torch"
 
   # Monitor base-image tags in Dockerfiles throughout the repository.

@@ -211,7 +211,7 @@ def _load_coreai_runner(bundle_dir: str) -> _CoreAIRunner:
     except ImportError as e:
         raise ImportError(
             "Unable to import Core AI runtime for validation. Install "
-            "receipt_layoutlm[coreai] in a Python 3.13 environment. "
+            "receipt_layoutlm[coreai] in a Python 3.14 environment. "
             f"Last error: {e}"
         ) from e
     return _CoreAIRunner(aimodel_path)

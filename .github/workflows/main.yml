@@ -109,10 +109,9 @@ jobs:
           - receipt_nutrition
           - receipt_upload
           - receipt_agent
-        # Every deployed Python runtime is 3.14 (ZIP Lambdas, their layers and
-        # the container images), so each package gets one leg. The only 3.13
-        # runtime left is receipt_layoutlm's image (its pinned torch has no
-        # cp314 wheels); that package has no leg here.
+        # Lambda runtimes, including the LayoutLM inference image, use 3.14.
+        # SageMaker training and the isolated Core ML exporter still use 3.13.
+        # Lightweight LayoutLM export contracts run in repository-tests.
         # receipt_dynamo runs as two shards: its ~1,400 moto integration tests
         # are the whole run's critical path (3+ min on a 4-vCPU runner) while
         # its ~1,960 unit tests finish in ~2 s. See the sharding note in
@@ -355,6 +354,8 @@ jobs:
           python -m pytest tests "${SCRIPT_TESTS[@]}" \
             -n auto --timeout=120 --tb=short --maxfail=5 \
             --reruns 1 --reruns-delay 2
+          # Separate invocation keeps LayoutLM's pytest config out of root tests.
+          python -m pytest -q receipt_layoutlm/tests/unit/test_coreml_dependency_contract.py
 
       - name: Test container OCR handler contracts
         run: |

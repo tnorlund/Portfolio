@@ -63,22 +63,19 @@ def test_coreml_extra_keeps_torch_within_coremltools_9_support() -> None:
     assert torch_requirement == "torch>=2.6.0,<=2.7.0"
 
 
-def test_coreai_extra_requires_modern_torch_and_coreai_torch() -> None:
-    """[coreai] must pull coreai-torch with torch>=2.8 and no sklearn."""
+def test_coreai_extra_pins_the_isolated_python_314_export_stack() -> None:
     project = tomllib.loads(PYPROJECT.read_text())["project"]
-    extras = project["optional-dependencies"]
-    coreai = extras["coreai"]
-    names = _requirement_names(coreai)
-
-    assert names == {"coreai-torch", "torch"}
-    assert "scikit-learn" not in names
-    assert "seqeval" not in names
-    assert "coreai-torch" in coreai
-
-    torch_requirement = _torch_requirement(coreai)
-    assert torch_requirement.startswith("torch>=2.8.0")
-    assert "<=2.13.0" in torch_requirement
-    assert "<=2.7" not in torch_requirement
+    coreai = project["optional-dependencies"]["coreai"]
+    assert set(coreai) == {
+        "coreai-core==1.0.0",
+        "coreai-torch==0.4.4",
+        "torch==2.13.0",
+        "transformers==4.57.3",
+    }
+    assert _requirement_names(project["dependencies"]).isdisjoint(
+        {"coreai-core", "coreai-torch"}
+    )
+    assert "transformers>=4.46.0,<6.0.0" in project["dependencies"]
 
 
 def test_python_314_classifier_is_declared() -> None:

@@ -26,7 +26,7 @@ dependencies = [
   # resume-from-checkpoint path. Keep transformers <6.0 to avoid blind
   # dependabot bumps across the next major.
   # Do NOT cap torch at 2.7 here: coremltools 9.0's tested range lives in
-  # the [coreml] extra, and Core AI needs torch>=2.8 in [coreai].
+  # the [coreml] extra, and [coreai] has its own verified export stack.
   "torch>=2.6.0,<3.0.0",
   "transformers>=4.46.0,<6.0.0",
   "datasets>=2.19.0,<6.0.0",
@@ -57,11 +57,13 @@ coreml = [
   "coremltools==9.0",
 ]
 coreai = [
-  # Isolated Python 3.13 exporter. coreai-core currently requires
-  # Python <3.14; torch>=2.8 is required by coreai-torch. Pin the upper
-  # bound to the range coreai-torch documents as validated.
-  "torch>=2.8.0,<=2.13.0",
-  "coreai-torch",
+  # Isolated Python 3.14 exporter. Keep the exact trained-parity stack,
+  # including coreai-torch's upstream tested Transformers release, scoped
+  # to this extra; training and the inference image keep their own ranges.
+  "coreai-core==1.0.0",
+  "coreai-torch==0.4.4",
+  "torch==2.13.0",
+  "transformers==4.57.3",
 ]
 dev = [
   "pytest>=7.0.0",
