@@ -1,4 +1,4 @@
-FROM public.ecr.aws/lambda/python:3.14
+FROM public.ecr.aws/lambda/python:3.15
 
 COPY receipt_dynamo/ /tmp/receipt_dynamo/
 RUN pip install --no-cache-dir /tmp/receipt_dynamo && rm -rf /tmp/receipt_dynamo
