@@ -6,7 +6,7 @@
 # cp314 CPU wheels from 2.10 onward; receipt_layoutlm only caps torch <3.0
 # because the coremltools/Core AI ceilings live in the [coreml]/[coreai]
 # extras that the isolated macOS export workers install.
-FROM public.ecr.aws/lambda/python:3.14 AS dependencies
+FROM public.ecr.aws/lambda/python:3.15 AS dependencies
 
 # Note: awscli is pre-installed in the Lambda base image, no need to install it
 
