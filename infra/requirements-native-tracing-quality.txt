@@ -1,5 +1,5 @@
 # Development-only tools; never installed in a deployed Lambda.
-black==26.5.1
+black==26.10.0
 isort==9.0.1
 mypy==2.3.1
 pylint==4.0.8
