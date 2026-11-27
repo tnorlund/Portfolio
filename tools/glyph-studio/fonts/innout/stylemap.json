@@ -7,6 +7,36 @@
     "lines_measured": 485,
     "date": "2026-07-07"
   },
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "IN-N-OUT|WESTLAKE|VILLAGE|^\\s*\\d{3}\\s*$"
+    },
+    {
+      "section": "transaction",
+      "pattern": "Cashier|ORDERTAKER|Check\\s*:|TRANS\\s*#|Ticket|Station"
+    },
+    {
+      "section": "note",
+      "pattern": "^NOTE\\b|^tes$"
+    },
+    {
+      "section": "total_line",
+      "pattern": "Amount Due|AUTH\\s+AMT"
+    },
+    {
+      "section": "summary",
+      "pattern": "DRIVE-?Take Out|^TAX\\b|Tender\\b|Change\\b"
+    },
+    {
+      "section": "payment",
+      "pattern": "CHARGE\\s+DETAIL|Card Type|Account:|Capture:|Contactless|PIN:|Auth Code|Auth Ref|AID:|Trans\\s*#|MasterCard|VISA|\\*{4,}"
+    },
+    {
+      "section": "footer",
+      "pattern": "THANK YOU|Questions/Comments|Call\\s+800|^\\d{4}-\\d{2}-\\d{2}\\b"
+    }
+  ],
   "sections": {
     "store_header": {
       "sizeScale": 1.0,

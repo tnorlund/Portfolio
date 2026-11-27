@@ -6,6 +6,40 @@
     "lines_measured": 987,
     "date": "2026-07-06"
   },
+  "rules": [
+    {
+      "section": "store_header",
+      "pattern": "VONS|Safeway|Store\\s?#|Main Street"
+    },
+    {
+      "section": "savings",
+      "pattern": "SAVINGS|Club Savings|YOU PAY|Price You Pay|Member Savings"
+    },
+    {
+      "section": "section_header",
+      "pattern": "^(GROCERY|PRODUCE|MEAT|SEAFOOD|DELI|BAKERY|DAIRY|FROZEN|LIQUOR|GEN MERCHANDISE|REFRIG/FROZEN)\\b"
+    },
+    {
+      "section": "total_line",
+      "pattern": "^\\**\\s*BALANCE\\b|^TOTAL\\b"
+    },
+    {
+      "section": "summary",
+      "pattern": "SUBTOTAL|^TAX\\b|CHANGE\\b|CASH\\b|CREDIT\\b"
+    },
+    {
+      "section": "payment",
+      "pattern": "REF:|AUTH:|APPROVED|XXXX|DEBIT|VISA|MASTERCARD|EFT|PAYMENT AMOUNT"
+    },
+    {
+      "section": "points",
+      "pattern": "POINTS|REWARDS|GAS REWARD|fuel"
+    },
+    {
+      "section": "footer",
+      "pattern": "Thank You|vons\\.com|Your Cashier|survey|TWICE THE DIFFERENCE"
+    }
+  ],
   "sections": {
     "store_header": {
       "sizeScale": 1.0,
